@@ -309,7 +309,10 @@ describe("dependency_graph batch consistency", () => {
             });
 
             // After commit, both should be present
-            const dependents = await storage.listDependents(inputKey);
+            let dependents;
+            await storage.withBatch(async (batch) => {
+                dependents = await storage.listDependents(inputKey, batch);
+            });
             expect(dependents).toContain(dependentA);
             expect(dependents).toContain(dependentB);
             expect(dependents.length).toBe(2);
@@ -351,7 +354,10 @@ describe("dependency_graph batch consistency", () => {
             });
 
             // After commit, should have inputA (the first write), not inputB
-            const inputs = await storage.getInputs(nodeKey);
+            let inputs;
+            await storage.withBatch(async (batch) => {
+                inputs = await storage.getInputs(nodeKey, batch);
+            });
             expect(inputs).toEqual([inputA]);
 
             await db.close();

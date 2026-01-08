@@ -200,7 +200,7 @@ class DependencyGraphClass {
         batch,
         nodesBecomingOutdated = new Set()
     ) {
-        const dynamicDependents = await this.storage.listDependents(changedKey);
+        const dynamicDependents = await this.storage.listDependents(changedKey, batch);
         for (const output of dynamicDependents) {
             // Optimization: if already marked outdated in this batch, skip
             if (nodesBecomingOutdated.has(output)) {
@@ -716,6 +716,8 @@ class DependencyGraphClass {
 
     /**
      * Query conceptual freshness state of a node (debug interface).
+     * Note: This is a debug/inspection method that reads directly from storage
+     * outside a batch context. This is acceptable for non-critical debug paths.
      * @param {NodeName} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
@@ -742,6 +744,7 @@ class DependencyGraphClass {
 
         const concreteKeyString = concreteKey;
 
+        // Debug read: directly from storage (acceptable for non-critical inspection)
         const freshness = await this.storage.freshness.get(concreteKeyString);
         if (freshness === undefined) {
             return "missing";

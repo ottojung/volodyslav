@@ -1270,7 +1270,10 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
         const storage = g.getStorage();
-        const inputsRecord = await storage.getInputs(toJsonKey("source"));
+        let inputsRecord;
+        await storage.withBatch(async (batch) => {
+            inputsRecord = await storage.getInputs(toJsonKey("source"), batch);
+        });
         expect(inputsRecord).not.toBeNull();
         expect(inputsRecord).toEqual([]);
     });
@@ -1304,7 +1307,10 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
         const storage = g.getStorage();
-        const inputsRecord = await storage.getInputs(toJsonKey("leaf"));
+        let inputsRecord;
+        await storage.withBatch(async (batch) => {
+            inputsRecord = await storage.getInputs(toJsonKey("leaf"), batch);
+        });
         expect(inputsRecord).not.toBeNull();
         expect(inputsRecord).toEqual([]);
     });

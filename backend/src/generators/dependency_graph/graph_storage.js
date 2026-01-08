@@ -55,8 +55,8 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
- * @property {(input: NodeKeyString) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input
- * @property {(node: NodeKeyString) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node
+ * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input (requires batch for consistency)
+ * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
  * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
  */
 
@@ -228,10 +228,11 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * List all dependents of an input.
      * Returns the array of dependents stored for this input.
      * @param {NodeKeyString} input - Canonical input key
+     * @param {BatchBuilder} batch - Batch builder for consistent reads
      * @returns {Promise<NodeKeyString[]>}
      */
-    async function listDependents(input) {
-        const dependents = await schemaStorage.revdeps.get(input);
+    async function listDependents(input, batch) {
+        const dependents = await batch.revdeps.get(input);
         if (dependents === undefined) {
             return [];
         }
@@ -242,10 +243,11 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     /**
      * Get inputs for a node.
      * @param {NodeKeyString} node - Canonical node key
+     * @param {BatchBuilder} batch - Batch builder for consistent reads
      * @returns {Promise<NodeKeyString[] | null>}
      */
-    async function getInputs(node) {
-        const record = await schemaStorage.inputs.get(node);
+    async function getInputs(node, batch) {
+        const record = await batch.inputs.get(node);
         if (!record) return null;
         // Convert string[] from DB to NodeKeyString[]
         return record.inputs.map(stringToNodeKeyString);
