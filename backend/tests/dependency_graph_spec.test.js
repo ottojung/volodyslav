@@ -490,10 +490,10 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             },
         ]);
 
-        // In the new API, "id(-1)" is just treated as a head name
-        // Since the real head is "id", this throws InvalidNode
+        // In the new API, "id(-1)" would be parsed as a call expression
+        // but the parser rejects negative numbers, throwing InvalidExpression
         await expect(g.pull("id(-1)")).rejects.toMatchObject({
-            name: "InvalidNodeError",
+            name: "InvalidExpressionError",
         });
     });
 
@@ -509,10 +509,10 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             },
         ]);
 
-        // In the new API, "id(1.2)" is just treated as a head name
-        // Since the real head is "id", this throws InvalidNode
+        // In the new API, "id(1.2)" would be parsed as a call expression
+        // but the parser rejects floats, throwing InvalidExpression
         await expect(g.pull("id(1.2)")).rejects.toMatchObject({
-            name: "InvalidNodeError",
+            name: "InvalidExpressionError",
         });
     });
 
@@ -528,10 +528,10 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             },
         ]);
 
-        // In the new API, "id(01)" is just treated as a head name
-        // Since the real head is "id", this throws InvalidNode
+        // In the new API, "id(01)" would be parsed as a call expression
+        // but the parser rejects leading zeros, throwing InvalidExpression
         await expect(g.pull("id(01)")).rejects.toMatchObject({
-            name: "InvalidNodeError",
+            name: "InvalidExpressionError",
         });
     });
 });
@@ -549,10 +549,10 @@ describe("pull/set concrete-ness & node existence errors", () => {
             },
         ]);
 
-        // In the new API, "event_context(e)" is treated as a literal head name
-        // Since the real head is "event_context", this throws InvalidNode
+        // In the new API, "event_context(e)" is a schema pattern with variables
+        // The public API rejects schema patterns, throwing SchemaPatternNotAllowedError
         await expect(g.pull("event_context(e)")).rejects.toMatchObject({
-            name: "InvalidNodeError",
+            name: "SchemaPatternNotAllowedError",
         });
     });
 
@@ -568,11 +568,11 @@ describe("pull/set concrete-ness & node existence errors", () => {
             },
         ]);
 
-        // In the new API, "event_context(e)" is treated as a literal head name
-        // Since the real head is "event_context", this throws InvalidNode
+        // In the new API, "event_context(e)" is a schema pattern with variables
+        // The public API rejects schema patterns, throwing SchemaPatternNotAllowedError
         await expect(g.set("event_context(e)", { x: 1 })).rejects.toMatchObject(
             {
-                name: "InvalidNodeError",
+                name: "SchemaPatternNotAllowedError",
             }
         );
     });

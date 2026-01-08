@@ -6,6 +6,7 @@ const {
     schemaPatternToString,
     stringToNodeName,
     stringToSchemaHash,
+    stringToSchemaPattern,
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -35,6 +36,7 @@ const {
     makeInvalidSetError,
     makeInvalidComputorReturnValueError,
     makeArityMismatchError,
+    makeSchemaPatternNotAllowedError,
 } = require("./errors");
 const {
     compileNodeDef,
@@ -46,7 +48,7 @@ const {
     createVariablePositionMap,
     extractInputBindings,
 } = require("./compiled_node");
-const { renderExpr } = require("./expr");
+const { parseExpr, renderExpr } = require("./expr");
 const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
@@ -59,6 +61,18 @@ const { make: makeSleeper } = require("../../sleeper");
  * Mutex key for serializing all set() and pull() operations.
  */
 const MUTEX_KEY = 'dependency-graph-operations';
+
+/**
+ * Ensures the public API receives a node name (head) rather than a schema pattern.
+ * @param {string} nodeName
+ */
+function ensureNodeNameIsHead(nodeName) {
+    const schemaPattern = stringToSchemaPattern(nodeName);
+    const parsed = parseExpr(schemaPattern);
+    if (parsed.kind === "call") {
+        throw makeSchemaPatternNotAllowedError(nodeName);
+    }
+}
 
 /**
  * DependencyGraph class for propagating data through dependency edges.
@@ -245,6 +259,7 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async unsafeSet(nodeName, value, bindings) {
+        ensureNodeNameIsHead(nodeName);
         const nodeNameTyped = stringToNodeName(nodeName);
 
         // Lookup schema by nodeName
@@ -538,6 +553,7 @@ class DependencyGraphClass {
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async unsafePull(nodeName, bindings) {
+        ensureNodeNameIsHead(nodeName);
         const nodeNameValue = stringToNodeName(nodeName);
         const { value } = await this.pullWithStatus(nodeNameValue, bindings);
         return value;

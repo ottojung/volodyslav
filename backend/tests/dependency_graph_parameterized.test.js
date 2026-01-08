@@ -9,6 +9,7 @@ const { getRootDatabase } = require("../src/generators/dependency_graph/database
 const {
     makeDependencyGraph,
     isInvalidNode,
+    isSchemaPatternNotAllowed,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -50,8 +51,8 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Try to pull with an identifier that looks like a pattern
-            // In the new API, "derived(x)" is treated as a literal head name, not a pattern
-            // Since the real head is "derived", this should throw InvalidNode
+            // In the new API, "derived(x)" is a schema pattern with variables
+            // The public API rejects schema patterns, throwing SchemaPatternNotAllowedError
             await expect(graph.pull('derived(x)')).rejects.toThrow();
 
             let error = null;
@@ -61,7 +62,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isInvalidNode(error)).toBe(true);
+            expect(isSchemaPatternNotAllowed(error)).toBe(true);
 
             // Try to set with an identifier that looks like a pattern
             await expect(
@@ -75,7 +76,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isInvalidNode(error)).toBe(true);
+            expect(isSchemaPatternNotAllowed(error)).toBe(true);
 
             await db.close();
         });
