@@ -30,6 +30,29 @@ const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyString
  */
 
 /**
+ * Normalizes a const value by sorting object keys recursively.
+ * Ensures deterministic JSON serialization for object bindings.
+ * @param {ConstValue} value
+ * @returns {ConstValue}
+ */
+function normalizeConstValue(value) {
+    if (Array.isArray(value)) {
+        return value.map((entry) => normalizeConstValue(entry));
+    }
+
+    if (value !== null && typeof value === "object") {
+        const normalized = {};
+        const keys = Object.keys(value).sort();
+        for (const key of keys) {
+            normalized[key] = normalizeConstValue(value[key]);
+        }
+        return normalized;
+    }
+
+    return value;
+}
+
+/**
  * Creates a canonical string representation of a node key for storage.
  * Uses JSON serialization for stable, deterministic keys.
  * @param {NodeKey} key
@@ -38,7 +61,8 @@ const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyString
 function serializeNodeKey(key) {
     // Stable JSON serialization
     const headStr = nodeNameToString(key.head);
-    const serialized = JSON.stringify({ head: headStr, args: key.args });
+    const normalizedArgs = key.args.map((arg) => normalizeConstValue(arg));
+    const serialized = JSON.stringify({ head: headStr, args: normalizedArgs });
     return stringToNodeKeyString(serialized);
 }
 
