@@ -406,6 +406,75 @@ describe('generators/database', () => {
                 cleanup(capabilities.tmpDir);
             }
         });
+
+        test('listSchemas returns empty array when no schemas are touched', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                
+                const schemas = [];
+                for await (const schema of db.listSchemas()) {
+                    schemas.push(schema);
+                }
+                
+                expect(schemas).toEqual([]);
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('listSchemas returns schema after getSchemaStorage is called', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                
+                // Calling getSchemaStorage and doing a batch should touch the schema
+                const storage = db.getSchemaStorage('singleSchema');
+                await storage.batch([storage.values.putOp('dummy', { value: {}, isDirty: false })]);
+                
+                const schemas = [];
+                for await (const schema of db.listSchemas()) {
+                    schemas.push(schema);
+                }
+                
+                expect(schemas).toEqual(['singleSchema']);
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('listSchemas returns multiple schemas in any order', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                
+                const storage1 = db.getSchemaStorage('alpha');
+                const storage2 = db.getSchemaStorage('beta');
+                const storage3 = db.getSchemaStorage('gamma');
+                
+                await storage1.batch([storage1.values.putOp('dummy1', { value: {}, isDirty: false })]);
+                await storage2.batch([storage2.values.putOp('dummy2', { value: {}, isDirty: false })]);
+                await storage3.batch([storage3.values.putOp('dummy3', { value: {}, isDirty: false })]);
+                
+                const schemas = [];
+                for await (const schema of db.listSchemas()) {
+                    schemas.push(schema);
+                }
+                
+                expect(schemas).toHaveLength(3);
+                expect(schemas).toContain('alpha');
+                expect(schemas).toContain('beta');
+                expect(schemas).toContain('gamma');
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
     });
 
     describe('Type guards', () => {
