@@ -29,7 +29,7 @@ function toJsonKey(key) {
         return key;
     }
     const canonical = canonicalize(key);
-    const nodeKey = createNodeKeyFromPattern(canonical, {});
+    const nodeKey = createNodeKeyFromPattern(canonical, []);
     const nodeKeyString = serializeNodeKey(nodeKey);
     return nodeKeyString;
 }
