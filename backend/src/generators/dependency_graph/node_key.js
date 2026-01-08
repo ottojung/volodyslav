@@ -31,12 +31,10 @@ const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyString
 
 /**
  * Creates a canonical string representation of a node key for storage.
- * Uses JSON serialization for stable, deterministic keys.
  * @param {NodeKey} key
  * @returns {NodeKeyString}
  */
 function serializeNodeKey(key) {
-    // Stable JSON serialization
     const headStr = nodeNameToString(key.head);
     const serialized = JSON.stringify({ head: headStr, args: key.args });
     return stringToNodeKeyString(serialized);
