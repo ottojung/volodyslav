@@ -518,7 +518,7 @@ class DependencyGraphClass {
             // Return old value (must exist if Unchanged returned)
             const result = await batch.values.get(nodeKey);
             if (result === undefined) {
-                throw makeMissingValueError(deserializeNodeKey(nodeKey).head);
+                throw makeMissingValueError(nodeKey);
             }
             return { value: result, status: "unchanged" };
         } else {
@@ -629,9 +629,7 @@ class DependencyGraphClass {
                     nodeDefinition.output
                 );
                 if (result === undefined) {
-                    throw makeMissingValueError(
-                        deserializeNodeKey(nodeDefinition.output).head
-                    );
+                    throw makeMissingValueError(nodeDefinition.output);
                 }
                 return { value: result, status: "cached" };
             }
@@ -702,9 +700,7 @@ class DependencyGraphClass {
 
                 const result = await batch.values.get(nodeKeyStr);
                 if (result === undefined) {
-                    throw makeMissingValueError(
-                        deserializeNodeKey(nodeKeyStr).head
-                    );
+                    throw makeMissingValueError(nodeKeyStr);
                 }
                 return { value: result, status: "cached" };
             }
