@@ -75,6 +75,22 @@ function ensureNodeNameIsHead(nodeName) {
 }
 
 /**
+ * Validates that the arity of the compiled node matches the provided bindings.
+ * @param {CompiledNode} compiledNode
+ * @param {Array<ConstValue>} bindings
+ * @returns {void}
+ */
+function checkArity(compiledNode, bindings) {
+    if (compiledNode.arity !== bindings.length) {
+        throw makeArityMismatchError(
+            compiledNode.head,
+            compiledNode.arity,
+            bindings.length
+        );
+    }
+}
+
+/**
  * DependencyGraph class for propagating data through dependency edges.
  *
  * Node Identity:
@@ -268,14 +284,7 @@ class DependencyGraphClass {
             throw makeInvalidNodeError(nodeNameTyped);
         }
 
-        // Validate arity matches bindings
-        if (compiledNode.arity !== bindings.length) {
-            throw makeArityMismatchError(
-                nodeNameTyped,
-                compiledNode.arity,
-                bindings.length
-            );
-        }
+        checkArity(compiledNode, bindings);
 
         // Validate that this is a source node (no inputs)
         if (compiledNode.source.inputs.length > 0) {
@@ -612,14 +621,7 @@ class DependencyGraphClass {
                 throw makeInvalidNodeError(nodeName);
             }
 
-            // Validate arity matches bindings
-            if (compiledNode.arity !== bindings.length) {
-                throw makeArityMismatchError(
-                    nodeName,
-                    compiledNode.arity,
-                    bindings.length
-                );
-            }
+            checkArity(compiledNode, bindings);
 
             // Find or create the node definition
             const nodeDefinition = this.getOrCreateConcreteNode(
@@ -679,14 +681,7 @@ class DependencyGraphClass {
             throw makeInvalidNodeError(nodeName);
         }
 
-        // Validate arity
-        if (compiledNode.arity !== bindings.length) {
-            throw makeArityMismatchError(
-                nodeName,
-                compiledNode.arity,
-                bindings.length
-            );
-        }
+        checkArity(compiledNode, bindings);
 
         // Convert to JSON format key
         const nodeKey = { head: nodeName, args: bindings };
