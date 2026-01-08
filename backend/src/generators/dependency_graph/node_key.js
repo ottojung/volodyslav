@@ -31,7 +31,7 @@ const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyString
 
 /**
  * Creates a canonical string representation of a node key for storage.
- * Order of keys matters! This is by design.
+ * Order of keys of the serialized object matters! This is by design.
  * @param {NodeKey} key
  * @returns {NodeKeyString}
  */
