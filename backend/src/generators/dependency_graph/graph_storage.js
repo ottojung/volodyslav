@@ -21,6 +21,16 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 /** @typedef {import('./database/types').DatabaseKey} DatabaseKey */
 
 /**
+ * @template T
+ * @typedef {import('./database/types').DatabasePutOperation<T>} DatabasePutOperation
+ */
+
+/**
+ * @template T
+ * @typedef {import('./database/types').DatabaseDelOperation<T>} DatabaseDelOperation
+ */
+
+/**
  * Interface for batch operations on a specific database.
  * Provides transactional view with read-your-writes consistency.
  * @template TValue
@@ -65,7 +75,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * Implements read-your-writes semantics within a batch.
  * @template TValue
  * @param {import('./database/typed_database').GenericDatabase<TValue>} db - The underlying database
- * @param {DatabaseBatchOperation[]} operations - Array to append operations to
+ * @param {Array<DatabasePutOperation<TValue> | DatabaseDelOperation<TValue>>} operations - Array to append operations to
  * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
  * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations
  * @returns {BatchDatabaseOps<TValue>}
@@ -122,9 +132,15 @@ function makeTxDb(db, operations, pendingPuts, pendingDels) {
 function makeBatchBuilder(schemaStorage) {
     /** @type {BatchFunction} */
     const ret = async (fn) => {
-        // Create a fresh operations array for each invocation
-        /** @type {DatabaseBatchOperation[]} */
-        const operations = [];
+        // Create separate operations arrays for each sublevel
+        /** @type {Array<DatabasePutOperation<DatabaseValue> | DatabaseDelOperation<DatabaseValue>>} */
+        const valuesOps = [];
+        /** @type {Array<DatabasePutOperation<Freshness> | DatabaseDelOperation<Freshness>>} */
+        const freshnessOps = [];
+        /** @type {Array<DatabasePutOperation<InputsRecord> | DatabaseDelOperation<InputsRecord>>} */
+        const inputsOps = [];
+        /** @type {Array<DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<NodeKeyString[]>>} */
+        const revdepsOps = [];
 
         // Create overlay state for each sublevel
         /** @type {Map<DatabaseKey, DatabaseValue>} */
@@ -149,14 +165,24 @@ function makeBatchBuilder(schemaStorage) {
 
         /** @type {BatchBuilder} */
         const builder = {
-            values: makeTxDb(schemaStorage.values, operations, valuesPuts, valuesDels),
-            freshness: makeTxDb(schemaStorage.freshness, operations, freshnessPuts, freshnessDels),
-            inputs: makeTxDb(schemaStorage.inputs, operations, inputsPuts, inputsDels),
-            revdeps: makeTxDb(schemaStorage.revdeps, operations, revdepsPuts, revdepsDels),
+            values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
+            freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
+            inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
+            revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
         };
 
         const value = await fn(builder);
-        await schemaStorage.batch(operations);
+        
+        // Combine all operations into a single array for the batch
+        /** @type {DatabaseBatchOperation[]} */
+        const allOperations = [
+            ...valuesOps,
+            ...freshnessOps,
+            ...inputsOps,
+            ...revdepsOps,
+        ];
+        
+        await schemaStorage.batch(allOperations);
         return value;
     };
 
