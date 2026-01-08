@@ -67,6 +67,9 @@ function createNodeKeyFromPattern(pattern, bindings) {
     const head = expr.name;
     
     if (expr.kind === "atom") {
+        if (bindings.length !== 0) {
+            throw makeArityMismatchError(head, 0, bindings.length);
+        }
         return { head, args: [] };
     }
     
