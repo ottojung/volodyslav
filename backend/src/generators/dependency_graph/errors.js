@@ -81,7 +81,7 @@ class SchemaPatternNotAllowed extends Error {
                 `Schema patterns with variables can only be used as templates. ` +
                 `Provide concrete instantiations instead.`
         );
-        this.name = "SchemaPatternNotAllowed";
+        this.name = "SchemaPatternNotAllowedError";
         this.pattern = pattern;
     }
 }
@@ -328,7 +328,7 @@ class InvalidComputorReturnValue extends Error {
             `Computor for node '${nodeName}' returned an invalid value: ${value}. ` +
                 `Computors must return a valid DatabaseValue or Unchanged, not null or undefined.`
         );
-        this.name = "InvalidComputorReturnValue";
+        this.name = "InvalidComputorReturnValueError";
         this.nodeName = nodeName;
         this.value = value;
     }
