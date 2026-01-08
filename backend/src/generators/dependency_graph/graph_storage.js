@@ -285,9 +285,9 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      */
     async function listMaterializedNodes() {
         const keys = [];
-        for await (const key of schemaStorage.values.keys()) {
+        for await (const key of schemaStorage.inputs.keys()) {
             if (typeof key !== "string") {
-                throw new Error("Invalid key type in values database");
+                throw new Error("Invalid key type in inputs database");
             }
             keys.push(stringToNodeKeyString(key));
         }
