@@ -117,6 +117,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -155,6 +157,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "source2",
@@ -162,6 +166,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -192,6 +198,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived",
@@ -204,6 +212,8 @@ describe("DependencyGraph concurrency", () => {
                         );
                         return { type: "derived", value: source.value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -239,6 +249,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "source2",
@@ -246,6 +258,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -275,6 +289,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -315,6 +331,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived",
@@ -323,6 +341,8 @@ describe("DependencyGraph concurrency", () => {
                         computeCount++;
                         return { type: "derived", value: source.value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -362,6 +382,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "doubled",
@@ -369,6 +391,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async ([counter]) => {
                         return { type: "derived", value: counter.value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 
@@ -412,6 +436,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "b",
@@ -419,6 +445,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async () => {
                         throw new Error("Should not be called");
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "c",
@@ -426,6 +454,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async ([a, b]) => {
                         return { type: "sum", value: a.value + b.value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "d",
@@ -433,6 +463,8 @@ describe("DependencyGraph concurrency", () => {
                     computor: async ([c]) => {
                         return { type: "doubled", value: c.value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
 

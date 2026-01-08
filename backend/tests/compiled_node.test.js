@@ -32,6 +32,8 @@ describe("compiled_node", () => {
                 output: "event_context(e)",
                 inputs: ["all_events"],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             };
 
             const compiled = compileNodeDef(nodeDef);
@@ -48,6 +50,8 @@ describe("compiled_node", () => {
                 output: "all_events",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             };
 
             const compiled = compileNodeDef(nodeDef);
@@ -61,6 +65,8 @@ describe("compiled_node", () => {
                 output: "pair(x, x)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             };
 
             expect(() => compileNodeDef(nodeDef)).toThrow(
@@ -73,6 +79,8 @@ describe("compiled_node", () => {
                 output: "derived(e, p)",
                 inputs: ["event(e)", "photo(p)"],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             };
 
             const compiled = compileNodeDef(nodeDef);
@@ -86,6 +94,8 @@ describe("compiled_node", () => {
                 output: "derived(e)",
                 inputs: ["photo(p)"],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             };
 
             expect(() => compileNodeDef(nodeDef)).toThrow(
@@ -98,6 +108,8 @@ describe("compiled_node", () => {
                 output: "result(x)",
                 inputs: ["foo(x, y)"],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             };
 
             expect(() => compileNodeDef(nodeDef)).toThrow(
@@ -114,11 +126,15 @@ describe("compiled_node", () => {
                 output: "foo(x)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             });
             const node2 = compileNodeDef({
                 output: "foo(y)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             });
 
             expect(patternsCanOverlap(node1, node2)).toBe(true);
@@ -129,11 +145,15 @@ describe("compiled_node", () => {
                 output: "foo(x)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             });
             const node2 = compileNodeDef({
                 output: "bar(x)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             });
 
             expect(patternsCanOverlap(node1, node2)).toBe(false);
@@ -144,11 +164,15 @@ describe("compiled_node", () => {
                 output: "foo(x)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             });
             const node2 = compileNodeDef({
                 output: "foo(x, y)",
                 inputs: [],
                 computor: () => ({}),
+                isDeterministic: true,
+                hasSideEffects: false,
             });
 
             expect(patternsCanOverlap(node1, node2)).toBe(false);
@@ -164,11 +188,15 @@ describe("compiled_node", () => {
                     output: 'foo(x)',
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }),
                 compileNodeDef({
                     output: 'bar(y)',
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }),
             ];
 
@@ -181,11 +209,15 @@ describe("compiled_node", () => {
                     output: "foo(x)",
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }),
                 compileNodeDef({
                     output: "foo(y)",
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }),
             ];
 
@@ -198,11 +230,15 @@ describe("compiled_node", () => {
                     output: "foo(x)",
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }),
                 compileNodeDef({
                     output: "bar(x)",
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }),
             ];
 

@@ -167,14 +167,23 @@ type NodeDef = {
   output: string;     // Expression pattern (may contain variables)
   inputs: Array<string>;   // Dependency expression patterns
   computor: Computor; // Computation function
+  isDeterministic: boolean; // Whether computor is deterministic (same inputs → same output)
+  hasSideEffects: boolean;  // Whether computor has side effects beyond computing return value
 };
 ```
+
+**Note on Determinism and Side Effects:**
+* `isDeterministic`: When `true`, the computor MUST produce the same output given the same `(inputs, oldValue, bindings)` tuple. When `false`, the computor MAY produce different outputs even with identical inputs.
+* `hasSideEffects`: When `true`, the computor MAY perform actions beyond computing its return value (e.g., logging, network calls, file operations). When `false`, the computor MUST NOT perform any observable side effects.
+* These fields are metadata about the computor's behavior and are NOT stored in the database. They are used for optimization hints and migration planning.
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
 **REQ-SCHEMA-03:** A **source node** is any node instance matching a schema where `inputs = []`.
 
 **REQ-SCHEMA-04:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
+
+**REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MUST NOT be stored in the database persistence layer.
 
 ### 1.7 Variable Name Mapping and Positional Bindings (Normative)
 
@@ -518,14 +527,20 @@ Tests MAY assert:
 ```javascript
 [
   { output: "all_events", inputs: [], 
-    computor: async ([], old) => old || { events: [] } },
+    computor: async ([], old) => old || { events: [] },
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "meta_events", inputs: ["all_events"], 
-    computor: async ([all]) => extractMeta(all) },
+    computor: async ([all]) => extractMeta(all),
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "event_context(e)", inputs: ["meta_events"], 
     computor: async ([meta], old, bindings) => {
       const e = bindings[0]; // First argument position
       return meta.find(ev => ev.id === e.id);
-    } }
+    },
+    isDeterministic: true,
+    hasSideEffects: false }
 ]
 ```
 
@@ -554,25 +569,35 @@ const context = await graph.pull('event_context', [{id: 'evt_123'}]);
 ```javascript
 [
   { output: "all_events", inputs: [], 
-    computor: async ([], old) => old },
+    computor: async ([], old) => old,
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "photo_storage", inputs: [],
-    computor: async ([], old) => old },
+    computor: async ([], old) => old,
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "event_context(e)", inputs: ["all_events"],
     computor: async ([all], _, bindings) => {
       const e = bindings[0]; // First position
       return all.events.find(ev => ev.id === e.id);
-    } },
+    },
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "photo(p)", inputs: ["photo_storage"],
     computor: async ([storage], _, bindings) => {
       const p = bindings[0]; // First position
       return storage.photos[p.id];
-    } },
+    },
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "enhanced_event(e, p)", 
     inputs: ["event_context(e)", "photo(p)"],
     computor: async ([ctx, photo], _, bindings) => {
       // bindings[0] is the event, bindings[1] is the photo
       return {...ctx, photo};
-    } }
+    },
+    isDeterministic: true,
+    hasSideEffects: false }
 ]
 ```
 
@@ -601,23 +626,31 @@ const enhanced = await graph.pull('enhanced_event', [
 ```javascript
 [
   { output: "event_data", inputs: [],
-    computor: async ([], old) => old },
+    computor: async ([], old) => old,
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "status(e)", inputs: ["event_data"],
     computor: async ([data], _, bindings) => {
       const e = bindings[0]; // First position
       return data.statuses[e.id];
-    } },
+    },
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "metadata(e)", inputs: ["event_data"],
     computor: async ([data], _, bindings) => {
       const e = bindings[0]; // First position
       return data.metadata[e.id];
-    } },
+    },
+    isDeterministic: true,
+    hasSideEffects: false },
   { output: "full_event(e)", 
     inputs: ["status(e)", "metadata(e)"],
     computor: async ([status, meta], _, bindings) => {
       const e = bindings[0]; // First position
       return {id: e.id, status, meta};
-    } }
+    },
+    isDeterministic: true,
+    hasSideEffects: false }
 ]
 ```
 

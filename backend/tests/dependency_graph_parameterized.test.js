@@ -42,6 +42,8 @@ describe("Parameterized node schemas", () => {
                     output: "derived(x)",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -106,11 +108,15 @@ describe("Parameterized node schemas", () => {
                     output: "pair(x,y)",
                     inputs: [],
                     computor: () => ({ type: "pair1" }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pair(a,b)",
                     inputs: [],
                     computor: () => ({ type: "pair2" }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 

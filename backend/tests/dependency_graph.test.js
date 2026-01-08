@@ -66,6 +66,8 @@ describe("generators/dependency_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { type: 'all_events', events: [] },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level1",
@@ -74,6 +76,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level1");
                         return { type: 'meta_events', meta_events: [] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level2",
@@ -82,6 +86,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level2");
                         return { type: 'meta_events', meta_events: [] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level3",
@@ -90,6 +96,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level3");
                         return { type: 'meta_events', meta_events: [] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -123,6 +131,8 @@ describe("generators/dependency_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: () => ({ type: 'all_events', events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output1",
@@ -131,6 +141,8 @@ describe("generators/dependency_graph", () => {
                         computeCount++;
                         return { type: 'meta_events', meta_events: [] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -170,6 +182,8 @@ describe("generators/dependency_graph", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { data: inputs[0].data + "_processed" };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -236,6 +250,8 @@ describe("generators/dependency_graph", () => {
                     computor: () => {
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -267,6 +283,8 @@ describe("generators/dependency_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level1",
@@ -275,6 +293,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level1");
                         return { count: inputs[0].count + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level2",
@@ -283,6 +303,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level2");
                         return { count: inputs[0].count + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level3",
@@ -291,6 +313,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level3");
                         return { count: inputs[0].count + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -341,6 +365,8 @@ describe("generators/dependency_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level1",
@@ -349,6 +375,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level1");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level2",
@@ -357,6 +385,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level2");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "level3",
@@ -365,6 +395,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("level3");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -413,6 +445,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "left",
@@ -421,6 +455,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("left");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "right",
@@ -429,6 +465,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("right");
                         return { value: inputs[0].value * 3 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -437,6 +475,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -486,6 +526,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "left",
@@ -494,6 +536,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("left");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "right",
@@ -502,6 +546,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("right");
                         return { value: inputs[0].value * 5 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -510,6 +556,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -554,11 +602,15 @@ describe("generators/dependency_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "input2",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "nodeA",
@@ -567,6 +619,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("nodeA");
                         return { value: inputs[0].value * 10 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "nodeB",
@@ -575,6 +629,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("nodeB");
                         return { value: inputs[0].value * 10 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "nodeC",
@@ -583,6 +639,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("nodeC");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "nodeD",
@@ -591,6 +649,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("nodeD");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "nodeE",
@@ -599,6 +659,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("nodeE");
                         return { value: inputs[0].value * 3 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -650,6 +712,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "middle",
@@ -658,6 +722,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("middle");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -666,6 +732,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -719,6 +787,8 @@ describe("generators/dependency_graph", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { data: inputs[0].data + "_processed" };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -754,6 +824,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 10 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathA",
@@ -762,6 +834,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathA");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathB",
@@ -770,6 +844,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathB");
                         return { value: inputs[0].value * 3 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathC",
@@ -778,6 +854,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathC");
                         return { value: inputs[0].value * 4 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathD",
@@ -786,6 +864,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathD");
                         return { value: inputs[0].value * 5 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -800,6 +880,8 @@ describe("generators/dependency_graph", () => {
                                 inputs[3].value,
                         };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -853,6 +935,8 @@ describe("generators/dependency_graph", () => {
                     output: "inputA",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "outputA",
@@ -861,11 +945,15 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("outputA");
                         return { value: inputs[0].value * 10 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "inputB",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "outputB",
@@ -874,6 +962,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("outputB");
                         return { value: inputs[0].value * 20 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -919,6 +1009,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("leafNode");
                         return { data: "freshly_computed_data" };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -998,6 +1090,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "shortPath",
@@ -1006,6 +1100,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("shortPath");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "longA",
@@ -1014,6 +1110,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("longA");
                         return { value: inputs[0].value + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "longB",
@@ -1022,6 +1120,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("longB");
                         return { value: inputs[0].value + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "longC",
@@ -1030,6 +1130,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("longC");
                         return { value: inputs[0].value + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -1038,6 +1140,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -1096,6 +1200,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("input1");
                         return oldValue || { value: 10 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "input2",
@@ -1104,6 +1210,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("input2");
                         return oldValue || { value: 20 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -1112,6 +1220,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -1154,6 +1264,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 7 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "outputA",
@@ -1162,6 +1274,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("outputA");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "outputB",
@@ -1170,6 +1284,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("outputB");
                         return { value: inputs[0].value * 3 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "outputC",
@@ -1178,6 +1294,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("outputC");
                         return { value: inputs[0].value * 4 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -1225,6 +1343,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "leftA",
@@ -1233,6 +1353,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("leftA");
                         return { value: inputs[0].value + 1 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "rightA",
@@ -1241,6 +1363,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("rightA");
                         return { value: inputs[0].value + 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "middle",
@@ -1249,6 +1373,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("middle");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "leftB",
@@ -1257,6 +1383,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("leftB");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "rightB",
@@ -1265,6 +1393,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("rightB");
                         return { value: inputs[0].value * 3 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -1273,6 +1403,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -1335,6 +1467,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathA",
@@ -1343,6 +1477,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathA");
                         return makeUnchanged(); // Unchanged
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathB",
@@ -1351,6 +1487,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathB");
                         return { value: inputs[0].value * 5 }; // Changed
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathC",
@@ -1359,6 +1497,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathC");
                         return makeUnchanged(); // Unchanged
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathD",
@@ -1367,6 +1507,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathD");
                         return { value: inputs[0].value * 10 }; // Changed
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -1381,6 +1523,8 @@ describe("generators/dependency_graph", () => {
                                 inputs[3].value,
                         };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -1436,6 +1580,8 @@ describe("generators/dependency_graph", () => {
                     output: "input",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathA",
@@ -1444,6 +1590,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathA");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathB",
@@ -1452,6 +1600,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathB");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "pathC",
@@ -1460,6 +1610,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("pathC");
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output",
@@ -1468,6 +1620,8 @@ describe("generators/dependency_graph", () => {
                         computeCalls.push("output");
                         return { value: 999 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -1531,11 +1685,15 @@ describe("generators/dependency_graph", () => {
                     output: "node1",
                     inputs: [],
                     computor: (_inputs, oldValue) => oldValue || { val: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "node2",
                     inputs: ["node1"],
                     computor: ([n1]) => ({ val: n1.val + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }
             ];
 
@@ -1565,11 +1723,15 @@ describe("generators/dependency_graph", () => {
                     output: "node1",
                     inputs: [],
                     computor: (_inputs, oldValue) => oldValue || { val: 1 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "node2",
                     inputs: ["node1"],
                     computor: ([n1]) => ({ val: n1.val + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }
             ];
 
@@ -1606,11 +1768,15 @@ describe("generators/dependency_graph", () => {
                     output: "node1",
                     inputs: ["node2"],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "node2",
                     inputs: ["node1"],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }
             ];
 
@@ -1635,11 +1801,15 @@ describe("generators/dependency_graph", () => {
                     output: "node(x)",
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "node(y)",
                     inputs: [],
                     computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 }
             ];
 

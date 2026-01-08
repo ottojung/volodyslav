@@ -15,6 +15,8 @@ function createDefaultGraphDefinition() {
                 // Pass-through for all_events - just return existing value
                 return oldValue || { type: "all_events", events: [] };
             },
+            isDeterministic: true,
+            hasSideEffects: false,
         },
         {
             output: "meta_events",
@@ -51,6 +53,8 @@ function createDefaultGraphDefinition() {
                     meta_events: result,
                 };
             },
+            isDeterministic: true,
+            hasSideEffects: false,
         },
         {
             output: "event_context",
@@ -74,6 +78,8 @@ function createDefaultGraphDefinition() {
                     contexts: contexts,
                 };
             },
+            isDeterministic: true,
+            hasSideEffects: false,
         },
     ];
 }

@@ -46,6 +46,8 @@ describe("Dependency graph persistence and restart", () => {
                     output: "A",
                     inputs: [],
                     computor: (_inputs, oldValue, _bindings) => oldValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "B",
@@ -55,6 +57,8 @@ describe("Dependency graph persistence and restart", () => {
                         // Always return Unchanged to test propagation
                         return makeUnchanged();
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "C",
@@ -63,6 +67,8 @@ describe("Dependency graph persistence and restart", () => {
                         computeCalls.push("C");
                         return { value: inputs[0].value * 2 };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -118,6 +124,8 @@ describe("Dependency graph persistence and restart", () => {
                     output: "A",
                     inputs: [],
                     computor: (_inputs, oldValue, _bindings) => oldValue || { value: 0 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -126,6 +134,8 @@ describe("Dependency graph persistence and restart", () => {
                     output: "A",
                     inputs: [],
                     computor: (_inputs, oldValue, _bindings) => oldValue || { value: 0 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "B",
@@ -133,6 +143,8 @@ describe("Dependency graph persistence and restart", () => {
                     computor: (inputs, _oldValue, _bindings) => ({
                         value: inputs[0].value * 2,
                     }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 

@@ -268,6 +268,8 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "bad(",
                     inputs: [],
                     computor: async () => ({ ok: true }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ])
         ).toThrow();
@@ -277,6 +279,8 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "bad(",
                     inputs: [],
                     computor: async () => ({ ok: true }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -294,6 +298,8 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "event(a, b, c, b, d)",
                     inputs: [],
                     computor: async () => ({ ok: true }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -313,6 +319,8 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "derived(x, y)",
                     inputs: ["source(x, z, x)"],
                     computor: async () => ({ ok: true }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -331,6 +339,8 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "derived_event()",
                     inputs: ["event_context(e)"],
                     computor: async () => ({ ok: true }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ])
         ).toThrow();
@@ -340,6 +350,8 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "derived_event()",
                     inputs: ["event_context(e)"],
                     computor: async () => ({ ok: true }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -357,11 +369,15 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "node(x)",
                     inputs: [],
                     computor: async () => ({ a: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "node(y)",
                     inputs: [],
                     computor: async () => ({ b: 2 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -383,11 +399,15 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "a",
                     inputs: ["b"],
                     computor: async ([b]) => ({ aFrom: b }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "b",
                     inputs: ["a"],
                     computor: async ([a]) => ({ bFrom: a }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ])
         ).toThrow();
@@ -397,11 +417,15 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "a",
                     inputs: ["b"],
                     computor: async ([b]) => ({ aFrom: b }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "b",
                     inputs: ["a"],
                     computor: async ([a]) => ({ bFrom: a }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -418,11 +442,15 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "f(x)",
                     inputs: ["g(x)"],
                     computor: async ([g]) => g,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "g(x)",
                     inputs: ["f(x)"],
                     computor: async ([f]) => f,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ])
         ).toThrow();
@@ -432,11 +460,15 @@ describe("Schema validation (construction-time errors)", () => {
                     output: "f(x)",
                     inputs: ["g(x)"],
                     computor: async ([g]) => g,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "g(x)",
                     inputs: ["f(x)"],
                     computor: async ([f]) => f,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ]);
         } catch (e) {
@@ -453,6 +485,8 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
                 output: "id(n)",
                 inputs: [],
                 computor: async (_i, _o, b) => ({ n: b[0] }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -470,6 +504,8 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
                 output: "id(n)",
                 inputs: [],
                 computor: async (_i, _o, b) => ({ n: b[0] }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -487,6 +523,8 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
                 output: "id(n)",
                 inputs: [],
                 computor: async (_i, _o, b) => ({ n: b[0] }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -506,6 +544,8 @@ describe("pull/set concrete-ness & node existence errors", () => {
                 output: "event_context(e)",
                 inputs: [],
                 computor: async () => ({ ok: true }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -523,6 +563,8 @@ describe("pull/set concrete-ness & node existence errors", () => {
                 output: "event_context(e)",
                 inputs: [],
                 computor: async () => ({ ok: true }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -538,7 +580,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
     test("pull unknown concrete node throws InvalidNodeError", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: async () => ({ a: 1 }) },
+            { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
         await expect(g.pull("does_not_exist")).rejects.toMatchObject({
@@ -549,7 +591,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
     test("set unknown concrete node throws InvalidNodeError", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: async () => ({ a: 1 }) },
+            { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
         await expect(g.set("does_not_exist", { x: 1 })).rejects.toMatchObject({
@@ -564,11 +606,15 @@ describe("pull/set concrete-ness & node existence errors", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: ["a"],
                 computor: async ([a]) => ({ n: a.n + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -590,6 +636,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["b"], computor: cC.computor },
@@ -611,6 +659,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
         ]);
@@ -634,6 +684,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
         ]);
@@ -655,6 +707,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -678,6 +732,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { s: "a()" },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["b"], computor: cC.computor },
@@ -705,6 +761,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { s: "a()" },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["b"], computor: cC.computor },
@@ -774,6 +832,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { s: "a()" },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["b"], computor: cC.computor },
@@ -1075,6 +1135,8 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["a"], computor: cC.computor },
@@ -1103,6 +1165,8 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
             // duplicate dependency path: inputs list literally repeats "b"
@@ -1134,6 +1198,8 @@ describe("Unchanged semantics (observable storage behavior)", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
         ]);
@@ -1186,6 +1252,8 @@ describe("MissingValueError (detects corruption: up-to-date but missing stored v
                 output: "leaf",
                 inputs: [],
                 computor: async (_i, old) => old || { ok: true },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -1210,11 +1278,15 @@ describe("Optional debug interface (only if implementation provides it)", () => 
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: ["a"],
                 computor: async ([a]) => ({ n: a.n + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -1249,6 +1321,8 @@ describe("Optional debug interface (only if implementation provides it)", () => 
                 output: "source",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -1285,6 +1359,8 @@ describe("Optional debug interface (only if implementation provides it)", () => 
                 output: "leaf",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -1335,6 +1411,8 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
                 output: "a",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             });
 
             // Chain nodes N1 to Nk
@@ -1558,6 +1636,8 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
                 output: "source",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "node", inputs: ["source"], computor },
         ]);
@@ -1587,6 +1667,8 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
                 output: "source",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "node", inputs: ["source"], computor },
         ]);
@@ -1624,6 +1706,8 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
                 output: "source",
                 inputs: [],
                 computor: async (_i, old) => old || { flag: "init" },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             { output: "node", inputs: ["source"], computor },
         ]);
@@ -1658,6 +1742,8 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
                 output: "source",
                 inputs: [],
                 computor: async (_i, old) => old || { n: 0 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ];
 
@@ -1725,6 +1811,8 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
                     output: "source",
                     inputs: [],
                     computor: async (_i, old) => old || { n: 0 },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 { output: "node", inputs: ["source"], computor },
             ]);

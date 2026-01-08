@@ -88,6 +88,8 @@ describe("DependencyGraph integration with meta_events", () => {
                         meta_events: result,
                     };
                 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ];
 
