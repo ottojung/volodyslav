@@ -6,6 +6,7 @@ const {
     schemaPatternToString,
     stringToNodeName,
     stringToSchemaHash,
+    stringToSchemaPattern,
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -66,7 +67,8 @@ const MUTEX_KEY = 'dependency-graph-operations';
  * @param {string} nodeName
  */
 function ensureNodeNameIsHead(nodeName) {
-    const parsed = parseExpr(nodeName);
+    const schemaPattern = stringToSchemaPattern(nodeName);
+    const parsed = parseExpr(schemaPattern);
     if (parsed.kind === "call") {
         throw makeSchemaPatternNotAllowedError(nodeName);
     }
