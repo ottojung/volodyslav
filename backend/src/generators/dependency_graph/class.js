@@ -588,71 +588,9 @@ class DependencyGraphClass {
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName, bindings = []) {
-        return this.storage.withBatch(async (batch) => {
-            // Lookup schema by nodeName
-            const compiledNode = this.headIndex.get(nodeName);
-            if (!compiledNode) {
-                throw makeInvalidNodeError(nodeName);
-            }
-
-            // Validate arity matches bindings
-            if (compiledNode.arity !== bindings.length) {
-                throw makeArityMismatchError(
-                    nodeName,
-                    compiledNode.arity,
-                    bindings.length
-                );
-            }
-
-            // Create NodeKey for storage
-            const nodeKey = { head: nodeName, args: bindings };
-            const concreteKey = serializeNodeKey(nodeKey);
-
-            // Find or create the node definition
-            const nodeDefinition = this.getOrCreateConcreteNode(
-                concreteKey,
-                compiledNode,
-                bindings
-            );
-
-            // Check freshness of this node (use batch-consistent read)
-            const nodeFreshness = await batch.freshness.get(
-                nodeDefinition.output
-            );
-
-            // Fast path: if up-to-date, return cached value immediately
-            // But first ensure the node is materialized (for seeded DBs or restart resilience)
-            if (nodeFreshness === "up-to-date") {
-                // Ensure node is materialized
-                await this.storage.ensureMaterialized(
-                    nodeDefinition.output,
-                    nodeDefinition.inputs,
-                    batch
-                );
-
-                // Ensure reverse dependencies are indexed if it has inputs
-                // This is critical for seeded databases where values/freshness exist
-                // but reverse-dep metadata is missing
-                if (nodeDefinition.inputs.length > 0) {
-                    await this.storage.ensureReverseDepsIndexed(
-                        nodeDefinition.output,
-                        nodeDefinition.inputs,
-                        batch
-                    );
-                }
-
-                const result = await batch.values.get(
-                    nodeDefinition.output
-                );
-                if (result === undefined) {
-                    throw makeMissingValueError(nodeDefinition.output);
-                }
-                return { value: result, status: "cached" };
-            }
-
-            // Potentially-outdated or undefined freshness: need to maybe recalculate
-            return await this.maybeRecalculate(nodeDefinition, batch);
-        });
+        const nodeKey = { head: nodeName, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+        return await this.pullByNodeKeyStringWithStatus(concreteKey);
     }
 
     /**
