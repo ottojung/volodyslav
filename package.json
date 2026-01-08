@@ -40,11 +40,11 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-jest": "^28.11.0",
     "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav"
   }
 }
