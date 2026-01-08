@@ -11,7 +11,7 @@ class InvalidNode extends Error {
      */
     constructor(nodeName) {
         super(`Node ${nodeName} not found in the dependency graph.`);
-        this.name = "InvalidNode";
+        this.name = "InvalidNodeError";
         this.nodeName = nodeName;
     }
 }
@@ -44,7 +44,7 @@ class InvalidSchema extends Error {
      */
     constructor(message, schemaOutput) {
         super(`Invalid schema '${schemaOutput}': ${message}`);
-        this.name = "InvalidSchema";
+        this.name = "InvalidSchemaError";
         this.schemaOutput = schemaOutput;
     }
 }

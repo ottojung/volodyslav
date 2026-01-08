@@ -300,7 +300,7 @@ describe("Schema validation (construction-time errors)", () => {
             error = e;
         }
         expect(error).toBeTruthy();
-        expectOneOfNames(error, ["InvalidSchema"]);
+        expectOneOfNames(error, ["InvalidSchemaError"]);
         expect(error.message).toMatch(/Duplicate variable 'b'/);
     });
 
@@ -319,7 +319,7 @@ describe("Schema validation (construction-time errors)", () => {
             error = e;
         }
         expect(error).toBeTruthy();
-        expectOneOfNames(error, ["InvalidSchema"]);
+        expectOneOfNames(error, ["InvalidSchemaError"]);
         expect(error.message).toMatch(/Duplicate variable 'x'/);
     });
 
@@ -343,7 +343,7 @@ describe("Schema validation (construction-time errors)", () => {
                 },
             ]);
         } catch (e) {
-            expectOneOfNames(e, ["InvalidSchemaError", "InvalidSchema"]);
+            expectOneOfNames(e, ["InvalidSchemaError"]);
             expectHasOwn(e, "schemaOutput");
         }
     });
@@ -459,7 +459,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
         // In the new API, "id(-1)" is just treated as a head name
         // Since the real head is "id", this throws InvalidNode
         await expect(g.pull("id(-1)")).rejects.toMatchObject({
-            name: "InvalidNode",
+            name: "InvalidNodeError",
         });
     });
 
@@ -476,7 +476,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
         // In the new API, "id(1.2)" is just treated as a head name
         // Since the real head is "id", this throws InvalidNode
         await expect(g.pull("id(1.2)")).rejects.toMatchObject({
-            name: "InvalidNode",
+            name: "InvalidNodeError",
         });
     });
 
@@ -493,7 +493,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
         // In the new API, "id(01)" is just treated as a head name
         // Since the real head is "id", this throws InvalidNode
         await expect(g.pull("id(01)")).rejects.toMatchObject({
-            name: "InvalidNode",
+            name: "InvalidNodeError",
         });
     });
 });
@@ -512,9 +512,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         // In the new API, "event_context(e)" is treated as a literal head name
         // Since the real head is "event_context", this throws InvalidNode
         await expect(g.pull("event_context(e)")).rejects.toMatchObject({
-            name: expect.stringMatching(
-                /^(InvalidNodeError|InvalidNode)$/
-            ),
+            name: "InvalidNodeError",
         });
     });
 
@@ -532,9 +530,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         // Since the real head is "event_context", this throws InvalidNode
         await expect(g.set("event_context(e)", { x: 1 })).rejects.toMatchObject(
             {
-                name: expect.stringMatching(
-                    /^(InvalidNodeError|InvalidNode)$/
-                ),
+                name: "InvalidNodeError",
             }
         );
     });
@@ -546,7 +542,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         ]);
 
         await expect(g.pull("does_not_exist")).rejects.toMatchObject({
-            name: expect.stringMatching(/^(InvalidNodeError|InvalidNode)$/),
+            name: "InvalidNodeError",
         });
     });
 
@@ -557,7 +553,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         ]);
 
         await expect(g.set("does_not_exist", { x: 1 })).rejects.toMatchObject({
-            name: expect.stringMatching(/^(InvalidNodeError|InvalidNode)$/),
+            name: "InvalidNodeError",
         });
     });
 
@@ -1748,4 +1744,3 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
             expect(counter.calls).toBe(1);
         });
 });
-
