@@ -115,7 +115,7 @@ expr          := ws atom_expr ws | ws compound_expr ws
 atom_expr     := ident
 compound_expr := ident ws "(" ws args ws ")"
 
-args          := arg (ws "," ws arg)*
+args          := "" | arg (ws "," ws arg)*
 arg           := var
 var           := ident
 ident         := [A-Za-z_][A-Za-z0-9_]*
