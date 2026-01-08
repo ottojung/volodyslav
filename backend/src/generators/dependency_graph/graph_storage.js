@@ -80,6 +80,8 @@ function makeTxDb(db, operations, pendingPuts, pendingDels) {
         put: (key, value) => {
             pendingPuts.set(key, value);
             pendingDels.delete(key);
+            // Type assertion: we know this operation is valid for the specific TValue type
+            // @ts-expect-error - Generic constraint prevents TypeScript from inferring the correct union member
             operations.push(db.putOp(key, value));
         },
 
@@ -90,6 +92,8 @@ function makeTxDb(db, operations, pendingPuts, pendingDels) {
         del: (key) => {
             pendingDels.add(key);
             pendingPuts.delete(key);
+            // Type assertion: we know this operation is valid for the specific TValue type
+            // @ts-expect-error - Generic constraint prevents TypeScript from inferring the correct union member
             operations.push(db.delOp(key));
         },
 
