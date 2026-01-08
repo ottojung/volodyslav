@@ -22,10 +22,12 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 
 /**
  * Interface for batch operations on a specific database.
+ * Provides transactional view with read-your-writes consistency.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
  * @property {(key: DatabaseKey, value: TValue) => void} put - Queue a put operation
  * @property {(key: DatabaseKey) => void} del - Queue a delete operation
+ * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Read with batch consistency
  */
 
 /**
@@ -59,6 +61,60 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  */
 
 /**
+ * Creates a transactional database view for batch-consistent reads.
+ * Implements read-your-writes semantics within a batch.
+ * @template TValue
+ * @param {import('./database/typed_database').GenericDatabase<TValue>} db - The underlying database
+ * @param {DatabaseBatchOperation[]} operations - Array to append operations to
+ * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
+ * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations
+ * @returns {BatchDatabaseOps<TValue>}
+ */
+function makeTxDb(db, operations, pendingPuts, pendingDels) {
+    return {
+        /**
+         * Queue a put operation and record in overlay.
+         * @param {DatabaseKey} key
+         * @param {TValue} value
+         */
+        put: (key, value) => {
+            pendingPuts.set(key, value);
+            pendingDels.delete(key);
+            operations.push(db.putOp(key, value));
+        },
+
+        /**
+         * Queue a delete operation and record in overlay.
+         * @param {DatabaseKey} key
+         */
+        del: (key) => {
+            pendingDels.add(key);
+            pendingPuts.delete(key);
+            operations.push(db.delOp(key));
+        },
+
+        /**
+         * Get value with batch consistency.
+         * Checks overlay before falling back to underlying database.
+         * @param {DatabaseKey} key
+         * @returns {Promise<TValue | undefined>}
+         */
+        get: async (key) => {
+            // Check if deleted in this batch
+            if (pendingDels.has(key)) {
+                return undefined;
+            }
+            // Check if written in this batch
+            if (pendingPuts.has(key)) {
+                return pendingPuts.get(key);
+            }
+            // Fall back to underlying database
+            return await db.get(key);
+        },
+    };
+}
+
+/**
  * Creates a batch builder for atomic operations.
  * @param {SchemaStorage} schemaStorage - The schema storage instance
  * @returns {BatchFunction}
@@ -70,31 +126,33 @@ function makeBatchBuilder(schemaStorage) {
         /** @type {DatabaseBatchOperation[]} */
         const operations = [];
 
+        // Create overlay state for each sublevel
+        /** @type {Map<DatabaseKey, DatabaseValue>} */
+        const valuesPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const valuesDels = new Set();
+
+        /** @type {Map<DatabaseKey, Freshness>} */
+        const freshnessPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const freshnessDels = new Set();
+
+        /** @type {Map<DatabaseKey, InputsRecord>} */
+        const inputsPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const inputsDels = new Set();
+
+        /** @type {Map<DatabaseKey, NodeKeyString[]>} */
+        const revdepsPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const revdepsDels = new Set();
+
         /** @type {BatchBuilder} */
         const builder = {
-            values: {
-                put: (key, value) => {
-                    const op = schemaStorage.values.putOp(key, value);
-                    operations.push(op);
-                },
-                del: (key) => operations.push(schemaStorage.values.delOp(key)),
-            },
-            freshness: {
-                put: (key, value) =>
-                    operations.push(schemaStorage.freshness.putOp(key, value)),
-                del: (key) =>
-                    operations.push(schemaStorage.freshness.delOp(key)),
-            },
-            inputs: {
-                put: (key, value) =>
-                    operations.push(schemaStorage.inputs.putOp(key, value)),
-                del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
-            },
-            revdeps: {
-                put: (key, value) =>
-                    operations.push(schemaStorage.revdeps.putOp(key, value)),
-                del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
-            },
+            values: makeTxDb(schemaStorage.values, operations, valuesPuts, valuesDels),
+            freshness: makeTxDb(schemaStorage.freshness, operations, freshnessPuts, freshnessDels),
+            inputs: makeTxDb(schemaStorage.inputs, operations, inputsPuts, inputsDels),
+            revdeps: makeTxDb(schemaStorage.revdeps, operations, revdepsPuts, revdepsDels),
         };
 
         const value = await fn(builder);
@@ -125,9 +183,9 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * @returns {Promise<void>}
      */
     async function ensureMaterialized(node, inputs, batch) {
-        // Check if already indexed
-        const existingInputs = await getInputs(node);
-        if (existingInputs !== null) {
+        // Check if already indexed (use batch-consistent read)
+        const existingInputs = await batch.inputs.get(node);
+        if (existingInputs !== undefined) {
             return; // Already materialized
         }
 
@@ -149,8 +207,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     async function ensureReverseDepsIndexed(node, inputs, batch) {
         // For each input, add this node to its dependents array
         for (const input of inputs) {
-            // Get existing dependents for this input
-            const existingDependents = await schemaStorage.revdeps.get(input);
+            // Get existing dependents for this input (use batch-consistent read)
+            const existingDependents = await batch.revdeps.get(input);
 
             if (existingDependents !== undefined) {
                 // Check if this node is already in the dependents list
