@@ -1,6 +1,7 @@
 
 /** @typedef {import('./database/types').NodeName} NodeName */
 /** @typedef {import('./database/types').SchemaPattern} SchemaPattern */
+/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 
 /**
  * Base error class for database operations.
@@ -250,25 +251,25 @@ function isSchemaCycle(object) {
  */
 class MissingValue extends Error {
     /**
-     * @param {NodeName} nodeName
+     * @param {NodeKeyString} nodeKey
      */
-    constructor(nodeName) {
+    constructor(nodeKey) {
         super(
-            `Expected value for up-to-date node '${nodeName}', but found none. ` +
+            `Expected value for up-to-date node '${nodeKey}', but found none. ` +
                 `This indicates database corruption or an implementation bug.`
         );
         this.name = "MissingValueError";
-        this.nodeName = nodeName;
+        this.nodeKey = nodeKey;
     }
 }
 
 /**
  * Constructs a MissingValue error.
- * @param {NodeName} nodeName
+ * @param {NodeKeyString} nodeKey
  * @returns {MissingValue}
  */
-function makeMissingValueError(nodeName) {
-    return new MissingValue(nodeName);
+function makeMissingValueError(nodeKey) {
+    return new MissingValue(nodeKey);
 }
 
 /**
