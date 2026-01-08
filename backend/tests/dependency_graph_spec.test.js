@@ -344,7 +344,7 @@ describe("Schema validation (construction-time errors)", () => {
             ]);
         } catch (e) {
             expectOneOfNames(e, ["InvalidSchemaError"]);
-            expectHasOwn(e, "schemaOutput");
+            expectHasOwn(e, "schemaPattern");
         }
     });
 

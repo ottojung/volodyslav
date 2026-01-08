@@ -41,23 +41,23 @@ function isInvalidNode(object) {
 class InvalidSchema extends Error {
     /**
      * @param {string} message
-     * @param {string} schemaOutput
+     * @param {string} schemaPattern
      */
-    constructor(message, schemaOutput) {
-        super(`Invalid schema '${schemaOutput}': ${message}`);
+    constructor(message, schemaPattern) {
+        super(`Invalid schema '${schemaPattern}': ${message}`);
         this.name = "InvalidSchemaError";
-        this.schemaOutput = schemaOutput;
+        this.schemaPattern = schemaPattern;
     }
 }
 
 /**
  * Constructs an InvalidSchema error.
  * @param {string} message
- * @param {string} schemaOutput
+ * @param {string} schemaPattern
  * @returns {InvalidSchema}
  */
-function makeInvalidSchemaError(message, schemaOutput) {
-    return new InvalidSchema(message, schemaOutput);
+function makeInvalidSchemaError(message, schemaPattern) {
+    return new InvalidSchema(message, schemaPattern);
 }
 
 /**
@@ -359,28 +359,28 @@ function isInvalidComputorReturnValue(object) {
  */
 class SchemaArityConflict extends Error {
     /**
-     * @param {NodeName} head
+     * @param {NodeName} nodeName
      * @param {number[]} arities
      */
-    constructor(head, arities) {
+    constructor(nodeName, arities) {
         super(
-            `Schema arity conflict: head '${head}' appears with multiple arities [${arities.join(", ")}]. ` +
+            `Schema arity conflict: head '${nodeName}' appears with multiple arities [${arities.join(", ")}]. ` +
                 `Each head must have a single arity across all schema outputs.`
         );
         this.name = "SchemaArityConflictError";
-        this.head = head;
+        this.nodeName = nodeName;
         this.arities = arities;
     }
 }
 
 /**
  * Constructs a SchemaArityConflict error.
- * @param {NodeName} head
+ * @param {NodeName} nodeName
  * @param {number[]} arities
  * @returns {SchemaArityConflict}
  */
-function makeSchemaArityConflictError(head, arities) {
-    return new SchemaArityConflict(head, arities);
+function makeSchemaArityConflictError(nodeName, arities) {
+    return new SchemaArityConflict(nodeName, arities);
 }
 
 /**
