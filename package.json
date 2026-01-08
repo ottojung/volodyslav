@@ -45,7 +45,6 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav",
-    "level": "^10.0.0"
+    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav"
   }
 }
