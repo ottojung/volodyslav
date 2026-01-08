@@ -156,12 +156,18 @@ describe("Dependency graph persistence and restart", () => {
 
             // Verify that schema2 can list dependents properly
             const storage2 = graph2.getStorage();
-            const dependents2 = await storage2.listDependents(toJsonKey("A"));
+            let dependents2;
+            await storage2.withBatch(async (batch) => {
+                dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
+            });
             expect(dependents2).toContain(toJsonKey("B"));
 
             // Verify schema1's namespace is separate (no B in schema1)
             const storage1 = graph1.getStorage();
-            const dependents1 = await storage1.listDependents(toJsonKey("A"));
+            let dependents1;
+            await storage1.withBatch(async (batch) => {
+                dependents1 = await storage1.listDependents(toJsonKey("A"), batch);
+            });
             expect(dependents1).not.toContain(toJsonKey("B")); // schema1 doesn't have B node
 
             await db.close();

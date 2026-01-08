@@ -21,11 +21,23 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 /** @typedef {import('./database/types').DatabaseKey} DatabaseKey */
 
 /**
+ * @template T
+ * @typedef {import('./database/types').DatabasePutOperation<T>} DatabasePutOperation
+ */
+
+/**
+ * @template T
+ * @typedef {import('./database/types').DatabaseDelOperation<T>} DatabaseDelOperation
+ */
+
+/**
  * Interface for batch operations on a specific database.
+ * Provides transactional view with read-your-writes consistency.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
  * @property {(key: DatabaseKey, value: TValue) => void} put - Queue a put operation
  * @property {(key: DatabaseKey) => void} del - Queue a delete operation
+ * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Read with batch consistency
  */
 
 /**
@@ -53,10 +65,64 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
- * @property {(input: NodeKeyString) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input
- * @property {(node: NodeKeyString) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node
+ * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input (requires batch for consistency)
+ * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
  * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
  */
+
+/**
+ * Creates a transactional database view for batch-consistent reads.
+ * Implements read-your-writes semantics within a batch.
+ * @template TValue
+ * @param {import('./database/typed_database').GenericDatabase<TValue>} db - The underlying database
+ * @param {Array<DatabasePutOperation<TValue> | DatabaseDelOperation<TValue>>} operations - Array to append operations to
+ * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
+ * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations
+ * @returns {BatchDatabaseOps<TValue>}
+ */
+function makeTxDb(db, operations, pendingPuts, pendingDels) {
+    return {
+        /**
+         * Queue a put operation and record in overlay.
+         * @param {DatabaseKey} key
+         * @param {TValue} value
+         */
+        put: (key, value) => {
+            pendingPuts.set(key, value);
+            pendingDels.delete(key);
+            operations.push(db.putOp(key, value));
+        },
+
+        /**
+         * Queue a delete operation and record in overlay.
+         * @param {DatabaseKey} key
+         */
+        del: (key) => {
+            pendingDels.add(key);
+            pendingPuts.delete(key);
+            operations.push(db.delOp(key));
+        },
+
+        /**
+         * Get value with batch consistency.
+         * Checks overlay before falling back to underlying database.
+         * @param {DatabaseKey} key
+         * @returns {Promise<TValue | undefined>}
+         */
+        get: async (key) => {
+            // Check if deleted in this batch
+            if (pendingDels.has(key)) {
+                return undefined;
+            }
+            // Check if written in this batch
+            if (pendingPuts.has(key)) {
+                return pendingPuts.get(key);
+            }
+            // Fall back to underlying database
+            return await db.get(key);
+        },
+    };
+}
 
 /**
  * Creates a batch builder for atomic operations.
@@ -66,39 +132,57 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 function makeBatchBuilder(schemaStorage) {
     /** @type {BatchFunction} */
     const ret = async (fn) => {
-        // Create a fresh operations array for each invocation
-        /** @type {DatabaseBatchOperation[]} */
-        const operations = [];
+        // Create separate operations arrays for each sublevel
+        /** @type {Array<DatabasePutOperation<DatabaseValue> | DatabaseDelOperation<DatabaseValue>>} */
+        const valuesOps = [];
+        /** @type {Array<DatabasePutOperation<Freshness> | DatabaseDelOperation<Freshness>>} */
+        const freshnessOps = [];
+        /** @type {Array<DatabasePutOperation<InputsRecord> | DatabaseDelOperation<InputsRecord>>} */
+        const inputsOps = [];
+        /** @type {Array<DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<NodeKeyString[]>>} */
+        const revdepsOps = [];
+
+        // Create overlay state for each sublevel
+        /** @type {Map<DatabaseKey, DatabaseValue>} */
+        const valuesPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const valuesDels = new Set();
+
+        /** @type {Map<DatabaseKey, Freshness>} */
+        const freshnessPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const freshnessDels = new Set();
+
+        /** @type {Map<DatabaseKey, InputsRecord>} */
+        const inputsPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const inputsDels = new Set();
+
+        /** @type {Map<DatabaseKey, NodeKeyString[]>} */
+        const revdepsPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const revdepsDels = new Set();
 
         /** @type {BatchBuilder} */
         const builder = {
-            values: {
-                put: (key, value) => {
-                    const op = schemaStorage.values.putOp(key, value);
-                    operations.push(op);
-                },
-                del: (key) => operations.push(schemaStorage.values.delOp(key)),
-            },
-            freshness: {
-                put: (key, value) =>
-                    operations.push(schemaStorage.freshness.putOp(key, value)),
-                del: (key) =>
-                    operations.push(schemaStorage.freshness.delOp(key)),
-            },
-            inputs: {
-                put: (key, value) =>
-                    operations.push(schemaStorage.inputs.putOp(key, value)),
-                del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
-            },
-            revdeps: {
-                put: (key, value) =>
-                    operations.push(schemaStorage.revdeps.putOp(key, value)),
-                del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
-            },
+            values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
+            freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
+            inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
+            revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
         };
 
         const value = await fn(builder);
-        await schemaStorage.batch(operations);
+        
+        // Combine all operations into a single array for the batch
+        /** @type {DatabaseBatchOperation[]} */
+        const allOperations = [
+            ...valuesOps,
+            ...freshnessOps,
+            ...inputsOps,
+            ...revdepsOps,
+        ];
+        
+        await schemaStorage.batch(allOperations);
         return value;
     };
 
@@ -125,9 +209,9 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * @returns {Promise<void>}
      */
     async function ensureMaterialized(node, inputs, batch) {
-        // Check if already indexed
-        const existingInputs = await getInputs(node);
-        if (existingInputs !== null) {
+        // Check if already indexed (use batch-consistent read)
+        const existingInputs = await batch.inputs.get(node);
+        if (existingInputs !== undefined) {
             return; // Already materialized
         }
 
@@ -149,8 +233,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     async function ensureReverseDepsIndexed(node, inputs, batch) {
         // For each input, add this node to its dependents array
         for (const input of inputs) {
-            // Get existing dependents for this input
-            const existingDependents = await schemaStorage.revdeps.get(input);
+            // Get existing dependents for this input (use batch-consistent read)
+            const existingDependents = await batch.revdeps.get(input);
 
             if (existingDependents !== undefined) {
                 // Check if this node is already in the dependents list
@@ -170,10 +254,11 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * List all dependents of an input.
      * Returns the array of dependents stored for this input.
      * @param {NodeKeyString} input - Canonical input key
+     * @param {BatchBuilder} batch - Batch builder for consistent reads
      * @returns {Promise<NodeKeyString[]>}
      */
-    async function listDependents(input) {
-        const dependents = await schemaStorage.revdeps.get(input);
+    async function listDependents(input, batch) {
+        const dependents = await batch.revdeps.get(input);
         if (dependents === undefined) {
             return [];
         }
@@ -184,10 +269,11 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     /**
      * Get inputs for a node.
      * @param {NodeKeyString} node - Canonical node key
+     * @param {BatchBuilder} batch - Batch builder for consistent reads
      * @returns {Promise<NodeKeyString[] | null>}
      */
-    async function getInputs(node) {
-        const record = await schemaStorage.inputs.get(node);
+    async function getInputs(node, batch) {
+        const record = await batch.inputs.get(node);
         if (!record) return null;
         // Convert string[] from DB to NodeKeyString[]
         return record.inputs.map(stringToNodeKeyString);

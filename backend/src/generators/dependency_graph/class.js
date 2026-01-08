@@ -200,14 +200,14 @@ class DependencyGraphClass {
         batch,
         nodesBecomingOutdated = new Set()
     ) {
-        const dynamicDependents = await this.storage.listDependents(changedKey);
+        const dynamicDependents = await this.storage.listDependents(changedKey, batch);
         for (const output of dynamicDependents) {
             // Optimization: if already marked outdated in this batch, skip
             if (nodesBecomingOutdated.has(output)) {
                 continue;
             }
 
-            const currentFreshness = await this.storage.freshness.get(output);
+            const currentFreshness = await batch.freshness.get(output);
 
             if (currentFreshness === "up-to-date") {
                 batch.freshness.put(output, "potentially-outdated");
@@ -433,8 +433,8 @@ class DependencyGraphClass {
             }
         }
 
-        // Get old value
-        const oldValue = await this.storage.values.get(nodeKey);
+        // Get old value (use batch-consistent read)
+        const oldValue = await batch.values.get(nodeKey);
 
         // Optimization: if all inputs are 'unchanged' (meaning they were outdated but recomputed to same value),
         // then we can skip recomputation and mark ourselves up-to-date.
@@ -516,7 +516,7 @@ class DependencyGraphClass {
             batch.freshness.put(nodeKey, "up-to-date");
 
             // Return old value (must exist if Unchanged returned)
-            const result = await this.storage.values.get(nodeKey);
+            const result = await batch.values.get(nodeKey);
             if (result === undefined) {
                 throw makeMissingValueError(deserializeNodeKey(nodeKey).head);
             }
@@ -599,8 +599,8 @@ class DependencyGraphClass {
                 bindings
             );
 
-            // Check freshness of this node
-            const nodeFreshness = await this.storage.freshness.get(
+            // Check freshness of this node (use batch-consistent read)
+            const nodeFreshness = await batch.freshness.get(
                 nodeDefinition.output
             );
 
@@ -625,7 +625,7 @@ class DependencyGraphClass {
                     );
                 }
 
-                const result = await this.storage.values.get(
+                const result = await batch.values.get(
                     nodeDefinition.output
                 );
                 if (result === undefined) {
@@ -676,8 +676,8 @@ class DependencyGraphClass {
                 bindings
             );
 
-            // Check freshness of this node
-            const nodeFreshness = await this.storage.freshness.get(nodeKeyStr);
+            // Check freshness of this node (use batch-consistent read)
+            const nodeFreshness = await batch.freshness.get(nodeKeyStr);
 
             // Fast path: if up-to-date, return cached value immediately
             // But first ensure the node is materialized (for seeded DBs or restart resilience)
@@ -700,7 +700,7 @@ class DependencyGraphClass {
                     );
                 }
 
-                const result = await this.storage.values.get(nodeKeyStr);
+                const result = await batch.values.get(nodeKeyStr);
                 if (result === undefined) {
                     throw makeMissingValueError(
                         deserializeNodeKey(nodeKeyStr).head
@@ -716,6 +716,8 @@ class DependencyGraphClass {
 
     /**
      * Query conceptual freshness state of a node (debug interface).
+     * Note: This is a debug/inspection method that reads directly from storage
+     * outside a batch context. This is acceptable for non-critical debug paths.
      * @param {NodeName} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
@@ -742,6 +744,7 @@ class DependencyGraphClass {
 
         const concreteKeyString = concreteKey;
 
+        // Debug read: directly from storage (acceptable for non-critical inspection)
         const freshness = await this.storage.freshness.get(concreteKeyString);
         if (freshness === undefined) {
             return "missing";
