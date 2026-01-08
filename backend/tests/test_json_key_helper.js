@@ -10,10 +10,10 @@ const { canonicalize } = require("../src/generators/dependency_graph/expr");
  * Converts a node name to its JSON key format.
  * Helper for tests that need to work with concrete node keys.
  * @param {string} nodeName - Node name like "input1" or "derived(x)"
- * @param {Record<string, unknown>} [bindings={}] - Optional bindings
+ * @param {Array<unknown>} [bindings=[]] - Optional bindings
  * @returns {string} JSON key
  */
-function toJsonKey(nodeName, bindings = {}) {
+function toJsonKey(nodeName, bindings = []) {
     const canonical = canonicalize(nodeName);
     const nodeKey = createNodeKeyFromPattern(canonical, bindings);
     const nodeKeyString = serializeNodeKey(nodeKey);
