@@ -14,7 +14,7 @@ This document provides a formal specification for the dependency graph's operati
 * **ConstValue** - A subtype of `Serializable`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a stable string key used for storage, derived from the head and bindings. This is the actual database key.
+* **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — deterministic async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
@@ -150,11 +150,11 @@ ws            := [ \t\n\r]*
 * Original expression strings (with variable names) are preserved for error messages
 * Schema patterns are canonicalized at initialization for O(1) lookup
 
-**REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a stable key.
+**REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a key.
 
 ### 1.5 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a stable, deserializable string that uniquely identifies a `NodeInstance` in storage.
+**REQ-KEY-01:** A NodeKey is a deserializable string that uniquely identifies a `NodeInstance` in storage.
 
 **REQ-KEY-02:** All database operations (storing values, freshness, dependencies) MUST use NodeKey as the storage key.
 
