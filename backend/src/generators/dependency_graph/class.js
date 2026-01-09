@@ -634,26 +634,7 @@ class DependencyGraphClass {
             const nodeFreshness = await batch.freshness.get(nodeKeyStr);
 
             // Fast path: if up-to-date, return cached value immediately
-            // But first ensure the node is materialized (for seeded DBs or restart resilience)
             if (nodeFreshness === "up-to-date") {
-                // Ensure node is materialized
-                await this.storage.ensureMaterialized(
-                    nodeKeyStr,
-                    nodeDefinition.inputs,
-                    batch
-                );
-
-                // Ensure reverse dependencies are indexed if it has inputs
-                // This is critical for seeded databases where values/freshness exist
-                // but reverse-dep metadata is missing
-                if (nodeDefinition.inputs.length > 0) {
-                    await this.storage.ensureReverseDepsIndexed(
-                        nodeKeyStr,
-                        nodeDefinition.inputs,
-                        batch
-                    );
-                }
-
                 const result = await batch.values.get(nodeKeyStr);
                 if (result === undefined) {
                     throw makeMissingValueError(nodeKeyStr);
