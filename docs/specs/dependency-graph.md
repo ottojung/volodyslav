@@ -723,7 +723,7 @@ This section is reserved for future implementation notes.
 
 #### E.2 Binding Arity Mismatch
 
-**Error:** `pull("event_context(e)", [])` with wrong number of bindings.
+**Error:** `pull("event_context", [])` where we have `event_context(e)` in the schema: wrong number of bindings.
 
 **Behavior:** Throw `ArityMismatchError`.
 
@@ -753,11 +753,11 @@ If node instance is `up-to-date` but has no stored value, this is database corru
 
 **Example:**
 ```javascript
-// ✅ Correct for atom expressions (arity 0):
+// ✅ Correct for arity 0 node:
 await graph.pull("all_events", []);
 await graph.pull("all_events"); // bindings default to []
 
-// ❌ Wrong: Non-empty bindings for atom expression
+// ❌ Wrong: Non-empty bindings for arity 0 node:
 await graph.pull("all_events", [{x: "value"}]); // throws `ArityMismatchError`
 ```
 
