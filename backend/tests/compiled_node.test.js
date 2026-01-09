@@ -245,4 +245,84 @@ describe("compiled_node", () => {
             expect(() => validateNoOverlap(nodes)).not.toThrow();
         });
     });
+
+    describe("validateAcyclic()", () => {
+        const { validateAcyclic } = require("../src/generators/dependency_graph/compiled_node");
+
+        test("accepts acyclic schema", () => {
+            const nodes = [
+                compileNodeDef({
+                    output: "base",
+                    inputs: [],
+                    computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                }),
+                compileNodeDef({
+                    output: "derived(x)",
+                    inputs: ["base"],
+                    computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                }),
+            ];
+
+            expect(() => validateAcyclic(nodes)).not.toThrow();
+        });
+
+        test("rejects cyclic schema", () => {
+            const nodes = [
+                compileNodeDef({
+                    output: "foo(x)",
+                    inputs: ["bar(x)"],
+                    computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                }),
+                compileNodeDef({
+                    output: "bar(x)",
+                    inputs: ["foo(x)"],
+                    computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                }),
+            ];
+
+            expect(() => validateAcyclic(nodes)).toThrow("Schema cycle detected");
+        });
+
+        test("handles deep schema chain without stack overflow", () => {
+            // Create a chain of 50,000 nodes: n0 -> n1 -> n2 -> ... -> n49999
+            // This would cause stack overflow with recursive DFS
+            const chainLength = 50000;
+            const nodes = [];
+
+            // Create first node with no inputs
+            nodes.push(
+                compileNodeDef({
+                    output: "n0",
+                    inputs: [],
+                    computor: () => ({}),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                })
+            );
+
+            // Create chain nodes
+            for (let i = 1; i < chainLength; i++) {
+                nodes.push(
+                    compileNodeDef({
+                        output: `n${i}`,
+                        inputs: [`n${i - 1}`],
+                        computor: () => ({}),
+                        isDeterministic: true,
+                        hasSideEffects: false,
+                    })
+                );
+            }
+
+            // This should complete without stack overflow
+            expect(() => validateAcyclic(nodes)).not.toThrow();
+        }, 30000); // 30 second timeout
+    });
 });

@@ -181,11 +181,12 @@ function validateNoOverlap(compiledNodes) {
 
 /**
  * Validates that the schema graph is acyclic.
+ * Uses Kahn's algorithm (iterative topological sort) to detect cycles.
  * @param {CompiledNode[]} compiledNodes
  * @throws {Error} If a cycle is detected
  */
 function validateAcyclic(compiledNodes) {
-    // Build adjacency list
+    // Build adjacency list (node -> dependencies)
     /** @type {Map<CompiledNode, CompiledNode[]>} */
     const adj = new Map();
     for (const node of compiledNodes) {
@@ -212,37 +213,84 @@ function validateAcyclic(compiledNodes) {
         }
     }
 
-    // DFS for cycle detection
-    /** @type {Set<CompiledNode>} */
-    const visited = new Set();
-    /** @type {Set<CompiledNode>} */
-    const recursionStack = new Set();
+    // Kahn's algorithm: iterative topological sort for cycle detection
+    // Build in-degree map
+    /** @type {Map<CompiledNode, number>} */
+    const inDegree = new Map();
+    for (const node of compiledNodes) {
+        inDegree.set(node, 0);
+    }
 
-    /**
-     * @param {CompiledNode} node
-     */
-    function dfs(node) {
-        visited.add(node);
-        recursionStack.add(node);
+    // Count incoming edges for each node
+    for (const node of compiledNodes) {
+        const deps = adj.get(node) || [];
+        for (const dep of deps) {
+            const current = inDegree.get(dep) || 0;
+            inDegree.set(dep, current + 1);
+        }
+    }
 
-        const neighbors = adj.get(node) || [];
-        for (const neighbor of neighbors) {
-            if (!visited.has(neighbor)) {
-                dfs(neighbor);
-            } else if (recursionStack.has(neighbor)) {
-                throw makeSchemaCycleError(
-                    [node.canonicalOutput, neighbor.canonicalOutput]
-                );
+    // Initialize queue with all nodes that have in-degree 0
+    /** @type {CompiledNode[]} */
+    const queue = [];
+    for (const node of compiledNodes) {
+        if (inDegree.get(node) === 0) {
+            queue.push(node);
+        }
+    }
+
+    let processedCount = 0;
+
+    // Process nodes in topological order
+    while (queue.length > 0) {
+        const node = queue.shift();
+        if (!node) continue;
+
+        processedCount++;
+
+        // For each node that depends on the current node
+        const deps = adj.get(node) || [];
+        for (const dep of deps) {
+            const currentInDegree = inDegree.get(dep) || 0;
+            inDegree.set(dep, currentInDegree - 1);
+
+            // If in-degree becomes 0, add to queue
+            if (inDegree.get(dep) === 0) {
+                queue.push(dep);
+            }
+        }
+    }
+
+    // If not all nodes were processed, there's a cycle
+    if (processedCount < compiledNodes.length) {
+        // Find an edge that's part of a cycle for error reporting
+        // Look for any remaining node with in-degree > 0 and one of its dependencies
+        for (const node of compiledNodes) {
+            const nodeDegree = inDegree.get(node) || 0;
+            if (nodeDegree > 0) {
+                // This node is part of a cycle
+                const deps = adj.get(node) || [];
+                for (const dep of deps) {
+                    const depDegree = inDegree.get(dep) || 0;
+                    if (depDegree > 0) {
+                        // Both have in-degree > 0, so they're part of a cycle
+                        throw makeSchemaCycleError(
+                            [node.canonicalOutput, dep.canonicalOutput]
+                        );
+                    }
+                }
+                // If no dependency with degree > 0 found, just report this node
+                const firstDep = deps[0];
+                if (firstDep) {
+                    throw makeSchemaCycleError(
+                        [node.canonicalOutput, firstDep.canonicalOutput]
+                    );
+                }
             }
         }
 
-        recursionStack.delete(node);
-    }
-
-    for (const node of compiledNodes) {
-        if (!visited.has(node)) {
-            dfs(node);
-        }
+        // Fallback error if we can't identify specific nodes
+        throw makeSchemaCycleError(["unknown", "unknown"]);
     }
 }
 
