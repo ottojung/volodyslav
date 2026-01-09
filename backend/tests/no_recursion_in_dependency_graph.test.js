@@ -48,6 +48,8 @@ function detectRecursion(filePath) {
         "traverse",
         "recurse",
         "propagateOutdated", // Add known recursive method
+        "pullByNodeKeyStringWithStatus", // Method that calls itself
+        "maybeRecalculate", // Method that may indirectly cause recursion
     ];
 
     for (const helperName of recursiveHelpers) {
