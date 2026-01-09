@@ -221,7 +221,7 @@ class DependencyGraphClass {
     }
 
     /**
-     * Recursively collects operations to mark dependent nodes as potentially-dirty.
+     * Iteratively collects operations to mark dependent nodes as potentially-dirty.
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
      * @param {NodeKeyString} changedKey - The key that was changed
@@ -234,37 +234,43 @@ class DependencyGraphClass {
         batch,
         nodesBecomingOutdated = new Set()
     ) {
-        const dynamicDependents = await this.storage.listDependents(changedKey, batch);
-        for (const output of dynamicDependents) {
-            // Optimization: if already marked outdated in this batch, skip
-            if (nodesBecomingOutdated.has(output)) {
-                continue;
-            }
+        // Use a queue for iterative BFS traversal
+        /** @type {NodeKeyString[]} */
+        const queue = [changedKey];
 
-            const currentFreshness = await batch.freshness.get(output);
+        while (queue.length > 0) {
+            const currentKey = queue.shift();
+            if (!currentKey) continue;
 
-            if (currentFreshness === "up-to-date") {
-                batch.freshness.put(output, "potentially-outdated");
-                nodesBecomingOutdated.add(output);
+            const dynamicDependents = await this.storage.listDependents(currentKey, batch);
+            
+            for (const output of dynamicDependents) {
+                // Optimization: if already marked outdated in this batch, skip
+                if (nodesBecomingOutdated.has(output)) {
+                    continue;
+                }
 
-                // Recursively mark dependents of this node
-                await this.propagateOutdated(
-                    output,
-                    batch,
-                    nodesBecomingOutdated
-                );
-            } else if (currentFreshness === undefined) {
-                // Node not yet materialized, skip
-                continue;
-            } else if (currentFreshness === "potentially-outdated") {
-                // Already potentially-outdated, skip
-                continue;
-            } else {
-                /** @type {never} */
-                const x = currentFreshness;
-                throw new Error(
-                    `Unexpected freshness value ${x} for node ${output}`
-                );
+                const currentFreshness = await batch.freshness.get(output);
+
+                if (currentFreshness === "up-to-date") {
+                    batch.freshness.put(output, "potentially-outdated");
+                    nodesBecomingOutdated.add(output);
+
+                    // Add this node to the queue to process its dependents
+                    queue.push(output);
+                } else if (currentFreshness === undefined) {
+                    // Node not yet materialized, skip
+                    continue;
+                } else if (currentFreshness === "potentially-outdated") {
+                    // Already potentially-outdated, skip
+                    continue;
+                } else {
+                    /** @type {never} */
+                    const x = currentFreshness;
+                    throw new Error(
+                        `Unexpected freshness value ${x} for node ${output}`
+                    );
+                }
             }
         }
     }
