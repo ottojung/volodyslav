@@ -181,6 +181,7 @@ function validateNoOverlap(compiledNodes) {
 
 /**
  * Validates that the schema graph is acyclic.
+ * Uses iterative DFS with explicit stack to prevent stack overflow.
  * @param {CompiledNode[]} compiledNodes
  * @throws {Error} If a cycle is detected
  */
@@ -212,36 +213,69 @@ function validateAcyclic(compiledNodes) {
         }
     }
 
-    // DFS for cycle detection
+    // Iterative DFS for cycle detection
     /** @type {Set<CompiledNode>} */
     const visited = new Set();
     /** @type {Set<CompiledNode>} */
     const recursionStack = new Set();
 
     /**
-     * @param {CompiledNode} node
+     * Performs iterative DFS starting from the given node.
+     * @param {CompiledNode} startNode
      */
-    function dfs(node) {
-        visited.add(node);
-        recursionStack.add(node);
+    function iterativeDfs(startNode) {
+        /** 
+         * Stack entry: [node, isPostVisit]
+         * isPostVisit=false means we're visiting the node for the first time
+         * isPostVisit=true means we're returning from visiting all children
+         * @type {Array<[CompiledNode, boolean]>}
+         */
+        const stack = [[startNode, false]];
 
-        const neighbors = adj.get(node) || [];
-        for (const neighbor of neighbors) {
-            if (!visited.has(neighbor)) {
-                dfs(neighbor);
-            } else if (recursionStack.has(neighbor)) {
-                throw makeSchemaCycleError(
-                    [node.canonicalOutput, neighbor.canonicalOutput]
-                );
+        while (stack.length > 0) {
+            const entry = stack.pop();
+            if (entry === undefined) {
+                continue;
+            }
+
+            const [node, isPostVisit] = entry;
+
+            if (isPostVisit) {
+                // Post-visit: remove from recursion stack
+                recursionStack.delete(node);
+                continue;
+            }
+
+            // Pre-visit
+            if (visited.has(node)) {
+                continue;
+            }
+
+            visited.add(node);
+            recursionStack.add(node);
+
+            // Schedule post-visit
+            stack.push([node, true]);
+
+            // Visit neighbors
+            const neighbors = adj.get(node) || [];
+            for (const neighbor of neighbors) {
+                if (!visited.has(neighbor)) {
+                    // Push to stack for visiting
+                    stack.push([neighbor, false]);
+                } else if (recursionStack.has(neighbor)) {
+                    // Cycle detected
+                    throw makeSchemaCycleError(
+                        [node.canonicalOutput, neighbor.canonicalOutput]
+                    );
+                }
             }
         }
-
-        recursionStack.delete(node);
     }
 
     for (const node of compiledNodes) {
         if (!visited.has(node)) {
-            dfs(node);
+            iterativeDfs(node);
         }
     }
 }
