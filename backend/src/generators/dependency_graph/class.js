@@ -217,7 +217,7 @@ class DependencyGraphClass {
     }
 
     /**
-     * Iteratively collects operations to mark dependent nodes as potentially-dirty.
+     * Recursively collects operations to mark dependent nodes as potentially-dirty.
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * Uses explicit stack to prevent stack overflow on deep dependency chains.
      * @private
