@@ -262,7 +262,6 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         if (dependents === undefined) {
             return [];
         }
-        // Convert string[] from DB to NodeKeyString[]
         return dependents;
     }
 
