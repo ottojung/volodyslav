@@ -281,6 +281,13 @@ class DependencyGraphClass {
         ensureNodeNameIsHead(nodeName);
         const nodeNameTyped = stringToNodeName(nodeName);
 
+        if (value === null || value === undefined) {
+            throw new Error("Cannot set null or undefined value");
+        }
+        if (isUnchanged(value)) {
+            throw new Error("Cannot set value to Unchanged sentinel");
+        }
+
         // Lookup schema by nodeName
         const compiledNode = this.headIndex.get(nodeNameTyped);
         if (!compiledNode) {
