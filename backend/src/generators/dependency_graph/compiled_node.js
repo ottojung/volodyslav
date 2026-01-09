@@ -279,6 +279,43 @@ function validateSingleArityPerHead(compiledNodes) {
 }
 
 /**
+ * Validates that input patterns use the correct arity for their heads.
+ * Each input pattern must reference a head with the arity defined by its output pattern.
+ * @param {CompiledNode[]} compiledNodes
+ * @throws {Error} If an input pattern uses wrong arity for a head
+ */
+function validateInputArities(compiledNodes) {
+    // Build map of head -> expected arity from output patterns
+    /** @type {Map<NodeName, number>} */
+    const headToArity = new Map();
+    
+    for (const node of compiledNodes) {
+        headToArity.set(node.head, node.arity);
+    }
+    
+    // Validate all input patterns
+    for (const node of compiledNodes) {
+        for (let i = 0; i < node.inputExprs.length; i++) {
+            const inputExpr = node.inputExprs[i];
+            const inputStr = node.source.inputs[i];
+            if (!inputExpr || !inputStr) continue;
+            
+            const inputHead = inputExpr.name;
+            const inputArity = inputExpr.args.length;
+            const expectedArity = headToArity.get(inputHead);
+            
+            if (expectedArity !== undefined && inputArity !== expectedArity) {
+                throw makeInvalidSchemaError(
+                    `Input pattern '${inputStr}' has arity ${inputArity}, but head '${inputHead}' is defined with arity ${expectedArity}. ` +
+                    `All references to the same head must use consistent arity (expected ${expectedArity} arguments)`,
+                    node.source.output
+                );
+            }
+        }
+    }
+}
+
+/**
  * Compiles a node definition into a CompiledNode with all metadata cached.
  * @param {NodeDef} nodeDef
  * @returns {CompiledNode}
@@ -413,6 +450,7 @@ module.exports = {
     validateNoOverlap,
     validateAcyclic,
     validateSingleArityPerHead,
+    validateInputArities,
     patternsCanOverlap,
     createVariablePositionMap,
     extractInputBindings,

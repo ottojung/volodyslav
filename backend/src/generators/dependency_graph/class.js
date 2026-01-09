@@ -43,6 +43,7 @@ const {
     validateNoOverlap,
     validateAcyclic,
     validateSingleArityPerHead,
+    validateInputArities,
 } = require("./compiled_node");
 const {
     createVariablePositionMap,
@@ -179,6 +180,9 @@ class DependencyGraphClass {
 
         // Validate single arity per head (new requirement)
         validateSingleArityPerHead(compiledNodes);
+
+        // Validate input patterns use correct arities
+        validateInputArities(compiledNodes);
 
         // Compute schema hash for namespacing DB keys
         // Use a stable canonical representation of the schema

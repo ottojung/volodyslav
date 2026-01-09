@@ -476,7 +476,7 @@ describe("Schema validation (construction-time errors)", () => {
         }
     });
 
-    test.failing("throws InvalidSetError for bad arity", async () => {
+    test("throws InvalidSchemaError for bad arity", async () => {
         const db = new InMemoryDatabase();
 
         function unoptimizedComputor(name) {
