@@ -60,7 +60,7 @@ const { make: makeSleeper } = require("../../sleeper");
 /**
  * Mutex key for serializing all set() and pull() operations.
  */
-const MUTEX_KEY = 'dependency-graph-operations';
+const MUTEX_KEY = "dependency-graph-operations";
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.
@@ -189,8 +189,7 @@ class DependencyGraphClass {
             .map((node) => ({
                 mapping: canonicalizeMapping(node.inputExprs, node.outputExpr),
             }))
-            .sort((a, b) => a.mapping.localeCompare(b.mapping)
-            );
+            .sort((a, b) => a.mapping.localeCompare(b.mapping));
 
         const schemaJson = JSON.stringify(schemaRepresentation);
         const hash = crypto
@@ -229,7 +228,10 @@ class DependencyGraphClass {
         batch,
         nodesBecomingOutdated = new Set()
     ) {
-        const dynamicDependents = await this.storage.listDependents(changedKey, batch);
+        const dynamicDependents = await this.storage.listDependents(
+            changedKey,
+            batch
+        );
         for (const output of dynamicDependents) {
             // Optimization: if already marked outdated in this batch, skip
             if (nodesBecomingOutdated.has(output)) {
@@ -331,9 +333,8 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async set(nodeName, value, bindings = []) {
-        return this.sleeper.withMutex(
-            MUTEX_KEY,
-            () => this.unsafeSet(nodeName, value, bindings)
+        return this.sleeper.withMutex(MUTEX_KEY, () =>
+            this.unsafeSet(nodeName, value, bindings)
         );
     }
 
@@ -581,9 +582,8 @@ class DependencyGraphClass {
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = []) {
-        return this.sleeper.withMutex(
-            MUTEX_KEY,
-            () => this.unsafePull(nodeName, bindings)
+        return this.sleeper.withMutex(MUTEX_KEY, () =>
+            this.unsafePull(nodeName, bindings)
         );
     }
 
