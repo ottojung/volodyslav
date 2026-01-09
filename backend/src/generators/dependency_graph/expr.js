@@ -323,6 +323,9 @@ function renderExpr(expr) {
     if (expr.kind === "atom") {
         return stringToSchemaPattern(nodeNameStr);
     } else {
+        if (expr.args.length === 0) {
+            return stringToSchemaPattern(nodeNameStr);
+        }
         const renderedArgs = expr.args.map(renderArg).join(",");
         return stringToSchemaPattern(`${nodeNameStr}(${renderedArgs})`);
     }
