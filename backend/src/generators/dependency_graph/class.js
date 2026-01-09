@@ -236,8 +236,10 @@ class DependencyGraphClass {
 
         while (stack.length > 0) {
             const currentKey = stack.pop();
+            
+            // This should never happen due to loop condition, but satisfies TypeScript
             if (currentKey === undefined) {
-                continue;
+                throw new Error("Unexpected undefined in propagateOutdated stack");
             }
 
             const dynamicDependents = await this.storage.listDependents(currentKey, batch);

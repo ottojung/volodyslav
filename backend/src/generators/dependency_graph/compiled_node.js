@@ -234,10 +234,12 @@ function validateAcyclic(compiledNodes) {
 
         while (stack.length > 0) {
             const entry = stack.pop();
+            
+            // This should never happen due to loop condition, but satisfies TypeScript
             if (entry === undefined) {
-                continue;
+                throw new Error("Unexpected undefined in validateAcyclic stack");
             }
-
+            
             const [node, isPostVisit] = entry;
 
             if (isPostVisit) {
