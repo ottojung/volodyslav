@@ -2,7 +2,12 @@
  * Tests for dependency_graph/expr module.
  */
 
-const { parseExpr, canonicalize, canonicalizeMapping } = require("../src/generators/dependency_graph/expr");
+const {
+    parseExpr,
+    canonicalize,
+    canonicalizeMapping,
+    renderExpr,
+} = require("../src/generators/dependency_graph/expr");
 
 describe("dependency_graph/expr", () => {
     describe("parseExpr()", () => {
@@ -92,6 +97,13 @@ describe("dependency_graph/expr", () => {
 
         test("throws on invalid function name", () => {
             expect(() => parseExpr("123foo(x)")).toThrow("Unexpected character");
+        });
+    });
+
+    describe("renderExpr()", () => {
+        test("renders an empty argument call as an atom", () => {
+            const expr = parseExpr("foo()");
+            expect(renderExpr(expr)).toBe("foo");
         });
     });
 
