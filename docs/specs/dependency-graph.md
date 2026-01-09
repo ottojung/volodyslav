@@ -60,7 +60,7 @@ A **node instance** is a specific member of a node family, identified by:
 
 **Identity:** Two node instances are identical if and only if:
 1. Their expression patterns have the same functor and arity, AND
-2. Their binding environments are structurally equal (deep equality on `ConstValue` objects, compared positionally)
+2. Their binding environments are strongly equal (equality of serialized `ConstValue` objects, compared positionally)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
 
