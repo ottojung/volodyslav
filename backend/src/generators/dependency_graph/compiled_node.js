@@ -303,8 +303,16 @@ function validateInputArities(compiledNodes) {
             const inputHead = inputExpr.name;
             const inputArity = inputExpr.args.length;
             const expectedArity = headToArity.get(inputHead);
-            
-            if (expectedArity !== undefined && inputArity !== expectedArity) {
+
+            if (expectedArity === undefined) {
+                throw makeInvalidSchemaError(
+                    `Input pattern '${inputStr}' references undefined head '${inputHead}'. ` +
+                    `Every input pattern must match a schema output pattern.`,
+                    node.source.output
+                );
+            }
+
+            if (inputArity !== expectedArity) {
                 throw makeInvalidSchemaError(
                     `Input pattern '${inputStr}' has arity ${inputArity}, but head '${inputHead}' is defined with arity ${expectedArity}. ` +
                     `All references to the same head must use consistent arity (expected ${expectedArity} arguments)`,
