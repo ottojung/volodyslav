@@ -1120,6 +1120,163 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("d")).resolves.toBe("up-to-date");
         await expect(fr("e")).resolves.toBe("up-to-date");
     });
+
+    test("deep pull", async () => {
+        const db = new InMemoryDatabase();
+
+        function unoptimizedComputor(name) {
+            return countedComputor(name, async ([x]) => {
+                if (x === undefined) {
+                    return { s: name + "()" };
+                } else {
+                    return { s: name + "(" + x.s + ")" };
+                }
+            });
+        }
+        function optimizedComputor(name) {
+            return countedComputor(name, async ([x], oldValue) => {
+                const value = name + "(" + x.s + ")";
+                const ret = { s: value };
+                if (JSON.stringify(oldValue) === JSON.stringify(ret)) {
+                    return makeUnchanged();
+                } else {
+                    return ret;
+                }
+            });
+        }
+
+        function nc(fun) {
+            return fun.counter.calls;
+        }
+
+        async function fr(nodeName) {
+            return g.debugGetFreshness(nodeName, [1]);
+        }
+
+        const aC = unoptimizedComputor("a");
+        const bC = unoptimizedComputor("b");
+        const cC = optimizedComputor("c");
+        const dC = unoptimizedComputor("d");
+        const eC = unoptimizedComputor("e");
+
+        const g = buildGraph(db, [
+            { output: "a(x)", inputs: [], computor: aC.computor },
+            { output: "b(x)", inputs: ["a"], computor: bC.computor },
+            { output: "c(x)", inputs: ["b"], computor: cC.computor },
+            { output: "d(x)", inputs: ["c"], computor: dC.computor },
+            { output: "e(x)", inputs: ["d"], computor: eC.computor },
+        ]);
+
+        expect(nc(aC)).toBe(0);
+        expect(nc(bC)).toBe(0);
+        expect(nc(cC)).toBe(0);
+        expect(nc(dC)).toBe(0);
+        expect(nc(eC)).toBe(0);
+
+        await expect(fr("a")).resolves.toBe("missing");
+        await expect(fr("b")).resolves.toBe("missing");
+        await expect(fr("c")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
+
+        await g.pull("e", [2]); // deep pull to populate all nodes
+
+        expect(nc(aC)).toBe(1);
+        expect(nc(bC)).toBe(1);
+        expect(nc(cC)).toBe(1);
+        expect(nc(dC)).toBe(1);
+        expect(nc(eC)).toBe(1);
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("up-to-date");
+        await expect(fr("c")).resolves.toBe("up-to-date");
+        await expect(fr("d")).resolves.toBe("up-to-date");
+        await expect(fr("e")).resolves.toBe("up-to-date");
+
+        await g.set("a", { s: "a()" });
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("missing");
+        await expect(fr("c")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
+
+        const c = await g.pull("c");
+        expect(c).toEqual({ s: "c(b(a()))" });
+
+        expect(nc(aC)).toBe(0);
+        expect(nc(bC)).toBe(1);
+        expect(nc(cC)).toBe(1);
+        expect(nc(dC)).toBe(0);
+        expect(nc(eC)).toBe(0);
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("up-to-date");
+        await expect(fr("c")).resolves.toBe("up-to-date");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
+
+        await g.set("a", { s: "a()" });
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("potentially-outdated");
+        await expect(fr("c")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
+
+        const b = await g.pull("b");
+        expect(b).toEqual({ s: "b(a())" });
+
+        expect(nc(aC)).toBe(0);
+        expect(nc(bC)).toBe(2); // one recompute
+        expect(nc(cC)).toBe(1); // no recompute yet
+        expect(nc(dC)).toBe(0);
+        expect(nc(eC)).toBe(0);
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("up-to-date");
+        await expect(fr("c")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
+
+        const e1 = await g.pull("e");
+        expect(e1).toEqual({ s: "e(d(c(b(a()))))" });
+
+        expect(nc(aC)).toBe(0);
+        expect(nc(bC)).toBe(2); // one recompute
+        expect(nc(cC)).toBe(2); // no recompute yet
+        expect(nc(dC)).toBe(1);
+        expect(nc(eC)).toBe(1);
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("up-to-date");
+        await expect(fr("c")).resolves.toBe("up-to-date");
+        await expect(fr("d")).resolves.toBe("up-to-date");
+        await expect(fr("e")).resolves.toBe("up-to-date");
+
+        await g.set("a", { s: "a()" });
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("potentially-outdated");
+        await expect(fr("c")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("potentially-outdated");
+        await expect(fr("e")).resolves.toBe("potentially-outdated");
+
+        const e2 = await g.pull("e");
+        expect(e2).toEqual({ s: "e(d(c(b(a()))))" });
+
+        expect(nc(aC)).toBe(0);
+        expect(nc(bC)).toBe(3); // one recompute
+        expect(nc(cC)).toBe(3); // one recompute
+        expect(nc(dC)).toBe(1); // no recompute because c unchanged
+        expect(nc(eC)).toBe(1); // no recompute because d unchanged
+
+        await expect(fr("a")).resolves.toBe("up-to-date");
+        await expect(fr("b")).resolves.toBe("up-to-date");
+        await expect(fr("c")).resolves.toBe("up-to-date");
+        await expect(fr("d")).resolves.toBe("up-to-date");
+        await expect(fr("e")).resolves.toBe("up-to-date");
+    });
 });
 
 describe("P3: computor invoked at most once per node per top-level pull (diamond graph)", () => {
