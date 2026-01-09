@@ -289,8 +289,23 @@ function validateAcyclic(compiledNodes) {
             }
         }
 
-        // Fallback error if we can't identify specific nodes
-        throw makeSchemaCycleError(["unknown", "unknown"]);
+        // Fallback error if we can't identify specific nodes (should not happen)
+        // Use first two nodes as a generic cycle example
+        if (compiledNodes.length >= 2) {
+            const node0 = compiledNodes[0];
+            const node1 = compiledNodes[1];
+            if (node0 && node1) {
+                throw makeSchemaCycleError(
+                    [node0.canonicalOutput, node1.canonicalOutput]
+                );
+            }
+        }
+        const firstNode = compiledNodes[0];
+        if (firstNode) {
+            throw makeSchemaCycleError([firstNode.canonicalOutput, firstNode.canonicalOutput]);
+        }
+        // This should never happen if compiledNodes is non-empty
+        throw new Error("Cycle detected but unable to identify nodes");
     }
 }
 

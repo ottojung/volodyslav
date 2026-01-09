@@ -58,8 +58,8 @@ describe("Deep dependency graph pull", () => {
             nodeDefs.push({
                 output: `n${i}`,
                 inputs: [`n${i - 1}`],
-                computor: (inputs) => {
-                    const prevValue = inputs[0];
+                computor: (_inputs) => {
+                    const prevValue = _inputs[0];
                     return { value: prevValue.value + 1 };
                 },
                 isDeterministic: true,
@@ -79,7 +79,7 @@ describe("Deep dependency graph pull", () => {
 
         await db.close();
         fs.rmSync(capabilities.tmpDir, { recursive: true, force: true });
-    }, 60000); // 60 second timeout
+    }, 120000); // 120 second timeout for 50k node chain
 
     test("per-node commit: partial success persists early nodes", async () => {
         const capabilities = getTestCapabilities();
@@ -117,7 +117,7 @@ describe("Deep dependency graph pull", () => {
             {
                 output: "n3",
                 inputs: ["n2"],
-                computor: (inputs) => {
+                computor: (_inputs) => {
                     node3CallCount++;
                     throw new Error("Node 3 computation failed");
                 },

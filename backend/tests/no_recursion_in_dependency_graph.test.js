@@ -64,8 +64,6 @@ function detectRecursion(filePath) {
             `\\b(?:async\\s+)?${helperName}\\s*\\([^)]*\\)\\s*\\{`
         );
 
-        let functionDefinedAt = -1;
-        let functionEndBrace = -1;
         let braceDepth = 0;
         let insideFunction = false;
 
@@ -79,7 +77,6 @@ function detectRecursion(filePath) {
                 arrowDefRegex.test(line) ||
                 methodDefRegex.test(line)
             ) {
-                functionDefinedAt = i;
                 insideFunction = true;
                 braceDepth = 0;
                 // Count braces on the definition line
@@ -135,6 +132,9 @@ describe("no recursion in dependency_graph", () => {
         );
 
         const jsFiles = findJsFiles(depGraphDir);
+        
+        // Verify we found some files
+        expect(jsFiles.length).toBeGreaterThan(0);
 
         const allIssues = [];
 
