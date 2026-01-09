@@ -237,7 +237,7 @@ class DependencyGraphClass {
         while (stack.length > 0) {
             const currentKey = stack.pop();
             
-            // This should never happen due to loop condition, but satisfies TypeScript
+            // Explicit check satisfies type checker without using forbidden type casts
             if (currentKey === undefined) {
                 throw new Error("Unexpected undefined in propagateOutdated stack");
             }

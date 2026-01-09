@@ -227,7 +227,7 @@ function validateAcyclic(compiledNodes) {
         /** 
          * Stack entry: [node, isPostVisit]
          * isPostVisit=false means we're visiting the node for the first time
-         * isPostVisit=true means we're returning from visiting all children
+         * isPostVisit=true means we're returning from visiting all neighbors
          * @type {Array<[CompiledNode, boolean]>}
          */
         const stack = [[startNode, false]];
@@ -235,7 +235,7 @@ function validateAcyclic(compiledNodes) {
         while (stack.length > 0) {
             const entry = stack.pop();
             
-            // This should never happen due to loop condition, but satisfies TypeScript
+            // Explicit check satisfies type checker without using forbidden type casts
             if (entry === undefined) {
                 throw new Error("Unexpected undefined in validateAcyclic stack");
             }
