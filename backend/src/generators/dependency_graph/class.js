@@ -54,8 +54,10 @@ const { deserializeNodeKey } = require("./node_key");
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 const { make: makeSleeper } = require("../../sleeper");
+const { makeConcreteNodeCache } = require("./lru_cache");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 
 /**
  * Mutex key for serializing all set() and pull() operations.
@@ -133,9 +135,9 @@ class DependencyGraphClass {
 
     /**
      * Cache of concrete instantiated nodes created from patterns on demand.
-     * Maps canonical output to a runtime node with concrete inputs and wrapped computor.
+     * Uses LRU eviction to prevent unbounded memory growth in long-running processes.
      * @private
-     * @type {Map<NodeKeyString, ConcreteNode>}
+     * @type {ConcreteNodeCache}
      */
     concreteInstantiations;
 
@@ -207,8 +209,8 @@ class DependencyGraphClass {
             this.headIndex.set(compiled.head, compiled);
         }
 
-        // Initialize instantiation cache
-        this.concreteInstantiations = new Map();
+        // Initialize instantiation cache with LRU eviction
+        this.concreteInstantiations = makeConcreteNodeCache();
 
         // Initialize sleeper for thread-safe operations
         this.sleeper = makeSleeper();
