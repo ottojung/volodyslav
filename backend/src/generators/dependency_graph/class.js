@@ -3,7 +3,6 @@
  */
 
 const {
-    schemaPatternToString,
     stringToNodeName,
     stringToSchemaHash,
     stringToSchemaPattern,
@@ -49,7 +48,7 @@ const {
     createVariablePositionMap,
     extractInputBindings,
 } = require("./compiled_node");
-const { parseExpr, renderExpr } = require("./expr");
+const { parseExpr, renderExpr, canonicalizeMapping } = require("./expr");
 const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
@@ -188,13 +187,9 @@ class DependencyGraphClass {
         // Use a stable canonical representation of the schema
         const schemaRepresentation = compiledNodes
             .map((node) => ({
-                output: renderExpr(node.outputExpr),
-                inputs: node.inputExprs.map(renderExpr),
+                mapping: canonicalizeMapping(node.inputExprs, node.outputExpr),
             }))
-            .sort((a, b) =>
-                schemaPatternToString(a.output).localeCompare(
-                    schemaPatternToString(b.output)
-                )
+            .sort((a, b) => a.mapping.localeCompare(b.mapping)
             );
 
         const schemaJson = JSON.stringify(schemaRepresentation);

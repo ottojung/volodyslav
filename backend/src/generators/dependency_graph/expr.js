@@ -342,9 +342,59 @@ function canonicalize(str) {
     return stringToSchemaPattern(nodeNameStr);
 }
 
+/**
+ * Canonicalizes a mapping from input expressions to an output expression.
+ * This makes variable names irrelevant.
+ *
+ * @param {ParsedExpr[]} inputExpressions - Array of input expression
+ * @param {ParsedExpr} outputExpression - The output expression
+ * @returns {string} The canonicalized mapping string
+ */
+function canonicalizeMapping(inputExpressions, outputExpression) {
+    const varMap = new Map();
+    let varCounter = 0;
+
+    /**
+     * Gets or assigns a canonical variable name.
+     * @param {string} varName
+     * @returns {string}
+     */
+    function getCanonicalVarName(varName) {
+        if (!varMap.has(varName)) {
+            varMap.set(varName, `v${varCounter++}`);
+        }
+        return varMap.get(varName);
+    }
+
+    /**
+     * Recursively canonicalizes a parsed expression.
+     * @param {ParsedExpr} expr
+     * @returns {string}
+     */
+    function canonicalizeExpr(expr) {
+        const nodeNameStr = nodeNameToString(expr.name);
+        if (expr.kind === "atom") {
+            return nodeNameStr;
+        } else {
+            const canonicalArgs = expr.args
+                .map((arg) => getCanonicalVarName(arg.value))
+                .join(",");
+            return `${nodeNameStr}(${canonicalArgs})`;
+        }
+    }
+
+    const canonicalInputs = inputExpressions
+        .map(canonicalizeExpr)
+        .join(" + ");
+    const canonicalOutput = canonicalizeExpr(outputExpression);
+
+    return `${canonicalInputs} => ${canonicalOutput}`;
+}
+
 module.exports = {
     parseExpr,
     canonicalize,
+    canonicalizeMapping,
     renderExpr,
     renderArg,
 };
