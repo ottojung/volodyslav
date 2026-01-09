@@ -252,6 +252,15 @@ describe("dependency_graph/expr", () => {
             expect(result).toBe("source => derived(v0)");
         });
 
+        test("normalizes empty-argument calls to atoms", () => {
+            const inputExprs = [parseExpr("source()")];
+            const outputExpr = parseExpr("derived()");
+
+            const result = canonicalizeMapping(inputExprs, outputExpr);
+
+            expect(result).toBe("source => derived");
+        });
+
         test("variable scoping across inputs and outputs", () => {
             const inputExprs = [
                 parseExpr("first(a,b)"),

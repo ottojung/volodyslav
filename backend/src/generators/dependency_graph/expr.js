@@ -376,6 +376,9 @@ function canonicalizeMapping(inputExpressions, outputExpression) {
         if (expr.kind === "atom") {
             return nodeNameStr;
         } else {
+            if (expr.args.length === 0) {
+                return nodeNameStr;
+            }
             const canonicalArgs = expr.args
                 .map((arg) => getCanonicalVarName(arg.value))
                 .join(",");
