@@ -446,7 +446,7 @@ class DependencyGraphClass {
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, batch) {
+    async maybeRecalculate(nodeDefinition, batch, pullCache) {
         const nodeKey = nodeDefinition.output;
 
         // Pull all inputs (recursively ensures they're up-to-date)
@@ -455,7 +455,10 @@ class DependencyGraphClass {
 
         for (const inputKey of nodeDefinition.inputs) {
             const { value: inputValue, status: inputStatus } =
-                await this.pullByNodeKeyStringWithStatus(inputKey);
+                await this.pullByNodeKeyStringWithStatus(
+                    inputKey,
+                    pullCache
+                );
             inputValues.push(inputValue);
 
             // If input is NOT 'unchanged', we can't guarantee we are unchanged.
@@ -570,10 +573,14 @@ class DependencyGraphClass {
      * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
-    async unsafePull(nodeName, bindings) {
+    async unsafePull(nodeName, bindings, pullCache) {
         ensureNodeNameIsHead(nodeName);
         const nodeNameValue = stringToNodeName(nodeName);
-        const { value } = await this.pullWithStatus(nodeNameValue, bindings);
+        const { value } = await this.pullWithStatus(
+            nodeNameValue,
+            bindings,
+            pullCache
+        );
         return value;
     }
 
@@ -591,9 +598,11 @@ class DependencyGraphClass {
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = []) {
-        return this.sleeper.withMutex(MUTEX_KEY, () =>
-            this.unsafePull(nodeName, bindings)
-        );
+        return this.sleeper.withMutex(MUTEX_KEY, () => {
+            /** @type {Map<NodeKeyString, Promise<RecomputeResult>>} */
+            const pullCache = new Map();
+            return this.unsafePull(nodeName, bindings, pullCache);
+        });
     }
 
     /**
@@ -604,10 +613,13 @@ class DependencyGraphClass {
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName, bindings = []) {
+    async pullWithStatus(nodeName, bindings = [], pullCache) {
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        return await this.pullByNodeKeyStringWithStatus(concreteKey);
+        return await this.pullByNodeKeyStringWithStatus(
+            concreteKey,
+            pullCache
+        );
     }
 
     /**
@@ -615,44 +627,82 @@ class DependencyGraphClass {
      * Accepts serialized NodeKey JSON string.
      * @private
      * @param {NodeKeyString} nodeKeyStr - Serialized NodeKey JSON string
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
-        return this.storage.withBatch(async (batch) => {
-            const nodeKey = deserializeNodeKey(nodeKeyStr);
-            const nodeName = nodeKey.head;
-            const bindings = nodeKey.args;
-
-            // Lookup schema by nodeName
-            const compiledNode = this.headIndex.get(nodeName);
-            if (!compiledNode) {
-                throw makeInvalidNodeError(nodeName);
+    async pullByNodeKeyStringWithStatus(nodeKeyStr, pullCache) {
+        if (pullCache) {
+            const cachedPromise = pullCache.get(nodeKeyStr);
+            if (cachedPromise) {
+                return cachedPromise;
             }
 
-            checkArity(compiledNode, bindings);
-
-            // Find or create the node definition
-            const nodeDefinition = this.getOrCreateConcreteNode(
-                nodeKeyStr,
-                compiledNode,
-                bindings
+            const recomputePromise = this.storage.withBatch(async (batch) =>
+                this.pullByNodeKeyStringWithStatusInBatch(
+                    nodeKeyStr,
+                    batch,
+                    pullCache
+                )
             );
+            pullCache.set(nodeKeyStr, recomputePromise);
+            return recomputePromise;
+        }
 
-            // Check freshness of this node (use batch-consistent read)
-            const nodeFreshness = await batch.freshness.get(nodeKeyStr);
+        return this.storage.withBatch(async (batch) =>
+            this.pullByNodeKeyStringWithStatusInBatch(nodeKeyStr, batch)
+        );
+    }
 
-            // Fast path: if up-to-date, return cached value immediately
-            if (nodeFreshness === "up-to-date") {
-                const result = await batch.values.get(nodeKeyStr);
-                if (result === undefined) {
-                    throw makeMissingValueError(nodeKeyStr);
-                }
-                return { value: result, status: "cached" };
+    /**
+     * Internal pull by NodeKey string using an existing batch.
+     * @private
+     * @param {NodeKeyString} nodeKeyStr - Serialized NodeKey JSON string
+     * @param {BatchBuilder} batch - Batch builder for consistent reads
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache]
+     * @returns {Promise<RecomputeResult>}
+     */
+    async pullByNodeKeyStringWithStatusInBatch(
+        nodeKeyStr,
+        batch,
+        pullCache
+    ) {
+        const nodeKey = deserializeNodeKey(nodeKeyStr);
+        const nodeName = nodeKey.head;
+        const bindings = nodeKey.args;
+
+        // Lookup schema by nodeName
+        const compiledNode = this.headIndex.get(nodeName);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeName);
+        }
+
+        checkArity(compiledNode, bindings);
+
+        // Find or create the node definition
+        const nodeDefinition = this.getOrCreateConcreteNode(
+            nodeKeyStr,
+            compiledNode,
+            bindings
+        );
+
+        // Check freshness of this node (use batch-consistent read)
+        const nodeFreshness = await batch.freshness.get(nodeKeyStr);
+
+        // Fast path: if up-to-date, return cached value immediately
+        if (nodeFreshness === "up-to-date") {
+            const result = await batch.values.get(nodeKeyStr);
+            if (result === undefined) {
+                throw makeMissingValueError(nodeKeyStr);
             }
+            return { value: result, status: "cached" };
+        }
 
-            // Potentially-outdated or undefined freshness: need to maybe recalculate
-            return await this.maybeRecalculate(nodeDefinition, batch);
-        });
+        // Potentially-outdated or undefined freshness: need to maybe recalculate
+        return await this.maybeRecalculate(
+            nodeDefinition,
+            batch,
+            pullCache
+        );
     }
 
     /**
