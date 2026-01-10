@@ -444,6 +444,7 @@ class DependencyGraphClass {
      * @private
      * @param {ConcreteNode} nodeDefinition - The node to maybe recalculate
      * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache] - Memoization cache for pull operations
      * @returns {Promise<RecomputeResult>}
      */
     async maybeRecalculate(nodeDefinition, batch, pullCache) {
@@ -571,6 +572,7 @@ class DependencyGraphClass {
      * @private
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache] - Memoization cache for pull operations
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async unsafePull(nodeName, bindings, pullCache) {
@@ -611,6 +613,7 @@ class DependencyGraphClass {
      * @private
      * @param {NodeName} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache] - Memoization cache for pull operations
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName, bindings = [], pullCache) {
