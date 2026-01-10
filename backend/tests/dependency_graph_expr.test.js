@@ -101,9 +101,9 @@ describe("dependency_graph/expr", () => {
     });
 
     describe("renderExpr()", () => {
-        test("renders an empty argument call as an atom", () => {
+        test("renders an empty argument call with parentheses", () => {
             const expr = parseExpr("foo()");
-            expect(renderExpr(expr)).toBe("foo");
+            expect(renderExpr(expr)).toBe("foo()");
         });
     });
 
