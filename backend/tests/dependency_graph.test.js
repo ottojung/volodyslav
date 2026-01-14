@@ -360,6 +360,8 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
             const graphDef = [
                 {
                     output: "input1",
@@ -371,9 +373,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level1",
                     inputs: ["input1"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("level1");
-                        return makeUnchanged();
+                        if (!oldValue) {
+                            return { count: 2 }; // First time: return actual value
+                        }
+                        return makeUnchanged(); // Subsequent times: return Unchanged
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -381,9 +386,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level2",
                     inputs: ["level1"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("level2");
-                        return makeUnchanged();
+                        if (!oldValue) {
+                            return { count: 3 }; // First time: return actual value
+                        }
+                        return makeUnchanged(); // Subsequent times: return Unchanged
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -391,9 +399,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level3",
                     inputs: ["level2"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("level3");
-                        return makeUnchanged();
+                        if (!oldValue) {
+                            return { count: 4 }; // First time: return actual value
+                        }
+                        return makeUnchanged(); // Subsequent times: return Unchanged
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -402,27 +413,24 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
+            // Set up chain properly using graph operations: input1 -> level1 -> level2 -> level3
+            await graph.set("input1", { count: 1 });
+            await graph.pull("level3"); // First pull to materialize everything
+            expect(computeCalls).toEqual(["level1", "level2", "level3"]);
+            
+            computeCalls.length = 0; // Clear
 
-            await testDb.put("input1", { count: 1 });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("level1", { count: 2 });
-            await testDb.put(freshnessKey("level1"), "potentially-outdated");
-            await testDb.put("level2", { count: 3 });
-            await testDb.put(freshnessKey("level2"), "potentially-outdated");
-            await testDb.put("level3", { count: 4 });
-            await testDb.put(freshnessKey("level3"), "potentially-outdated");
-            const computeCalls = [];
-
-            // Set up chain: input1 -> level1 -> level2 -> level3
-            // level1 returns Unchanged, so level2 and level3 should not recompute
-
-
-
+            // Now change input1, which should trigger recomputation
+            await graph.set("input1", { count: 2 });
+            
+            // Pull level3 again
+            // level1, level2, level3 all return Unchanged, so counters don't change
+            // With counter optimization: level1 must recompute (input changed)
+            // but level2 and level3 should skip (level1's counter didn't change)
             const result = await graph.pull("level3");
 
-            // Should only compute level1, then mark everything clean without further computation
-            expect(result.count).toBe(4); // Original value
+            // Should only compute level1, then skip level2 and level3 via counter check
+            expect(result.count).toBe(4); // Original value from first pull
             expect(computeCalls).toEqual(["level1"]);
 
             // All should be clean after pull
