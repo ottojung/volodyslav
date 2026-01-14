@@ -83,12 +83,14 @@ class InMemoryDatabase {
         const freshness = createSublevel("freshness");
         const inputs = createSublevel("inputs");
         const revdeps = createSublevel("revdeps");
+        const counters = createSublevel("counters");
 
         return {
             values,
             freshness,
             inputs,
             revdeps,
+            counters,
             batch: async (operations) => {
                 for (const op of operations) {
                     if (op.type === "put") {
