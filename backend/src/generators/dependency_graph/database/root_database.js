@@ -9,6 +9,7 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
+/** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').SchemaHash} SchemaHash */
@@ -34,9 +35,10 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * A record storing the input dependencies of a node.
+ * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
  * @property {string[]} inputs - Array of canonical input node names
+ * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
 /**
@@ -54,6 +56,13 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
+ * Database for storing node counters.
+ * Key: canonical node name
+ * Value: counter (monotonic integer tracking value changes)
+ * @typedef {GenericDatabase<Counter>} CountersDatabase
+ */
+
+/**
  * Storage container for a single dependency graph schema.
  * All data (values, freshness, indices) is isolated per schema hash.
  * @typedef {object} SchemaStorage
@@ -61,6 +70,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
+ * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
@@ -121,6 +131,8 @@ class RootDatabaseClass {
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<NodeKeyString[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+        /** @type {SimpleSublevel<Counter>} */
+        const countersSublevel = schemaSublevel.sublevel('counters', { valueEncoding: 'json' });
 
         let touchedSchema = false;
         /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
@@ -142,6 +154,7 @@ class RootDatabaseClass {
             freshness: makeTypedDatabase(freshnessSublevel),
             inputs: makeTypedDatabase(inputsSublevel),
             revdeps: makeTypedDatabase(revdepsSublevel),
+            counters: makeTypedDatabase(countersSublevel),
         };
 
         // Cache for future use

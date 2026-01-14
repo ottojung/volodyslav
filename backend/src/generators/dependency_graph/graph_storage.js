@@ -11,8 +11,10 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
 /** @typedef {import('./database/root_database').RevdepsDatabase} RevdepsDatabase */
+/** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
 /** @typedef {import('./database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
+/** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./database/types').SchemaSublevelType} SchemaSublevelType */
@@ -48,6 +50,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
  * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
+ * @property {BatchDatabaseOps<Counter>} counters - Batch operations for counters database (monotonic integers)
  */
 
 /**
@@ -62,6 +65,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {FreshnessDatabase} freshness - Node freshness
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
+ * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
@@ -141,6 +145,8 @@ function makeBatchBuilder(schemaStorage) {
         const inputsOps = [];
         /** @type {Array<DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<NodeKeyString[]>>} */
         const revdepsOps = [];
+        /** @type {Array<DatabasePutOperation<Counter> | DatabaseDelOperation<Counter>>} */
+        const countersOps = [];
 
         // Create overlay state for each sublevel
         /** @type {Map<DatabaseKey, DatabaseValue>} */
@@ -163,12 +169,18 @@ function makeBatchBuilder(schemaStorage) {
         /** @type {Set<DatabaseKey>} */
         const revdepsDels = new Set();
 
+        /** @type {Map<DatabaseKey, Counter>} */
+        const countersPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const countersDels = new Set();
+
         /** @type {BatchBuilder} */
         const builder = {
             values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
             freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
             inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
             revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
+            counters: makeTxDb(schemaStorage.counters, countersOps, countersPuts, countersDels),
         };
 
         const value = await fn(builder);
@@ -180,6 +192,7 @@ function makeBatchBuilder(schemaStorage) {
             ...freshnessOps,
             ...inputsOps,
             ...revdepsOps,
+            ...countersOps,
         ];
         
         await schemaStorage.batch(allOperations);
@@ -299,6 +312,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         freshness: schemaStorage.freshness,
         inputs: schemaStorage.inputs,
         revdeps: schemaStorage.revdeps,
+        counters: schemaStorage.counters,
 
         // Batch builder for atomic operations
         withBatch: makeBatchBuilder(schemaStorage),
