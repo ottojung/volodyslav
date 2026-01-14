@@ -67,7 +67,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record with counters)
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
  * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input (requires batch for consistency)
  * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
@@ -214,24 +214,30 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
     /**
      * Ensure a node is marked as materialized in the inputs database.
-     * This is always called regardless of whether the node has inputs.
-     * Writes the inputs record for the node.
+     * This is always called and always writes the full record including inputCounters.
+     * inputCounters must be updated whenever the node is validated (computed or skipped).
      * @param {NodeKeyString} node - Canonical node key
      * @param {NodeKeyString[]} inputs - Array of canonical input keys (may be empty)
+     * @param {number[]} inputCounters - Array of counter values for each input (must match inputs.length)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
-    async function ensureMaterialized(node, inputs, batch) {
-        // Check if already indexed (use batch-consistent read)
-        const existingInputs = await batch.inputs.get(node);
-        if (existingInputs !== undefined) {
-            return; // Already materialized
+    async function ensureMaterialized(node, inputs, inputCounters, batch) {
+        // Validate that inputCounters length matches inputs length
+        if (inputs.length !== inputCounters.length) {
+            throw new Error(
+                `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${node}`
+            );
         }
 
         // Convert NodeKeyString[] to string[] for storage
         const inputsAsStrings = inputs.map(nodeKeyStringToString);
-        // Store the inputs record (even if empty array)
-        batch.inputs.put(node, { inputs: inputsAsStrings });
+        
+        // Always write the full record (no early return)
+        batch.inputs.put(node, { 
+            inputs: inputsAsStrings,
+            inputCounters: inputCounters
+        });
     }
 
     /**

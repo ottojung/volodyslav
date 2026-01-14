@@ -267,6 +267,9 @@ describe("generators/dependency_graph counters", () => {
             // Manually corrupt the database by deleting the counter for src
             const storage = graph.getStorage();
             await storage.counters.del(toJsonKey("src", []));
+            
+            // Invalidate derived by marking it potentially-outdated
+            await storage.freshness.put(toJsonKey("derived", []), "potentially-outdated");
 
             // Now trying to pull derived should throw because src's counter is missing
             await expect(graph.pull("derived")).rejects.toThrow();
