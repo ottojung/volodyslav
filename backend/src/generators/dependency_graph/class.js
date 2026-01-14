@@ -444,7 +444,7 @@ class DependencyGraphClass {
      * @private
      * @param {ConcreteNode} nodeDefinition - The node to maybe recalculate
      * @param {BatchBuilder} batch - Batch builder for atomic operations
-     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache] - Memoization cache for pull operations
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} pullCache - Memoization cache for pull operations
      * @returns {Promise<RecomputeResult>}
      */
     async maybeRecalculate(nodeDefinition, batch, pullCache) {
@@ -572,7 +572,7 @@ class DependencyGraphClass {
      * @private
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
-     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache] - Memoization cache for pull operations
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} pullCache - Memoization cache for pull operations
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async unsafePull(nodeName, bindings, pullCache) {
@@ -612,11 +612,11 @@ class DependencyGraphClass {
      * Accepts nodeName-only string from public API.
      * @private
      * @param {NodeName} nodeName - The node name (functor only)
-     * @param {Array<ConstValue>} [bindings=[]]
-     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache] - Memoization cache for pull operations
+     * @param {Array<ConstValue>} bindings - Positional bindings array
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} pullCache - Memoization cache for pull operations
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName, bindings = [], pullCache) {
+    async pullWithStatus(nodeName, bindings, pullCache) {
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         return await this.pullByNodeKeyStringWithStatus(
@@ -630,30 +630,24 @@ class DependencyGraphClass {
      * Accepts serialized NodeKey JSON string.
      * @private
      * @param {NodeKeyString} nodeKeyStr - Serialized NodeKey JSON string
-     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache]
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} pullCache - Memoization cache for pull operations
      * @returns {Promise<RecomputeResult>}
      */
     async pullByNodeKeyStringWithStatus(nodeKeyStr, pullCache) {
-        if (pullCache) {
-            const cachedPromise = pullCache.get(nodeKeyStr);
-            if (cachedPromise) {
-                return cachedPromise;
-            }
-
-            const recomputePromise = this.storage.withBatch(async (batch) =>
-                this.pullByNodeKeyStringWithStatusInBatch(
-                    nodeKeyStr,
-                    batch,
-                    pullCache
-                )
-            );
-            pullCache.set(nodeKeyStr, recomputePromise);
-            return recomputePromise;
+        const cachedPromise = pullCache.get(nodeKeyStr);
+        if (cachedPromise) {
+            return cachedPromise;
         }
 
-        return this.storage.withBatch(async (batch) =>
-            this.pullByNodeKeyStringWithStatusInBatch(nodeKeyStr, batch)
+        const recomputePromise = this.storage.withBatch(async (batch) =>
+            this.pullByNodeKeyStringWithStatusInBatch(
+                nodeKeyStr,
+                batch,
+                pullCache
+            )
         );
+        pullCache.set(nodeKeyStr, recomputePromise);
+        return recomputePromise;
     }
 
     /**
@@ -661,7 +655,7 @@ class DependencyGraphClass {
      * @private
      * @param {NodeKeyString} nodeKeyStr - Serialized NodeKey JSON string
      * @param {BatchBuilder} batch - Batch builder for consistent reads
-     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} [pullCache]
+     * @param {Map<NodeKeyString, Promise<RecomputeResult>>} pullCache - Memoization cache for pull operations
      * @returns {Promise<RecomputeResult>}
      */
     async pullByNodeKeyStringWithStatusInBatch(
