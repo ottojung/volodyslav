@@ -41,7 +41,7 @@ function getTestCapabilities() {
 
 describe("generators/dependency_graph counters", () => {
     describe("Counter-based optimization", () => {
-        test("Test 1: skips recomputation when input returns Unchanged (counter doesn't change)", async () => {
+        test("skips recomputation when input returns Unchanged (counter doesn't change)", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -111,7 +111,7 @@ describe("generators/dependency_graph counters", () => {
             await db.close();
         });
 
-        test("Test 2: recomputes when input counter actually changed", async () => {
+        test("recomputes when input counter actually changed", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -173,7 +173,7 @@ describe("generators/dependency_graph counters", () => {
             await db.close();
         });
 
-        test("Test 3: multi-input counter snapshot comparison", async () => {
+        test("multi-input counter snapshot comparison", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -231,7 +231,7 @@ describe("generators/dependency_graph counters", () => {
             await db.close();
         });
 
-        test("Test 4: enforces invariants - missing counter throws error", async () => {
+        test("enforces invariants - missing counter throws error", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -277,7 +277,7 @@ describe("generators/dependency_graph counters", () => {
             await db.close();
         });
 
-        test("Test 4b: enforces invariants - missing inputCounters throws error", async () => {
+        test("enforces invariants - missing inputCounters throws error", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 

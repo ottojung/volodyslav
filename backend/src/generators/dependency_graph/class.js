@@ -6,7 +6,6 @@ const {
     stringToNodeName,
     stringToSchemaHash,
     stringToSchemaPattern,
-    stringToNodeKeyString,
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */

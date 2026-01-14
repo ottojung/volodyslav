@@ -605,6 +605,8 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
             const graphDef = [
                 {
                     output: "input1",
@@ -674,37 +676,29 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input1", { value: 1 });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("input2", { value: 2 });
-            await testDb.put(freshnessKey("input2"), "up-to-date");
-            await testDb.put("nodeA", { value: 10 });
-            await testDb.put(freshnessKey("nodeA"), "potentially-outdated");
-            await testDb.put("nodeB", { value: 20 });
-            await testDb.put(freshnessKey("nodeB"), "up-to-date");
-            await testDb.put("nodeC", { value: 30 });
-            await testDb.put(freshnessKey("nodeC"), "potentially-outdated");
-            await testDb.put("nodeD", { value: 40 });
-            await testDb.put(freshnessKey("nodeD"), "potentially-outdated");
-            await testDb.put("nodeE", { value: 50 });
-            await testDb.put(freshnessKey("nodeE"), "potentially-outdated");
-            const computeCalls = [];
+            // Set up the graph properly using graph operations
+            await graph.set("input1", { value: 1 });
+            await graph.set("input2", { value: 2 });
+            
+            // First pull to materialize all nodes with proper counters
+            await graph.pull("nodeE");
+            expect(computeCalls).toEqual(["nodeA", "nodeB", "nodeC", "nodeE"]);
+            
+            // Clear compute calls
+            computeCalls.length = 0;
+            
+            // Now change input1, which should trigger recomputation
+            await graph.set("input1", { value: 1 }); // Same value, but counter increments
 
             // Complex graph:
             // input1 -> nodeA -> nodeC -> nodeE
             // input2 -> nodeB /     \-> nodeD
 
-
-
-
-
-
             const result = await graph.pull("nodeE");
 
             // input1=1 -> nodeA=10 -> nodeC(10+20=30) -> nodeE=90
-            // nodeB is clean, so not recomputed, uses cached value 20
+            // nodeB should use counter optimization and skip recomputation (input2 counter unchanged)
+            // nodeA recomputes, nodeC recomputes (nodeA's counter changed), nodeE recomputes (nodeC's counter changed)
             expect(result.value).toBe(90);
             expect(computeCalls).toEqual(["nodeA", "nodeC", "nodeE"]);
 
@@ -714,6 +708,8 @@ describe("generators/dependency_graph", () => {
         test("mixed dirty and potentially-dirty with partial Unchanged", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
+
+            const computeCalls = [];
 
             const graphDef = [
                 {
@@ -726,8 +722,11 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "middle",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("middle");
+                        if (!oldValue) {
+                            return { value: 10 };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -736,8 +735,11 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["middle"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("output");
+                        if (!oldValue) {
+                            return { value: 20 };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -747,23 +749,22 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input", { value: 1 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("middle", { value: 10 });
-            await testDb.put(freshnessKey("middle"), "potentially-outdated");
-            await testDb.put("output", { value: 20 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
-            const computeCalls = [];
+            // Set up the graph properly
+            await graph.set("input", { value: 1 });
+            await graph.pull("output");
+            expect(computeCalls).toEqual(["middle", "output"]);
+            
+            computeCalls.length = 0;
+            
+            // Now change input
+            await graph.set("input", { value: 2 });
 
             // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
-            // Middle node returns Unchanged
-
+            // Middle node returns Unchanged, so output should not recompute (counter optimization)
 
             const result = await graph.pull("output");
 
-            // Middle returns Unchanged, so output should not recompute
+            // Middle returns Unchanged (counter stays same), so output should skip via counter optimization
             expect(result.value).toBe(20);
             expect(computeCalls).toEqual(["middle"]);
 
@@ -1200,6 +1201,8 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
             const graphDef = [
                 {
                     output: "input1",
@@ -1235,26 +1238,28 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input1", { value: 10 });
-            await testDb.put(freshnessKey("input1"), "up-to-date");
-            await testDb.put("input2", { value: 20 });
-            await testDb.put(freshnessKey("input2"), "up-to-date");
-            await testDb.put("output", { value: 999 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");            // This represents an inconsistent state where inputs are clean but output is dirty
+            // Set up properly with counters
+            await graph.set("input1", { value: 10 });
+            await graph.set("input2", { value: 20 });
+            await graph.pull("output");
+            
+            expect(computeCalls).toEqual(["output"]);
+            computeCalls.length = 0;
+            
+            // Manually mark output as potentially-outdated (simulating inconsistent state)
+            const storage = graph.getStorage();
+            await storage.freshness.put(toJsonKey("output", []), "potentially-outdated");
+            
+            // This represents an inconsistent state where inputs are clean but output is dirty
             // This shouldn't happen in normal operation but could occur after a crash or bug
-            // The graph should recover by treating the output as potentially-dirty
+            // The graph should recover by checking counter snapshots
 
-
-
-            const computeCalls = [];
             const result = await graph.pull("output");
 
-            // The output should be recomputed because it's dirty, even though inputs are clean
-            // This ensures the system can recover from inconsistent states
+            // With counter optimization: inputs haven't changed (counters match snapshot),
+            // so output should skip recomputation and just be marked up-to-date
             expect(result.value).toBe(30);
-            expect(computeCalls).toEqual(["output"]);
+            expect(computeCalls).toEqual([]); // No recomputation due to counter optimization
 
             // Output should now be clean
             const outputFreshness = await graph.debugGetFreshness("output");
@@ -1583,6 +1588,8 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
             const graphDef = [
                 {
                     output: "input",
@@ -1594,8 +1601,11 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathA",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("pathA");
+                        if (!oldValue) {
+                            return { value: 10 };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -1604,8 +1614,11 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathB",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("pathB");
+                        if (!oldValue) {
+                            return { value: 20 };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -1614,8 +1627,11 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathC",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("pathC");
+                        if (!oldValue) {
+                            return { value: 30 };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -1626,7 +1642,7 @@ describe("generators/dependency_graph", () => {
                     inputs: ["pathA", "pathB", "pathC"],
                     computor: () => {
                         computeCalls.push("output");
-                        return { value: 999 };
+                        return { value: 100 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1635,31 +1651,26 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input", { value: 5 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("pathA", { value: 10 });
-            await testDb.put(freshnessKey("pathA"), "potentially-outdated");
-            await testDb.put("pathB", { value: 20 });
-            await testDb.put(freshnessKey("pathB"), "potentially-outdated");
-            await testDb.put("pathC", { value: 30 });
-            await testDb.put(freshnessKey("pathC"), "potentially-outdated");
-            await testDb.put("output", { value: 100 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
-            const computeCalls = [];
+            // Set up properly with counters
+            await graph.set("input", { value: 5 });
+            await graph.pull("output");
+            expect(computeCalls).toEqual(["pathA", "pathB", "pathC", "output"]);
+            
+            computeCalls.length = 0;
+            
+            // Now change input
+            await graph.set("input", { value: 6 });
 
             // Wide diamond where ALL paths return Unchanged
             // input -> pathA, pathB, pathC -> output (all unchanged)
-            // Output should NOT recompute because all inputs are unchanged
+            // Output should NOT recompute because all input counters are unchanged
 
 
 
 
             const result = await graph.pull("output");
 
-            // All paths returned Unchanged, so output should not recompute
-            // This is an optimization - if all inputs are unchanged, output remains unchanged
+            // All paths returned Unchanged (counters stay same), so output should skip via counter optimization
             expect(result.value).toBe(100); // Original cached value
             expect(computeCalls).toEqual(["pathA", "pathB", "pathC"]);
             expect(computeCalls).not.toContain("output");
