@@ -328,7 +328,7 @@ describe("generators/dependency_graph counters", () => {
             await db.close();
         });
 
-        test("detects corrupted InputsRecord when input list changes", async () => {
+        test("recomputes when InputsRecord input list changes", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -389,14 +389,19 @@ describe("generators/dependency_graph counters", () => {
             // Mark derived as potentially-outdated
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When we pull derived, it should detect the mismatch and throw
-            // The schema says derived depends on sourceA, but InputsRecord says sourceB
-            await expect(graph.pull("derived")).rejects.toThrow(/input.*mismatch|InputsRecord/i);
+            // When we pull derived, it should detect the mismatch, skip counter optimization,
+            // and recompute using the correct inputs from the schema (sourceA)
+            const resultV2 = await graph.pull("derived");
+            
+            // Result should be correct according to schema (sourceA with 3 events)
+            // Not corrupted data (sourceB with 2 events)
+            expect(resultV2.meta_events[0].value).toBe(3);
+            expect(resultV2.meta_events[0].source).toBe("A");
 
             await db.close();
         });
 
-        test("throws error when stored input list doesn't match current schema", async () => {
+        test("recomputes when stored input list doesn't match current schema", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -444,9 +449,13 @@ describe("generators/dependency_graph counters", () => {
             // Mark derived as potentially-outdated to trigger validation
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // This should throw because stored inputs don't match current schema
-            // The schema says derived depends on sourceA, but the InputsRecord says sourceB
-            await expect(graph.pull("derived")).rejects.toThrow(/input.*mismatch|InputsRecord/i);
+            // When pulling, system should detect mismatch, skip counter optimization,
+            // and recompute with correct inputs from schema (sourceA)
+            const result = await graph.pull("derived");
+            
+            // Result should be correct: sourceA (10) * 2 = 20
+            // Not sourceB (20) * 2 = 40
+            expect(result.value).toBe(20);
 
             await db.close();
         });

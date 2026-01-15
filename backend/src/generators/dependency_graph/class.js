@@ -518,50 +518,44 @@ class DependencyGraphClass {
                     }
                 }
 
-                // If inputs don't match, schema has changed - must recompute
-                if (!inputsMatch) {
-                    throw new Error(
-                        `InputsRecord input list mismatch for node ${nodeKey}: ` +
-                        `stored inputs ${JSON.stringify(storedInputs)} don't match ` +
-                        `current inputs ${JSON.stringify(currentInputs)}. ` +
-                        `Schema may have changed - recomputation required.`
-                    );
-                }
-
-                // Check if all counters match the snapshot
-                let countersMatch = true;
-                for (let i = 0; i < currentInputCounters.length; i++) {
-                    if (currentInputCounters[i] !== inputsRecord.inputCounters[i]) {
-                        countersMatch = false;
-                        break;
+                // Only use counter optimization if inputs match
+                // If inputs don't match, skip optimization and fall through to recomputation
+                if (inputsMatch) {
+                    // Check if all counters match the snapshot
+                    let countersMatch = true;
+                    for (let i = 0; i < currentInputCounters.length; i++) {
+                        if (currentInputCounters[i] !== inputsRecord.inputCounters[i]) {
+                            countersMatch = false;
+                            break;
+                        }
                     }
+
+                    // If counters match: skip recomputation
+                    if (countersMatch) {
+                        // Ensure reverse dependencies are indexed
+                        await this.storage.ensureReverseDepsIndexed(
+                            nodeKey,
+                            nodeDefinition.inputs,
+                            batch
+                        );
+                        
+                        // Write current inputCounters snapshot (same as before)
+                        await this.storage.ensureMaterialized(
+                            nodeKey,
+                            nodeDefinition.inputs,
+                            currentInputCounters,
+                            batch
+                        );
+                        
+                        // Mark up-to-date
+                        batch.freshness.put(nodeKey, "up-to-date");
+
+                        // Return cached value without calling computor
+                        return { value: oldValue, status: "unchanged" };
+                    }
+
+                    // Counters don't match: need to recompute (fall through)
                 }
-
-                // If counters match: skip recomputation
-                if (countersMatch) {
-                    // Ensure reverse dependencies are indexed
-                    await this.storage.ensureReverseDepsIndexed(
-                        nodeKey,
-                        nodeDefinition.inputs,
-                        batch
-                    );
-                    
-                    // Write current inputCounters snapshot (same as before)
-                    await this.storage.ensureMaterialized(
-                        nodeKey,
-                        nodeDefinition.inputs,
-                        currentInputCounters,
-                        batch
-                    );
-                    
-                    // Mark up-to-date
-                    batch.freshness.put(nodeKey, "up-to-date");
-
-                    // Return cached value without calling computor
-                    return { value: oldValue, status: "unchanged" };
-                }
-
-                // Counters don't match: need to recompute (fall through)
             }
         }
 
