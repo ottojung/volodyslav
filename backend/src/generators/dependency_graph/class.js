@@ -6,6 +6,7 @@ const {
     stringToNodeName,
     stringToSchemaHash,
     stringToSchemaPattern,
+    nodeKeyStringToString,
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -497,6 +498,33 @@ class DependencyGraphClass {
                     throw new Error(
                         `inputCounters length mismatch for node ${nodeKey}: ` +
                         `expected ${nodeDefinition.inputs.length}, got ${inputsRecord.inputCounters.length}`
+                    );
+                }
+
+                // CRITICAL: Validate that stored input list matches current schema
+                // This prevents using counter optimization when schema has changed
+                // (e.g., input A swapped for B with same arity)
+                const storedInputs = inputsRecord.inputs; // Array of strings
+                const currentInputs = nodeDefinition.inputs.map(nodeKeyStringToString); // Convert to strings
+                
+                // Check if the input lists match exactly (same order, same identity)
+                let inputsMatch = storedInputs.length === currentInputs.length;
+                if (inputsMatch) {
+                    for (let i = 0; i < storedInputs.length; i++) {
+                        if (storedInputs[i] !== currentInputs[i]) {
+                            inputsMatch = false;
+                            break;
+                        }
+                    }
+                }
+
+                // If inputs don't match, schema has changed - must recompute
+                if (!inputsMatch) {
+                    throw new Error(
+                        `InputsRecord input list mismatch for node ${nodeKey}: ` +
+                        `stored inputs ${JSON.stringify(storedInputs)} don't match ` +
+                        `current inputs ${JSON.stringify(currentInputs)}. ` +
+                        `Schema may have changed - recomputation required.`
                     );
                 }
 

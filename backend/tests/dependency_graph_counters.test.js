@@ -327,5 +327,128 @@ describe("generators/dependency_graph counters", () => {
 
             await db.close();
         });
+
+        test("detects corrupted InputsRecord when input list changes", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            // Schema with derived depending on sourceA
+            const graphDef = [
+                {
+                    output: "sourceA",
+                    inputs: [],
+                    computor: async () => ({ type: "all_events", events: [1, 2, 3] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "sourceB",
+                    inputs: [],
+                    computor: async () => ({ type: "all_events", events: [4, 5] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "derived",
+                    inputs: ["sourceA"],
+                    computor: async (inputs) => ({
+                        type: "meta_events",
+                        meta_events: [{ source: "A", value: inputs[0].events.length }],
+                    }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, graphDef);
+
+            // Set up initial state
+            await graph.set("sourceA", { type: "all_events", events: [1, 2, 3] });
+            await graph.set("sourceB", { type: "all_events", events: [4, 5] });
+            const resultV1 = await graph.pull("derived");
+            
+            // Derived should have meta_events with value 3 (from sourceA)
+            expect(resultV1.meta_events[0].value).toBe(3);
+            expect(resultV1.meta_events[0].source).toBe("A");
+
+            // Now manually corrupt the InputsRecord to point to sourceB instead
+            // This simulates a database corruption scenario
+            const storage = graph.getStorage();
+            const derivedKey = toJsonKey("derived", []);
+            const sourceBKey = toJsonKey("sourceB", []);
+            
+            // Get sourceB's counter
+            const sourceBCounter = await storage.counters.get(sourceBKey);
+            
+            // Corrupt the InputsRecord
+            await storage.inputs.put(derivedKey, {
+                inputs: [sourceBKey], // Changed to sourceB!
+                inputCounters: [sourceBCounter]
+            });
+            
+            // Mark derived as potentially-outdated
+            await storage.freshness.put(derivedKey, "potentially-outdated");
+
+            // When we pull derived, it should detect the mismatch and throw
+            // The schema says derived depends on sourceA, but InputsRecord says sourceB
+            await expect(graph.pull("derived")).rejects.toThrow(/input.*mismatch|InputsRecord/i);
+
+            await db.close();
+        });
+
+        test("throws error when stored input list doesn't match current schema", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            // Setup with schema
+            const graphDef = [
+                {
+                    output: "sourceA",
+                    inputs: [],
+                    computor: async () => ({ value: 10 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "sourceB",
+                    inputs: [],
+                    computor: async () => ({ value: 20 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "derived",
+                    inputs: ["sourceA"],
+                    computor: async (inputs) => ({ value: inputs[0].value * 2 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, graphDef);
+            await graph.set("sourceA", { value: 10 });
+            await graph.set("sourceB", { value: 20 });
+            await graph.pull("derived");
+
+            // Manually corrupt the InputsRecord to have wrong inputs
+            // This simulates a database corruption or bug scenario
+            const storage = graph.getStorage();
+            const derivedKey = toJsonKey("derived", []);
+            
+            // Corrupt the InputsRecord to point to sourceB instead of sourceA
+            await storage.inputs.put(derivedKey, {
+                inputs: [toJsonKey("sourceB", [])], // Wrong input!
+                inputCounters: [1]
+            });
+            
+            // Mark derived as potentially-outdated to trigger validation
+            await storage.freshness.put(derivedKey, "potentially-outdated");
+
+            // This should throw because stored inputs don't match current schema
+            // The schema says derived depends on sourceA, but the InputsRecord says sourceB
+            await expect(graph.pull("derived")).rejects.toThrow(/input.*mismatch|InputsRecord/i);
+
+            await db.close();
+        });
     });
 });
