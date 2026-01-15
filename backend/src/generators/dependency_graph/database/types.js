@@ -67,6 +67,12 @@
  */
 
 /**
+ * Counter for tracking node value changes.
+ * A monotonic integer that increments when the persisted value changes.
+ * @typedef {number} Counter
+ */
+
+/**
  * Type guard to check if a value is a Freshness state.
  * @param {unknown} value
  * @returns {value is Freshness}
@@ -92,7 +98,7 @@ function isDatabaseValue(value) {
 }
 
 /**
- * @typedef {DatabaseValue | Freshness | InputsRecord | NodeKeyString[] | 1} DatabaseStoredValue
+ * @typedef {DatabaseValue | Freshness | InputsRecord | NodeKeyString[] | Counter | 1} DatabaseStoredValue
  */
 
 /**
@@ -119,13 +125,14 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter>} DatabaseBatchOperation
  */
 
 /**
- * A record storing the input dependencies of a node.
+ * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
  * @property {string[]} inputs - Array of canonical input node names
+ * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
 class SchemaPatternClass {

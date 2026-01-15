@@ -6,6 +6,7 @@ const {
     stringToNodeName,
     stringToSchemaHash,
     stringToSchemaPattern,
+    nodeKeyStringToString,
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -314,16 +315,24 @@ class DependencyGraphClass {
 
         // Use batch builder for atomic operations
         await this.storage.withBatch(async (batch) => {
+            // Get old counter (if exists)
+            const oldCounter = await batch.counters.get(nodeDefinition.output);
+            
+            // Increment counter (or initialize to 1 if new)
+            const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
+            batch.counters.put(nodeDefinition.output, newCounter);
+            
             // Store the value
             batch.values.put(nodeDefinition.output, value);
 
             // Mark this key as up-to-date
             batch.freshness.put(nodeDefinition.output, "up-to-date");
 
-            // Ensure the node is materialized (write inputs record with empty array)
+            // Ensure the node is materialized (write inputs record with empty array and empty inputCounters)
             await this.storage.ensureMaterialized(
                 nodeDefinition.output,
                 nodeDefinition.inputs,
+                [], // inputCounters is empty for source nodes (no inputs)
                 batch
             );
 
@@ -437,9 +446,7 @@ class DependencyGraphClass {
 
     /**
      * Maybe recalculates a potentially-outdated node.
-     * If all inputs are up-to-date, returns cached value.
-     * Otherwise, recalculates.
-     * Special optimization: if computation returns Unchanged, propagate up-to-date downstream.
+     * Uses counter-based optimization: if input counters haven't changed, skip recomputation.
      *
      * @private
      * @param {ConcreteNode} nodeDefinition - The node to maybe recalculate
@@ -449,53 +456,107 @@ class DependencyGraphClass {
     async maybeRecalculate(nodeDefinition, batch) {
         const nodeKey = nodeDefinition.output;
 
-        // Pull all inputs (recursively ensures they're up-to-date)
-        const inputValues = [];
-        let allInputsUnchanged = true;
-
-        for (const inputKey of nodeDefinition.inputs) {
-            const { value: inputValue, status: inputStatus } =
-                await this.pullByNodeKeyStringWithStatus(inputKey);
-            inputValues.push(inputValue);
-
-            // If input is NOT 'unchanged', we can't guarantee we are unchanged.
-            // 'cached' inputs might have changed since we last ran.
-            // 'changed' inputs definitely changed.
-            if (inputStatus !== "unchanged") {
-                allInputsUnchanged = false;
-            }
-        }
-
         // Get old value (use batch-consistent read)
         const oldValue = await batch.values.get(nodeKey);
 
-        // Optimization: if all inputs are 'unchanged' (meaning they were outdated but recomputed to same value),
-        // then we can skip recomputation and mark ourselves up-to-date.
-        // However, we must still ensure the node is indexed for correct invalidation.
-        if (
-            allInputsUnchanged &&
-            nodeDefinition.inputs.length > 0 &&
-            oldValue !== undefined
-        ) {
-            // Ensure node is materialized
-            await this.storage.ensureMaterialized(
-                nodeKey,
-                nodeDefinition.inputs,
-                batch
-            );
+        // Pull all inputs (recursively ensures they're up-to-date)
+        const inputValues = [];
+        const currentInputCounters = [];
+        
+        for (const inputKey of nodeDefinition.inputs) {
+            const { value: inputValue } =
+                await this.pullByNodeKeyStringWithStatus(inputKey);
+            inputValues.push(inputValue);
+            
+            // Get the counter for this input (must exist if node was pulled)
+            const inputCounter = await batch.counters.get(inputKey);
+            if (inputCounter === undefined) {
+                throw new Error(
+                    `Missing counter for input ${inputKey} after pull`
+                );
+            }
+            currentInputCounters.push(inputCounter);
+        }
 
-            // Ensure reverse dependencies are indexed (if it has inputs)
-            // This is critical for pattern nodes which have no static dependents map entry
-            await this.storage.ensureReverseDepsIndexed(
-                nodeKey,
-                nodeDefinition.inputs,
-                batch
-            );
+        // Counter-based skip optimization: if node has inputs, old value exists, and counters match
+        if (nodeDefinition.inputs.length > 0 && oldValue !== undefined) {
+            // Read persisted InputsRecord
+            const inputsRecord = await batch.inputs.get(nodeKey);
+            
+            // If node was materialized, InputsRecord must exist
+            // (If it doesn't exist, this is first computation, so fall through)
+            if (inputsRecord) {
+                // inputCounters must exist in InputsRecord (hard requirement)
+                if (!inputsRecord.inputCounters) {
+                    throw new Error(
+                        `Missing inputCounters in InputsRecord for node ${nodeKey}`
+                    );
+                }
+                
+                // Validate inputCounters have correct length
+                if (inputsRecord.inputCounters.length !== nodeDefinition.inputs.length) {
+                    throw new Error(
+                        `inputCounters length mismatch for node ${nodeKey}: ` +
+                        `expected ${nodeDefinition.inputs.length}, got ${inputsRecord.inputCounters.length}`
+                    );
+                }
 
-            // Mark up-to-date
-            batch.freshness.put(nodeKey, "up-to-date");
+                // CRITICAL: Validate that stored input list matches current schema
+                // This prevents using counter optimization when schema has changed
+                // (e.g., input A swapped for B with same arity)
+                const storedInputs = inputsRecord.inputs; // Array of strings
+                const currentInputs = nodeDefinition.inputs.map(nodeKeyStringToString); // Convert to strings
+                
+                // Check if the input lists match exactly (same order, same identity)
+                let inputsMatch = storedInputs.length === currentInputs.length;
+                if (inputsMatch) {
+                    for (let i = 0; i < storedInputs.length; i++) {
+                        if (storedInputs[i] !== currentInputs[i]) {
+                            inputsMatch = false;
+                            break;
+                        }
+                    }
+                }
 
-            return { value: oldValue, status: "unchanged" };
+                // Only use counter optimization if inputs match
+                // If inputs don't match, skip optimization and fall through to recomputation
+                if (inputsMatch) {
+                    // Check if all counters match the snapshot
+                    let countersMatch = true;
+                    for (let i = 0; i < currentInputCounters.length; i++) {
+                        if (currentInputCounters[i] !== inputsRecord.inputCounters[i]) {
+                            countersMatch = false;
+                            break;
+                        }
+                    }
+
+                    // If counters match: skip recomputation
+                    if (countersMatch) {
+                        // Ensure reverse dependencies are indexed
+                        await this.storage.ensureReverseDepsIndexed(
+                            nodeKey,
+                            nodeDefinition.inputs,
+                            batch
+                        );
+                        
+                        // Write current inputCounters snapshot (same as before)
+                        await this.storage.ensureMaterialized(
+                            nodeKey,
+                            nodeDefinition.inputs,
+                            currentInputCounters,
+                            batch
+                        );
+                        
+                        // Mark up-to-date
+                        batch.freshness.put(nodeKey, "up-to-date");
+
+                        // Return cached value without calling computor
+                        return { value: oldValue, status: "unchanged" };
+                    }
+
+                    // Counters don't match: need to recompute (fall through)
+                }
+            }
         }
 
         // Compute new value
@@ -523,13 +584,6 @@ class DependencyGraphClass {
             }
         }
 
-        // Always ensure node is materialized (even with 0 inputs)
-        await this.storage.ensureMaterialized(
-            nodeKey,
-            nodeDefinition.inputs,
-            batch
-        );
-
         // Ensure reverse dependencies are indexed (only if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
             await this.storage.ensureReverseDepsIndexed(
@@ -545,6 +599,24 @@ class DependencyGraphClass {
         }
 
         if (isUnchanged(computedValue)) {
+            // Computor returned Unchanged: don't increment counter, don't change value
+            
+            // Ensure counter exists (initialize to 1 if new, but don't increment if exists)
+            const oldCounter = await batch.counters.get(nodeKey);
+            if (oldCounter === undefined) {
+                // First time computing this node, initialize counter
+                batch.counters.put(nodeKey, 1);
+            }
+            // else: keep existing counter (don't increment)
+            
+            // Always write inputCounters snapshot (even if Unchanged)
+            await this.storage.ensureMaterialized(
+                nodeKey,
+                nodeDefinition.inputs,
+                currentInputCounters,
+                batch
+            );
+            
             // Mark up-to-date
             batch.freshness.put(nodeKey, "up-to-date");
 
@@ -555,9 +627,29 @@ class DependencyGraphClass {
             }
             return { value: result, status: "unchanged" };
         } else {
-            // Store value, mark up-to-date
+            // Computor returned new value: increment counter and store value
+            
+            // Get old counter (if exists)
+            const oldCounter = await batch.counters.get(nodeKey);
+            
+            // Increment counter (or initialize to 1 if new)
+            const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
+            batch.counters.put(nodeKey, newCounter);
+            
+            // Store value
             batch.values.put(nodeKey, computedValue);
+            
+            // Write inputCounters snapshot
+            await this.storage.ensureMaterialized(
+                nodeKey,
+                nodeDefinition.inputs,
+                currentInputCounters,
+                batch
+            );
+            
+            // Mark up-to-date
             batch.freshness.put(nodeKey, "up-to-date");
+            
             return { value: computedValue, status: "changed" };
         }
     }

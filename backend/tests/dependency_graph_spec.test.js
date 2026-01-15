@@ -101,12 +101,14 @@ class InMemoryDatabase {
         const freshness = createSublevel('freshness');
         const inputs = createSublevel('inputs');
         const revdeps = createSublevel('revdeps');
+        const counters = createSublevel('counters');
 
         return {
             values,
             freshness,
             inputs,
             revdeps,
+            counters,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({ 

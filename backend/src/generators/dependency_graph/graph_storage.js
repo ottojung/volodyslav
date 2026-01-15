@@ -11,8 +11,10 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
 /** @typedef {import('./database/root_database').RevdepsDatabase} RevdepsDatabase */
+/** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
 /** @typedef {import('./database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
+/** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./database/types').SchemaSublevelType} SchemaSublevelType */
@@ -48,6 +50,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
  * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
+ * @property {BatchDatabaseOps<Counter>} counters - Batch operations for counters database (monotonic integers)
  */
 
 /**
@@ -62,8 +65,9 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {FreshnessDatabase} freshness - Node freshness
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
+ * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record with counters)
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
  * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input (requires batch for consistency)
  * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
@@ -141,6 +145,8 @@ function makeBatchBuilder(schemaStorage) {
         const inputsOps = [];
         /** @type {Array<DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<NodeKeyString[]>>} */
         const revdepsOps = [];
+        /** @type {Array<DatabasePutOperation<Counter> | DatabaseDelOperation<Counter>>} */
+        const countersOps = [];
 
         // Create overlay state for each sublevel
         /** @type {Map<DatabaseKey, DatabaseValue>} */
@@ -163,12 +169,18 @@ function makeBatchBuilder(schemaStorage) {
         /** @type {Set<DatabaseKey>} */
         const revdepsDels = new Set();
 
+        /** @type {Map<DatabaseKey, Counter>} */
+        const countersPuts = new Map();
+        /** @type {Set<DatabaseKey>} */
+        const countersDels = new Set();
+
         /** @type {BatchBuilder} */
         const builder = {
             values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
             freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
             inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
             revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
+            counters: makeTxDb(schemaStorage.counters, countersOps, countersPuts, countersDels),
         };
 
         const value = await fn(builder);
@@ -180,6 +192,7 @@ function makeBatchBuilder(schemaStorage) {
             ...freshnessOps,
             ...inputsOps,
             ...revdepsOps,
+            ...countersOps,
         ];
         
         await schemaStorage.batch(allOperations);
@@ -201,24 +214,30 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
     /**
      * Ensure a node is marked as materialized in the inputs database.
-     * This is always called regardless of whether the node has inputs.
-     * Writes the inputs record for the node.
+     * This is always called and always writes the full record including inputCounters.
+     * inputCounters must be updated whenever the node is validated (computed or skipped).
      * @param {NodeKeyString} node - Canonical node key
      * @param {NodeKeyString[]} inputs - Array of canonical input keys (may be empty)
+     * @param {number[]} inputCounters - Array of counter values for each input (must match inputs.length)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
-    async function ensureMaterialized(node, inputs, batch) {
-        // Check if already indexed (use batch-consistent read)
-        const existingInputs = await batch.inputs.get(node);
-        if (existingInputs !== undefined) {
-            return; // Already materialized
+    async function ensureMaterialized(node, inputs, inputCounters, batch) {
+        // Validate that inputCounters length matches inputs length
+        if (inputs.length !== inputCounters.length) {
+            throw new Error(
+                `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${node}`
+            );
         }
 
         // Convert NodeKeyString[] to string[] for storage
         const inputsAsStrings = inputs.map(nodeKeyStringToString);
-        // Store the inputs record (even if empty array)
-        batch.inputs.put(node, { inputs: inputsAsStrings });
+        
+        // Always write the full record (no early return)
+        batch.inputs.put(node, { 
+            inputs: inputsAsStrings,
+            inputCounters: inputCounters
+        });
     }
 
     /**
@@ -299,6 +318,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         freshness: schemaStorage.freshness,
         inputs: schemaStorage.inputs,
         revdeps: schemaStorage.revdeps,
+        counters: schemaStorage.counters,
 
         // Batch builder for atomic operations
         withBatch: makeBatchBuilder(schemaStorage),

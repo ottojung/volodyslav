@@ -374,19 +374,20 @@ describe("dependency_graph batch consistency", () => {
 
             await storage.withBatch(async (batch) => {
                 // First stage inputs with inputA
-                batch.inputs.put(nodeKey, { inputs: [inputA] });
+                batch.inputs.put(nodeKey, { inputs: [inputA], inputCounters: [1] });
 
                 // Then call ensureMaterialized with inputB
-                // This should NOT overwrite because node is already materialized (in batch view)
-                await storage.ensureMaterialized(nodeKey, [inputB], batch);
+                // With the new implementation, this WILL overwrite (always writes)
+                await storage.ensureMaterialized(nodeKey, [inputB], [2], batch);
             });
 
-            // After commit, should have inputA (the first write), not inputB
+            // After commit, should have inputB (the last write), not inputA
+            // This is different from the old behavior where it wouldn't overwrite
             let inputs;
             await storage.withBatch(async (batch) => {
                 inputs = await storage.getInputs(nodeKey, batch);
             });
-            expect(inputs).toEqual([inputA]);
+            expect(inputs).toEqual([inputB]);
 
             await db.close();
         });
