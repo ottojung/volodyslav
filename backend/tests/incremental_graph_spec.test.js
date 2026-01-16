@@ -1132,7 +1132,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await g.invalidate("a");
         await g.pull("a");
 
-        await g.pull("a");
+        await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
         await expect(fr("d")).resolves.toBe("missing");
@@ -1400,7 +1400,7 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         expect(fb).toBe("up-to-date");
     });
 
-    test("set() on source node must include it in debugListMaterializedNodes", async () => {
+    test("invalidate() on source node must include it in debugListMaterializedNodes", async () => {
         const db = new InMemoryDatabase();
         const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
@@ -1611,7 +1611,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
         const result = await g.pull("top");
         expect(result).toBeDefined();
 
-        // Note: sharedC.counter.calls is 0 because set() doesn't call computor, and pull finds it already up-to-date
+        // Note: sharedC.counter.calls is 1 because invalidate() + pull causes computor to execute and read from cell
         expect(sharedC.counter.calls).toBe(1);
         expect(b1C.counter.calls).toBe(1);
         expect(b2C.counter.calls).toBe(1);
@@ -1669,7 +1669,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
         await g.pull("d");
 
         // Each node computed at most once
-        // Note: aC.counter.calls is 0 because set() doesn't call computor
+        // Note: aC.counter.calls is 1 because invalidate() + pull causes computor to execute and read from cell
         expect(aC.counter.calls).toBe(1);
         expect(b1C.counter.calls).toBe(1);
         expect(b2C.counter.calls).toBe(1);
@@ -1704,7 +1704,7 @@ describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
         await g.pull("d");
 
         // Z (and W) should be computed once despite being reached through different routes
-        // Note: wC.counter.calls is 0 because set() doesn't call computor
+        // Note: wC.counter.calls is 1 because invalidate() + pull causes computor to execute and read from cell
         expect(wC.counter.calls).toBe(1);
         expect(zC.counter.calls).toBe(1);
         expect(xC.counter.calls).toBe(1);
@@ -1886,7 +1886,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
 
         db.resetLogs();
 
-        // Now set(source) again, which should invalidate all materialized dependents
+        // Now invalidate(source) again, which should invalidate all materialized dependents
         sourceCell.value = { n: 10 };
         await g.invalidate("source");
 
