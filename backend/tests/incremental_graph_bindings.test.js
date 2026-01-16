@@ -11,8 +11,8 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
-const { makeDependencyGraph } = require("../src/generators/dependency_graph");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
@@ -60,7 +60,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
 
             // Set source value
             await graph.set("source", { value: 42 });
@@ -99,7 +99,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
             await graph.set("source", { value: 1 });
 
             // Pull with different bindings - should compute each separately
@@ -143,7 +143,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
             await graph.set("source", { value: 1 });
 
             // Pull same bindings twice
@@ -187,7 +187,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
             await graph.set("source", { value: 1 });
 
             // Pull with two different bindings
@@ -237,7 +237,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph1 = makeDependencyGraph(db1, schemas);
+            const graph1 = makeIncrementalGraph(db1, schemas);
             await graph1.set("source", { value: 1 });
 
             // Materialize instances with different bindings
@@ -248,7 +248,7 @@ describe("Bound variables in computors", () => {
 
             // Reopen database
             const db2 = await getRootDatabase(capabilities);
-            const graph2 = makeDependencyGraph(db2, schemas);
+            const graph2 = makeIncrementalGraph(db2, schemas);
 
             // Pull should get cached values
             const result1 = await graph2.pull("derived", ["first"]);
@@ -294,7 +294,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
             await graph.set("source", { value: 10 });
 
             const result = await graph.pull("final", ["deep"]);
@@ -350,7 +350,7 @@ describe("Bound variables in computors", () => {
                 })),
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
             await graph.set("source", { value: 1 });
 
             // Pull one of the deepest nodes
@@ -397,7 +397,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
 
             // Pull f with specific bindings
             const result = await graph.pull("f", ["A", "B"]);
@@ -463,7 +463,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
 
             // Pull f with specific bindings
             const result = await graph.pull("f", ["A", "B", "C"]);
@@ -528,7 +528,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
             await graph.set("source", { value: 1 });
 
             // Pull top - should compute expensive only once even though two consumers depend on it
@@ -559,7 +559,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
 
             // Pull without required binding
             await expect(graph.pull("derived")).rejects.toThrow(
@@ -585,7 +585,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
 
             // Pull with wrong number of bindings (arity mismatch)
             await expect(graph.pull("derived", [1, 2])).rejects.toThrow(
@@ -620,7 +620,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            expect(() => makeDependencyGraph(db, schemas)).toThrow(
+            expect(() => makeIncrementalGraph(db, schemas)).toThrow(
                 /input variable 'x' is not present in/i
             );
 

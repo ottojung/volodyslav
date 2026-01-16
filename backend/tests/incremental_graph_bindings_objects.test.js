@@ -5,8 +5,8 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
-const { makeDependencyGraph } = require("../src/generators/dependency_graph");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
@@ -57,7 +57,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeDependencyGraph(db, schemas);
+        const graph = makeIncrementalGraph(db, schemas);
 
         // Set source value
         await graph.set("source", { type: "all_events", events: [] });
@@ -105,7 +105,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeDependencyGraph(db, schemas);
+        const graph = makeIncrementalGraph(db, schemas);
         await graph.set("source", { type: "all_events", events: [] });
 
         // Pull with different object bindings
@@ -154,7 +154,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeDependencyGraph(db, schemas);
+        const graph = makeIncrementalGraph(db, schemas);
         await graph.set("source", { type: "all_events", events: [] });
 
         const binding = { type: "all_events", events: [{ id: "test" }] };

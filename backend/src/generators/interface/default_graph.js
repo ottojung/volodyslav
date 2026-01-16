@@ -1,10 +1,10 @@
 
-const { isUnchanged } = require("../dependency_graph");
+const { isUnchanged } = require("../incremental_graph");
 const { metaEvents, eventContext } = require("../individual");
 
 /**
- * Creates the default graph definition for the dependency graph.
- * @returns {Array<import('../dependency_graph/types').NodeDef>}
+ * Creates the default graph definition for the incremental graph.
+ * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
 function createDefaultGraphDefinition() {
     return [

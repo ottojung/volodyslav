@@ -5,7 +5,7 @@
  * Usage:
  *   const db = await getRootDatabase(capabilities);
  *   const graphDef = [..];
- *   const graph = makeDependencyGraph(db, graphDef);
+ *   const graph = makeIncrementalGraph(db, graphDef);
  *   const testDb = makeTestDatabase(graph);
  *   
  *   // Now use old pattern:
@@ -13,9 +13,9 @@
  *   await testDb.put("key", "up-to-date");  // stores to storage.freshness
  */
 
-const { isFreshness } = require('../src/generators/dependency_graph/database');
-const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/dependency_graph/node_key');
-const { canonicalize } = require('../src/generators/dependency_graph/expr');
+const { isFreshness } = require('../src/generators/incremental_graph/database');
+const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/incremental_graph/node_key');
+const { canonicalize } = require('../src/generators/incremental_graph/expr');
 const { isJsonKey } = require('./test_json_key_helper');
 
 /**
@@ -36,7 +36,7 @@ function toJsonKey(key) {
 
 /**
  * Create a test database interface that mimics the old Database class.
- * @param {import('../src/generators/dependency_graph').DependencyGraph} graph
+ * @param {import('../src/generators/incremental_graph').IncrementalGraph} graph
  * @returns {{put: (key: string, value: any) => Promise<void>, del: (key: string) => Promise<void>}}
  */
 function makeTestDatabase(graph) {

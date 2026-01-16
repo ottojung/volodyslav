@@ -11,7 +11,7 @@ class InvalidNode extends Error {
      * @param {NodeName} nodeName
      */
     constructor(nodeName) {
-        super(`Node ${nodeName} not found in the dependency graph.`);
+        super(`Node ${nodeName} not found in the incremental graph.`);
         this.name = "InvalidNodeError";
         this.nodeName = nodeName;
     }

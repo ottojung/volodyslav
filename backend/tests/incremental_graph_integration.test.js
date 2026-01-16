@@ -1,15 +1,15 @@
 /**
- * Integration test for DependencyGraph with meta_events generator.
+ * Integration test for IncrementalGraph with meta_events generator.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeDependencyGraph,
+    makeIncrementalGraph,
     isUnchanged,
-} = require("../src/generators/dependency_graph");
+} = require("../src/generators/incremental_graph");
 const {
     computeMetaEvents,
 } = require("../src/generators/individual/meta_events");
@@ -35,7 +35,7 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
-describe("DependencyGraph integration with meta_events", () => {
+describe("IncrementalGraph integration with meta_events", () => {
     test("pull() fetches meta_events after updating all_events", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -93,7 +93,7 @@ describe("DependencyGraph integration with meta_events", () => {
             },
         ];
 
-        const graph = makeDependencyGraph(db, graphDefinition);
+        const graph = makeIncrementalGraph(db, graphDefinition);
 
         // Add initial events - set directly on the graph
         await graph.set("all_events", {

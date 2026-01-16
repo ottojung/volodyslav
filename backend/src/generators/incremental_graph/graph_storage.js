@@ -1,6 +1,6 @@
 /**
  * GraphStorage module.
- * Encapsulates database access for the dependency graph using typed sublevels.
+ * Encapsulates database access for the incremental graph using typed sublevels.
  */
 
 const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");

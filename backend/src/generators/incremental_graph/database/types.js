@@ -293,7 +293,7 @@ class SchemaHashClass {
 }
 
 /**
- * A schema hash string identifying a dependency graph schema.
+ * A schema hash string identifying an incremental graph schema.
  * @typedef {SchemaHashClass} SchemaHash
  */
 

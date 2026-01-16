@@ -1,16 +1,16 @@
 /**
- * Integration tests for parameterized node schemas in DependencyGraph.
+ * Integration tests for parameterized node schemas in IncrementalGraph.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeDependencyGraph,
+    makeIncrementalGraph,
     isInvalidNode,
     isSchemaPatternNotAllowed,
-} = require("../src/generators/dependency_graph");
+} = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
@@ -48,7 +48,7 @@ describe("Parameterized node schemas", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, schemas);
+            const graph = makeIncrementalGraph(db, schemas);
 
             // Try to pull with an identifier that looks like a pattern
             // In the new API, "derived(x)" is a schema pattern with variables
@@ -85,7 +85,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeDependencyGraph(db, []);
+            const graph = makeIncrementalGraph(db, []);
 
 
             let error = null;
@@ -123,7 +123,7 @@ describe("Parameterized node schemas", () => {
 
             expect(() => {
                 const db = {};  // Dummy - won't be used
-                makeDependencyGraph(db, overlappingSchemas);
+                makeIncrementalGraph(db, overlappingSchemas);
             }).toThrow("Schema patterns overlap");
         });
     });

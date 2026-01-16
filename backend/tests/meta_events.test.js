@@ -7,7 +7,7 @@ const {
     reconstructFromMetaEvents,
 } = require("../src/generators/individual/meta_events");
 const eventId = require("../src/event/id");
-const { isUnchanged } = require("../src/generators/dependency_graph");
+const { isUnchanged } = require("../src/generators/incremental_graph");
 
 describe("generators/individual/meta_events", () => {
     describe("reconstructFromMetaEvents()", () => {

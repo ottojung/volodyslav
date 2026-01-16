@@ -1,16 +1,16 @@
 /**
- * Persistence and restart tests for DependencyGraph.
+ * Persistence and restart tests for IncrementalGraph.
  * These tests verify that the persistent reverse-dependency index works correctly across restarts.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeDependencyGraph,
+    makeIncrementalGraph,
     makeUnchanged,
-} = require("../src/generators/dependency_graph");
+} = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
@@ -34,7 +34,7 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
-describe("Dependency graph persistence and restart", () => {
+describe("Incremental graph persistence and restart", () => {
     describe("Restart preserves downstream up-to-date propagation", () => {
         test("Unchanged propagation works after restart", async () => {
             const capabilities = getTestCapabilities();
@@ -72,7 +72,7 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
-            const graph1 = makeDependencyGraph(db, schemas);
+            const graph1 = makeIncrementalGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph1);
 
@@ -92,7 +92,7 @@ describe("Dependency graph persistence and restart", () => {
 
             // *** RESTART ***
             computeCalls.length = 0;
-            const graph2 = makeDependencyGraph(db, schemas);
+            const graph2 = makeIncrementalGraph(db, schemas);
 
             // Update A (which should invalidate B and C)
             await graph2.set("A", { value: 20 });
@@ -149,7 +149,7 @@ describe("Dependency graph persistence and restart", () => {
             ];
 
             // Create graph with schema1
-            const graph1 = makeDependencyGraph(db, schemas1);
+            const graph1 = makeIncrementalGraph(db, schemas1);
             const hash1 = graph1.schemaHash;
 
             const testDb = makeTestDatabase(graph1);
@@ -157,7 +157,7 @@ describe("Dependency graph persistence and restart", () => {
             await testDb.put("A", { value: 10 });
 
             // Create graph with schema2 (different schema)
-            const graph2 = makeDependencyGraph(db, schemas2);
+            const graph2 = makeIncrementalGraph(db, schemas2);
             const hash2 = graph2.schemaHash;
 
             // Different schemas should have different hashes
