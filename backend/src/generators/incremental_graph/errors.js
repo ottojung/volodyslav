@@ -215,6 +215,41 @@ function isInvalidSet(object) {
 }
 
 /**
+ * Error for attempting to invalidate a non-source node.
+ */
+class InvalidInvalidate extends Error {
+    /**
+     * @param {NodeName} nodeName
+     */
+    constructor(nodeName) {
+        super(
+            `Cannot invalidate non-source node '${nodeName}'. ` +
+                `Only source nodes (nodes with no inputs) can be invalidated.`
+        );
+        this.name = "InvalidInvalidateError";
+        this.nodeName = nodeName;
+    }
+}
+
+/**
+ * Constructs an InvalidInvalidate error.
+ * @param {NodeName} nodeName
+ * @returns {InvalidInvalidate}
+ */
+function makeInvalidInvalidateError(nodeName) {
+    return new InvalidInvalidate(nodeName);
+}
+
+/**
+ * Type guard for InvalidInvalidate.
+ * @param {unknown} object
+ * @returns {object is InvalidInvalidate}
+ */
+function isInvalidInvalidate(object) {
+    return object instanceof InvalidInvalidate;
+}
+
+/**
  * Error for schema cycle detection.
  */
 class SchemaCycle extends Error {
@@ -405,6 +440,8 @@ module.exports = {
     isInvalidExpression,
     makeInvalidSetError,
     isInvalidSet,
+    makeInvalidInvalidateError,
+    isInvalidInvalidate,
     makeSchemaCycleError,
     isSchemaCycle,
     makeMissingValueError,

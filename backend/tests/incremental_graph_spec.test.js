@@ -223,7 +223,7 @@ function buildGraph(db, nodeDefs) {
     const g = makeIncrementalGraph(db, nodeDefs);
     expect(isIncrementalGraph(g)).toBe(true);
     expect(typeof g.pull).toBe("function");
-    expect(typeof g.set).toBe("function");
+    expect(typeof g.invalidate).toBe("function");
     return g;
 }
 
@@ -580,7 +580,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         });
     });
 
-    test("set rejects non-concrete nodeName (free variables) with NonConcreteNodeError", async () => {
+    test("invalidate rejects non-concrete nodeName (free variables) with NonConcreteNodeError", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             {
@@ -594,7 +594,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
         // In the new API, "event_context(e)" is a schema pattern with variables
         // The public API rejects schema patterns, throwing SchemaPatternNotAllowedError
-        await expect(g.set("event_context(e)", { x: 1 })).rejects.toMatchObject(
+        await expect(g.invalidate("event_context(e)")).rejects.toMatchObject(
             {
                 name: "SchemaPatternNotAllowedError",
             }
@@ -612,18 +612,18 @@ describe("pull/set concrete-ness & node existence errors", () => {
         });
     });
 
-    test("set unknown concrete node throws InvalidNodeError", async () => {
+    test("invalidate unknown concrete node throws InvalidNodeError", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
-        await expect(g.set("does_not_exist", { x: 1 })).rejects.toMatchObject({
+        await expect(g.invalidate("does_not_exist")).rejects.toMatchObject({
             name: "InvalidNodeError",
         });
     });
 
-    test("set on non-source node throws InvalidSetError", async () => {
+    test("invalidate on non-source node throws InvalidInvalidateError", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             {
@@ -642,24 +642,27 @@ describe("pull/set concrete-ness & node existence errors", () => {
             },
         ]);
 
-        await expect(g.set("b", { n: 999 })).rejects.toMatchObject({
-            name: "InvalidSetError",
+        await expect(g.invalidate("b")).rejects.toMatchObject({
+            name: "InvalidInvalidateError",
         });
     });
 });
 
-describe("Basic operational semantics: set/pull, caching, invalidation", () => {
+describe("Basic operational semantics: invalidate/pull, caching, invalidation", () => {
     test("linear chain A->B->C computes correctly", async () => {
         const db = new InMemoryDatabase();
 
         const bC = countedComputor("b", async ([a]) => ({ n: a.n + 1 }));
         const cC = countedComputor("c", async ([b]) => ({ n: b.n + 1 }));
 
+        // External state cell for source node "a"
+        const aCell = { value: { n: 0 } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -667,7 +670,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
             { output: "c", inputs: ["b"], computor: cC.computor },
         ]);
 
-        await g.set("a", { n: 10 });
+        aCell.value = { n: 10 };
+        await g.invalidate("a");
         const c = await g.pull("c");
         expect(c).toEqual({ n: 12 });
         expect(bC.counter.calls).toBe(1);
@@ -678,18 +682,23 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         const db = new InMemoryDatabase();
 
         const bC = countedComputor("b", async ([a]) => ({ n: a.n + 1 }));
+        
+        // External state cell for source node "a"
+        const aCell = { value: { n: 0 } };
+        
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
         ]);
 
-        await g.set("a", { n: 1 });
+        aCell.value = { n: 1 };
+        await g.invalidate("a");
         const b1 = await g.pull("b");
         const b2 = await g.pull("b");
         expect(b1).toEqual({ n: 2 });
@@ -699,45 +708,56 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         expect(bC.counter.calls).toBe(1);
     });
 
-    test("set invalidates dependents so next pull recomputes", async () => {
+    test("invalidate invalidates dependents so next pull recomputes", async () => {
         const db = new InMemoryDatabase();
 
         const bC = countedComputor("b", async ([a]) => ({ n: a.n + 1 }));
+        
+        // External state cell for source node "a"
+        const aCell = { value: { n: 0 } };
+        
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
         ]);
 
-        await g.set("a", { n: 1 });
+        aCell.value = { n: 1 };
+        await g.invalidate("a");
         await g.pull("b");
         expect(bC.counter.calls).toBe(1);
 
-        await g.set("a", { n: 5 });
+        aCell.value = { n: 5 };
+        await g.invalidate("a");
         const b2 = await g.pull("b");
         expect(b2).toEqual({ n: 6 });
         expect(bC.counter.calls).toBe(2);
     });
 
-    test("set uses a single atomic database.batch()", async () => {
+    test("invalidate uses a single atomic database.batch()", async () => {
         const db = new InMemoryDatabase();
+        
+        // External state cell for source node "a"
+        const aCell = { value: { n: 0 } };
+        
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
         ]);
 
         db.resetLogs();
-        await g.set("a", { n: 123 });
+        aCell.value = { n: 123 };
+        await g.invalidate("a");
         expect(db.batchLog.length).toBe(1);
     });
 
@@ -751,11 +771,14 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
             s: "c(" + b.s + ")",
         }));
 
+        // External state cell for source node "a"
+        const aCell = { value: { s: "a()" } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { s: "a()" },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -763,7 +786,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
             { output: "c", inputs: ["b"], computor: cC.computor },
         ]);
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
         expect(bC.counter.calls).toBe(1);
@@ -780,11 +804,14 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
             s: "c(" + b.s + ")",
         }));
 
+        // External state cell for source node "a"
+        const aCell = { value: { s: "a()" } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { s: "a()" },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -796,9 +823,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
         await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("a")).resolves.toBe("potentially-outdated");
         await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
         await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
 
@@ -811,9 +839,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
         await expect(g.debugGetFreshness("c")).resolves.toBe("up-to-date");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("a")).resolves.toBe("potentially-outdated");
         await expect(g.debugGetFreshness("b")).resolves.toBe(
             "potentially-outdated"
         );
@@ -851,11 +880,14 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
             s: "c(" + b.s + ")",
         }));
 
+        // External state cell for source node "a"
+        const aCell = { value: { s: "a()" } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { s: "a()" },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -867,9 +899,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
         await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("a")).resolves.toBe("potentially-outdated");
         await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
         await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
 
@@ -882,7 +915,9 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
         await expect(g.debugGetFreshness("c")).resolves.toBe("up-to-date");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
+        await g.pull("a");
 
         await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
         await expect(g.debugGetFreshness("b")).resolves.toBe(
@@ -939,8 +974,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         const dC = unoptimizedComputor("d");
         const eC = unoptimizedComputor("e");
 
+        const aCell = { value: { s: "a()" } };
+
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: aC.computor },
+            { output: "a", inputs: [], computor: async () => aCell.value },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["b"], computor: cC.computor },
             { output: "d", inputs: ["c"], computor: dC.computor },
@@ -959,7 +996,9 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("d")).resolves.toBe("missing");
         await expect(fr("e")).resolves.toBe("missing");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
+        await g.pull("a");
 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("missing");
@@ -982,8 +1021,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("d")).resolves.toBe("missing");
         await expect(fr("e")).resolves.toBe("missing");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
 
+        await g.pull("a");
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
@@ -1040,8 +1081,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         const dC = unoptimizedComputor("d");
         const eC = unoptimizedComputor("e");
 
+        const aCell = { value: { s: "a()" } };
+
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: aC.computor },
+            { output: "a", inputs: [], computor: async () => aCell.value },
             { output: "b", inputs: ["a"], computor: bC.computor },
             { output: "c", inputs: ["b"], computor: cC.computor },
             { output: "d", inputs: ["c"], computor: dC.computor },
@@ -1060,7 +1103,9 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("d")).resolves.toBe("missing");
         await expect(fr("e")).resolves.toBe("missing");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
+        await g.pull("a");
 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("missing");
@@ -1083,9 +1128,11 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("d")).resolves.toBe("missing");
         await expect(fr("e")).resolves.toBe("missing");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
+        await g.pull("a");
 
-        await expect(fr("a")).resolves.toBe("up-to-date");
+        await g.pull("a");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
         await expect(fr("d")).resolves.toBe("missing");
@@ -1121,8 +1168,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("d")).resolves.toBe("up-to-date");
         await expect(fr("e")).resolves.toBe("up-to-date");
 
-        await g.set("a", { s: "a()" });
+        aCell.value = { s: "a()" };
+        await g.invalidate("a");
 
+        await g.pull("a");
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
@@ -1154,11 +1203,13 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
         const cC = countedComputor("c", async ([a]) => ({ n: a.n + 2 }));
         const dC = countedComputor("d", async ([b, c]) => ({ n: b.n + c.n }));
 
+        const aCell = { value: { n: 0 } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -1167,7 +1218,8 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
             { output: "d", inputs: ["b", "c"], computor: dC.computor },
         ]);
 
-        await g.set("a", { n: 10 });
+        aCell.value = { n: 10 };
+        await g.invalidate("a");
         const out = await g.pull("d");
         expect(out).toEqual({ n: 10 + 1 + (10 + 2) });
 
@@ -1184,11 +1236,13 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
             n: b1.n + b2.n,
         }));
 
+        const aCell = { value: { n: 0 } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -1197,7 +1251,8 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
             { output: "d", inputs: ["b", "b"], computor: dC.computor },
         ]);
 
-        await g.set("a", { n: 10 });
+        aCell.value = { n: 10 };
+        await g.invalidate("a");
         const out = await g.pull("d");
         expect(out).toEqual({ n: 10 + 1 + (10 + 1) });
 
@@ -1217,18 +1272,21 @@ describe("Unchanged semantics (observable storage behavior)", () => {
             return makeUnchanged();
         });
 
+        const aCell = { value: { n: 0 } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             { output: "b", inputs: ["a"], computor: bC.computor },
         ]);
 
-        await g.set("a", { n: 0 });
+        aCell.value = { n: 0 };
+        await g.invalidate("a");
 
         db.resetLogs();
         const v1 = await g.pull("b");
@@ -1297,11 +1355,14 @@ describe("MissingValueError (detects corruption: up-to-date but missing stored v
 describe("Optional debug interface (only if implementation provides it)", () => {
     test("debugGetFreshness and debugListMaterializedNodes behave if present", async () => {
         const db = new InMemoryDatabase();
+
+        const aCell = { value: { n: 0 } };
+
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -1326,7 +1387,8 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         const f0 = await g.debugGetFreshness("b");
         expect(["missing", "up-to-date", "potentially-outdated"]).toContain(f0);
 
-        await g.set("a", { n: 1 });
+        aCell.value = { n: 1 };
+        await g.invalidate("a");
         await g.pull("b");
 
         const list = await g.debugListMaterializedNodes();
@@ -1340,11 +1402,12 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
     test("set() on source node must include it in debugListMaterializedNodes", async () => {
         const db = new InMemoryDatabase();
+        const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => sourceCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -1360,7 +1423,8 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         expect(list0).not.toContain(toJsonKey("source"));
 
         // After set, source must be materialized
-        await g.set("source", { n: 42 });
+        sourceCell.value = { n: 42 };
+        await g.invalidate("source");
         
         const list1 = await g.debugListMaterializedNodes();
         expect(list1).toContain(toJsonKey("source"));
@@ -1431,10 +1495,11 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             const nodeDefs = [];
 
             // Source node A
+            const aCell = { value: { n: 0 } };
             nodeDefs.push({
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             });
@@ -1462,7 +1527,8 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             const g = buildGraph(db, nodeDefs);
 
             // First pull: should compute each node exactly once
-            await g.set("a", { n: 0 });
+            aCell.value = { n: 0 };
+            await g.invalidate("a");
             const tail = `n${k}`;
             const v1 = await g.pull(tail);
             expect(v1).toEqual({ n: k });
@@ -1489,7 +1555,8 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             }
 
             // After set(A), pull(tail) should recompute each downstream node exactly once
-            await g.set("a", { n: 100 });
+            aCell.value = { n: 100 };
+            await g.invalidate("a");
             const v4 = await g.pull(tail);
             expect(v4).toEqual({ n: 100 + k });
 
@@ -1509,9 +1576,10 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
         // where c1 depends on [b1, b2], c2 depends on [b2, b3], top depends on [c1, c2]
         // shared is reached through multiple paths
 
+        const sharedCell = { value: { n: 1 } };
         const sharedC = countedComputor(
             "shared",
-            async (_i, old) => old || { n: 1 }
+            async () => sharedCell.value
         );
         const b1C = countedComputor("b1", async ([s]) => ({ n: s.n + 1 }));
         const b2C = countedComputor("b2", async ([s]) => ({ n: s.n + 2 }));
@@ -1536,14 +1604,15 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
             { output: "top", inputs: ["c1", "c2"], computor: topC.computor },
         ]);
 
-        await g.set("shared", { n: 1 });
+        sharedCell.value = { n: 1 };
+        await g.invalidate("shared");
 
         // First pull: each node computed at most once (P3)
         const result = await g.pull("top");
         expect(result).toBeDefined();
 
         // Note: sharedC.counter.calls is 0 because set() doesn't call computor, and pull finds it already up-to-date
-        expect(sharedC.counter.calls).toBe(0);
+        expect(sharedC.counter.calls).toBe(1);
         expect(b1C.counter.calls).toBe(1);
         expect(b2C.counter.calls).toBe(1);
         expect(b3C.counter.calls).toBe(1);
@@ -1553,7 +1622,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
 
         // Second pull: no recomputation (warm cache)
         await g.pull("top");
-        expect(sharedC.counter.calls).toBe(0);
+        expect(sharedC.counter.calls).toBe(1);
         expect(b1C.counter.calls).toBe(1);
         expect(b2C.counter.calls).toBe(1);
         expect(b3C.counter.calls).toBe(1);
@@ -1570,7 +1639,8 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
         //   b1 -> c1, b2 -> [c1, c2], b3 -> c2
         //   [c1, c2] -> d
 
-        const aC = countedComputor("a", async (_i, old) => old || { n: 0 });
+        const aCell = { value: { n: 0 } };
+        const aC = countedComputor("a", async () => aCell.value);
         const b1C = countedComputor("b1", async ([a]) => ({ n: a.n + 1 }));
         const b2C = countedComputor("b2", async ([a]) => ({ n: a.n + 2 }));
         const b3C = countedComputor("b3", async ([a]) => ({ n: a.n + 3 }));
@@ -1594,12 +1664,13 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
             { output: "d", inputs: ["c1", "c2"], computor: dC.computor },
         ]);
 
-        await g.set("a", { n: 10 });
+        aCell.value = { n: 10 };
+        await g.invalidate("a");
         await g.pull("d");
 
         // Each node computed at most once
         // Note: aC.counter.calls is 0 because set() doesn't call computor
-        expect(aC.counter.calls).toBe(0);
+        expect(aC.counter.calls).toBe(1);
         expect(b1C.counter.calls).toBe(1);
         expect(b2C.counter.calls).toBe(1);
         expect(b3C.counter.calls).toBe(1);
@@ -1613,7 +1684,8 @@ describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
     test("structural duplicates: D depends on X and Y; both depend on Z; Z depends on W", async () => {
         const db = new InMemoryDatabase();
 
-        const wC = countedComputor("w", async (_i, old) => old || { n: 1 });
+        const wCell = { value: { n: 1 } };
+        const wC = countedComputor("w", async () => wCell.value);
         const zC = countedComputor("z", async ([w]) => ({ n: w.n + 1 }));
         const xC = countedComputor("x", async ([z]) => ({ n: z.n + 10 }));
         const yC = countedComputor("y", async ([z]) => ({ n: z.n + 20 }));
@@ -1627,12 +1699,13 @@ describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
             { output: "d", inputs: ["x", "y"], computor: dC.computor },
         ]);
 
-        await g.set("w", { n: 1 });
+        wCell.value = { n: 1 };
+        await g.invalidate("w");
         await g.pull("d");
 
         // Z (and W) should be computed once despite being reached through different routes
         // Note: wC.counter.calls is 0 because set() doesn't call computor
-        expect(wC.counter.calls).toBe(0);
+        expect(wC.counter.calls).toBe(1);
         expect(zC.counter.calls).toBe(1);
         expect(xC.counter.calls).toBe(1);
         expect(yC.counter.calls).toBe(1);
@@ -1655,18 +1728,20 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
             }
         );
 
+        const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => sourceCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             { output: "node", inputs: ["source"], computor },
         ]);
 
-        await g.set("source", { n: 0 });
+        sourceCell.value = { n: 0 };
+        await g.invalidate("source");
         const v1 = await g.pull("node");
         expect(v1).toEqual({ v: 1 });
         expect(counter.calls).toBe(1);
@@ -1686,22 +1761,25 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
             }
         );
 
+        const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => sourceCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             { output: "node", inputs: ["source"], computor },
         ]);
 
-        await g.set("source", { n: 10 });
+        sourceCell.value = { n: 10 };
+        await g.invalidate("source");
         const v1 = await g.pull("node");
         expect(v1).toEqual({ v: 10 });
 
-        await g.set("source", { n: 5 });
+        sourceCell.value = { n: 5 };
+        await g.invalidate("source");
         const v2 = await g.pull("node");
         expect(v2).toEqual({ v: 15 }); // oldValue.v=10 + source.n=5
 
@@ -1725,28 +1803,32 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
             }
         );
 
+        const sourceCell = { value: { flag: "init" } };
         const g = buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async (_i, old) => old || { flag: "init" },
+                computor: async () => sourceCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             { output: "node", inputs: ["source"], computor },
         ]);
 
-        await g.set("source", { flag: "init" });
+        sourceCell.value = { flag: "init" };
+        await g.invalidate("source");
         const v1 = await g.pull("node");
         expect(v1).toEqual({ v: 1 });
 
         // Set source to trigger recomputation, but computor returns Unchanged
-        await g.set("source", { flag: "unchanged" });
+        sourceCell.value = { flag: "unchanged" };
+        await g.invalidate("source");
         const v2 = await g.pull("node");
         expect(v2).toEqual({ v: 1 }); // preserved
 
         // Set source again to trigger another recomputation
-        await g.set("source", { flag: "change" });
+        sourceCell.value = { flag: "change" };
+        await g.invalidate("source");
         const v3 = await g.pull("node");
         expect(v3).toEqual({ v: 2 }); // oldValue.v=1 + 1
 
@@ -1761,11 +1843,12 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
 
         // Build a graph where source has many direct and transitive dependents
         const counters = {};
+        const sourceCell = { value: { n: 0 } };
         const nodeDefs = [
             {
                 output: "source",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => sourceCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -1793,7 +1876,8 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
 
         const g = buildGraph(db, nodeDefs);
 
-        await g.set("source", { n: 1 });
+        sourceCell.value = { n: 1 };
+        await g.invalidate("source");
 
         // Materialize all dependents
         for (let i = 1; i <= numDirect; i++) {
@@ -1803,7 +1887,8 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
         db.resetLogs();
 
         // Now set(source) again, which should invalidate all materialized dependents
-        await g.set("source", { n: 10 });
+        sourceCell.value = { n: 10 };
+        await g.invalidate("source");
 
         // Should use exactly one batch
         expect(db.batchLog.length).toBe(1);
@@ -1830,18 +1915,20 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
                 }
             );
 
+            const sourceCell = { value: { n: 0 } };
             const g = buildGraph(db, [
                 {
                     output: "source",
                     inputs: [],
-                    computor: async (_i, old) => old || { n: 0 },
+                    computor: async () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 { output: "node", inputs: ["source"], computor },
             ]);
 
-            await g.set("source", { n: 10 });
+            sourceCell.value = { n: 10 };
+        await g.invalidate("source");
 
             // Issue two concurrent pulls
             const pull1 = g.pull("node");

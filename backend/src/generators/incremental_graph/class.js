@@ -34,6 +34,7 @@ const {
     makeInvalidNodeError,
     makeMissingValueError,
     makeInvalidSetError,
+    makeInvalidInvalidateError,
     makeInvalidComputorReturnValueError,
     makeArityMismatchError,
     makeSchemaPatternNotAllowedError,
@@ -355,6 +356,75 @@ class IncrementalGraphClass {
             this.unsafeSet(nodeName, value, bindings)
         );
     }
+
+    /**
+     * Internal implementation of invalidate without mutex protection.
+     * Do not call directly - use invalidate() instead.
+     * @private
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
+     * @returns {Promise<void>}
+     */
+    async unsafeInvalidate(nodeName, bindings) {
+        ensureNodeNameIsHead(nodeName);
+        const nodeNameTyped = stringToNodeName(nodeName);
+
+        // Lookup schema by nodeName
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeNameTyped);
+        }
+
+        checkArity(compiledNode, bindings);
+
+        // Validate that this is a source node (no inputs)
+        if (compiledNode.source.inputs.length > 0) {
+            throw makeInvalidInvalidateError(nodeNameTyped);
+        }
+
+        // Create NodeKey for storage
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+
+        // Ensure node exists (will create from pattern if needed)
+        const nodeDefinition = this.getOrCreateConcreteNode(
+            concreteKey,
+            compiledNode,
+            bindings
+        );
+
+        // Use batch builder for atomic operations
+        await this.storage.withBatch(async (batch) => {
+            // Mark this key as potentially-outdated (not up-to-date)
+            batch.freshness.put(nodeDefinition.output, "potentially-outdated");
+
+            // Ensure the node is materialized (write inputs record with empty array and empty inputCounters)
+            await this.storage.ensureMaterialized(
+                nodeDefinition.output,
+                nodeDefinition.inputs,
+                [], // inputCounters is empty for source nodes (no inputs)
+                batch
+            );
+
+            // Collect operations to mark all dependents as potentially-outdated
+            await this.propagateOutdated(nodeDefinition.output, batch);
+        });
+    }
+
+    /**
+     * Invalidates a specific node, marking it and its dependents as potentially-outdated.
+     * All operations are performed atomically in a single batch.
+     * Thread-safe: uses sleeper's withMutex to serialize access with other invalidate/pull operations.
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @returns {Promise<void>}
+     */
+    async invalidate(nodeName, bindings = []) {
+        return this.sleeper.withMutex(MUTEX_KEY, () =>
+            this.unsafeInvalidate(nodeName, bindings)
+        );
+    }
+
 
     /**
      * Gets or creates a concrete node instantiation.
