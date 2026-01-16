@@ -17,8 +17,11 @@ This document provides a formal specification for the dependency graph's operati
 * **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **Computor** — deterministic async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
+* **ChoiceSet** — a non-empty collection (possibly infinite) of `DatabaseValue` results that a computor may produce. Represents all possible outcomes of a nondeterministic computation.
+* **WitnessValue** — the specific `DatabaseValue` selected from a `ChoiceSet` and stored as the node's materialized value. The engine selects exactly one witness from the choice set and caches it until the node is invalidated.
+* **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<ComputeResult>` where `ComputeResult` is one of: `DatabaseValue`, `Unchanged`, or `Choices(Array<DatabaseValue>)`.
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
+* **Choices** — return value wrapper indicating a nondeterministic choice set. `Choices(values)` where `values` is a non-empty array of `DatabaseValue`. The engine will select one value as the witness.
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
 
@@ -173,9 +176,10 @@ type NodeDef = {
 ```
 
 **Note on Determinism and Side Effects:**
-* `isDeterministic`: When `true`, the computor MUST produce the same output given the same `(inputs, oldValue, bindings)` tuple. When `false`, the computor MAY produce different outputs even with identical inputs.
+* `isDeterministic`: When `true`, the computor MUST produce the same output given the same `(inputs, oldValue, bindings)` tuple. When `false`, the computor MAY produce different outputs even with identical inputs (by returning different `ChoiceSet` values or selecting different witnesses).
 * `hasSideEffects`: When `true`, the computor MAY perform actions beyond computing its return value (e.g., logging, network calls, file operations). When `false`, the computor MUST NOT perform any observable side effects.
 * These fields are metadata about the computor's behavior and are NOT stored in the database. They are used for optimization hints and migration planning.
+* For nondeterministic computors (`isDeterministic: false`), the computor MAY return `Choices(values)` to explicitly specify the choice set. The engine will select one witness value and cache it until invalidation.
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
@@ -276,26 +280,58 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>`
 
-**Big-Step Semantics:**
+**Big-Step Semantics (Nondeterministic):**
 
 ```
 pull(nodeName, B):
   schema = lookup_schema_by_nodeName(nodeName)
   nodeKey = createNodeKey(nodeName, B)
+  
+  // Check if node is up-to-date
+  if is_up_to_date(nodeKey):
+    return stored_value(nodeKey)  // Return cached witness
+  
+  // Recompute
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_of(schema)]
   old_value = stored_value(nodeKey)
-  new_value = computor_of(schema)(inputs_values, old_value, B)
-  store(nodeKey, new_value)
-  return stored_value(nodeKey)
+  compute_result = computor_of(schema)(inputs_values, old_value, B)
+  
+  // Handle result
+  if compute_result is Unchanged:
+    mark_up_to_date(nodeKey)
+    return stored_value(nodeKey)
+  else if compute_result is Choices(values):
+    if values is empty:
+      throw NoPossibleValueError
+    witness = select_witness(values)  // Implementation-defined selection
+    store(nodeKey, witness)
+    mark_up_to_date(nodeKey)
+    return witness
+  else:  // compute_result is DatabaseValue (equivalent to Choices([value]))
+    store(nodeKey, compute_result)
+    mark_up_to_date(nodeKey)
+    return compute_result
 ```
 
-Note: this specification only describes input-output semantics. It ignores freshness tracking, caching, etc.
+**Witness Selection:** When a computor returns `Choices(values)`, the engine MUST select exactly one value from the choice set as the witness. The selection strategy is implementation-defined (e.g., first element, random selection, etc.). Once selected, the witness value is stored and returned by subsequent `pull()` calls until the node is invalidated.
+
+**Up-to-date Definition:** A node instance is **up-to-date** if and only if the versions (or snapshot identities) of all its dependencies match those recorded at its last evaluation. This is the sole determinant of whether recomputation is triggered.
+
+**Recomputation Triggers:** `pull(N, B)` recomputes the node's value if and only if:
+* The node is not materialized (no stored value exists), OR
+* The node is materialized but not up-to-date (dependencies have changed)
+
+Note: This specification describes the logical input-output semantics. Actual implementations optimize using caching, freshness tracking, and memoization while preserving these semantics.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
 **REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
 
 **REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
+
+**REQ-PULL-04:** `pull` MUST throw `NoPossibleValueError` if a computor returns `Choices([])` (empty choice set).
+
+**REQ-PULL-05:** When a node is up-to-date, `pull` MUST return the stored witness value without recomputation (witness stability).
 
 **Efficiency Optimization (Implementation-Defined):**
 
@@ -328,8 +364,11 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 **REQ-UNCH-01:** When a computor returns `Unchanged`:
 1. Node's value MUST NOT be updated (keeps old value)
 2. Node MUST be marked `up-to-date`
+3. The stored witness value remains unchanged
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
+
+**REQ-UNCH-03:** A computor MUST NOT return `Unchanged` if it has no old value (i.e., `oldValue === undefined`). In this case, it MUST return either a `DatabaseValue` or `Choices(values)`.
 
 ---
 
@@ -364,6 +403,36 @@ interface DependencyGraph {
 **REQ-IFACE-02:** For atom-expressions (arity 0), `bindings` parameter defaults to `[]` and may be omitted.
 
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
+
+### 3.2.1 Optional: Fresh Pull for Resampling (Non-Normative)
+
+Implementations MAY provide an optional refresh mechanism to force recomputation and select a new witness from the choice set, even when a node is up-to-date:
+
+```typescript
+interface DependencyGraphWithRefresh extends DependencyGraph {
+  pullFresh(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
+  // OR: pull(nodeName: NodeName, bindings?: BindingEnvironment, options?: { refresh?: boolean }): Promise<DatabaseValue>;
+}
+```
+
+**Semantics (if implemented):**
+* Behaves like `pull()` but forces recomputation even if the node is up-to-date
+* Invokes the computor and selects a new witness from the (potentially same) choice set
+* Useful for intentional resampling of nondeterministic computors
+* Does NOT invalidate the node—only recomputes it
+
+**Example use case:**
+```javascript
+// Get current recommendation
+const rec1 = await graph.pull('activity_recommendation', []);
+// { activity: "beach" }
+
+// User requests different recommendation without changing weather
+const rec2 = await graph.pullFresh('activity_recommendation', []);
+// { activity: "hiking" } (possibly different witness from same choice set)
+```
+
+This feature is OPTIONAL. Implementations that do not provide refresh functionality still conform to this specification.
 
 ### 3.3 Database Interfaces
 
@@ -403,22 +472,37 @@ interface RootDatabase {
 ### 3.4 Computor Signature
 
 ```typescript
+type ComputeResult = DatabaseValue | Unchanged | Choices;
+
+type Choices = {
+  __tag: "Choices";
+  values: Array<DatabaseValue>;
+};
+
 type Computor = (
   inputs: Array<DatabaseValue>,
   oldValue: DatabaseValue | undefined,
   bindings: Array<ConstValue>
-) => Promise<DatabaseValue | Unchanged>;
+) => Promise<ComputeResult>;
 ```
 
-**REQ-COMP-01:** Computors MUST be deterministic with respect to `(inputs, oldValue, bindings)`.
+**REQ-COMP-01:** Computors marked with `isDeterministic: true` MUST be deterministic with respect to `(inputs, oldValue, bindings)`. They MUST return the same `DatabaseValue` (or `Unchanged`) given the same inputs.
 
-**REQ-COMP-02:** Computors MUST NOT have hidden side effects affecting output.
+**REQ-COMP-02:** Computors marked with `isDeterministic: false` MAY be nondeterministic. They MAY return `Choices(values)` to specify a choice set, or directly return different `DatabaseValue` results on different invocations with the same inputs.
 
-**REQ-COMP-03:** Computors MAY return `Unchanged` sentinel to indicate no value change.
+**REQ-COMP-03:** Computors marked with `hasSideEffects: false` MUST NOT have side effects affecting output or observable external state.
 
-**REQ-COMP-04:** Implementations MUST expose `makeUnchanged()` factory and `isUnchanged(value)` type guard.
+**REQ-COMP-04:** Computors MAY return `Unchanged` sentinel to indicate no value change. This is only valid when `oldValue !== undefined`.
 
-**REQ-COMP-05:** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position. For example, if the output pattern is `full_event(e)`, then `bindings[0]` contains the value for the first argument position, `e`.
+**REQ-COMP-05:** Computors MAY return `Choices(values)` where `values` is a non-empty array of `DatabaseValue`. The array MUST NOT be empty (throw `NoPossibleValueError` if empty).
+
+**REQ-COMP-06:** Returning a plain `DatabaseValue` is semantically equivalent to returning `Choices([value])` (a choice set with a single element).
+
+**REQ-COMP-07:** Implementations MUST expose:
+* `makeUnchanged()` factory and `isUnchanged(value)` type guard for the `Unchanged` sentinel
+* `makeChoices(values)` factory and `isChoices(value)` type guard for the `Choices` return type
+
+**REQ-COMP-08:** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position. For example, if the output pattern is `full_event(e)`, then `bindings[0]` contains the value for the first argument position, `e`.
 
 ### 3.5 Error Taxonomy
 
@@ -435,6 +519,8 @@ All errors MUST provide stable `.name` property and required fields:
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same head with different arities in schema (schema validation) |
+| `NoPossibleValueError` | `nodeName: string, bindings: BindingEnvironment` | Computor returned empty choice set `Choices([])` (runtime) |
+| `InvalidUnchangedError` | `nodeName: string, bindings: BindingEnvironment` | Computor returned `Unchanged` when `oldValue === undefined` (runtime) |
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
 
@@ -464,13 +550,15 @@ The graph MUST maintain these invariants for all materialized node instances:
 
 ### 4.3 Correctness Properties
 
-**P1 (Semantic Equivalence):** `pull(N, B)` produces same result as recomputing from scratch.
+**P1′ (Soundness):** For deterministic computors (`isDeterministic: true`), `pull(N, B)` produces the same result as recomputing from scratch. For nondeterministic computors (`isDeterministic: false`), `pull(N, B)` returns a value that is an element of the choice set that would be produced by recomputing from scratch.
 
 **P2 (Progress):** Every `pull(N, B)` call terminates (assuming computors terminate).
 
 **P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()` for each unique node instance.
 
 **P4 (Freshness Preservation):** After `pull(N, B)`, the node instance `N@B` and all transitive dependencies are `up-to-date`.
+
+**P5 (Witness Stability):** If a node instance `N@B` is up-to-date, repeated `pull(N, B)` calls MUST return the same stored witness value without recomputation, regardless of whether the computor is deterministic or nondeterministic. The witness remains stable until the node is invalidated by a `set()` operation on a dependency.
 
 ---
 
@@ -509,11 +597,13 @@ Tests MAY assert:
 
 ### 5.6 Behavioral Guarantees
 
-**REQ-BEHAVE-01 = P1** (see §4.3): `pull(N, B)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence).
+**REQ-BEHAVE-01 = P1′** (see §4.3): For deterministic computors, `pull(N, B)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence). For nondeterministic computors, `pull(N, B)` MUST return a value that is an element of the choice set produced by recomputing from scratch (Soundness).
 
 **REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call for each unique node instance (Single Invocation).
 
 **REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N, B)` completes, node instance `N@B` and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
+
+**REQ-BEHAVE-04 = P5** (see §4.3): If a node instance is up-to-date, `pull(N, B)` MUST return the stored witness value without recomputation (Witness Stability).
 
 ---
 
@@ -671,6 +761,116 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 * When pulling `full_event` with `[{id:'evt_123'}]`, both dependencies are instantiated with the same positional binding
 * The binding propagates through the entire dependency chain
 * Variable names (`e` in this case) are schema-internal—public API uses `nodeName` only
+
+#### A.4 Nondeterministic Computor (Multi-valued)
+
+**Schema with deterministic computor returning single value:**
+```javascript
+[
+  { output: "random_seed", inputs: [],
+    computor: async ([], old) => old || Math.random(),
+    isDeterministic: false,  // Nondeterministic
+    hasSideEffects: false }
+]
+```
+
+**Schema with explicit choice set:**
+```javascript
+const { makeChoices } = require('./dependency-graph');
+
+[
+  { output: "coin_flip", inputs: [],
+    computor: async ([], old) => {
+      // Return a choice set with two possible values
+      return makeChoices(["heads", "tails"]);
+    },
+    isDeterministic: false,
+    hasSideEffects: false }
+]
+```
+
+**Operations and witness caching:**
+```javascript
+// First pull: engine selects a witness (e.g., "heads") and caches it
+const result1 = await graph.pull('coin_flip', []);
+console.log(result1); // "heads" (example)
+
+// Second pull: returns the cached witness without recomputation
+const result2 = await graph.pull('coin_flip', []);
+console.log(result2); // "heads" (same as result1)
+
+// After invalidation (e.g., by setting a dependency), a new witness may be selected
+// For source nodes, manual invalidation would require implementation-specific refresh API
+```
+
+**How it works:**
+* The computor returns `makeChoices(["heads", "tails"])`, indicating both values are valid outcomes
+* The engine selects one witness (implementation-defined strategy, e.g., first element or random)
+* The witness is stored and returned by all subsequent `pull()` calls until the node is invalidated
+* This preserves witness stability (property P5) while supporting nondeterministic computations
+
+#### A.5 Nondeterministic with Dependencies
+
+```javascript
+const { makeChoices } = require('./dependency-graph');
+
+[
+  { output: "weather", inputs: [],
+    computor: async ([], old) => old || "sunny",
+    isDeterministic: true,
+    hasSideEffects: false },
+  { output: "activity_recommendation", inputs: ["weather"],
+    computor: async ([weather], old) => {
+      if (weather === "sunny") {
+        // Multiple valid recommendations for sunny weather
+        return makeChoices([
+          { activity: "beach", priority: "high" },
+          { activity: "hiking", priority: "high" },
+          { activity: "picnic", priority: "medium" }
+        ]);
+      } else {
+        // Single recommendation for other weather
+        return { activity: "museum", priority: "high" };
+      }
+    },
+    isDeterministic: false,  // Nondeterministic for sunny weather
+    hasSideEffects: false }
+]
+```
+
+**Operations:**
+```javascript
+await graph.set('weather', 'sunny');
+
+// First pull: engine selects one recommendation as witness
+const rec1 = await graph.pull('activity_recommendation', []);
+console.log(rec1); // e.g., { activity: "beach", priority: "high" }
+
+// Subsequent pulls return the same witness
+const rec2 = await graph.pull('activity_recommendation', []);
+console.log(rec2); // { activity: "beach", priority: "high" } (same)
+
+// Change weather (invalidates dependent)
+await graph.set('weather', 'rainy');
+
+// Now pulls recompute and return the deterministic value
+const rec3 = await graph.pull('activity_recommendation', []);
+console.log(rec3); // { activity: "museum", priority: "high" }
+
+// Change back to sunny
+await graph.set('weather', 'sunny');
+
+// New witness may be selected (could be different from rec1)
+const rec4 = await graph.pull('activity_recommendation', []);
+console.log(rec4); // e.g., { activity: "hiking", priority: "high" } (possibly different)
+```
+
+**How it works:**
+* The computor's nondeterminism depends on input values
+* When dependencies change, the node is invalidated and recomputation occurs
+* A new witness is selected from the (potentially different) choice set
+* The new witness is cached until the next invalidation
+* This demonstrates how nondeterminism interacts with the dependency graph's invalidation mechanism
 
 ### Appendix C: Optional Debug Interface
 
