@@ -1,5 +1,5 @@
 /**
- * DependencyGraph class for propagating data through dependency edges.
+ * IncrementalGraph class for propagating data through dependency edges.
  */
 
 const {
@@ -63,7 +63,7 @@ const { makeConcreteNodeCache } = require("./lru_cache");
 /**
  * Mutex key for serializing all set() and pull() operations.
  */
-const MUTEX_KEY = "dependency-graph-operations";
+const MUTEX_KEY = "incremental-graph-operations";
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.
@@ -94,7 +94,7 @@ function checkArity(compiledNode, bindings) {
 }
 
 /**
- * DependencyGraph class for propagating data through dependency edges.
+ * IncrementalGraph class for propagating data through dependency edges.
  *
  * Node Identity:
  * - Concrete nodes use JSON key format: {nodeName: NodeName, args: Array<ConstValue>}
@@ -125,7 +125,7 @@ function checkArity(compiledNode, bindings) {
  * - Schema hash ensures old graph schemas don't interfere with new ones
  * - No initialization scan needed; edges are queryable on demand from DB
  */
-class DependencyGraphClass {
+class IncrementalGraphClass {
     /**
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
@@ -805,28 +805,28 @@ class DependencyGraphClass {
 }
 
 /**
- * Factory function to create a DependencyGraph instance.
+ * Factory function to create an IncrementalGraph instance.
  *
  * @param {RootDatabase} rootDatabase - The root database instance
  * @param {Array<NodeDef>} nodeDefs - Unified node definitions
- * @returns {DependencyGraphClass}
+ * @returns {IncrementalGraphClass}
  */
-function makeDependencyGraph(rootDatabase, nodeDefs) {
-    return new DependencyGraphClass(rootDatabase, nodeDefs);
+function makeIncrementalGraph(rootDatabase, nodeDefs) {
+    return new IncrementalGraphClass(rootDatabase, nodeDefs);
 }
 
 /**
- * Type guard for DependencyGraph.
+ * Type guard for IncrementalGraph.
  * @param {unknown} object
- * @returns {object is DependencyGraphClass}
+ * @returns {object is IncrementalGraphClass}
  */
-function isDependencyGraph(object) {
-    return object instanceof DependencyGraphClass;
+function isIncrementalGraph(object) {
+    return object instanceof IncrementalGraphClass;
 }
 
-/** @typedef {DependencyGraphClass} DependencyGraph */
+/** @typedef {IncrementalGraphClass} IncrementalGraph */
 
 module.exports = {
-    makeDependencyGraph,
-    isDependencyGraph,
+    makeIncrementalGraph,
+    isIncrementalGraph,
 };

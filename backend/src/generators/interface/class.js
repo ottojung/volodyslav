@@ -2,11 +2,11 @@
  * Interface class for direct database operations.
  */
 
-/** @typedef {import('../dependency_graph/database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../event').Event} Event */
-/** @typedef {import('../dependency_graph').DependencyGraph} DependencyGraph */
+/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 
-const { makeDependencyGraph } = require("../dependency_graph");
+const { makeIncrementalGraph } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 
 /**
@@ -15,18 +15,18 @@ const { createDefaultGraphDefinition } = require("./default_graph");
  */
 class InterfaceClass {
     /**
-     * The dependency graph for propagating changes.
+     * The incremental graph for propagating changes.
      * @private
-     * @type {DependencyGraph}
+     * @type {IncrementalGraph}
      */
-    dependencyGraph;
+    incrementalGraph;
 
     /**
      * @constructor
      * @param {RootDatabase} database - The root database instance
      */
     constructor(database) {
-        this.dependencyGraph = makeDependencyGraph(
+        this.incrementalGraph = makeIncrementalGraph(
             database,
             createDefaultGraphDefinition()
         );
@@ -40,22 +40,22 @@ class InterfaceClass {
      */
     async update(all_events) {
         const serializedEvents = all_events; // Events are already in serialized form.
-        /** @type {import('../dependency_graph/database/types').AllEventsEntry} */
+        /** @type {import('../incremental_graph/database/types').AllEventsEntry} */
         const value = { events: serializedEvents, type: "all_events" };
-        await this.dependencyGraph.set("all_events", value);
+        await this.incrementalGraph.set("all_events", value);
     }
 
     /**
      * Gets the basic context for a given event.
      * This method uses pull semantics to lazily evaluate only the necessary
-     * parts of the dependency graph to get the event context.
+     * parts of the incremental graph to get the event context.
      *
      * @param {Event} event - The event to get context for
      * @returns {Promise<Array<Event>>} The context events
      */
     async getEventBasicContext(event) {
         // Pull the event_context node (lazy evaluation)
-        const eventContextEntry = await this.dependencyGraph.pull(
+        const eventContextEntry = await this.incrementalGraph.pull(
             "event_context"
         );
 

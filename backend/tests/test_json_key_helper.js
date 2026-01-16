@@ -3,8 +3,8 @@
  * Used by tests that need to assert on concrete node keys in storage.
  */
 
-const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
-const { canonicalize } = require("../src/generators/dependency_graph/expr");
+const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/incremental_graph/node_key");
+const { canonicalize } = require("../src/generators/incremental_graph/expr");
 
 /**
  * Converts a node name to its JSON key format.

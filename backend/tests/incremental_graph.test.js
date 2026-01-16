@@ -1,23 +1,23 @@
 /**
- * Tests for generators/dependency_graph module.
+ * Tests for generators/incremental_graph module.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeDependencyGraph,
-    isDependencyGraph,
+    makeIncrementalGraph,
+    isIncrementalGraph,
     makeUnchanged,
-} = require("../src/generators/dependency_graph");
+} = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
 /**
- * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**
@@ -27,7 +27,7 @@ const { toJsonKey } = require("./test_json_key_helper");
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     const tmpDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "dependency-graph-test-")
+        path.join(os.tmpdir(), "incremental-graph-test-")
     );
 
     stubLogger(capabilities);
@@ -40,14 +40,14 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
-describe("generators/dependency_graph", () => {
-    describe("makeDependencyGraph()", () => {
-        test("creates and returns a dependency graph instance", async () => {
+describe("generators/incremental_graph", () => {
+    describe("makeIncrementalGraph()", () => {
+        test("creates and returns a incremental graph instance", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const graph = makeDependencyGraph(db, []);
+            const graph = makeIncrementalGraph(db, []);
 
-            expect(isDependencyGraph(graph)).toBe(true);
+            expect(isIncrementalGraph(graph)).toBe(true);
 
             await db.close();
         });
@@ -101,7 +101,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Use graph.set() to seed input1
             await graph.set("input1", { type: 'all_events', events: [] });
@@ -146,7 +146,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const storage = graph.getStorage();
 
@@ -187,7 +187,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -215,19 +215,19 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeDependencyGraph(db, []);
+            const graph = makeIncrementalGraph(db, []);
 
             const testDb = makeTestDatabase(graph);
 
             await testDb.put("standalone", { data: "standalone_value" });
 
             await expect(graph.pull("standalone")).rejects.toThrow(
-                "not found in the dependency graph."
+                "not found in the incremental graph."
             );
 
             // Also verify error type
             await expect(graph.pull("standalone")).rejects.toThrow(
-                /not found in the dependency graph./
+                /not found in the incremental graph./
             );
 
             await db.close();
@@ -255,7 +255,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -318,7 +318,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -411,7 +411,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up chain properly using graph operations: input1 -> level1 -> level2 -> level3
             await graph.set("input1", { count: 1 });
@@ -488,7 +488,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -569,7 +569,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -674,7 +674,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up the graph properly using graph operations
             await graph.set("input1", { value: 1 });
@@ -747,7 +747,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up the graph properly
             await graph.set("input", { value: 1 });
@@ -801,7 +801,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -894,7 +894,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -976,7 +976,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1023,7 +1023,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1071,7 +1071,7 @@ describe("generators/dependency_graph", () => {
                 }
             }
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1154,7 +1154,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1236,7 +1236,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up properly with counters
             await graph.set("input1", { value: 10 });
@@ -1312,7 +1312,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1421,7 +1421,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1541,7 +1541,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1649,7 +1649,7 @@ describe("generators/dependency_graph", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up properly with counters
             await graph.set("input", { value: 5 });
@@ -1680,15 +1680,15 @@ describe("generators/dependency_graph", () => {
     });
 
     describe("Type guards", () => {
-        test("isDependencyGraph correctly identifies instances", async () => {
+        test("isIncrementalGraph correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const graph = makeDependencyGraph(db, []);
+            const graph = makeIncrementalGraph(db, []);
 
-            expect(isDependencyGraph(graph)).toBe(true);
-            expect(isDependencyGraph({})).toBe(false);
-            expect(isDependencyGraph(null)).toBe(false);
-            expect(isDependencyGraph(undefined)).toBe(false);
+            expect(isIncrementalGraph(graph)).toBe(true);
+            expect(isIncrementalGraph({})).toBe(false);
+            expect(isIncrementalGraph(null)).toBe(false);
+            expect(isIncrementalGraph(undefined)).toBe(false);
 
             await db.close();
         });
@@ -1716,7 +1716,7 @@ describe("generators/dependency_graph", () => {
                 }
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
             // Initially missing
             expect(await graph.debugGetFreshness("node1")).toBe("missing");
 
@@ -1754,7 +1754,7 @@ describe("generators/dependency_graph", () => {
                 }
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Initially empty
             expect(await graph.debugListMaterializedNodes()).toEqual([]);
@@ -1801,7 +1801,7 @@ describe("generators/dependency_graph", () => {
 
             let error;
             try {
-                makeDependencyGraph(db, graphDef);
+                makeIncrementalGraph(db, graphDef);
             } catch (e) {
                 error = e;
             }
@@ -1834,7 +1834,7 @@ describe("generators/dependency_graph", () => {
 
             let error;
             try {
-                makeDependencyGraph(db, graphDef);
+                makeIncrementalGraph(db, graphDef);
             } catch (e) {
                 error = e;
             }

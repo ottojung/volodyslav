@@ -1,18 +1,18 @@
 /**
- * Tests for batch consistency in dependency graph.
+ * Tests for batch consistency in incremental graph.
  * These tests verify that reads within a batch are consistent with pending writes/deletes.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
-const { makeDependencyGraph } = require("../src/generators/dependency_graph");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
 /**
- * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**
@@ -22,7 +22,7 @@ const { stubLogger } = require("./stubs");
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     const tmpDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "dependency-graph-batch-consistency-")
+        path.join(os.tmpdir(), "incremental-graph-batch-consistency-")
     );
 
     stubLogger(capabilities);
@@ -35,7 +35,7 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
-describe("dependency_graph batch consistency", () => {
+describe("incremental_graph batch consistency", () => {
     describe("Generic batch consistency for all sublevels", () => {
         describe("values sublevel", () => {
             test("read-your-writes: get returns value written in same batch", async () => {
@@ -52,7 +52,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const testKey = '{"head":"source","args":[]}';
@@ -84,7 +84,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const testKey = '{"head":"source","args":[]}';
@@ -120,7 +120,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const testKey = '{"head":"source","args":[]}';
@@ -160,7 +160,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const testKey = '{"head":"source","args":[]}';
@@ -189,7 +189,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const testKey = '{"head":"source","args":[]}';
@@ -233,7 +233,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const testKey = '{"head":"derived","args":[]}';
@@ -272,7 +272,7 @@ describe("dependency_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeDependencyGraph(db, graphDef);
+                const graph = makeIncrementalGraph(db, graphDef);
                 const storage = graph.getStorage();
 
                 const inputKey = '{"head":"source","args":[]}';
@@ -319,7 +319,7 @@ describe("dependency_graph batch consistency", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
             const storage = graph.getStorage();
 
             const inputKey = '{"head":"source","args":[]}';
@@ -365,7 +365,7 @@ describe("dependency_graph batch consistency", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
             const storage = graph.getStorage();
 
             const nodeKey = '{"head":"derived","args":[]}';

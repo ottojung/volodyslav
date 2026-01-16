@@ -3,7 +3,7 @@
  */
 
 const { equal } = require("../../../event");
-const { makeUnchanged } = require("../../dependency_graph");
+const { makeUnchanged } = require("../../incremental_graph");
 
 /** @typedef {import('../../../event').Event} Event */
 
@@ -52,7 +52,7 @@ function reconstructFromMetaEvents(metaEvents) {
     return events;
 }
 
-/** @typedef {import('../../dependency_graph').Unchanged} Unchanged */
+/** @typedef {import('../../incremental_graph').Unchanged} Unchanged */
 
 /**
  * Computes the new meta_events array that represents the transformation

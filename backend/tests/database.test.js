@@ -5,18 +5,18 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { getRootDatabase, isRootDatabase } = require('../src/generators/dependency_graph/database');
+const { getRootDatabase, isRootDatabase } = require('../src/generators/incremental_graph/database');
 const { 
     isDatabaseError,
     isDatabaseInitializationError,
     isDatabaseQueryError 
-} = require('../src/generators/dependency_graph/database/errors');
+} = require('../src/generators/incremental_graph/database/errors');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger } = require('./stubs');
-const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/dependency_graph/database/errors');
+const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/incremental_graph/database/errors');
 
 /**
- * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**

@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
     makeInterface,
     isInterface,
@@ -15,7 +15,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
 /**
- * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**
@@ -91,14 +91,14 @@ describe("generators/interface", () => {
 
                 await iface.update(events);
 
-                // Verify the data was stored correctly by pulling from the dependency graph
-                const result = await iface.dependencyGraph.pull("all_events");
+                // Verify the data was stored correctly by pulling from the incremental graph
+                const result = await iface.incrementalGraph.pull("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(2);
                 expect(result.events[0].id).toBe("event-1");
                 expect(result.events[1].id).toBe("event-2");
                 
-                const freshness = await iface.dependencyGraph.debugGetFreshness("all_events");
+                const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
                 expect(freshness).toBe("up-to-date");
 
                 await db.close();
@@ -143,7 +143,7 @@ describe("generators/interface", () => {
                 await iface.update(firstEvents);
                 await iface.update(secondEvents);
 
-                const result = await iface.dependencyGraph.pull("all_events");
+                const result = await iface.incrementalGraph.pull("all_events");
                 expect(result.events).toHaveLength(2);
                 expect(result.events[0].id).toBe("event-2");
                 expect(result.events[1].id).toBe("event-3");
@@ -162,11 +162,11 @@ describe("generators/interface", () => {
 
                 await iface.update([]);
 
-                const result = await iface.dependencyGraph.pull("all_events");
+                const result = await iface.incrementalGraph.pull("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(0);
                 
-                const freshness = await iface.dependencyGraph.debugGetFreshness("all_events");
+                const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
                 expect(freshness).toBe("up-to-date");
 
                 await db.close();
@@ -266,7 +266,7 @@ describe("generators/interface", () => {
             }
         });
 
-        test("propagates through dependency graph before returning context", async () => {
+        test("propagates through incremental graph before returning context", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
@@ -294,8 +294,8 @@ describe("generators/interface", () => {
                 expect(context).toBeDefined();
                 expect(context).toHaveLength(1);
 
-                // Verify that event_context was computed in the dependency graph
-                const eventContextEntry = await iface.dependencyGraph.pull("event_context");
+                // Verify that event_context was computed in the incremental graph
+                const eventContextEntry = await iface.incrementalGraph.pull("event_context");
                 expect(eventContextEntry).toBeDefined();
                 expect(eventContextEntry.type).toBe("event_context");
                 expect(eventContextEntry.contexts).toHaveLength(1);

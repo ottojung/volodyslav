@@ -1,5 +1,5 @@
 /**
- * Tests for dependency_graph/expr module.
+ * Tests for incremental_graph/expr module.
  */
 
 const {
@@ -7,9 +7,9 @@ const {
     canonicalize,
     canonicalizeMapping,
     renderExpr,
-} = require("../src/generators/dependency_graph/expr");
+} = require("../src/generators/incremental_graph/expr");
 
-describe("dependency_graph/expr", () => {
+describe("incremental_graph/expr", () => {
     describe("parseExpr()", () => {
         test("parses an atom", () => {
             const result = parseExpr("all_events");

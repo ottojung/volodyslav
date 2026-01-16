@@ -1,6 +1,6 @@
-# Specification for the Dependency Graph
+# Specification for the Incremental Graph
 
-This document provides a formal specification for the dependency graph's operational semantics and correctness properties.
+This document provides a formal specification for the incremental graph's operational semantics and correctness properties.
 
 ---
 
@@ -26,7 +26,7 @@ This document provides a formal specification for the dependency graph's operati
 
 ### 1.2 Expressions as an Infinite Graph (Normative)
 
-This section establishes the fundamental mental model for understanding how expressions denote infinite families of nodes and how the dependency graph operates over this infinite space using a finite schema.
+This section establishes the fundamental mental model for understanding how expressions denote infinite families of nodes and how the incremental graph operates over this infinite space using a finite schema.
 
 #### 1.2.1 Expressions Denote Node Families
 
@@ -162,7 +162,7 @@ ws            := [ \t\n\r]*
 
 ### 1.6 Schema Definition (Normative)
 
-**REQ-SCHEMA-01:** A dependency graph is defined by a set of node schemas:
+**REQ-SCHEMA-01:** A incremental graph is defined by a set of node schemas:
 
 ```typescript
 type NodeDef = {
@@ -360,10 +360,10 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 ### 3.1 Factory Function
 
 ```typescript
-function makeDependencyGraph(
+function makeIncrementalGraph(
   rootDatabase: RootDatabase,
   nodeDefs: Array<NodeDef>
-): DependencyGraph;
+): IncrementalGraph;
 ```
 
 **REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
@@ -372,16 +372,16 @@ function makeDependencyGraph(
 
 **REQ-FACTORY-03:** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
 
-### 3.2 DependencyGraph Interface
+### 3.2 IncrementalGraph Interface
 
 ```typescript
-interface DependencyGraph {
+interface IncrementalGraph {
   pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
   set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>;
 }
 ```
 
-**REQ-IFACE-01:** Implementations MUST provide type guard `isDependencyGraph(value): boolean`.
+**REQ-IFACE-01:** Implementations MUST provide type guard `isIncrementalGraph(value): boolean`.
 
 **REQ-IFACE-02:** For atom-expressions (arity 0), `bindings` parameter defaults to `[]` and may be omitted.
 
@@ -509,10 +509,10 @@ This section defines exactly what conformance tests MAY assert. All other implem
 
 Tests MAY assert the existence and signatures of:
 
-* `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): DependencyGraph` — Factory function
-* `DependencyGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
-* `DependencyGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write the node value
-* `isDependencyGraph(value): boolean` — Type guard
+* `makeIncrementalGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): IncrementalGraph` — Factory function
+* `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
+* `IncrementalGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write the node value
+* `isIncrementalGraph(value): boolean` — Type guard
 
 ### 5.2 Observable Error Taxonomy
 
@@ -542,7 +542,7 @@ Tests MAY assert:
 
 **REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N, B)` completes, node instance `N@B` and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
 
-**REQ-BEHAVE-04 (Test Determinism Assumption):** Tests MUST NOT assume deterministic behavior unless all computors in the dependency graph being tested have `isDeterministic=true` and `hasSideEffects=false`. Tests may only assert deterministic equivalence (e.g., "pull produces same result as recomputing from scratch") for graphs where all computors are declared deterministic and side-effect-free.
+**REQ-BEHAVE-04 (Test Determinism Assumption):** Tests MUST NOT assume deterministic behavior unless all computors in the incremental graph being tested have `isDeterministic=true` and `hasSideEffects=false`. Tests may only assert deterministic equivalence (e.g., "pull produces same result as recomputing from scratch") for graphs where all computors are declared deterministic and side-effect-free.
 
 ---
 
@@ -706,7 +706,7 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 For testing and debugging, implementations MAY provide:
 
 ```typescript
-interface DependencyGraphDebug {
+interface IncrementalGraphDebug {
   // Query freshness state of a specific node instance
   debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   

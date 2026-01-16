@@ -1,15 +1,15 @@
 /**
  * These are tests generated purely from the spec alone.
  * They do not depend on any particular implementation details,
- * only on the public API of the dependency graph module.
+ * only on the public API of the incremental graph module.
  */
 
 const {
-    makeDependencyGraph,
-    isDependencyGraph,
+    makeIncrementalGraph,
+    isIncrementalGraph,
     makeUnchanged,
     isUnchanged,
-} = require("../src/generators/dependency_graph");
+} = require("../src/generators/incremental_graph");
 const { toJsonKey } = require("./test_json_key_helper");
 
 function expectOneOfNames(err, names) {
@@ -218,10 +218,10 @@ function deepClone(x) {
     return x === undefined ? undefined : JSON.parse(JSON.stringify(x));
 }
 
-/** Helper to build a graph and assert it "looks like" a DependencyGraph. */
+/** Helper to build a graph and assert it "looks like" a IncrementalGraph. */
 function buildGraph(db, nodeDefs) {
-    const g = makeDependencyGraph(db, nodeDefs);
-    expect(isDependencyGraph(g)).toBe(true);
+    const g = makeIncrementalGraph(db, nodeDefs);
+    expect(isIncrementalGraph(g)).toBe(true);
     expect(typeof g.pull).toBe("function");
     expect(typeof g.set).toBe("function");
     return g;
@@ -242,10 +242,10 @@ function countedComputor(name, fn) {
     return { computor, counter };
 }
 
-describe("DependencyGraph Conformance: module surface", () => {
+describe("IncrementalGraph Conformance: module surface", () => {
     test("exports required symbols", () => {
-        expect(typeof makeDependencyGraph).toBe("function");
-        expect(typeof isDependencyGraph).toBe("function");
+        expect(typeof makeIncrementalGraph).toBe("function");
+        expect(typeof isIncrementalGraph).toBe("function");
         expect(typeof makeUnchanged).toBe("function");
         expect(typeof isUnchanged).toBe("function");
     });
@@ -265,7 +265,7 @@ describe("Schema validation (construction-time errors)", () => {
     test("throws InvalidExpressionError for invalid schema expression syntax", () => {
         const db = new InMemoryDatabase();
         expect(() =>
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "bad(",
                     inputs: [],
@@ -276,7 +276,7 @@ describe("Schema validation (construction-time errors)", () => {
             ])
         ).toThrow();
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "bad(",
                     inputs: [],
@@ -295,7 +295,7 @@ describe("Schema validation (construction-time errors)", () => {
         const db = new InMemoryDatabase();
         let error;
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "event(a, b, c, b, d)",
                     inputs: [],
@@ -316,7 +316,7 @@ describe("Schema validation (construction-time errors)", () => {
         const db = new InMemoryDatabase();
         let error;
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "derived(x, y)",
                     inputs: ["source(x, z, x)"],
@@ -336,7 +336,7 @@ describe("Schema validation (construction-time errors)", () => {
     test("throws InvalidSchemaError when output variables do not cover input variables", () => {
         const db = new InMemoryDatabase();
         expect(() =>
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "derived_event()",
                     inputs: ["event_context(e)"],
@@ -347,7 +347,7 @@ describe("Schema validation (construction-time errors)", () => {
             ])
         ).toThrow();
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "derived_event()",
                     inputs: ["event_context(e)"],
@@ -366,7 +366,7 @@ describe("Schema validation (construction-time errors)", () => {
         const db = new InMemoryDatabase();
         let error;
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "node(x)",
                     inputs: [],
@@ -396,7 +396,7 @@ describe("Schema validation (construction-time errors)", () => {
     test("throws SchemaCycleError for a <-> b cycle", () => {
         const db = new InMemoryDatabase();
         expect(() =>
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "a",
                     inputs: ["b"],
@@ -414,7 +414,7 @@ describe("Schema validation (construction-time errors)", () => {
             ])
         ).toThrow();
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "a",
                     inputs: ["b"],
@@ -439,7 +439,7 @@ describe("Schema validation (construction-time errors)", () => {
     test("throws SchemaCycleError for parameterized cycle f(x)->g(x)->f(x)", () => {
         const db = new InMemoryDatabase();
         expect(() =>
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "f(x)",
                     inputs: ["g(x)"],
@@ -457,7 +457,7 @@ describe("Schema validation (construction-time errors)", () => {
             ])
         ).toThrow();
         try {
-            makeDependencyGraph(db, [
+            makeIncrementalGraph(db, [
                 {
                     output: "f(x)",
                     inputs: ["g(x)"],

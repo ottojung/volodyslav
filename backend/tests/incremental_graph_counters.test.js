@@ -1,22 +1,22 @@
 /**
- * Tests for dependency graph counter-based optimization.
+ * Tests for incremental graph counter-based optimization.
  * These tests verify that nodes can skip recomputation when input counters haven't changed.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/dependency_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeDependencyGraph,
+    makeIncrementalGraph,
     makeUnchanged,
-} = require("../src/generators/dependency_graph");
+} = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
 /**
- * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**
@@ -26,7 +26,7 @@ const { toJsonKey } = require("./test_json_key_helper");
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     const tmpDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "dependency-graph-counter-test-")
+        path.join(os.tmpdir(), "incremental-graph-counter-test-")
     );
 
     stubLogger(capabilities);
@@ -39,7 +39,7 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
-describe("generators/dependency_graph counters", () => {
+describe("generators/incremental_graph counters", () => {
     describe("Counter-based optimization", () => {
         test("skips recomputation when input returns Unchanged (counter doesn't change)", async () => {
             const capabilities = getTestCapabilities();
@@ -86,7 +86,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Step 1: set src
             await graph.set("src", { type: "all_events", events: [1] });
@@ -155,7 +155,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             await graph.set("src", { type: "all_events", events: [1] });
             await graph.pull("a");
@@ -212,7 +212,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             await graph.set("b", { type: "all_events", events: [1] });
             await graph.set("c", { type: "all_events", events: [2] });
@@ -258,7 +258,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set src to create a value
             await graph.set("src", { type: "all_events", events: [1] });
@@ -304,7 +304,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             await graph.set("src", { type: "all_events", events: [1] });
             await graph.pull("derived");
@@ -360,7 +360,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up initial state
             await graph.set("sourceA", { type: "all_events", events: [1, 2, 3] });
@@ -430,7 +430,7 @@ describe("generators/dependency_graph counters", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, graphDef);
+            const graph = makeIncrementalGraph(db, graphDef);
             await graph.set("sourceA", { value: 10 });
             await graph.set("sourceB", { value: 20 });
             await graph.pull("derived");

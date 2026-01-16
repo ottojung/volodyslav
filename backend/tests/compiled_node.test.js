@@ -2,8 +2,8 @@
  * Tests for compiled_node module.
  */
 
-const { compileNodeDef, extractVariables } = require("../src/generators/dependency_graph/compiled_node");
-const { parseExpr } = require("../src/generators/dependency_graph/expr");
+const { compileNodeDef, extractVariables } = require("../src/generators/incremental_graph/compiled_node");
+const { parseExpr } = require("../src/generators/incremental_graph/expr");
 
 describe("compiled_node", () => {
     describe("extractVariables()", () => {
@@ -119,7 +119,7 @@ describe("compiled_node", () => {
     });
 
     describe("patternsCanOverlap()", () => {
-        const { patternsCanOverlap } = require("../src/generators/dependency_graph/compiled_node");
+        const { patternsCanOverlap } = require("../src/generators/incremental_graph/compiled_node");
 
         test("detects overlap between identical patterns", () => {
             const node1 = compileNodeDef({
@@ -180,7 +180,7 @@ describe("compiled_node", () => {
     });
 
     describe("validateNoOverlap()", () => {
-        const { validateNoOverlap } = require("../src/generators/dependency_graph/compiled_node");
+        const { validateNoOverlap } = require("../src/generators/incremental_graph/compiled_node");
 
         test("accepts non-overlapping patterns with different heads", () => {
             const nodes = [

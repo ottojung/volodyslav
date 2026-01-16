@@ -1,12 +1,12 @@
 /**
- * Tests for DependencyGraph concurrency safety.
+ * Tests for IncrementalGraph concurrency safety.
  * These tests verify that the graph handles concurrent operations correctly
  * and prevents race conditions between set() and pull() operations.
  */
 
 const {
-    makeDependencyGraph,
-} = require("../src/generators/dependency_graph");
+    makeIncrementalGraph,
+} = require("../src/generators/incremental_graph");
 
 /**
  * Deep clone helper for test data
@@ -108,11 +108,11 @@ class InMemoryDatabase {
     }
 }
 
-describe("DependencyGraph concurrency", () => {
+describe("IncrementalGraph concurrency", () => {
     describe("concurrent set() operations", () => {
         test("multiple set() calls on same node are serialized", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
@@ -152,7 +152,7 @@ describe("DependencyGraph concurrency", () => {
 
         test("concurrent set() on different nodes works correctly", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -193,7 +193,7 @@ describe("DependencyGraph concurrency", () => {
             const db = new InMemoryDatabase();
             let computeCount = 0;
 
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
@@ -244,7 +244,7 @@ describe("DependencyGraph concurrency", () => {
         test("concurrent pull() on different nodes works correctly", async () => {
             const db = new InMemoryDatabase();
 
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -284,7 +284,7 @@ describe("DependencyGraph concurrency", () => {
         test("concurrent set() and pull() on same node are serialized", async () => {
             const db = new InMemoryDatabase();
 
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
@@ -326,7 +326,7 @@ describe("DependencyGraph concurrency", () => {
             const db = new InMemoryDatabase();
             let computeCount = 0;
 
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
@@ -377,7 +377,7 @@ describe("DependencyGraph concurrency", () => {
         test("concurrent set-pull cycles maintain consistency", async () => {
             const db = new InMemoryDatabase();
 
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "counter",
                     inputs: [],
@@ -431,7 +431,7 @@ describe("DependencyGraph concurrency", () => {
         test("concurrent operations on complex graph maintain consistency", async () => {
             const db = new InMemoryDatabase();
 
-            const graph = makeDependencyGraph(db, [
+            const graph = makeIncrementalGraph(db, [
                 {
                     output: "a",
                     inputs: [],

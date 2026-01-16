@@ -63,7 +63,7 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * Storage container for a single dependency graph schema.
+ * Storage container for a single incremental graph schema.
  * All data (values, freshness, indices) is isolated per schema hash.
  * @typedef {object} SchemaStorage
  * @property {ValuesDatabase} values - Node output values

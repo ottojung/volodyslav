@@ -1,9 +1,9 @@
 /**
- * DependencyGraph module for generators.
+ * IncrementalGraph module for generators.
  * Provides an abstraction over the database for managing event dependencies.
  */
 
-const { makeDependencyGraph, isDependencyGraph } = require('./class');
+const { makeIncrementalGraph, isIncrementalGraph } = require('./class');
 const { makeUnchanged, isUnchanged } = require('./unchanged');
 const { 
     makeInvalidNodeError, 
@@ -28,13 +28,13 @@ const {
     isSchemaArityConflict,
 } = require('./errors');
 
-/** @typedef {import('./types').DependencyGraphCapabilities} DependencyGraphCapabilities */
-/** @typedef {import('./class').DependencyGraph} DependencyGraph */
+/** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
+/** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 module.exports = {
-    makeDependencyGraph,
-    isDependencyGraph,
+    makeIncrementalGraph,
+    isIncrementalGraph,
     makeUnchanged,
     isUnchanged,
     makeInvalidNodeError,

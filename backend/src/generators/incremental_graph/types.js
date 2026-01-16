@@ -1,5 +1,5 @@
 /**
- * Type definitions for DependencyGraph.
+ * Type definitions for IncrementalGraph.
  */
 
 /** @typedef {import('../../event').Event} Event */
@@ -9,7 +9,7 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 /**
- * Serializable value type for bindings in dependency graph.
+ * Serializable value type for bindings in incremental graph.
  * A ConstValue can be a number, string, null, an array of ConstValues, or a record of ConstValues.
  * Due to JSDoc limitations with recursive types, the recursive reference is marked as 'unknown'.
  * @typedef {number|string|null|Array<unknown>|Record<string, unknown>} ConstValue
@@ -21,8 +21,8 @@
  */
 
 /**
- * Capabilities needed for DependencyGraph operations
- * @typedef {object} DependencyGraphCapabilities
+ * Capabilities needed for IncrementalGraph operations
+ * @typedef {object} IncrementalGraphCapabilities
  * @property {RootDatabase} database - A root database instance
  */
 
@@ -55,7 +55,7 @@
  */
 
 /**
- * A schema hash string identifying a dependency graph schema.
+ * A schema hash string identifying an incremental graph schema.
  * @typedef {import('./database/types').SchemaHash} SchemaHash
  */
 
