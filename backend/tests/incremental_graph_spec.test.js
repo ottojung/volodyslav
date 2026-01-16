@@ -47,7 +47,7 @@ class InMemoryDatabase {
             this.schemas.set(schemaHash, new Map());
         }
         const schemaMap = this.schemas.get(schemaHash);
-        
+
         // Don't capture logs in closure - use arrow functions to preserve 'this' context
         const createSublevel = (name) => {
             const prefix = `${name}:`;
@@ -111,12 +111,12 @@ class InMemoryDatabase {
             counters,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array
-                this.batchLog.push({ ops: deepClone(operations.map(op => ({ 
-                    type: op.type, 
-                    key: op.key, 
-                    value: op.value 
+                this.batchLog.push({ ops: deepClone(operations.map(op => ({
+                    type: op.type,
+                    key: op.key,
+                    value: op.value
                 }))) });
-                
+
                 // Atomic application of batch operations
                 for (const op of operations) {
                     if (op.type === 'put') {
@@ -188,7 +188,7 @@ class InMemoryDatabase {
      */
     async corruptByDeletingValue(key) {
         const jsonKey = toJsonKey(key);
-        
+
         // Delete from all schemas
         for (const schemaMap of this.schemas.values()) {
             schemaMap.delete('values:' + jsonKey);
@@ -682,10 +682,10 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         const db = new InMemoryDatabase();
 
         const bC = countedComputor("b", async ([a]) => ({ n: a.n + 1 }));
-        
+
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
-        
+
         const g = buildGraph(db, [
             {
                 output: "a",
@@ -712,10 +712,10 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         const db = new InMemoryDatabase();
 
         const bC = countedComputor("b", async ([a]) => ({ n: a.n + 1 }));
-        
+
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
-        
+
         const g = buildGraph(db, [
             {
                 output: "a",
@@ -741,10 +741,10 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
 
     test("invalidate uses a single atomic database.batch()", async () => {
         const db = new InMemoryDatabase();
-        
+
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
-        
+
         const g = buildGraph(db, [
             {
                 output: "a",
@@ -1425,10 +1425,10 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         // After set, source must be materialized
         sourceCell.value = { n: 42 };
         await g.invalidate("source");
-        
+
         const list1 = await g.debugListMaterializedNodes();
         expect(list1).toContain(toJsonKey("source"));
-        
+
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
         const storage = g.getStorage();
@@ -1464,10 +1464,10 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         // After pull, leaf must be materialized
         const value = await g.pull("leaf");
         expect(value).toEqual({ n: 0 });
-        
+
         const list1 = await g.debugListMaterializedNodes();
         expect(list1).toContain(toJsonKey("leaf"));
-        
+
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
         const storage = g.getStorage();
