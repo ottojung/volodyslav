@@ -17,7 +17,9 @@ This document provides a formal specification for the dependency graph's operati
 * **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **Computor** — deterministic async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
+* **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
+* **Outcome set (spec-only)** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ (DatabaseValue ∪ {Unchanged})`. This set may be infinite. This is a specification-only concept used to formalize nondeterminism; implementations do not enumerate this set.
+* **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
@@ -173,9 +175,9 @@ type NodeDef = {
 ```
 
 **Note on Determinism and Side Effects:**
-* `isDeterministic`: When `true`, the computor MUST produce the same output given the same `(inputs, oldValue, bindings)` tuple. When `false`, the computor MAY produce different outputs even with identical inputs.
-* `hasSideEffects`: When `true`, the computor MAY perform actions beyond computing its return value (e.g., logging, network calls, file operations). When `false`, the computor MUST NOT perform any observable side effects.
-* These fields are metadata about the computor's behavior and are NOT stored in the database. They are used for optimization hints and migration planning.
+* `isDeterministic`: When `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`, meaning `Outcomes(S, inputs, oldValue, bindings)` is always a singleton (exactly one possible result). When `false`, the computor MAY produce different outputs even with identical inputs (the outcome set may contain multiple elements or depend on unmodeled factors).
+* `hasSideEffects`: When `true`, the computor MAY perform actions beyond computing its return value (e.g., logging, network calls, file operations). When `false`, the computor MUST be observationally pure (no observable side effects). In the formal model, side effects are treated as a form of nondeterminism—they are not separately tracked in the observable contract.
+* These fields are semantic claims about the computor's behavior and are NOT stored in the database. They are used to justify stronger correctness properties for the deterministic/pure subset of computors. When `isDeterministic=true` and `hasSideEffects=false`, the system can provide stronger guarantees about reproducibility.
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
@@ -268,6 +270,18 @@ await graph.pull("full_event", [{id: "123"}]);
 * `pull(nodeName, bindings)` — creates `NodeInstance` with dependencies, stores value at `NodeKey`, marks `up-to-date`
 * `set(nodeName, value, bindings)` — materializes a `NodeInstance` at `NodeKey`, marks `up-to-date`
 
+### 1.11 Notes on Nondeterminism and Side Effects (Normative)
+
+**Treatment of Side Effects:** In this specification, side effects performed by computors are treated as a form of nondeterminism. They are NOT separately tracked or made part of the observable contract. The formal model uses outcome sets to capture all sources of variation in computor results, whether from true nondeterminism (e.g., random number generation), external state (e.g., reading current time, network calls), or side effects (e.g., logging, metrics).
+
+**Observable Contract:** The only observable aspect of a computor is its returned value. Side effects are:
+* Permitted when `hasSideEffects=true`
+* Treated as contributing to the nondeterministic choice from the outcome set
+* Not guaranteed to execute exactly once, at-least-once, or at-most-once
+* Subject to the recomputation policy: computors are NOT invoked for up-to-date nodes (REQ-PULL-04)
+
+**Implications for Testing:** Tests cannot observe or verify side effects directly. Tests can only assert properties about returned values. The `hasSideEffects` flag is metadata that enables certain optimizations and reasoning, but does not affect the observable behavior from a testing perspective.
+
 ---
 
 ## 2. Operational Semantics (Normative)
@@ -278,24 +292,30 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **Big-Step Semantics:**
 
-```
+```javascript
 pull(nodeName, B):
   schema = lookup_schema_by_nodeName(nodeName)
   nodeKey = createNodeKey(nodeName, B)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_of(schema)]
   old_value = stored_value(nodeKey)
-  new_value = computor_of(schema)(inputs_values, old_value, B)
+  r ∈ Outcomes(schema, inputs_values, old_value, B)  // nondeterministic choice
+  if r == Unchanged:
+    new_value = old_value
+  else:
+    new_value = r
   store(nodeKey, new_value)
   return stored_value(nodeKey)
 ```
 
-Note: this specification only describes input-output semantics. It ignores freshness tracking, caching, etc.
+Note: this specification describes the abstract input-output semantics using nondeterministic choice from outcome sets. It ignores implementation details like freshness tracking, caching, etc.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
 **REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
 
 **REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
+
+**REQ-PULL-04 (No spurious recomputation):** If a materialized node instance is `up-to-date` at the time it is encountered during a `pull()`, the implementation MUST return its stored value and MUST NOT invoke its computor. This makes `pull()` use call-by-need semantics and prevents repeated effects/resampling for up-to-date nodes.
 
 **Efficiency Optimization (Implementation-Defined):**
 
@@ -330,6 +350,8 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 2. Node MUST be marked `up-to-date`
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
+
+**REQ-UNCH-03:** A computor MUST NOT return `Unchanged` when `oldValue` is `undefined`. If it does, `pull` MAY throw `InvalidUnchangedError`.
 
 ---
 
@@ -410,9 +432,9 @@ type Computor = (
 ) => Promise<DatabaseValue | Unchanged>;
 ```
 
-**REQ-COMP-01:** Computors MUST be deterministic with respect to `(inputs, oldValue, bindings)`.
+**REQ-COMP-01′ (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`. Formally, `Outcomes(S, inputs, oldValue, bindings)` MUST always be a singleton set. If `NodeDef.isDeterministic` is `false`, the computor MAY be nondeterministic (outcome set may contain multiple elements).
 
-**REQ-COMP-02:** Computors MUST NOT have hidden side effects affecting output.
+**REQ-COMP-02′ (Conditional Purity):** If `NodeDef.hasSideEffects` is `false`, the computor MUST NOT have observable side effects. If `NodeDef.hasSideEffects` is `true`, the computor MAY perform side effects (which are treated as nondeterminism in the formal model).
 
 **REQ-COMP-03:** Computors MAY return `Unchanged` sentinel to indicate no value change.
 
@@ -460,11 +482,16 @@ The graph MUST maintain these invariants for all materialized node instances:
 
 **I2 (Up-to-Date Upstream):** If materialized node instance `N@B` is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
 
-**I3 (Value Consistency):** If materialized node instance `N@B` is `up-to-date`, its value equals what would be computed by recursively evaluating dependencies and applying computor.
+**I3′ (Value Admissibility):** If materialized node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
+* there exists some `oldValue` such that `v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`.
+
+This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. For source nodes whose values were written by `set()`, the semantics are defined such that their computor is a trivial source computor and `Outcomes(schema(N), [], oldValue, B)` is the singleton set `{v_set}`, where `v_set` is the value most recently written by `set()`. Thus, source nodes also satisfy I3′ via membership in their `Outcomes(...)` set rather than bypassing it.
 
 ### 4.3 Correctness Properties
 
-**P1 (Semantic Equivalence):** `pull(N, B)` produces same result as recomputing from scratch.
+**P1′ (Soundness under nondeterminism):** For any `pull(nodeName, B)` that returns value `v`, `v` is a value permitted by the nondeterministic big-step semantics. That is, there exists a derivation where all computor invocations choose elements from their `Outcomes(...)` sets and the final returned value is `v`.
+
+**P1-det (Deterministic specialization, corollary):** If all computors reachable from node instance `N@B` have `isDeterministic=true` and `hasSideEffects=false`, then P1′ strengthens to: `pull(N, B)` produces the same result as recomputing all values from scratch with the same input values. This recovers the traditional semantic equivalence property for the deterministic and pure subset of computors.
 
 **P2 (Progress):** Every `pull(N, B)` call terminates (assuming computors terminate).
 
@@ -509,11 +536,13 @@ Tests MAY assert:
 
 ### 5.6 Behavioral Guarantees
 
-**REQ-BEHAVE-01 = P1** (see §4.3): `pull(N, B)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence).
+**REQ-BEHAVE-01 = P1′** (see §4.3): `pull(N, B)` MUST produce a result that is permitted by the nondeterministic big-step semantics (Soundness under nondeterminism). For deterministic and pure computors (where all reachable computors have `isDeterministic=true` and `hasSideEffects=false`), this strengthens to the traditional semantic equivalence with recomputing from scratch.
 
 **REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call for each unique node instance (Single Invocation).
 
 **REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N, B)` completes, node instance `N@B` and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
+
+**REQ-BEHAVE-04 (Test Determinism Assumption):** Tests MUST NOT assume deterministic behavior unless all computors in the dependency graph being tested have `isDeterministic=true` and `hasSideEffects=false`. Tests may only assert deterministic equivalence (e.g., "pull produces same result as recomputing from scratch") for graphs where all computors are declared deterministic and side-effect-free.
 
 ---
 
