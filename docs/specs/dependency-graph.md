@@ -177,7 +177,7 @@ type NodeDef = {
 **Note on Determinism and Side Effects:**
 * `isDeterministic`: When `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`, meaning `Outcomes(S, inputs, oldValue, bindings)` is always a singleton (exactly one possible result). When `false`, the computor MAY produce different outputs even with identical inputs (the outcome set may contain multiple elements or depend on unmodeled factors).
 * `hasSideEffects`: When `true`, the computor MAY perform actions beyond computing its return value (e.g., logging, network calls, file operations). When `false`, the computor MUST be observationally pure (no observable side effects). In the formal model, side effects are treated as a form of nondeterminism—they are not separately tracked in the observable contract.
-* These fields are semantic claims about the computor's behavior and are NOT stored in the database. They are used to justify stronger correctness properties for the deterministic/pure subset of computors. When both flags are `true` and `false` respectively, the system can provide stronger guarantees about reproducibility.
+* These fields are semantic claims about the computor's behavior and are NOT stored in the database. They are used to justify stronger correctness properties for the deterministic/pure subset of computors. When `isDeterministic=true` and `hasSideEffects=false`, the system can provide stronger guarantees about reproducibility.
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
