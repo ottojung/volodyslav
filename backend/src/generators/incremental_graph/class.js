@@ -34,7 +34,6 @@ const {
     makeInvalidNodeError,
     makeMissingValueError,
     makeInvalidSetError,
-    makeInvalidInvalidateError,
     makeInvalidComputorReturnValueError,
     makeArityMismatchError,
     makeSchemaPatternNotAllowedError,
@@ -377,11 +376,6 @@ class IncrementalGraphClass {
 
         checkArity(compiledNode, bindings);
 
-        // Validate that this is a source node (no inputs)
-        if (compiledNode.source.inputs.length > 0) {
-            throw makeInvalidInvalidateError(nodeNameTyped);
-        }
-
         // Create NodeKey for storage
         const nodeKey = { head: nodeNameTyped, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
@@ -398,11 +392,21 @@ class IncrementalGraphClass {
             // Mark this key as potentially-outdated (not up-to-date)
             batch.freshness.put(nodeDefinition.output, "potentially-outdated");
 
-            // Ensure the node is materialized (write inputs record with empty array and empty inputCounters)
+            // Ensure the node is materialized (write inputs record with appropriate inputCounters)
+            // For source nodes, inputCounters is empty; for derived nodes, we need current counters
+            const inputCounters = [];
+            if (nodeDefinition.inputs.length > 0) {
+                // For derived nodes, read current input counters
+                for (const inputKey of nodeDefinition.inputs) {
+                    const counter = await batch.counters.get(inputKey);
+                    inputCounters.push(counter !== undefined ? counter : 0);
+                }
+            }
+            
             await this.storage.ensureMaterialized(
                 nodeDefinition.output,
                 nodeDefinition.inputs,
-                [], // inputCounters is empty for source nodes (no inputs)
+                inputCounters,
                 batch
             );
 

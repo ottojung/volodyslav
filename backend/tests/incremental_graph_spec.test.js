@@ -623,13 +623,16 @@ describe("pull/set concrete-ness & node existence errors", () => {
         });
     });
 
-    test("invalidate on non-source node throws InvalidInvalidateError", async () => {
+    test("invalidate on non-source node works correctly", async () => {
         const db = new InMemoryDatabase();
+        
+        const aCell = { value: { n: 0 } };
+        
         const g = buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
-                computor: async (_i, old) => old || { n: 0 },
+                computor: async () => aCell.value,
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -642,9 +645,24 @@ describe("pull/set concrete-ness & node existence errors", () => {
             },
         ]);
 
-        await expect(g.invalidate("b")).rejects.toMatchObject({
-            name: "InvalidInvalidateError",
-        });
+        // First, materialize the nodes
+        aCell.value = { n: 5 };
+        await g.invalidate("a");
+        const b1 = await g.pull("b");
+        expect(b1).toEqual({ n: 6 });
+        
+        // Verify b is up-to-date
+        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+        
+        // Now invalidate b directly (non-source node)
+        await g.invalidate("b");
+        
+        // b should now be potentially-outdated
+        await expect(g.debugGetFreshness("b")).resolves.toBe("potentially-outdated");
+        
+        // Pulling b should recompute it
+        const b2 = await g.pull("b");
+        expect(b2).toEqual({ n: 6 });
     });
 });
 
