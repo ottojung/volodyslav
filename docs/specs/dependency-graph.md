@@ -17,11 +17,11 @@ This document provides a formal specification for the dependency graph's operati
 * **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **ChoiceSet** — a non-empty collection (possibly infinite) of `DatabaseValue` results that a computor may produce. Represents all possible outcomes of a nondeterministic computation.
+* **ChoiceSet** (conceptual) — a non-empty collection (possibly infinite) of `DatabaseValue` results representing all possible outcomes of a nondeterministic computation. This is a formal/mathematical construct used in semantic descriptions. The API representation is always finite via the `Choices` type.
 * **WitnessValue** — the specific `DatabaseValue` selected from a `ChoiceSet` and stored as the node's materialized value. The engine selects exactly one witness from the choice set and caches it until the node is invalidated.
 * **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<ComputeResult>` where `ComputeResult` is one of: `DatabaseValue`, `Unchanged`, or `Choices(Array<DatabaseValue>)`.
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
-* **Choices** — return value wrapper indicating a nondeterministic choice set. `Choices(values)` where `values` is a non-empty array of `DatabaseValue`. The engine will select one value as the witness.
+* **Choices** (API representation) — return value wrapper representing a finite subset of a choice set. `Choices(values)` where `values` is a non-empty array of `DatabaseValue`. The engine will select one value as the witness. While the conceptual `ChoiceSet` may be infinite, the API can only represent finite arrays.
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
 
@@ -489,6 +489,8 @@ type Computor = (
 **REQ-COMP-01:** Computors marked with `isDeterministic: true` MUST be deterministic with respect to `(inputs, oldValue, bindings)`. They MUST return the same `DatabaseValue` (or `Unchanged`) given the same inputs.
 
 **REQ-COMP-02:** Computors marked with `isDeterministic: false` MAY be nondeterministic. They MAY return `Choices(values)` to specify a choice set, or directly return different `DatabaseValue` results on different invocations with the same inputs.
+
+**Note on Infinite Choice Sets:** While the conceptual model allows for infinite choice sets, the API representation via `Choices(values)` is necessarily finite (limited by array representation). When the conceptual choice set is infinite, the computor must return a finite representative sample via the `Choices` API. The formal semantics treat this finite array as representing membership in the (possibly infinite) conceptual choice set.
 
 **REQ-COMP-03:** Computors marked with `hasSideEffects: false` MUST NOT have side effects affecting output or observable external state.
 
