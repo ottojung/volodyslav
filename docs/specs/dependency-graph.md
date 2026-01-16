@@ -483,10 +483,9 @@ The graph MUST maintain these invariants for all materialized node instances:
 **I2 (Up-to-Date Upstream):** If materialized node instance `N@B` is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
 
 **I3′ (Value Admissibility):** If materialized node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
-* either `v` was written by `set()` (for source nodes), OR
 * there exists some `oldValue` such that `v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`.
 
-This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value.
+This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. For source nodes whose values were written by `set()`, the semantics are defined such that their computor is a trivial source computor and `Outcomes(schema(N), [], oldValue, B)` is the singleton set `{v_set}`, where `v_set` is the value most recently written by `set()`. Thus, source nodes also satisfy I3′ via membership in their `Outcomes(...)` set rather than bypassing it.
 
 ### 4.3 Correctness Properties
 
