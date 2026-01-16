@@ -41,12 +41,37 @@ describe("IncrementalGraph integration with meta_events", () => {
         const db = await getRootDatabase(capabilities);
 
         // Define the graph - need to include all_events as a node
+        const testEvents = [
+            {
+                id: eventId.fromString("1"),
+                type: "test",
+                description: "Event 1",
+                date: "2024-01-01",
+                original: "test1",
+                input: "test1",
+                modifiers: {},
+                creator: { type: "user", name: "test" },
+            },
+            {
+                id: eventId.fromString("2"),
+                type: "test",
+                description: "Event 2",
+                date: "2024-01-02",
+                original: "test2",
+                input: "test2",
+                modifiers: {},
+                creator: { type: "user", name: "test" },
+            },
+        ];
+
         const graphDefinition = [
             {
                 output: "all_events",
                 inputs: [],
-                computor: (inputs, oldValue, _bindings) => 
-                    oldValue || { type: "all_events", events: [] },
+                computor: (_inputs, _oldValue, _bindings) => ({
+                    type: "all_events",
+                    events: testEvents,
+                }),
             },
             {
                 output: "meta_events",
@@ -95,32 +120,8 @@ describe("IncrementalGraph integration with meta_events", () => {
 
         const graph = makeIncrementalGraph(db, graphDefinition);
 
-        // Add initial events - set directly on the graph
-        await graph.set("all_events", {
-            type: "all_events",
-            events: [
-                {
-                    id: eventId.fromString("1"),
-                    type: "test",
-                    description: "Event 1",
-                    date: "2024-01-01",
-                    original: "test1",
-                    input: "test1",
-                    modifiers: {},
-                    creator: { type: "user", name: "test" },
-                },
-                {
-                    id: eventId.fromString("2"),
-                    type: "test",
-                    description: "Event 2",
-                    date: "2024-01-02",
-                    original: "test2",
-                    input: "test2",
-                    modifiers: {},
-                    creator: { type: "user", name: "test" },
-                },
-            ],
-        });
+        // Invalidate all_events to trigger computation
+        await graph.invalidate("all_events");
 
         // Pull meta_events
         const metaEventsEntry = await graph.pull("meta_events");
