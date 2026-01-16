@@ -351,7 +351,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
-**REQ-UNCH-03:** A computor MUST NOT return `Unchanged` when `oldValue` is `undefined`. If it does, `pull` MUST throw an error (implementations SHOULD use `InvalidUnchangedError` or an appropriate internal error). This restriction becomes important under nondeterminism, where returning `Unchanged` is itself a choice from the outcome set.
+**REQ-UNCH-03:** A computor MUST NOT return `Unchanged` when `oldValue` is `undefined`. If it does, `pull` MAY throw `InvalidUnchangedError`.
 
 ---
 
