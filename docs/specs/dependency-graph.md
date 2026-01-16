@@ -292,7 +292,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **Big-Step Semantics:**
 
-```
+```javascript
 pull(nodeName, B):
   schema = lookup_schema_by_nodeName(nodeName)
   nodeKey = createNodeKey(nodeName, B)
