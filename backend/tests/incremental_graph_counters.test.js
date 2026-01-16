@@ -49,14 +49,13 @@ describe("generators/incremental_graph counters", () => {
             let bComputes = 0;
             let aComputes = 0;
 
+            const srcCell = { value: null };
+
             const graphDef = [
                 {
                     output: "src",
                     inputs: [],
-                    computor: async () => ({
-                        type: "all_events",
-                        events: [],
-                    }),
+                    computor: async () => srcCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -89,7 +88,8 @@ describe("generators/incremental_graph counters", () => {
             const graph = makeIncrementalGraph(db, graphDef);
 
             // Step 1: set src
-            await graph.set("src", { type: "all_events", events: [1] });
+            srcCell.value = { type: "all_events", events: [1] };
+            await graph.invalidate("src");
 
             // Step 2: pull a - should compute both b and a
             await graph.pull("a");
@@ -97,7 +97,8 @@ describe("generators/incremental_graph counters", () => {
             expect(aComputes).toBe(1);
 
             // Step 3: set src again (different value)
-            await graph.set("src", { type: "all_events", events: [2] });
+            srcCell.value = { type: "all_events", events: [2] };
+            await graph.invalidate("src");
 
             // Step 4: pull b - should recompute b, but b returns Unchanged
             await graph.pull("b");
@@ -118,14 +119,13 @@ describe("generators/incremental_graph counters", () => {
             let bComputes = 0;
             let aComputes = 0;
 
+            const srcCell = { value: null };
+
             const graphDef = [
                 {
                     output: "src",
                     inputs: [],
-                    computor: async () => ({
-                        type: "all_events",
-                        events: [],
-                    }),
+                    computor: async () => srcCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -157,12 +157,14 @@ describe("generators/incremental_graph counters", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            await graph.set("src", { type: "all_events", events: [1] });
+            srcCell.value = { type: "all_events", events: [1] };
+            await graph.invalidate("src");
             await graph.pull("a");
             expect(bComputes).toBe(1);
             expect(aComputes).toBe(1);
 
-            await graph.set("src", { type: "all_events", events: [2, 3] });
+            srcCell.value = { type: "all_events", events: [2, 3] };
+            await graph.invalidate("src");
             await graph.pull("b");
             expect(bComputes).toBe(2);
 
@@ -179,24 +181,21 @@ describe("generators/incremental_graph counters", () => {
 
             let aComputes = 0;
 
+            const bCell = { value: null };
+            const cCell = { value: null };
+
             const graphDef = [
                 {
                     output: "b",
                     inputs: [],
-                    computor: async () => ({
-                        type: "all_events",
-                        events: [],
-                    }),
+                    computor: async () => bCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "c",
                     inputs: [],
-                    computor: async () => ({
-                        type: "all_events",
-                        events: [],
-                    }),
+                    computor: async () => cCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -214,13 +213,16 @@ describe("generators/incremental_graph counters", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            await graph.set("b", { type: "all_events", events: [1] });
-            await graph.set("c", { type: "all_events", events: [2] });
+            bCell.value = { type: "all_events", events: [1] };
+            await graph.invalidate("b");
+            cCell.value = { type: "all_events", events: [2] };
+            await graph.invalidate("c");
             await graph.pull("a");
             expect(aComputes).toBe(1);
 
             // Change only b
-            await graph.set("b", { type: "all_events", events: [3] });
+            bCell.value = { type: "all_events", events: [3] };
+            await graph.invalidate("b");
             await graph.pull("a");
             expect(aComputes).toBe(2); // Should recompute
 
@@ -235,14 +237,13 @@ describe("generators/incremental_graph counters", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const srcCell = { value: null };
+
             const graphDef = [
                 {
                     output: "src",
                     inputs: [],
-                    computor: async () => ({
-                        type: "all_events",
-                        events: [],
-                    }),
+                    computor: async () => srcCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -261,7 +262,8 @@ describe("generators/incremental_graph counters", () => {
             const graph = makeIncrementalGraph(db, graphDef);
 
             // Set src to create a value
-            await graph.set("src", { type: "all_events", events: [1] });
+            srcCell.value = { type: "all_events", events: [1] };
+            await graph.invalidate("src");
             await graph.pull("derived");
 
             // Manually corrupt the database by deleting the counter for src
@@ -281,14 +283,13 @@ describe("generators/incremental_graph counters", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const srcCell = { value: null };
+
             const graphDef = [
                 {
                     output: "src",
                     inputs: [],
-                    computor: async () => ({
-                        type: "all_events",
-                        events: [],
-                    }),
+                    computor: async () => srcCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -306,7 +307,8 @@ describe("generators/incremental_graph counters", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            await graph.set("src", { type: "all_events", events: [1] });
+            srcCell.value = { type: "all_events", events: [1] };
+            await graph.invalidate("src");
             await graph.pull("derived");
 
             // Manually corrupt the database by removing inputCounters from derived's InputsRecord
@@ -320,7 +322,8 @@ describe("generators/incremental_graph counters", () => {
             }
 
             // Invalidate derived
-            await graph.set("src", { type: "all_events", events: [2] });
+            srcCell.value = { type: "all_events", events: [2] };
+            await graph.invalidate("src");
 
             // Now trying to pull derived should throw because inputCounters is missing
             await expect(graph.pull("derived")).rejects.toThrow();
@@ -332,19 +335,22 @@ describe("generators/incremental_graph counters", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const sourceACell = { value: null };
+            const sourceBCell = { value: null };
+
             // Schema with derived depending on sourceA
             const graphDef = [
                 {
                     output: "sourceA",
                     inputs: [],
-                    computor: async () => ({ type: "all_events", events: [1, 2, 3] }),
+                    computor: async () => sourceACell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "sourceB",
                     inputs: [],
-                    computor: async () => ({ type: "all_events", events: [4, 5] }),
+                    computor: async () => sourceBCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -363,8 +369,10 @@ describe("generators/incremental_graph counters", () => {
             const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up initial state
-            await graph.set("sourceA", { type: "all_events", events: [1, 2, 3] });
-            await graph.set("sourceB", { type: "all_events", events: [4, 5] });
+            sourceACell.value = { type: "all_events", events: [1, 2, 3] };
+            await graph.invalidate("sourceA");
+            sourceBCell.value = { type: "all_events", events: [4, 5] };
+            await graph.invalidate("sourceB");
             const resultV1 = await graph.pull("derived");
             
             // Derived should have meta_events with value 3 (from sourceA)
@@ -405,19 +413,22 @@ describe("generators/incremental_graph counters", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const sourceACell = { value: null };
+            const sourceBCell = { value: null };
+
             // Setup with schema
             const graphDef = [
                 {
                     output: "sourceA",
                     inputs: [],
-                    computor: async () => ({ value: 10 }),
+                    computor: async () => sourceACell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "sourceB",
                     inputs: [],
-                    computor: async () => ({ value: 20 }),
+                    computor: async () => sourceBCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -431,8 +442,10 @@ describe("generators/incremental_graph counters", () => {
             ];
 
             const graph = makeIncrementalGraph(db, graphDef);
-            await graph.set("sourceA", { value: 10 });
-            await graph.set("sourceB", { value: 20 });
+            sourceACell.value = { value: 10 };
+            await graph.invalidate("sourceA");
+            sourceBCell.value = { value: 20 };
+            await graph.invalidate("sourceB");
             await graph.pull("derived");
 
             // Manually corrupt the InputsRecord to have wrong inputs
