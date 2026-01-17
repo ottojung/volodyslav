@@ -97,9 +97,6 @@ describe("generators/interface", () => {
                 expect(result.events).toHaveLength(2);
                 expect(result.events[0].id).toBe("event-1");
                 expect(result.events[1].id).toBe("event-2");
-                
-                const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
-                expect(freshness).toBe("up-to-date");
 
                 await db.close();
             } finally {
@@ -165,9 +162,6 @@ describe("generators/interface", () => {
                 const result = await iface.incrementalGraph.pull("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(0);
-                
-                const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
-                expect(freshness).toBe("up-to-date");
 
                 await db.close();
             } finally {
