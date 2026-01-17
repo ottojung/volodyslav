@@ -733,61 +733,7 @@ class IncrementalGraphClass {
         });
     }
 
-    /**
-     * Query conceptual freshness state of a node (debug interface).
-     * Note: This is a debug/inspection method that reads directly from storage
-     * outside a batch context. This is acceptable for non-critical debug paths.
-     * @param {NodeName} nodeName - The node name (functor only)
-     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
-     * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
-     */
-    async debugGetFreshness(nodeName, bindings = []) {
-        // Lookup schema to validate nodeName and get arity
-        const compiledNode = this.headIndex.get(nodeName);
-        if (!compiledNode) {
-            throw makeInvalidNodeError(nodeName);
-        }
 
-        checkArity(compiledNode, bindings);
-
-        // Convert to JSON format key
-        const nodeKey = { head: nodeName, args: bindings };
-        const concreteKey = serializeNodeKey(nodeKey);
-
-        const concreteKeyString = concreteKey;
-
-        // Debug read: directly from storage (acceptable for non-critical inspection)
-        const freshness = await this.storage.freshness.get(concreteKeyString);
-        if (freshness === undefined) {
-            return "missing";
-        }
-        return freshness;
-    }
-
-    /**
-     * List all materialized nodes (canonical names).
-     * @returns {Promise<NodeKeyString[]>}
-     */
-    async debugListMaterializedNodes() {
-        return this.storage.listMaterializedNodes();
-    }
-
-    /**
-     * Get the GraphStorage instance for testing purposes.
-     * This allows tests to directly access and manipulate the storage.
-     * @returns {GraphStorage}
-     */
-    getStorage() {
-        return this.storage;
-    }
-
-    /**
-     * Get the schema hash for testing purposes.
-     * @returns {SchemaHash}
-     */
-    getSchemaHash() {
-        return this.schemaHash;
-    }
 }
 
 /**

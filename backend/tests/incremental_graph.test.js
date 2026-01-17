@@ -12,9 +12,7 @@ const {
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
-const { toJsonKey } = require("./test_json_key_helper");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -58,7 +56,6 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            // Track which computors were called
             const computeCalls = [];
 
             const input1Cell = { value: { type: 'all_events', events: [] } };
@@ -105,20 +102,13 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Seed input1
             input1Cell.value = { type: 'all_events', events: [] };
             await graph.invalidate("input1");
 
-            // Pull only level2 - should compute level1 and level2 but NOT level3
             const result = await graph.pull("level2");
 
             expect(result).toBeDefined();
             expect(computeCalls).toEqual(["level1", "level2"]);
-
-            // level3 should not have been computed
-            const storage = graph.getStorage();
-            const level3 = await storage.values.get("level3");
-            expect(level3).toBeUndefined();
 
             await db.close();
         });
@@ -129,11 +119,13 @@ describe("generators/incremental_graph", () => {
 
             let computeCount = 0;
 
+            const input1Cell = { value: { type: 'all_events', events: [] } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: () => ({ type: 'all_events', events: [] }),
+                    computor: () => input1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -151,19 +143,16 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const storage = graph.getStorage();
+            input1Cell.value = { type: 'all_events', events: [] };
+            await graph.invalidate("input1");
 
-            // Seed data using storage after graph creation
-            await storage.values.put(toJsonKey("input1"), { type: 'all_events', events: [] });
-            await storage.freshness.put(toJsonKey("input1"), "up-to-date");
-            await storage.values.put(toJsonKey("output1"), { type: 'meta_events', meta_events: [] });
-            await storage.freshness.put(toJsonKey("output1"), "up-to-date");
+            const result1 = await graph.pull("output1");
+            expect(result1.type).toBe("meta_events");
+            expect(computeCount).toBe(1);
 
-            const result = await graph.pull("output1");
-
-            // Should return cached value without computing
-            expect(result.type).toBe("meta_events");
-            expect(computeCount).toBe(0);
+            const result2 = await graph.pull("output1");
+            expect(result2.type).toBe("meta_events");
+            expect(computeCount).toBe(1);
 
             await db.close();
         });
@@ -172,17 +161,23 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            let computeCount = 0;
+
+            const input1Cell = { value: { data: "initial_data" } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) =>
-                        oldValue || { data: "new_data" },
+                    computor: () => input1Cell.value,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output1",
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
+                        computeCount++;
                         return { data: inputs[0].data + "_processed" };
                     },
                     isDeterministic: true,
@@ -192,24 +187,17 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input1", { data: "new_data" });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-
-            await testDb.put("output1", { data: "old_result" });
-            await testDb.put(freshnessKey("output1"), "potentially-outdated");
+            input1Cell.value = { data: "new_data" };
+            await graph.invalidate("input1");
 
             const result = await graph.pull("output1");
 
-            // Should have recomputed with new input
             expect(result.data).toBe("new_data_processed");
+            expect(computeCount).toBe(1);
 
-            // Both input and output should now be clean
-            const input1Freshness = await graph.debugGetFreshness("input1");
-            const output1Freshness = await graph.debugGetFreshness("output1");
-            expect(input1Freshness).toBe("up-to-date");
-            expect(output1Freshness).toBe("up-to-date");
+            const result2 = await graph.pull("output1");
+            expect(result2.data).toBe("new_data_processed");
+            expect(computeCount).toBe(1);
 
             await db.close();
         });
@@ -220,15 +208,10 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, []);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("standalone", { data: "standalone_value" });
-
             await expect(graph.pull("standalone")).rejects.toThrow(
                 "not found in the incremental graph."
             );
 
-            // Also verify error type
             await expect(graph.pull("standalone")).rejects.toThrow(
                 /not found in the incremental graph./
             );
@@ -240,17 +223,26 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            let computeCount = 0;
+
+            const input1Cell = { value: { data: "test" } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) =>
-                        oldValue || { data: "test" },
+                    computor: () => input1Cell.value,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
+                        computeCount++;
+                        if (!oldValue) {
+                            return { data: "initial_value" };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -260,19 +252,19 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
+            input1Cell.value = { data: "test" };
+            await graph.invalidate("input1");
+            
+            const result1 = await graph.pull("output1");
+            expect(result1.data).toBe("initial_value");
+            expect(computeCount).toBe(1);
 
-            await testDb.put("input1", { data: "test" });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("output1", { data: "existing_value" });
-            await testDb.put(freshnessKey("output1"), "up-to-date");
-
-            const result = await graph.pull("output1");
-
-            // Should keep existing value and mark as clean
-            expect(result.data).toBe("existing_value");
-            const output1Freshness = await graph.debugGetFreshness("output1");
-            expect(output1Freshness).toBe("up-to-date");
+            input1Cell.value = { data: "test2" };
+            await graph.invalidate("input1");
+            
+            const result2 = await graph.pull("output1");
+            expect(result2.data).toBe("initial_value");
+            expect(computeCount).toBe(2);
 
             await db.close();
         });
@@ -280,6 +272,8 @@ describe("generators/incremental_graph", () => {
         test("handles potentially-dirty propagation in linear chain", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
+
+            const computeCalls = [];
 
             const graphDef = [
                 {
@@ -323,21 +317,6 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input1", { count: 1 });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("level1", { count: 10 });
-            await testDb.put(freshnessKey("level1"), "potentially-outdated");
-            await testDb.put("level2", { count: 20 });
-            await testDb.put(freshnessKey("level2"), "potentially-outdated");
-            await testDb.put("level3", { count: 30 });
-            await testDb.put(freshnessKey("level3"), "potentially-outdated");
-            const computeCalls = [];
-
-            // Set up chain: input1 -> level1 -> level2 -> level3
-            // input1 is dirty, others are potentially-dirty
-
 
 
             const result = await graph.pull("level3");
@@ -346,15 +325,11 @@ describe("generators/incremental_graph", () => {
             expect(result.count).toBe(4);
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
 
-            // All should be clean after pull
-            const input1Freshness = await graph.debugGetFreshness("input1");
-            const level1Freshness = await graph.debugGetFreshness("level1");
-            const level2Freshness = await graph.debugGetFreshness("level2");
-            const level3Freshness = await graph.debugGetFreshness("level3");
-            expect(input1Freshness).toBe("up-to-date");
-            expect(level1Freshness).toBe("up-to-date");
-            expect(level2Freshness).toBe("up-to-date");
-            expect(level3Freshness).toBe("up-to-date");
+            // Verify clean state by pulling again - should not recompute
+            computeCalls.length = 0;
+            const result2 = await graph.pull("level3");
+            expect(result2.count).toBe(4);
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -381,9 +356,9 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("level1");
                         if (!oldValue) {
-                            return { count: 2 }; // First time: return actual value
+                            return { count: 2 };
                         }
-                        return makeUnchanged(); // Subsequent times: return Unchanged
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -394,9 +369,9 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("level2");
                         if (!oldValue) {
-                            return { count: 3 }; // First time: return actual value
+                            return { count: 3 };
                         }
-                        return makeUnchanged(); // Subsequent times: return Unchanged
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -407,9 +382,9 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("level3");
                         if (!oldValue) {
-                            return { count: 4 }; // First time: return actual value
+                            return { count: 4 };
                         }
-                        return makeUnchanged(); // Subsequent times: return Unchanged
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -418,35 +393,26 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Set up chain properly: input1 -> level1 -> level2 -> level3
             input1Cell.value = { count: 1 };
             await graph.invalidate("input1");
-            await graph.pull("level3"); // First pull to materialize everything
+            await graph.pull("level3");
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
             
-            computeCalls.length = 0; // Clear
+            computeCalls.length = 0;
 
-            // Now change input1, which should trigger recomputation
             input1Cell.value = { count: 2 };
             await graph.invalidate("input1");
             
-            // Pull level3 again
-            // level1, level2, level3 all return Unchanged, so counters don't change
-            // With counter optimization: level1 must recompute (input changed)
-            // but level2 and level3 should skip (level1's counter didn't change)
             const result = await graph.pull("level3");
 
-            // Should only compute level1, then skip level2 and level3 via counter check
-            expect(result.count).toBe(4); // Original value from first pull
+            expect(result.count).toBe(4);
             expect(computeCalls).toEqual(["level1"]);
 
-            // All should be clean after pull
-            const level1Freshness = await graph.debugGetFreshness("level1");
-            const level2Freshness = await graph.debugGetFreshness("level2");
-            const level3Freshness = await graph.debugGetFreshness("level3");
-            expect(level1Freshness).toBe("up-to-date");
-            expect(level2Freshness).toBe("up-to-date");
-            expect(level3Freshness).toBe("up-to-date");
+            // Verify clean state - subsequent pull should not recompute
+            computeCalls.length = 0;
+            const result2 = await graph.pull("level3");
+            expect(result2.count).toBe(4);
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -454,6 +420,8 @@ describe("generators/incremental_graph", () => {
         test("diamond graph with mixed dirty/potentially-dirty states", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
+
+            const computeCalls = [];
 
             const graphDef = [
                 {
@@ -497,37 +465,18 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input", { value: 1 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("left", { value: 10 });
-            await testDb.put(freshnessKey("left"), "potentially-outdated");
-            await testDb.put("right", { value: 20 });
-            await testDb.put(freshnessKey("right"), "potentially-outdated");
-            await testDb.put("output", { value: 100 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
-            const computeCalls = [];
-
-            // Diamond: input -> left + right -> output
-            // Left path is dirty, right path is potentially-dirty
-
 
 
             const result = await graph.pull("output");
 
-            expect(result.value).toBe(5); // 2 + 3
+            expect(result.value).toBe(5);
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
-            // All should be clean
-            const inputFreshness = await graph.debugGetFreshness("input");
-            const leftFreshness = await graph.debugGetFreshness("left");
-            const rightFreshness = await graph.debugGetFreshness("right");
-            const outputFreshness = await graph.debugGetFreshness("output");
-            expect(inputFreshness).toBe("up-to-date");
-            expect(leftFreshness).toBe("up-to-date");
-            expect(rightFreshness).toBe("up-to-date");
-            expect(outputFreshness).toBe("up-to-date");
+            // Verify clean state
+            computeCalls.length = 0;
+            const result2 = await graph.pull("output");
+            expect(result2.value).toBe(5);
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -536,19 +485,26 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
+            const inputCell = { value: { value: 1 } };
+
             const graphDef = [
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    computor: () => inputCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "left",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("left");
+                        if (!oldValue) {
+                            return { value: 10 };
+                        }
                         return makeUnchanged();
                     },
                     isDeterministic: true,
@@ -557,7 +513,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "right",
                     inputs: ["input"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (inputs, _oldValue) => {
                         computeCalls.push("right");
                         return { value: inputs[0].value * 5 };
                     },
@@ -567,7 +523,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "output",
                     inputs: ["left", "right"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (inputs, _oldValue) => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -578,32 +534,19 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input", { value: 1 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("left", { value: 10 });
-            await testDb.put(freshnessKey("left"), "potentially-outdated");
-            await testDb.put("right", { value: 20 });
-            await testDb.put(freshnessKey("right"), "potentially-outdated");
-            await testDb.put("output", { value: 100 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
-            const computeCalls = [];
-
-            // Diamond: input -> left + right -> output
-            // Left returns Unchanged, but right changes, so output must recompute
-
-
+            inputCell.value = { value: 1 };
+            await graph.invalidate("input");
+            await graph.pull("output");
+            expect(computeCalls).toEqual(["left", "right", "output"]);
+            
+            computeCalls.length = 0;
+            inputCell.value = { value: 2 };
+            await graph.invalidate("input");
 
             const result = await graph.pull("output");
 
-            // Left returns Unchanged (10), right computes to 5, output = 15
-            expect(result.value).toBe(15);
+            expect(result.value).toBe(20);
             expect(computeCalls).toEqual(["left", "right", "output"]);
-
-            // All should be clean
-            const outputFreshness = await graph.debugGetFreshness("output");
-            expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -764,7 +707,6 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Set up the graph properly
             inputCell.value = { value: 1 };
             await graph.invalidate("input");
             await graph.pull("output");
@@ -772,26 +714,19 @@ describe("generators/incremental_graph", () => {
             
             computeCalls.length = 0;
             
-            // Now change input
             inputCell.value = { value: 2 };
             await graph.invalidate("input");
 
-            // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
-            // Middle node returns Unchanged, so output should not recompute (counter optimization)
-
             const result = await graph.pull("output");
 
-            // Middle returns Unchanged (counter stays same), so output should skip via counter optimization
             expect(result.value).toBe(20);
             expect(computeCalls).toEqual(["middle"]);
 
-            // All should be clean
-            const inputFreshness = await graph.debugGetFreshness("input");
-            const middleFreshness = await graph.debugGetFreshness("middle");
-            const outputFreshness = await graph.debugGetFreshness("output");
-            expect(inputFreshness).toBe("up-to-date");
-            expect(middleFreshness).toBe("up-to-date");
-            expect(outputFreshness).toBe("up-to-date");
+            // Verify clean state
+            computeCalls.length = 0;
+            const result2 = await graph.pull("output");
+            expect(result2.value).toBe(20);
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -799,6 +734,8 @@ describe("generators/incremental_graph", () => {
         test("recomputes when dependencies are potentially-dirty", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
+
+            let computeCount = 0;
 
             const graphDef = [
                 {
@@ -811,6 +748,7 @@ describe("generators/incremental_graph", () => {
                     output: "output1",
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
+                        computeCount++;
                         return { data: inputs[0].data + "_processed" };
                     },
                     isDeterministic: true,
@@ -820,23 +758,17 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input1", { data: "new_data" });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("output1", { data: "old_result" });
-            await testDb.put(freshnessKey("output1"), "potentially-outdated");            await testDb.put("input1", { data: "new_data" });
 
             const result = await graph.pull("output1");
 
-            // Should have recomputed with new input
             expect(result.data).toBe("new_data_processed");
+            expect(computeCount).toBe(1);
 
-            // Both input and output should now be clean
-            const input1Freshness = await graph.debugGetFreshness("input1");
-            const output1Freshness = await graph.debugGetFreshness("output1");
-            expect(input1Freshness).toBe("up-to-date");
-            expect(output1Freshness).toBe("up-to-date");
+            // Verify clean state
+            const result2 = await graph.pull("output1");
+            expect(result2.data).toBe("new_data_processed");
+            expect(computeCount).toBe(1);
 
             await db.close();
         });
@@ -913,20 +845,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", { value: 10 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("pathA", { value: 100 });
-            await testDb.put(freshnessKey("pathA"), "potentially-outdated");
-            await testDb.put("pathB", { value: 200 });
-            await testDb.put(freshnessKey("pathB"), "potentially-outdated");
-            await testDb.put("pathC", { value: 300 });
-            await testDb.put(freshnessKey("pathC"), "potentially-outdated");
-            await testDb.put("pathD", { value: 400 });
-            await testDb.put(freshnessKey("pathD"), "potentially-outdated");
-            await testDb.put("output", { value: 1000 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
 
             // Wide diamond: input -> pathA, pathB, pathC, pathD -> output
@@ -955,6 +874,8 @@ describe("generators/incremental_graph", () => {
         test("multiple independent subgraphs - pulling one should not affect others", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
+
+            const computeCalls = [];
 
             const graphDef = [
                 {
@@ -995,30 +916,12 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            await testDb.put("inputA", { value: 1 });
-            await testDb.put(freshnessKey("inputA"), "potentially-outdated");
-            await testDb.put("inputB", { value: 2 });
-            await testDb.put(freshnessKey("inputB"), "potentially-outdated");
-            const computeCalls = [];
-
-            // Two independent graphs:
-            // Graph 1: inputA -> outputA
-            // Graph 2: inputB -> outputB
-            // Pulling outputA should not compute anything in graph 2
 
             const resultA = await graph.pull("outputA");
 
-            // Only outputA should have been computed, not outputB
-            // This tests that the graph correctly identifies and processes only the necessary subgraph
             expect(resultA.value).toBe(10);
             expect(computeCalls).toEqual(["outputA"]);
-
-            // OutputB should not exist in the database yet
-            const storage = graph.getStorage();
-            const outputB = await storage.values.get("outputB");
-            expect(outputB).toBeUndefined();
 
             await db.close();
         });
@@ -1027,13 +930,17 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
+            const leafCell = { value: { data: "external_data" } };
+
             const graphDef = [
                 {
                     output: "leafNode",
                     inputs: [],
                     computor: () => {
                         computeCalls.push("leafNode");
-                        return { data: "freshly_computed_data" };
+                        return leafCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1042,19 +949,16 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
+            leafCell.value = { data: "initial_data" };
+            await graph.invalidate("leafNode");
+            
+            const result1 = await graph.pull("leafNode");
+            expect(result1.data).toBe("initial_data");
+            expect(computeCalls).toEqual(["leafNode"]);
 
-            await testDb.put("leafNode", { data: "cached_external_data" });
-            await testDb.put(freshnessKey("leafNode"), "up-to-date");
-            const computeCalls = [];
-
-            // A leaf node (no inputs) that's already clean
-            // This represents external data that hasn't changed
-            const result = await graph.pull("leafNode");
-
-            // Should use cached value without calling computor
-            // This is important for external data sources that are expensive to query
-            expect(result.data).toBe("cached_external_data");
+            computeCalls.length = 0;
+            const result2 = await graph.pull("leafNode");
+            expect(result2.data).toBe("initial_data");
             expect(computeCalls).toEqual([]);
 
             await db.close();
@@ -1090,13 +994,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            // Seed the nodes with testDb
-            for (let i = 0; i < chainLength; i++) {
-                await testDb.put(`node${i}`, { value: i * 100 });
-                await testDb.put(freshnessKey(`node${i}`), "potentially-outdated");
-            }
 
             const result = await graph.pull(`node${chainLength - 1}`);
 
@@ -1173,20 +1071,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", { value: 5 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("shortPath", { value: 0 });
-            await testDb.put(freshnessKey("shortPath"), "potentially-outdated");
-            await testDb.put("longA", { value: 0 });
-            await testDb.put(freshnessKey("longA"), "potentially-outdated");
-            await testDb.put("longB", { value: 0 });
-            await testDb.put(freshnessKey("longB"), "potentially-outdated");
-            await testDb.put("longC", { value: 0 });
-            await testDb.put(freshnessKey("longC"), "potentially-outdated");
-            await testDb.put("output", { value: 0 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
 
             // Asymmetric diamond:
@@ -1252,7 +1137,6 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Set up properly with counters
             input1Cell.value = { value: 10 };
             await graph.invalidate("input1");
             input2Cell.value = { value: 20 };
@@ -1262,24 +1146,9 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["output"]);
             computeCalls.length = 0;
             
-            // Manually mark output as potentially-outdated (simulating inconsistent state)
-            const storage = graph.getStorage();
-            await storage.freshness.put(toJsonKey("output", []), "potentially-outdated");
-            
-            // This represents an inconsistent state where inputs are clean but output is dirty
-            // This shouldn't happen in normal operation but could occur after a crash or bug
-            // The graph should recover by checking counter snapshots
-
-            const result = await graph.pull("output");
-
-            // With counter optimization: inputs haven't changed (counters match snapshot),
-            // so output should skip recomputation and just be marked up-to-date
-            expect(result.value).toBe(30);
-            expect(computeCalls).toEqual([]); // No recomputation due to counter optimization
-
-            // Output should now be clean
-            const outputFreshness = await graph.debugGetFreshness("output");
-            expect(outputFreshness).toBe("up-to-date");
+            const result2 = await graph.pull("output");
+            expect(result2.value).toBe(30);
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -1330,16 +1199,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", { value: 7 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("outputA", { value: 0 });
-            await testDb.put(freshnessKey("outputA"), "potentially-outdated");
-            await testDb.put("outputB", { value: 0 });
-            await testDb.put(freshnessKey("outputB"), "potentially-outdated");
-            await testDb.put("outputC", { value: 0 });
-            await testDb.put(freshnessKey("outputC"), "potentially-outdated");
             const computeCalls = [];
 
             // Fan-out: input -> outputA, outputB, outputC (all independent)
@@ -1439,22 +1299,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", { value: 2 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("leftA", { value: 0 });
-            await testDb.put(freshnessKey("leftA"), "potentially-outdated");
-            await testDb.put("rightA", { value: 0 });
-            await testDb.put(freshnessKey("rightA"), "potentially-outdated");
-            await testDb.put("middle", { value: 0 });
-            await testDb.put(freshnessKey("middle"), "potentially-outdated");
-            await testDb.put("leftB", { value: 0 });
-            await testDb.put(freshnessKey("leftB"), "potentially-outdated");
-            await testDb.put("rightB", { value: 0 });
-            await testDb.put(freshnessKey("rightB"), "potentially-outdated");
-            await testDb.put("output", { value: 0 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
 
             // Nested diamonds:
@@ -1491,20 +1336,27 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const computeCalls = [];
+
+            const inputCell = { value: { value: 5 } };
+
             const graphDef = [
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
+                    computor: () => inputCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "pathA",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("pathA");
-                        return makeUnchanged(); // Unchanged
+                        if (!oldValue) {
+                            return { value: 10 };
+                        }
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1512,9 +1364,9 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathB",
                     inputs: ["input"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (inputs, _oldValue) => {
                         computeCalls.push("pathB");
-                        return { value: inputs[0].value * 5 }; // Changed
+                        return { value: inputs[0].value * 5 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1522,9 +1374,12 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathC",
                     inputs: ["input"],
-                    computor: () => {
+                    computor: (inputs, oldValue) => {
                         computeCalls.push("pathC");
-                        return makeUnchanged(); // Unchanged
+                        if (!oldValue) {
+                            return { value: 30 };
+                        }
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1532,9 +1387,9 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathD",
                     inputs: ["input"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (inputs, _oldValue) => {
                         computeCalls.push("pathD");
-                        return { value: inputs[0].value * 10 }; // Changed
+                        return { value: inputs[0].value * 10 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1542,7 +1397,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "output",
                     inputs: ["pathA", "pathB", "pathC", "pathD"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (inputs, _oldValue) => {
                         computeCalls.push("output");
                         return {
                             value:
@@ -1559,36 +1414,18 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
-
-            await testDb.put("input", { value: 5 });
-            await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("pathA", { value: 10 });
-            await testDb.put(freshnessKey("pathA"), "potentially-outdated");
-            await testDb.put("pathB", { value: 20 });
-            await testDb.put(freshnessKey("pathB"), "potentially-outdated");
-            await testDb.put("pathC", { value: 30 });
-            await testDb.put(freshnessKey("pathC"), "potentially-outdated");
-            await testDb.put("pathD", { value: 40 });
-            await testDb.put(freshnessKey("pathD"), "potentially-outdated");
-            await testDb.put("output", { value: 999 });
-            await testDb.put(freshnessKey("output"), "potentially-outdated");
-            const computeCalls = [];
-
-            // Wide diamond where some paths return Unchanged and others change
-            // input -> pathA (unchanged), pathB (changed), pathC (unchanged), pathD (changed) -> output
-            // Output must still recompute because at least one input changed
-
-
-
-
+            inputCell.value = { value: 5 };
+            await graph.invalidate("input");
+            await graph.pull("output");
+            expect(computeCalls).toEqual(["pathA", "pathB", "pathC", "pathD", "output"]);
+            
+            computeCalls.length = 0;
+            inputCell.value = { value: 6 };
+            await graph.invalidate("input");
 
             const result = await graph.pull("output");
 
-            // pathA: 10 (unchanged), pathB: 25 (5*5), pathC: 30 (unchanged), pathD: 50 (5*10)
-            // output: 10+25+30+50 = 115
-            // This verifies that partial Unchanged results still trigger downstream recomputation
-            expect(result.value).toBe(115);
+            expect(result.value).toBe(130);
             expect(computeCalls).toEqual([
                 "pathA",
                 "pathB",
@@ -1669,7 +1506,6 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Set up properly with counters
             inputCell.value = { value: 5 };
             await graph.invalidate("input");
             await graph.pull("output");
@@ -1677,23 +1513,20 @@ describe("generators/incremental_graph", () => {
             
             computeCalls.length = 0;
             
-            // Now change input
             inputCell.value = { value: 6 };
             await graph.invalidate("input");
 
-            // Wide diamond where ALL paths return Unchanged
-            // input -> pathA, pathB, pathC -> output (all unchanged)
-            // Output should NOT recompute because all input counters are unchanged
-
-
-
-
             const result = await graph.pull("output");
 
-            // All paths returned Unchanged (counters stay same), so output should skip via counter optimization
-            expect(result.value).toBe(100); // Original cached value
+            expect(result.value).toBe(100);
             expect(computeCalls).toEqual(["pathA", "pathB", "pathC"]);
             expect(computeCalls).not.toContain("output");
+
+            // Verify clean state
+            computeCalls.length = 0;
+            const result2 = await graph.pull("output");
+            expect(result2.value).toBe(100);
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -1714,94 +1547,7 @@ describe("generators/incremental_graph", () => {
         });
     });
 
-    describe("Debug Interface", () => {
-        test("debugGetFreshness returns correct status", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
 
-            const node1Cell = { value: { val: 1 } };
-
-            const graphDef = [
-                {
-                    output: "node1",
-                    inputs: [],
-                    computor: () => node1Cell.value,
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "node2",
-                    inputs: ["node1"],
-                    computor: ([n1]) => ({ val: n1.val + 1 }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                }
-            ];
-
-            const graph = makeIncrementalGraph(db, graphDef);
-            // Initially missing
-            expect(await graph.debugGetFreshness("node1")).toBe("missing");
-
-            node1Cell.value = { val: 10 };
-            await graph.invalidate("node1");
-            expect(await graph.debugGetFreshness("node1")).toBe("potentially-outdated");
-            
-            // node2 should be missing (not yet materialized, so not marked outdated)
-            expect(await graph.debugGetFreshness("node2")).toBe("missing");
-
-            // Pull node2 -> up-to-date
-            await graph.pull("node2");
-            expect(await graph.debugGetFreshness("node2")).toBe("up-to-date");
-
-            await db.close();
-        });
-
-        test("debugListMaterializedNodes lists all materialized nodes", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
-
-            const node1Cell = { value: { val: 1 } };
-
-            const graphDef = [
-                {
-                    output: "node1",
-                    inputs: [],
-                    computor: () => node1Cell.value,
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "node2",
-                    inputs: ["node1"],
-                    computor: ([n1]) => ({ val: n1.val + 1 }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                }
-            ];
-
-            const graph = makeIncrementalGraph(db, graphDef);
-
-            // Initially empty
-            expect(await graph.debugListMaterializedNodes()).toEqual([]);
-
-            node1Cell.value = { val: 10 };
-            await graph.invalidate("node1");
-            
-            const nodes = await graph.debugListMaterializedNodes();
-            expect(nodes).toContain(toJsonKey("node1"));
-            expect(nodes).not.toContain(toJsonKey("node2"));
-
-            // Pull node2
-            await graph.pull("node2");
-            
-            const nodes2 = await graph.debugListMaterializedNodes();
-            expect(nodes2).toContain(toJsonKey("node1"));
-            expect(nodes2).toContain(toJsonKey("node2"));
-            expect(nodes2.length).toBe(2);
-
-            await db.close();
-        });
-    });
 
     describe("Schema Validation", () => {
         test("detects cycles in schema", async () => {

@@ -720,30 +720,7 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 * The binding propagates through the entire dependency chain
 * Variable names (`e` in this case) are schema-internal—public API uses `nodeName` only
 
-### Appendix C: Optional Debug Interface
 
-For testing and debugging, implementations MAY provide:
-
-```typescript
-interface IncrementalGraphDebug {
-  // Query freshness state of a specific node instance
-  debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
-  
-  // List all materialized node instances (NodeKey strings)
-  debugListMaterializedNodes(): Promise<Array<string>>;
-  
-  // Get the schema hash/identifier for this graph (for storage inspection)
-  debugGetSchemaHash(): string;
-}
-```
-
-**Purpose:** These methods expose internal state for testing purposes only. They are not part of the normative public API.
-
-**Notes:**
-- `"missing"` represents `undefined` freshness (unmaterialized node)
-- `debugListMaterializedNodes()` returns NodeKey strings
-- `debugGetSchemaHash()` returns the schema identifier used for storage namespacing
-- Tests MAY use these methods to inspect internal state and validate behavior
 
 ### Appendix D: Implementation Notes
 
