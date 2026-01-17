@@ -20,7 +20,7 @@ This document provides a formal specification for the incremental graph's operat
 * **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
 * **Outcome set (spec-only)** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ (DatabaseValue ∪ {Unchanged})`. This set may be infinite. This is a specification-only concept used to formalize nondeterminism; implementations do not enumerate this set.
 * **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
-* **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
+* **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
 
@@ -90,7 +90,7 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
 
 * `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
-* `set(nodeName, value, bindings)` — Stores `value` at the node instance identified by `NodeName` and `BindingEnvironment`
+* `invalidate(nodeName, bindings)` — Marks the node instance as potentially-outdated, triggering recomputation on next pull
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
 * The binding environment is empty: `[]`
@@ -268,7 +268,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-MAT-02:** Materialization occurs through:
 * `pull(nodeName, bindings)` — creates `NodeInstance` with dependencies, stores value at `NodeKey`, marks `up-to-date`
-* `set(nodeName, value, bindings)` — materializes a `NodeInstance` at `NodeKey`, marks `up-to-date`
+* `invalidate(nodeName, bindings)` — materializes a `NodeInstance` at `NodeKey` (so it can participate in persisted "materialized set"), marks `potentially-outdated`
 
 ### 1.11 Notes on Nondeterminism and Side Effects (Normative)
 
@@ -321,27 +321,29 @@ Note: this specification describes the abstract input-output semantics using non
 
 Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
-### 2.2 set(nodeName, value, bindings)
+### 2.2 invalidate(nodeName, bindings)
 
-**Signature:** `set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>`
+**Signature:** `invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>`
 
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
-2. Store `value` at that `NodeKey`
-3. Mark that node instance as `up-to-date`
+2. Ensure the node instance is materialized (persist markers sufficient for restart)
+3. Mark that node instance as `potentially-outdated`
 4. Mark all **materialized** transitive dependents as `potentially-outdated`
 
-**REQ-SET-01:** `set` MUST return a `Promise<void>`.
+**Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
-**REQ-SET-02:** `set` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
+**REQ-INV-01:** `invalidate` MUST return a `Promise<void>`.
 
-**REQ-SET-03:** `set` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema.
+**REQ-INV-02:** `invalidate` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
-**REQ-SET-04:** `set` MUST throw `InvalidSetError` if the matching schema is not a source node (has non-empty `inputs`).
+**REQ-INV-03:** `invalidate` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema.
 
-**REQ-SET-05:** All operations MUST be executed atomically in a single database batch.
+**REQ-INV-04:** `invalidate` works on any node (source or derived). There is no restriction.
 
-**REQ-SET-06:** Only dependents that have been previously materialized (pulled) are marked outdated. Unmaterialized node instances remain unmaterialized.
+**REQ-INV-05:** All operations MUST be executed atomically in a single database batch.
+
+**REQ-INV-06:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
 
 ### 2.3 Unchanged Propagation Optimization
 
@@ -377,7 +379,7 @@ function makeIncrementalGraph(
 ```typescript
 interface IncrementalGraph {
   pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
-  set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>;
+  invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>;
 }
 ```
 
@@ -450,7 +452,7 @@ All errors MUST provide stable `.name` property and required fields:
 |------------|----------------|-------------|
 | `InvalidExpressionError` | `expression: string` | Invalid expression syntax (schema parsing) |
 | `InvalidNodeError` | `nodeName: string` | No schema matches the given nodeName (public API) |
-| `InvalidSetError` | `nodeName: string` | Node is not a source node (public API) |
+| `InvalidSetError` | `nodeName: string` | Node is not a source node (deprecated - set() removed) |
 | `SchemaOverlapError` | `patterns: Array<string>` | Overlapping output patterns at init (schema validation) |
 | `InvalidSchemaError` | `schemaPattern: string` | Schema definition problems at init (schema validation) |
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
@@ -469,7 +471,7 @@ All errors MUST provide stable `.name` property and required fields:
 **REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node instance set after restart.
 
 **REQ-PERSIST-02:** If node instance `N@B` was materialized before restart, then after restart (same `RootDatabase`, same schema):
-* `set(nodeName, v, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
+* `invalidate(nodeName, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
 * This MUST occur WITHOUT requiring re-pull
 
 **REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
@@ -485,7 +487,7 @@ The graph MUST maintain these invariants for all materialized node instances:
 **I3′ (Value Admissibility):** If materialized node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
 * there exists some `oldValue` such that `v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`.
 
-This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. For source nodes whose values were written by `set()`, the semantics are defined such that their computor is a trivial source computor and `Outcomes(schema(N), [], oldValue, B)` is the singleton set `{v_set}`, where `v_set` is the value most recently written by `set()`. Thus, source nodes also satisfy I3′ via membership in their `Outcomes(...)` set rather than bypassing it.
+This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy I3′ the same way: their stored value must be consistent with their computor's `Outcomes(...)` set (possibly using the existential `oldValue` quantification).
 
 ### 4.3 Correctness Properties
 
@@ -511,7 +513,7 @@ Tests MAY assert the existence and signatures of:
 
 * `makeIncrementalGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): IncrementalGraph` — Factory function
 * `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
-* `IncrementalGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write the node value
+* `IncrementalGraph.invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>` — Mark node as potentially-outdated
 * `isIncrementalGraph(value): boolean` — Type guard
 
 ### 5.2 Observable Error Taxonomy
@@ -532,7 +534,7 @@ Tests MAY assert:
 
 **REQ-RESTART-01:** Materialized node instances MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
 
-**REQ-RESTART-02:** After restart, `set(nodeName, value, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
+**REQ-RESTART-02:** After restart, `invalidate(nodeName, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
 
 ### 5.6 Behavioral Guarantees
 
@@ -575,8 +577,11 @@ Tests MAY assert:
 
 **Operations:**
 ```javascript
-// Set source (atom expression, no bindings needed)
-await graph.set('all_events', {events: [{id: 'evt_123', data: '...'}]});
+// External state for source nodes
+const allEventsCell = { value: {events: [{id: 'evt_123', data: '...'}]} };
+
+// Invalidate source (atom expression, no bindings needed)
+await graph.invalidate('all_events');
 
 // Pull derived atom expression
 const meta = await graph.pull('meta_events');
@@ -596,13 +601,17 @@ const context = await graph.pull('event_context', [{id: 'evt_123'}]);
 #### A.2 Multiple Parameters
 
 ```javascript
+// External state cells
+const allEventsCell = { value: {events: []} };
+const photoStorageCell = { value: {photos: {}} };
+
 [
   { output: "all_events", inputs: [], 
-    computor: async ([], old) => old,
+    computor: async () => allEventsCell.value,
     isDeterministic: true,
     hasSideEffects: false },
   { output: "photo_storage", inputs: [],
-    computor: async ([], old) => old,
+    computor: async () => photoStorageCell.value,
     isDeterministic: true,
     hasSideEffects: false },
   { output: "event_context(e)", inputs: ["all_events"],
@@ -632,9 +641,13 @@ const context = await graph.pull('event_context', [{id: 'evt_123'}]);
 
 **Operations:**
 ```javascript
-// Set sources
-await graph.set('all_events', {events: [{id: 'evt_123'}]});
-await graph.set('photo_storage', {photos: {'photo_456': {url: '...'}}});
+// External state for source nodes
+const allEventsCell = { value: {events: [{id: 'evt_123'}]} };
+const photoStorageCell = { value: {photos: {'photo_456': {url: '...'}}} };
+
+// Invalidate sources
+await graph.invalidate('all_events');
+await graph.invalidate('photo_storage');
 
 // Pull with multiple positional bindings
 const enhanced = await graph.pull('enhanced_event', [
@@ -653,9 +666,12 @@ const enhanced = await graph.pull('enhanced_event', [
 #### A.3 Variable Sharing
 
 ```javascript
+// External state cell
+const eventDataCell = { value: { statuses: {}, metadata: {} } };
+
 [
   { output: "event_data", inputs: [],
-    computor: async ([], old) => old,
+    computor: async () => eventDataCell.value,
     isDeterministic: true,
     hasSideEffects: false },
   { output: "status(e)", inputs: ["event_data"],
@@ -685,10 +701,14 @@ const enhanced = await graph.pull('enhanced_event', [
 
 **Operations:**
 ```javascript
-await graph.set('event_data', {
+// External state for source node
+const eventDataCell = { value: {
   statuses: {'evt_123': 'active'},
   metadata: {'evt_123': {created: '2024-01-01'}}
-});
+} };
+
+// Invalidate source
+await graph.invalidate('event_data');
 
 // Pull with positional binding
 const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
@@ -730,7 +750,7 @@ interface IncrementalGraphDebug {
 
 #### D.1 Batching
 
-All database operations within a single `set()` call SHOULD be batched atomically.
+All database operations within a single `invalidate()` call SHOULD be batched atomically.
 
 Database operations during `pull()` SHOULD be batched per node recomputation.
 
