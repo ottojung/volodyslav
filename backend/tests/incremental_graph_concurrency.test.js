@@ -1,7 +1,7 @@
 /**
  * Tests for IncrementalGraph concurrency safety.
  * These tests verify that the graph handles concurrent operations correctly
- * and prevents race conditions between set() and pull() operations.
+ * and prevents race conditions between invalidate() and pull() operations.
  */
 
 const {
@@ -109,15 +109,17 @@ class InMemoryDatabase {
 }
 
 describe("IncrementalGraph concurrency", () => {
-    describe("concurrent set() operations", () => {
-        test("multiple set() calls on same node are serialized", async () => {
+    describe("concurrent invalidate() operations", () => {
+        test("multiple invalidate() calls on same node are serialized", async () => {
             const db = new InMemoryDatabase();
+            const sourceCell = { value: { type: "test", value: 0 } };
+
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return sourceCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -127,14 +129,16 @@ describe("IncrementalGraph concurrency", () => {
             // Track the order of operations
             const operationLog = [];
 
-            // Create multiple concurrent set operations
+            // Create multiple concurrent invalidate operations
             const promises = [];
             for (let i = 0; i < 10; i++) {
                 const value = { type: "test", value: i };
                 promises.push(
-                    graph.set("source", value).then(() => {
+                    (async () => {
+                        sourceCell.value = value;
+                        await graph.invalidate("source");
                         operationLog.push(i);
-                    })
+                    })()
                 );
             }
 
@@ -150,14 +154,17 @@ describe("IncrementalGraph concurrency", () => {
             expect(result.value).toBeLessThan(10);
         });
 
-        test("concurrent set() on different nodes works correctly", async () => {
+        test("concurrent invalidate() on different nodes works correctly", async () => {
             const db = new InMemoryDatabase();
+            const source1Cell = { value: { type: "test", value: 0 } };
+            const source2Cell = { value: { type: "test", value: 0 } };
+
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "source1",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return source1Cell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -166,17 +173,19 @@ describe("IncrementalGraph concurrency", () => {
                     output: "source2",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return source2Cell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
             ]);
 
-            // Set different nodes concurrently
+            // Invalidate different nodes concurrently
+            source1Cell.value = { type: "test", value: 1 };
+            source2Cell.value = { type: "test", value: 2 };
             await Promise.all([
-                graph.set("source1", { type: "test", value: 1 }),
-                graph.set("source2", { type: "test", value: 2 }),
+                graph.invalidate("source1"),
+                graph.invalidate("source2"),
             ]);
 
             // Verify both values were set correctly
@@ -192,13 +201,14 @@ describe("IncrementalGraph concurrency", () => {
         test("multiple pull() calls on same node are serialized", async () => {
             const db = new InMemoryDatabase();
             let computeCount = 0;
+            const sourceCell = { value: { type: "test", value: 5 } };
 
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return sourceCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -219,8 +229,9 @@ describe("IncrementalGraph concurrency", () => {
                 },
             ]);
 
-            // Set source value
-            await graph.set("source", { type: "test", value: 5 });
+            // Invalidate source value
+            sourceCell.value = { type: "test", value: 5 };
+            await graph.invalidate("source");
 
             // Create multiple concurrent pull operations
             const promises = [];
@@ -243,13 +254,15 @@ describe("IncrementalGraph concurrency", () => {
 
         test("concurrent pull() on different nodes works correctly", async () => {
             const db = new InMemoryDatabase();
+            const source1Cell = { value: { type: "test", value: 1 } };
+            const source2Cell = { value: { type: "test", value: 2 } };
 
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "source1",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return source1Cell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -258,16 +271,18 @@ describe("IncrementalGraph concurrency", () => {
                     output: "source2",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return source2Cell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
             ]);
 
-            // Set source values
-            await graph.set("source1", { type: "test", value: 1 });
-            await graph.set("source2", { type: "test", value: 2 });
+            // Invalidate source values
+            source1Cell.value = { type: "test", value: 1 };
+            await graph.invalidate("source1");
+            source2Cell.value = { type: "test", value: 2 };
+            await graph.invalidate("source2");
 
             // Pull different nodes concurrently
             const [result1, result2] = await Promise.all([
@@ -280,16 +295,17 @@ describe("IncrementalGraph concurrency", () => {
         });
     });
 
-    describe("concurrent set() and pull() operations", () => {
-        test("concurrent set() and pull() on same node are serialized", async () => {
+    describe("concurrent invalidate() and pull() operations", () => {
+        test("concurrent invalidate() and pull() on same node are serialized", async () => {
             const db = new InMemoryDatabase();
+            const sourceCell = { value: { type: "test", value: 0 } };
 
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return sourceCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -297,20 +313,24 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Initial value
-            await graph.set("source", { type: "test", value: 0 });
+            sourceCell.value = { type: "test", value: 0 };
+            await graph.invalidate("source");
 
-            // Concurrent set and pull operations
+            // Concurrent invalidate and pull operations
             const operations = [];
             for (let i = 0; i < 5; i++) {
                 operations.push(
-                    graph.set("source", { type: "test", value: i })
+                    (async () => {
+                        sourceCell.value = { type: "test", value: i };
+                        await graph.invalidate("source");
+                    })()
                 );
                 operations.push(graph.pull("source"));
             }
 
             const results = await Promise.all(operations);
 
-            // Filter out undefined (from set operations)
+            // Filter out undefined (from invalidate operations)
             const pullResults = results.filter((r) => r !== undefined);
 
             // All pull results should be valid
@@ -322,16 +342,17 @@ describe("IncrementalGraph concurrency", () => {
             }
         });
 
-        test("set() on source invalidates dependent nodes correctly with concurrent pulls", async () => {
+        test("invalidate() on source invalidates dependent nodes correctly with concurrent pulls", async () => {
             const db = new InMemoryDatabase();
             let computeCount = 0;
+            const sourceCell = { value: { type: "test", value: 5 } };
 
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "source",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return sourceCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -349,7 +370,8 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Set initial value
-            await graph.set("source", { type: "test", value: 5 });
+            sourceCell.value = { type: "test", value: 5 };
+            await graph.invalidate("source");
 
             // Pull derived to compute it
             const result1 = await graph.pull("derived");
@@ -361,7 +383,10 @@ describe("IncrementalGraph concurrency", () => {
 
             // Concurrent operations: update source and pull derived
             await Promise.all([
-                graph.set("source", { type: "test", value: 10 }),
+                (async () => {
+                    sourceCell.value = { type: "test", value: 10 };
+                    await graph.invalidate("source");
+                })(),
                 graph.pull("derived"),
                 graph.pull("derived"),
             ]);
@@ -374,15 +399,16 @@ describe("IncrementalGraph concurrency", () => {
             expect(computeCount).toBeGreaterThanOrEqual(1);
         });
 
-        test("concurrent set-pull cycles maintain consistency", async () => {
+        test("concurrent invalidate-pull cycles maintain consistency", async () => {
             const db = new InMemoryDatabase();
+            const counterCell = { value: { type: "test", value: 0 } };
 
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "counter",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return counterCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -399,14 +425,16 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Initial value
-            await graph.set("counter", { type: "test", value: 0 });
+            counterCell.value = { type: "test", value: 0 };
+            await graph.invalidate("counter");
 
             // Simulate concurrent async operations doing increment + read cycles
             const cycles = [];
             for (let i = 1; i <= 5; i++) {
                 cycles.push(
                     (async () => {
-                        await graph.set("counter", { type: "test", value: i });
+                        counterCell.value = { type: "test", value: i };
+                        await graph.invalidate("counter");
                         const doubled = await graph.pull("doubled");
                         // The doubled value should be consistent with some counter value
                         expect(doubled.value).toBeGreaterThanOrEqual(0);
@@ -430,13 +458,15 @@ describe("IncrementalGraph concurrency", () => {
     describe("complex dependency chains with concurrency", () => {
         test("concurrent operations on complex graph maintain consistency", async () => {
             const db = new InMemoryDatabase();
+            const aCell = { value: { type: "test", value: 1 } };
+            const bCell = { value: { type: "test", value: 2 } };
 
             const graph = makeIncrementalGraph(db, [
                 {
                     output: "a",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return aCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -445,7 +475,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "b",
                     inputs: [],
                     computor: async () => {
-                        throw new Error("Should not be called");
+                        return bCell.value;
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -471,16 +501,24 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Set initial values
-            await graph.set("a", { type: "test", value: 1 });
-            await graph.set("b", { type: "test", value: 2 });
+            aCell.value = { type: "test", value: 1 };
+            await graph.invalidate("a");
+            bCell.value = { type: "test", value: 2 };
+            await graph.invalidate("b");
 
             // Concurrent operations
             await Promise.all([
                 graph.pull("c"),
                 graph.pull("d"),
-                graph.set("a", { type: "test", value: 5 }),
+                (async () => {
+                    aCell.value = { type: "test", value: 5 };
+                    await graph.invalidate("a");
+                })(),
                 graph.pull("c"),
-                graph.set("b", { type: "test", value: 10 }),
+                (async () => {
+                    bCell.value = { type: "test", value: 10 };
+                    await graph.invalidate("b");
+                })(),
                 graph.pull("d"),
             ]);
 

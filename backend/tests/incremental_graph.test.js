@@ -61,11 +61,13 @@ describe("generators/incremental_graph", () => {
             // Track which computors were called
             const computeCalls = [];
 
+            const input1Cell = { value: { type: 'all_events', events: [] } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { type: 'all_events', events: [] },
+                    computor: () => input1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -103,8 +105,9 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Use graph.set() to seed input1
-            await graph.set("input1", { type: 'all_events', events: [] });
+            // Seed input1
+            input1Cell.value = { type: 'all_events', events: [] };
+            await graph.invalidate("input1");
 
             // Pull only level2 - should compute level1 and level2 but NOT level3
             const result = await graph.pull("level2");
@@ -362,11 +365,13 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
+            const input1Cell = { value: { count: 1 } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
+                    computor: () => input1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -413,15 +418,17 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Set up chain properly using graph operations: input1 -> level1 -> level2 -> level3
-            await graph.set("input1", { count: 1 });
+            // Set up chain properly: input1 -> level1 -> level2 -> level3
+            input1Cell.value = { count: 1 };
+            await graph.invalidate("input1");
             await graph.pull("level3"); // First pull to materialize everything
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
             
             computeCalls.length = 0; // Clear
 
             // Now change input1, which should trigger recomputation
-            await graph.set("input1", { count: 2 });
+            input1Cell.value = { count: 2 };
+            await graph.invalidate("input1");
             
             // Pull level3 again
             // level1, level2, level3 all return Unchanged, so counters don't change
@@ -607,18 +614,21 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
+            const input1Cell = { value: { value: 1 } };
+            const input2Cell = { value: { value: 2 } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    computor: () => input1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "input2",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
+                    computor: () => input2Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -676,9 +686,11 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            // Set up the graph properly using graph operations
-            await graph.set("input1", { value: 1 });
-            await graph.set("input2", { value: 2 });
+            // Set up the graph properly
+            input1Cell.value = { value: 1 };
+            await graph.invalidate("input1");
+            input2Cell.value = { value: 2 };
+            await graph.invalidate("input2");
             
             // First pull to materialize all nodes with proper counters
             await graph.pull("nodeE");
@@ -688,7 +700,8 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Now change input1, which should trigger recomputation
-            await graph.set("input1", { value: 1 }); // Same value, but counter increments
+            input1Cell.value = { value: 1 }; // Same value, but counter increments
+            await graph.invalidate("input1");
 
             // Complex graph:
             // input1 -> nodeA -> nodeC -> nodeE
@@ -711,11 +724,13 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
+            const inputCell = { value: { value: 1 } };
+
             const graphDef = [
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                    computor: () => inputCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -750,14 +765,16 @@ describe("generators/incremental_graph", () => {
             const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up the graph properly
-            await graph.set("input", { value: 1 });
+            inputCell.value = { value: 1 };
+            await graph.invalidate("input");
             await graph.pull("output");
             expect(computeCalls).toEqual(["middle", "output"]);
             
             computeCalls.length = 0;
             
             // Now change input
-            await graph.set("input", { value: 2 });
+            inputCell.value = { value: 2 };
+            await graph.invalidate("input");
 
             // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
             // Middle node returns Unchanged, so output should not recompute (counter optimization)
@@ -1203,24 +1220,21 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
+            const input1Cell = { value: { value: 10 } };
+            const input2Cell = { value: { value: 20 } };
+
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => {
-                        computeCalls.push("input1");
-                        return oldValue || { value: 10 };
-                    },
+                    computor: () => input1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "input2",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => {
-                        computeCalls.push("input2");
-                        return oldValue || { value: 20 };
-                    },
+                    computor: () => input2Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1239,8 +1253,10 @@ describe("generators/incremental_graph", () => {
             const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up properly with counters
-            await graph.set("input1", { value: 10 });
-            await graph.set("input2", { value: 20 });
+            input1Cell.value = { value: 10 };
+            await graph.invalidate("input1");
+            input2Cell.value = { value: 20 };
+            await graph.invalidate("input2");
             await graph.pull("output");
             
             expect(computeCalls).toEqual(["output"]);
@@ -1590,11 +1606,13 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
+            const inputCell = { value: { value: 5 } };
+
             const graphDef = [
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
+                    computor: () => inputCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1652,14 +1670,16 @@ describe("generators/incremental_graph", () => {
             const graph = makeIncrementalGraph(db, graphDef);
 
             // Set up properly with counters
-            await graph.set("input", { value: 5 });
+            inputCell.value = { value: 5 };
+            await graph.invalidate("input");
             await graph.pull("output");
             expect(computeCalls).toEqual(["pathA", "pathB", "pathC", "output"]);
             
             computeCalls.length = 0;
             
             // Now change input
-            await graph.set("input", { value: 6 });
+            inputCell.value = { value: 6 };
+            await graph.invalidate("input");
 
             // Wide diamond where ALL paths return Unchanged
             // input -> pathA, pathB, pathC -> output (all unchanged)
@@ -1699,11 +1719,13 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const node1Cell = { value: { val: 1 } };
+
             const graphDef = [
                 {
                     output: "node1",
                     inputs: [],
-                    computor: (_inputs, oldValue) => oldValue || { val: 1 },
+                    computor: () => node1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1720,8 +1742,9 @@ describe("generators/incremental_graph", () => {
             // Initially missing
             expect(await graph.debugGetFreshness("node1")).toBe("missing");
 
-            await graph.set("node1", { val: 10 });
-            expect(await graph.debugGetFreshness("node1")).toBe("up-to-date");
+            node1Cell.value = { val: 10 };
+            await graph.invalidate("node1");
+            expect(await graph.debugGetFreshness("node1")).toBe("potentially-outdated");
             
             // node2 should be missing (not yet materialized, so not marked outdated)
             expect(await graph.debugGetFreshness("node2")).toBe("missing");
@@ -1737,11 +1760,13 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const node1Cell = { value: { val: 1 } };
+
             const graphDef = [
                 {
                     output: "node1",
                     inputs: [],
-                    computor: (_inputs, oldValue) => oldValue || { val: 1 },
+                    computor: () => node1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1759,7 +1784,8 @@ describe("generators/incremental_graph", () => {
             // Initially empty
             expect(await graph.debugListMaterializedNodes()).toEqual([]);
 
-            await graph.set("node1", { val: 10 });
+            node1Cell.value = { val: 10 };
+            await graph.invalidate("node1");
             
             const nodes = await graph.debugListMaterializedNodes();
             expect(nodes).toContain(toJsonKey("node1"));

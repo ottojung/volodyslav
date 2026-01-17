@@ -41,11 +41,13 @@ describe("Incremental graph persistence and restart", () => {
             const db = await getRootDatabase(capabilities);
             const computeCalls = [];
 
+            const cellA = { value: { value: 10 } };
+
             const schemas = [
                 {
                     output: "A",
                     inputs: [],
-                    computor: (_inputs, oldValue, _bindings) => oldValue,
+                    computor: () => cellA.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -77,7 +79,7 @@ describe("Incremental graph persistence and restart", () => {
             const testDb = makeTestDatabase(graph1);
 
             // Initial setup
-            await testDb.put("A", { value: 10 });
+            await graph1.invalidate("A");
             await testDb.put("B", { value: 100 });
 
             // Pull C to establish values
@@ -95,7 +97,8 @@ describe("Incremental graph persistence and restart", () => {
             const graph2 = makeIncrementalGraph(db, schemas);
 
             // Update A (which should invalidate B and C)
-            await graph2.set("A", { value: 20 });
+            cellA.value = { value: 20 };
+            await graph2.invalidate("A");
 
             // B and C should be potentially-outdated
             expect(await graph2.debugGetFreshness("B")).toBe("potentially-outdated");
@@ -119,11 +122,13 @@ describe("Incremental graph persistence and restart", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const cellA = { value: { value: 0 } };
+
             const schemas1 = [
                 {
                     output: "A",
                     inputs: [],
-                    computor: (_inputs, oldValue, _bindings) => oldValue || { value: 0 },
+                    computor: () => cellA.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -133,7 +138,7 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "A",
                     inputs: [],
-                    computor: (_inputs, oldValue, _bindings) => oldValue || { value: 0 },
+                    computor: () => cellA.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -152,9 +157,8 @@ describe("Incremental graph persistence and restart", () => {
             const graph1 = makeIncrementalGraph(db, schemas1);
             const hash1 = graph1.schemaHash;
 
-            const testDb = makeTestDatabase(graph1);
-
-            await testDb.put("A", { value: 10 });
+            cellA.value = { value: 10 };
+            await graph1.invalidate("A");
 
             // Create graph with schema2 (different schema)
             const graph2 = makeIncrementalGraph(db, schemas2);

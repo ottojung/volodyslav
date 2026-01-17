@@ -40,11 +40,13 @@ describe("Bound variables in computors", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const sourceCell = { value: { value: 42 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 42 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -63,7 +65,8 @@ describe("Bound variables in computors", () => {
             const graph = makeIncrementalGraph(db, schemas);
 
             // Set source value
-            await graph.set("source", { value: 42 });
+            sourceCell.value = { value: 42 };
+            await graph.invalidate("source");
 
             // Pull with bindings
             const result = await graph.pull("derived", ["test"]);
@@ -79,11 +82,13 @@ describe("Bound variables in computors", () => {
 
             const computorCallLog = [];
 
+            const sourceCell = { value: { value: 1 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 1 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -100,7 +105,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph = makeIncrementalGraph(db, schemas);
-            await graph.set("source", { value: 1 });
+            sourceCell.value = { value: 1 };
+            await graph.invalidate("source");
 
             // Pull with different bindings - should compute each separately
             const result1 = await graph.pull("derived", ["first"]);
@@ -123,11 +129,13 @@ describe("Bound variables in computors", () => {
 
             const computorCallLog = [];
 
+            const sourceCell = { value: { value: 1 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 1 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -144,7 +152,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph = makeIncrementalGraph(db, schemas);
-            await graph.set("source", { value: 1 });
+            sourceCell.value = { value: 1 };
+            await graph.invalidate("source");
 
             // Pull same bindings twice
             const result1 = await graph.pull("derived", ["test"]);
@@ -167,11 +176,13 @@ describe("Bound variables in computors", () => {
 
             const computorCallLog = [];
 
+            const sourceCell = { value: { value: 1 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 1 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -188,7 +199,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph = makeIncrementalGraph(db, schemas);
-            await graph.set("source", { value: 1 });
+            sourceCell.value = { value: 1 };
+            await graph.invalidate("source");
 
             // Pull with two different bindings
             await graph.pull("derived", ["first"]);
@@ -198,7 +210,8 @@ describe("Bound variables in computors", () => {
             computorCallLog.length = 0; // clear log
 
             // Update source - both should be invalidated
-            await graph.set("source", { value: 2 });
+            sourceCell.value = { value: 2 };
+            await graph.invalidate("source");
 
             // Pull again - both should recompute
             const result1 = await graph.pull("derived", ["first"]);
@@ -218,11 +231,13 @@ describe("Bound variables in computors", () => {
             const capabilities = getTestCapabilities();
             const db1 = await getRootDatabase(capabilities);
 
+            const sourceCell = { value: { value: 1 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 1 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -238,7 +253,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph1 = makeIncrementalGraph(db1, schemas);
-            await graph1.set("source", { value: 1 });
+            sourceCell.value = { value: 1 };
+            await graph1.invalidate("source");
 
             // Materialize instances with different bindings
             await graph1.pull("derived", ["first"]);
@@ -266,11 +282,13 @@ describe("Bound variables in computors", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            const sourceCell = { value: { value: 10 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 10 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -295,7 +313,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph = makeIncrementalGraph(db, schemas);
-            await graph.set("source", { value: 10 });
+            sourceCell.value = { value: 10 };
+            await graph.invalidate("source");
 
             const result = await graph.pull("final", ["deep"]);
 
@@ -314,11 +333,13 @@ describe("Bound variables in computors", () => {
                 }, "");
             }
 
+            const sourceCell = { value: { value: 1 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 1 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -351,7 +372,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph = makeIncrementalGraph(db, schemas);
-            await graph.set("source", { value: 1 });
+            sourceCell.value = { value: 1 };
+            await graph.invalidate("source");
 
             // Pull one of the deepest nodes
             const result = await graph.pull("layer3_2", ["7"]);
@@ -410,18 +432,22 @@ describe("Bound variables in computors", () => {
         test("a graph f(x, y, z) <- (g(x, z) <- k(x) <- s1) + (h(y) <- s2)", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
+
+            const s1Cell = { value: { value: "s1" } };
+            const s2Cell = { value: { value: "s2" } };
+
             const schemas = [
                 {
                     output: "s1",
                     inputs: [],
-                    computor: () => ({ value: "s1" }),
+                    computor: () => s1Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "s2",
                     inputs: [],
-                    computor: () => ({ value: "s2" }),
+                    computor: () => s2Cell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -481,11 +507,13 @@ describe("Bound variables in computors", () => {
 
             const computorCallLog = [];
 
+            const sourceCell = { value: { value: 1 } };
+
             const schemas = [
                 {
                     output: "source",
                     inputs: [],
-                    computor: () => ({ value: 1 }),
+                    computor: () => sourceCell.value,
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -529,7 +557,8 @@ describe("Bound variables in computors", () => {
             ];
 
             const graph = makeIncrementalGraph(db, schemas);
-            await graph.set("source", { value: 1 });
+            sourceCell.value = { value: 1 };
+            await graph.invalidate("source");
 
             // Pull top - should compute expensive only once even though two consumers depend on it
             await graph.pull("top", ["shared"]);

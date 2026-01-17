@@ -64,14 +64,14 @@ describe("Parameterized node schemas", () => {
             expect(error).not.toBeNull();
             expect(isSchemaPatternNotAllowed(error)).toBe(true);
 
-            // Try to set with an identifier that looks like a pattern
+            // Try to invalidate with an identifier that looks like a pattern
             await expect(
-                graph.set("derived(x)", { value: 1 })
+                graph.invalidate("derived(x)")
             ).rejects.toThrow();
 
             error = null;
             try {
-                await graph.set("derived(x)", { value: 1 });
+                await graph.invalidate("derived(x)");
             } catch (err) {
                 error = err;
             }
