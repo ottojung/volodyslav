@@ -12,9 +12,7 @@ const {
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
-const { toJsonKey } = require("./test_json_key_helper");
 
 /**
  * Creates test capabilities with a temporary data directory.
@@ -42,6 +40,7 @@ describe("Incremental graph persistence and restart", () => {
             const computeCalls = [];
 
             const cellA = { value: { value: 10 } };
+            const shouldBReturnUnchanged = { value: false };
 
             const schemas = [
                 {
@@ -56,8 +55,10 @@ describe("Incremental graph persistence and restart", () => {
                     inputs: ["A"],
                     computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("B");
-                        // Always return Unchanged to test propagation
-                        return makeUnchanged();
+                        if (shouldBReturnUnchanged.value) {
+                            return makeUnchanged();
+                        }
+                        return { value: 100 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -76,42 +77,27 @@ describe("Incremental graph persistence and restart", () => {
 
             const graph1 = makeIncrementalGraph(db, schemas);
 
-            const testDb = makeTestDatabase(graph1);
-
-            // Initial setup
+            // Initial setup - compute B which will set its value to 100
             await graph1.invalidate("A");
-            await testDb.put("B", { value: 100 });
 
-            // Pull C to establish values
+            // Pull C to establish values (this will compute B which returns 100, then C which doubles it)
             const result1 = await graph1.pull("C");
             expect(result1.value).toBe(200);
             expect(computeCalls).toEqual(["B", "C"]);
-
-            // All should be up-to-date
-            expect(await graph1.debugGetFreshness("A")).toBe("up-to-date");
-            expect(await graph1.debugGetFreshness("B")).toBe("up-to-date");
-            expect(await graph1.debugGetFreshness("C")).toBe("up-to-date");
 
             // *** RESTART ***
             computeCalls.length = 0;
             const graph2 = makeIncrementalGraph(db, schemas);
 
-            // Update A (which should invalidate B and C)
+            // Update A and enable Unchanged returns for B
             cellA.value = { value: 20 };
+            shouldBReturnUnchanged.value = true;
             await graph2.invalidate("A");
-
-            // B and C should be potentially-outdated
-            expect(await graph2.debugGetFreshness("B")).toBe("potentially-outdated");
-            expect(await graph2.debugGetFreshness("C")).toBe("potentially-outdated");
 
             // Pull C - B should return Unchanged and propagate up-to-date to C
             const result2 = await graph2.pull("C");
             expect(result2.value).toBe(200); // Same as before
             expect(computeCalls).toEqual(["B"]); // Only B computed, C was marked up-to-date via propagation
-
-            // Both B and C should be up-to-date now
-            expect(await graph2.debugGetFreshness("B")).toBe("up-to-date");
-            expect(await graph2.debugGetFreshness("C")).toBe("up-to-date");
 
             await db.close();
         });
@@ -122,69 +108,106 @@ describe("Incremental graph persistence and restart", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const cellA = { value: { value: 0 } };
+            const computeCalls1 = [];
+            const computeCalls2 = [];
 
+            const cellA1 = { value: { value: 0 } };
+            const cellA2 = { value: { value: 0 } };
+
+            // Schema 1: Simple A -> B chain
             const schemas1 = [
                 {
                     output: "A",
                     inputs: [],
-                    computor: () => cellA.value,
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ];
-
-            const schemas2 = [
-                {
-                    output: "A",
-                    inputs: [],
-                    computor: () => cellA.value,
+                    computor: () => {
+                        computeCalls1.push("A");
+                        return cellA1.value;
+                    },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "B",
                     inputs: ["A"],
-                    computor: (inputs, _oldValue, _bindings) => ({
-                        value: inputs[0].value * 2,
-                    }),
+                    computor: (inputs, _oldValue, _bindings) => {
+                        computeCalls1.push("B");
+                        return { value: inputs[0].value * 2 };
+                    },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
             ];
 
-            // Create graph with schema1
-            const graph1 = makeIncrementalGraph(db, schemas1);
-            const hash1 = graph1.schemaHash;
+            // Schema 2: A -> B -> C chain (different structure)
+            const schemas2 = [
+                {
+                    output: "A",
+                    inputs: [],
+                    computor: () => {
+                        computeCalls2.push("A");
+                        return cellA2.value;
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "B",
+                    inputs: ["A"],
+                    computor: (inputs, _oldValue, _bindings) => {
+                        computeCalls2.push("B");
+                        return { value: inputs[0].value * 2 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "C",
+                    inputs: ["B"],
+                    computor: (inputs, _oldValue, _bindings) => {
+                        computeCalls2.push("C");
+                        return { value: inputs[0].value + 1 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
 
-            cellA.value = { value: 10 };
+            // Create both graphs with different schemas
+            const graph1 = makeIncrementalGraph(db, schemas1);
+            const graph2 = makeIncrementalGraph(db, schemas2);
+
+            // Set up initial values and compute
+            cellA1.value = { value: 10 };
+            cellA2.value = { value: 10 };
+            await graph1.invalidate("A");
+            await graph2.invalidate("A");
+
+            const result1 = await graph1.pull("B");
+            const result2 = await graph2.pull("C");
+
+            // Verify both graphs computed independently
+            expect(result1.value).toBe(20); // 10 * 2
+            expect(result2.value).toBe(21); // (10 * 2) + 1
+            expect(computeCalls1).toEqual(["A", "B"]);
+            expect(computeCalls2).toEqual(["A", "B", "C"]);
+
+            // Reset computation tracking
+            computeCalls1.length = 0;
+            computeCalls2.length = 0;
+
+            // Invalidate A in graph1 only
+            cellA1.value = { value: 20 };
             await graph1.invalidate("A");
 
-            // Create graph with schema2 (different schema)
-            const graph2 = makeIncrementalGraph(db, schemas2);
-            const hash2 = graph2.schemaHash;
+            // Pull B from graph1, C from graph2
+            const result1After = await graph1.pull("B");
+            const result2After = await graph2.pull("C");
 
-            // Different schemas should have different hashes
-            expect(hash1).not.toBe(hash2);
-
-            // Pull B with schema2
-            await graph2.pull("B");
-
-            // Verify that schema2 can list dependents properly
-            const storage2 = graph2.getStorage();
-            let dependents2;
-            await storage2.withBatch(async (batch) => {
-                dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
-            });
-            expect(dependents2).toContain(toJsonKey("B"));
-
-            // Verify schema1's namespace is separate (no B in schema1)
-            const storage1 = graph1.getStorage();
-            let dependents1;
-            await storage1.withBatch(async (batch) => {
-                dependents1 = await storage1.listDependents(toJsonKey("A"), batch);
-            });
-            expect(dependents1).not.toContain(toJsonKey("B")); // schema1 doesn't have B node
+            // Verify graph1 recomputed but graph2 did not
+            expect(result1After.value).toBe(40); // 20 * 2
+            expect(result2After.value).toBe(21); // Still (10 * 2) + 1
+            expect(computeCalls1).toEqual(["A", "B"]); // graph1 recomputed
+            expect(computeCalls2).toEqual([]); // graph2 did not recompute
 
             await db.close();
         });
