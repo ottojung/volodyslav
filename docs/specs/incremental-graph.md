@@ -175,8 +175,8 @@ type NodeDef = {
 ```
 
 **Note on Determinism and Side Effects:**
-* `isDeterministic`: When `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`, meaning `Outcomes(S, inputs, oldValue, bindings)` is always a singleton (exactly one possible result). When `false`, the computor MAY produce different outputs even with identical inputs (the outcome set may contain multiple elements or depend on unmodeled factors).
-* `hasSideEffects`: When `true`, the computor MAY perform actions beyond computing its return value (e.g., logging, network calls, file operations). When `false`, the computor MUST be observationally pure (no observable side effects). In the formal model, side effects are treated as a form of nondeterminism—they are not separately tracked in the observable contract.
+* `isDeterministic`: When `true`, the computor MUST be treated as a deterministic function with respect to `(inputs, oldValue, bindings)`, meaning `Outcomes(S, inputs, oldValue, bindings)` is always a singleton (exactly one possible result). When `false`, the computor MAY produce different outputs even with identical inputs (the outcome set may contain multiple elements or depend on unmodeled factors).
+* `hasSideEffects`: When `true`, the computor MUST be treated as one that may perform actions beyond computing its return value (e.g., logging, network calls, file operations). In the formal model, side effects are treated as a form of nondeterminism—they are not separately tracked in the observable contract.
 * These fields are semantic claims about the computor's behavior and are NOT stored in the database. They are used to justify stronger correctness properties for the deterministic/pure subset of computors. When `isDeterministic=true` and `hasSideEffects=false`, the system can provide stronger guarantees about reproducibility.
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
@@ -185,7 +185,7 @@ type NodeDef = {
 
 **REQ-SCHEMA-04:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
 
-**REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MUST NOT be stored in the database persistence layer.
+**REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MAY NOT be stored in the database persistence layer.
 
 ### 1.7 Variable Name Mapping and Positional Bindings (Normative)
 
