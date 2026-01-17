@@ -4,16 +4,16 @@ const { metaEvents, eventContext } = require("../individual");
 
 /**
  * Creates the default graph definition for the incremental graph.
+ * @param {() => import('../incremental_graph/database/types').AllEventsEntry} getAllEvents - Function to get the current all events entry
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition() {
+function createDefaultGraphDefinition(getAllEvents) {
     return [
         {
             output: "all_events",
             inputs: [],
-            computor: async (_inputs, oldValue, _bindings) => {
-                // Pass-through for all_events - just return existing value
-                return oldValue || { type: "all_events", events: [] };
+            computor: async (_inputs, _oldValue, _bindings) => {
+                return getAllEvents();
             },
             isDeterministic: true,
             hasSideEffects: false,

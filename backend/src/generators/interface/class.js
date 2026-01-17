@@ -22,13 +22,21 @@ class InterfaceClass {
     incrementalGraph;
 
     /**
+     * The stored events in the database.
+     * @private
+     * @type {import('../incremental_graph/database/types').AllEventsEntry}
+     */
+    events;
+
+    /**
      * @constructor
      * @param {RootDatabase} database - The root database instance
      */
     constructor(database) {
+        this.events = { events: [], type: "all_events" };
         this.incrementalGraph = makeIncrementalGraph(
             database,
-            createDefaultGraphDefinition()
+            createDefaultGraphDefinition(() => this.events)
         );
     }
 
@@ -39,10 +47,8 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async update(all_events) {
-        const serializedEvents = all_events; // Events are already in serialized form.
-        /** @type {import('../incremental_graph/database/types').AllEventsEntry} */
-        const value = { events: serializedEvents, type: "all_events" };
-        await this.incrementalGraph.set("all_events", value);
+        this.events = { events: all_events, type: "all_events" };
+        await this.incrementalGraph.invalidate("all_events");
     }
 
     /**
