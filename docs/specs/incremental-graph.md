@@ -452,7 +452,6 @@ All errors MUST provide stable `.name` property and required fields:
 |------------|----------------|-------------|
 | `InvalidExpressionError` | `expression: string` | Invalid expression syntax (schema parsing) |
 | `InvalidNodeError` | `nodeName: string` | No schema matches the given nodeName (public API) |
-| `InvalidSetError` | `nodeName: string` | Node is not a source node (deprecated - set() removed) |
 | `SchemaOverlapError` | `patterns: Array<string>` | Overlapping output patterns at init (schema validation) |
 | `InvalidSchemaError` | `schemaPattern: string` | Schema definition problems at init (schema validation) |
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
