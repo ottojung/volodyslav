@@ -238,7 +238,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCount++;
                         if (!oldValue) {
                             return { data: "initial_value" };
@@ -353,7 +353,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "level1",
                     inputs: ["input1"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("level1");
                         if (!oldValue) {
                             return { count: 2 };
@@ -366,7 +366,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "level2",
                     inputs: ["level1"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("level2");
                         if (!oldValue) {
                             return { count: 3 };
@@ -379,7 +379,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "level3",
                     inputs: ["level2"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("level3");
                         if (!oldValue) {
                             return { count: 4 };
@@ -500,7 +500,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "left",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("left");
                         if (!oldValue) {
                             return { value: 10 };
@@ -680,7 +680,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "middle",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("middle");
                         if (!oldValue) {
                             return { value: 10 };
@@ -693,7 +693,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "output",
                     inputs: ["middle"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("output");
                         if (!oldValue) {
                             return { value: 20 };
@@ -1351,7 +1351,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathA",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("pathA");
                         if (!oldValue) {
                             return { value: 10 };
@@ -1374,7 +1374,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathC",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("pathC");
                         if (!oldValue) {
                             return { value: 30 };
@@ -1456,7 +1456,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathA",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("pathA");
                         if (!oldValue) {
                             return { value: 10 };
@@ -1469,7 +1469,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathB",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("pathB");
                         if (!oldValue) {
                             return { value: 20 };
@@ -1482,7 +1482,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathC",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: (_inputs, oldValue) => {
                         computeCalls.push("pathC");
                         if (!oldValue) {
                             return { value: 30 };
