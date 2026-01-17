@@ -798,4 +798,4 @@ An implementation conforms to this specification if and only if:
 4. It produces results consistent with big-step semantics and correctness properties
 5. It passes all conformance tests derived from this specification
 
-Optional features (GraphStorage, Debug interface, etc.) MAY be provided without affecting conformance.
+Optional features (GraphStorage, etc.) MAY be provided without affecting conformance.
