@@ -33,7 +33,6 @@ const { isUnchanged } = require("./unchanged");
 const {
     makeInvalidNodeError,
     makeMissingValueError,
-    makeInvalidSetError,
     makeInvalidComputorReturnValueError,
     makeArityMismatchError,
     makeSchemaPatternNotAllowedError,
@@ -61,7 +60,7 @@ const { makeConcreteNodeCache } = require("./lru_cache");
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 
 /**
- * Mutex key for serializing all set() and pull() operations.
+ * Mutex key for serializing all invalidate() and pull() operations.
  */
 const MUTEX_KEY = "incremental-graph-operations";
 
@@ -115,8 +114,8 @@ function checkArity(compiledNode, bindings) {
  *
  * Concurrency safety:
  * - Thread-safe within a single process using sleeper's withMutex serialization
- * - All set() and pull() operations are serialized to prevent race conditions
- * - Multiple threads can safely call set() and pull() concurrently
+ * - All invalidate() and pull() operations are serialized to prevent race conditions
+ * - Multiple threads can safely call invalidate() and pull() concurrently
  * - Process-safe across multiple processes via LevelDB's built-in guarantees
  * - Ensures consistent state even with concurrent modifications
  *
@@ -267,93 +266,6 @@ class IncrementalGraphClass {
                 );
             }
         }
-    }
-
-    /**
-     * Internal implementation of set without mutex protection.
-     * Do not call directly - use set() instead.
-     * @private
-     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
-     * @param {DatabaseValue} value - The value to set
-     * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
-     * @returns {Promise<void>}
-     */
-    async unsafeSet(nodeName, value, bindings) {
-        ensureNodeNameIsHead(nodeName);
-        const nodeNameTyped = stringToNodeName(nodeName);
-
-        if (value === null || value === undefined) {
-            throw new Error("Cannot set null or undefined value");
-        }
-        if (isUnchanged(value)) {
-            throw new Error("Cannot set value to Unchanged sentinel");
-        }
-
-        // Lookup schema by nodeName
-        const compiledNode = this.headIndex.get(nodeNameTyped);
-        if (!compiledNode) {
-            throw makeInvalidNodeError(nodeNameTyped);
-        }
-
-        checkArity(compiledNode, bindings);
-
-        // Validate that this is a source node (no inputs)
-        if (compiledNode.source.inputs.length > 0) {
-            throw makeInvalidSetError(nodeNameTyped);
-        }
-
-        // Create NodeKey for storage
-        const nodeKey = { head: nodeNameTyped, args: bindings };
-        const concreteKey = serializeNodeKey(nodeKey);
-
-        // Ensure node exists (will create from pattern if needed)
-        const nodeDefinition = this.getOrCreateConcreteNode(
-            concreteKey,
-            compiledNode,
-            bindings
-        );
-
-        // Use batch builder for atomic operations
-        await this.storage.withBatch(async (batch) => {
-            // Get old counter (if exists)
-            const oldCounter = await batch.counters.get(nodeDefinition.output);
-            
-            // Increment counter (or initialize to 1 if new)
-            const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
-            batch.counters.put(nodeDefinition.output, newCounter);
-            
-            // Store the value
-            batch.values.put(nodeDefinition.output, value);
-
-            // Mark this key as up-to-date
-            batch.freshness.put(nodeDefinition.output, "up-to-date");
-
-            // Ensure the node is materialized (write inputs record with empty array and empty inputCounters)
-            await this.storage.ensureMaterialized(
-                nodeDefinition.output,
-                nodeDefinition.inputs,
-                [], // inputCounters is empty for source nodes (no inputs)
-                batch
-            );
-
-            // Collect operations to mark all dependents as potentially-outdated
-            await this.propagateOutdated(nodeDefinition.output, batch);
-        });
-    }
-
-    /**
-     * Sets a specific node's value, marking it up-to-date and propagating changes.
-     * All operations are performed atomically in a single batch.
-     * Thread-safe: uses sleeper's withMutex to serialize access with other set/pull operations.
-     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
-     * @param {DatabaseValue} value - The value to set
-     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
-     * @returns {Promise<void>}
-     */
-    async set(nodeName, value, bindings = []) {
-        return this.sleeper.withMutex(MUTEX_KEY, () =>
-            this.unsafeSet(nodeName, value, bindings)
-        );
     }
 
     /**
