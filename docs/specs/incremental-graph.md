@@ -10,17 +10,17 @@ This document provides a formal specification for the incremental graph's operat
 
 * **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
-* **Serializable** - a serializable value type. Defined recursively as: `number | string | null | boolean | Array<Serializable> | Record<string, Serializable>`. Order of keys in `Record` matters for equality and impacts serialization.
+* **Serializable** - a serializable value type. Defined recursively as: `number | string | null | boolean | Array<Serializable> | Record<string, Serializable>`. Implementations define their own serialization strategy; no canonical encoding or record key sorting is required.
 * **ConstValue** - A subtype of `Serializable`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
 * **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
-* **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
+* **NodeValue** — computed value at a node (always a `DatabaseValue`). The term `NodeValue` is an alias for `DatabaseValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
-* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ (DatabaseValue ∪ {Unchanged})`. It represents the set of all values that could be returned by invoking `S.computor(inputs, old, B)` in any permitted execution context. This set may be infinite.
+* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ DatabaseValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
 * **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
-* **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be returned by `pull()`).
+* **Unchanged** — unique sentinel value indicating unchanged computation result. This is an **optimization-only** mechanism: when a computor returns `Unchanged`, the runtime stores the previous value without rewriting it. `Unchanged` MUST NOT be a valid `DatabaseValue` (cannot be returned by `pull()`). `Unchanged` does not expand the set of valid semantic results—it is only a shortcut for returning the existing value when that value is semantically admissible for the current inputs.
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
 
@@ -124,6 +124,8 @@ ident         := [A-Za-z_][A-Za-z0-9_]*
 ws            := [ \t\n\r]*
 ```
 
+**REQ-EXPR-02 (Arity-0 Equivalence):** For arity-0 expressions, `ident` and `ident()` MUST be treated as semantically equivalent. Both denote the same schema expression (a family of size 1 with no arguments). Parsing, schema matching, and semantics MUST treat them identically.
+
 **Terminology:**
 * **atom-expression** — an expression with no brackets (e.g., `all_events`). Denotes a family of exactly one node.
 * **compound-expression** — an expression with brackets (e.g., `event_context(e)`, `enhanced_event(e, p)`, `all_events()`). Each argument is a variable. Denotes an infinite family of nodes.
@@ -153,6 +155,14 @@ ws            := [ \t\n\r]*
 * Schema patterns are canonicalized at initialization for O(1) lookup
 
 **REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a key.
+
+**REQ-CANON-05 (Implementation-Defined Serialization):** The specification does NOT require any particular serialization or encoding scheme for values stored in the database. Implementations MAY choose their own strategy for encoding `DatabaseValue` objects, including:
+* No requirement for canonical encoding
+* No requirement for record key sorting in `Record<string, Serializable>` objects
+* No requirement for a specific encoding of arrays, nested objects, or other structures
+* Freedom to choose efficient representations suitable for the storage backend
+
+The only requirement is that values MUST round-trip without semantic change (REQ-DB-01). Equality of `DatabaseValue` objects is defined by structural equality of the deserialized values, not by byte-level comparison of encoded representations.
 
 ### 1.5 NodeKey Format (Normative)
 
@@ -286,6 +296,21 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ## 2. Operational Semantics (Normative)
 
+### 2.0 Semantic Baseline vs Optimization Requirements
+
+**Important:** The operational semantics presented in this section describe a **baseline semantics** that defines the observable input/output behavior of the incremental graph system. This baseline:
+
+* Intentionally omits all optimizations and implementation details
+* Does not specify freshness tracking, caching, or "do not re-run when up-to-date" behavior
+* Uses nondeterministic choice from outcome sets to model computor invocations abstractly
+* Serves as the correctness criterion for all implementations
+
+**Optimization Requirements:** Any MUST-level performance or optimization requirements (such as REQ-PULL-04's requirement not to re-invoke computors for up-to-date nodes) are constraints on implementations and are specified separately. These optimization requirements are normative (implementations MUST satisfy them), but they are not part of the baseline pseudocode semantics itself.
+
+**Relationship:** An implementation is correct if:
+1. Its observable behavior matches the baseline semantics (properties P1′, P2, P3, P4)
+2. It satisfies all normative optimization requirements (e.g., REQ-PULL-04)
+
 ### 2.1 pull(nodeName, bindings) → NodeValue
 
 **Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>`
@@ -307,7 +332,7 @@ pull(nodeName, B):
   return stored_value(nodeKey)
 ```
 
-Note: this specification describes the abstract input-output semantics using nondeterministic choice from outcome sets. It ignores implementation details like freshness tracking, caching, etc.
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits all implementation details including freshness tracking, caching, memoization, and the optimization requirement REQ-PULL-04 (which mandates that up-to-date nodes are not re-invoked). Those are constraints on implementations, not properties of this baseline semantics.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
@@ -347,9 +372,12 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 ### 2.3 Unchanged Propagation Optimization
 
+**Note:** The rules in this section describe an **optimization mechanism** using the `Unchanged` sentinel. `Unchanged` is not part of the semantic outcome set—it is purely an implementation optimization for avoiding unnecessary storage writes and enabling efficient propagation of unchanged values.
+
 **REQ-UNCH-01:** When a computor returns `Unchanged`:
 1. Node's value MUST NOT be updated (keeps old value)
 2. Node MUST be marked `up-to-date`
+3. The stored value must remain a valid `DatabaseValue` (never the sentinel itself)
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
@@ -380,6 +408,11 @@ function makeIncrementalGraph(
 interface IncrementalGraph {
   pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
   invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>;
+  
+  // Debug interface (REQUIRED)
+  debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  debugListMaterializedNodes(): Promise<Array<string>>;
+  debugGetSchemaHash(): string;
 }
 ```
 
@@ -389,16 +422,21 @@ interface IncrementalGraph {
 
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
+**REQ-IFACE-04:** Implementations MUST provide the debug interface methods:
+* `debugGetFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"missing"` for unmaterialized nodes.
+* `debugListMaterializedNodes()` — Returns an array of `NodeKey` strings for all materialized node instances.
+* `debugGetSchemaHash()` — Returns the schema identifier used for storage namespacing.
+
 ### 3.3 Database Interfaces
 
-#### GenericDatabase<T>
+#### GenericDatabase<TValue>
 
 ```typescript
-interface GenericDatabase<T> {
-  get(key: string): Promise<T | undefined>;
-  put(key: string, value: T): Promise<void>;
+interface GenericDatabase<TValue> {
+  get(key: string): Promise<TValue | undefined>;
+  put(key: string, value: TValue): Promise<void>;
   del(key: string): Promise<void>;
-  putOp(key: string, value: T): DatabaseBatchOperation;
+  putOp(key: string, value: TValue): DatabaseBatchOperation;
   delOp(key: string): DatabaseBatchOperation;
   keys(): AsyncIterable<string>;
   clear(): Promise<void>;
@@ -407,7 +445,9 @@ interface GenericDatabase<T> {
 
 **REQ-DB-01:** Values MUST round-trip without semantic change.
 
-**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface.
+**REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
+
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. No canonical encoding or serialization scheme is required; implementations MAY choose their own strategy for encoding values.
 
 #### RootDatabase
 
@@ -433,6 +473,8 @@ type Computor = (
   bindings: Array<ConstValue>
 ) => Promise<DatabaseValue | Unchanged>;
 ```
+
+**Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `DatabaseValue`). The `pull()` operation always returns `Promise<DatabaseValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
 **REQ-COMP-01′ (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`. Formally, `Outcomes(S, inputs, oldValue, bindings)` MUST always be a singleton set. If `NodeDef.isDeterministic` is `false`, the computor MAY be nondeterministic (outcome set may contain multiple elements).
 
@@ -513,6 +555,9 @@ Tests MAY assert the existence and signatures of:
 * `makeIncrementalGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): IncrementalGraph` — Factory function
 * `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
 * `IncrementalGraph.invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>` — Mark node as potentially-outdated
+* `IncrementalGraph.debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">` — Query freshness state (REQUIRED)
+* `IncrementalGraph.debugListMaterializedNodes(): Promise<Array<string>>` — List materialized nodes (REQUIRED)
+* `IncrementalGraph.debugGetSchemaHash(): string` — Get schema identifier (REQUIRED)
 * `isIncrementalGraph(value): boolean` — Type guard
 
 ### 5.2 Observable Error Taxonomy
@@ -720,38 +765,17 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 * The binding propagates through the entire dependency chain
 * Variable names (`e` in this case) are schema-internal—public API uses `nodeName` only
 
-### Appendix C: Optional Debug Interface
+### Appendix C: Removed (Debug Interface is now required)
 
-For testing and debugging, implementations MAY provide:
-
-```typescript
-interface IncrementalGraphDebug {
-  // Query freshness state of a specific node instance
-  debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
-  
-  // List all materialized node instances (NodeKey strings)
-  debugListMaterializedNodes(): Promise<Array<string>>;
-  
-  // Get the schema hash/identifier for this graph (for storage inspection)
-  debugGetSchemaHash(): string;
-}
-```
-
-**Purpose:** These methods expose internal state for testing purposes only. They are not part of the normative public API.
-
-**Notes:**
-- `"missing"` represents `undefined` freshness (unmaterialized node)
-- `debugListMaterializedNodes()` returns NodeKey strings
-- `debugGetSchemaHash()` returns the schema identifier used for storage namespacing
-- Tests MAY use these methods to inspect internal state and validate behavior
+The debug interface has been moved to the main IncrementalGraph interface (§3.2) and is now a MUST requirement for all conforming implementations.
 
 ### Appendix D: Implementation Notes
 
 #### D.1 Batching
 
-All database operations within a single `invalidate()` call SHOULD be batched atomically.
+All database operations within a single `invalidate()` call MUST be batched atomically (as required by REQ-INV-05).
 
-Database operations during `pull()` SHOULD be batched per node recomputation.
+Database operations during `pull()` SHOULD be batched per node recomputation for efficiency.
 
 #### D.2 Dependent Lookup Optimization
 
