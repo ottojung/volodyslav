@@ -788,6 +788,15 @@ class IncrementalGraphClass {
     getSchemaHash() {
         return this.schemaHash;
     }
+
+    /**
+     * Get the schema hash for debugging purposes (debug interface).
+     * This is an alias for getSchemaHash() as required by the spec.
+     * @returns {SchemaHash}
+     */
+    debugGetSchemaHash() {
+        return this.schemaHash;
+    }
 }
 
 /**
