@@ -1,435 +1,564 @@
-# Specification for the Incremental Graph
+# Incremental Graph Specification
 
-This document provides a formal specification for the incremental graph's operational semantics and correctness properties.
+This specification defines the semantics, implementation constraints, and observable interfaces for an incremental computation graph system.
+
+The document is organized in five parts, each building on the previous:
+
+1. **Part I** establishes pure dataflow semantics without any caching or persistence
+2. **Part II** adds incrementality through materialization and freshness tracking  
+3. **Part III** describes optimization mechanisms that preserve Part II semantics
+4. **Part IV** defines persistence contracts for restart resilience
+5. **Part V** specifies the JavaScript API and test surface
 
 ---
 
-## 1. Core Definitions (Normative)
+## Part I — Dataflow Core
 
-### 1.1 Types
+This part defines the abstract semantics of computation: what values mean and how they relate to each other. It deliberately excludes all mention of caching, freshness, persistence, or implementation details.
 
-* **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
-* **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
-* **Serializable** - a serializable value type. Defined recursively as: `number | string | null | boolean | Array<Serializable> | Record<string, Serializable>`. Implementations define their own serialization strategy; no canonical encoding or record key sorting is required.
-* **ConstValue** - A subtype of `Serializable`.
-* **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
-* **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
-* **NodeValue** — computed value at a node (always a `DatabaseValue`). The term `NodeValue` is an alias for `DatabaseValue` in the context of stored node values.
-* **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
-* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ DatabaseValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
-* **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
-* **Unchanged** — unique sentinel value indicating unchanged computation result. This is an **optimization-only** mechanism: when a computor returns `Unchanged`, the runtime stores the previous value without rewriting it. `Unchanged` MUST NOT be a valid `DatabaseValue` (cannot be returned by `pull()`). `Unchanged` does not expand the set of valid semantic results—it is only a shortcut for returning the existing value when that value is semantically admissible for the current inputs.
-* **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
-* **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
+### 1.1 Foundational Concepts
 
-### 1.2 Expressions as an Infinite Graph (Normative)
+#### Node Families and Node Instances
 
-This section establishes the fundamental mental model for understanding how expressions denote infinite families of nodes and how the incremental graph operates over this infinite space using a finite schema.
+A **node family** is identified by a **functor** (an identifier like `all_events` or `full_event`) and an **arity** (the number of parameter positions). A family with arity `n` represents a conceptually infinite set of computation points, one for each possible combination of `n` argument values.
 
-#### 1.2.1 Expressions Denote Node Families
-
-An **expression** is a symbolic template that denotes a (possibly infinite) family of nodes. The expression defines the structure, while variable bindings select a specific member of that family.
-
-**Components:**
-* The **head** (or **functor**) of an expression is its identifier—the name that categorizes the family.
-* The **arguments** are variable positions that can be assigned concrete `ConstValue` instances at runtime.
+A **node instance** is a specific member of a family, pinpointed by providing concrete values for all parameter positions. We denote this as `functor@bindings` where `bindings` is a positional array of values.
 
 **Examples:**
+- Family `all_events` with arity 0 contains exactly one instance: `all_events@[]`
+- Family `event_data` with arity 1 contains infinitely many instances: `event_data@[{id:"e1"}]`, `event_data@[{id:"e2"}]`, etc.
+- Family `join` with arity 2 contains instances like `join@[{id:"e1"}, {id:"p1"}]`
 
-* `all_events` — An atom expression with no variables. Denotes exactly one node (a family of size 1).
-* `full_event(e)` — Denotes the infinite family `{ full_event(e=v) | v ∈ ConstValue }`.
-  - Each distinct `ConstValue` for `e` identifies a different member of this family.
-* `enhanced_event(e, p)` — Denotes `{ enhanced_event(e=v₁, p=v₂) | v₁, v₂ ∈ ConstValue }`.
-  - The Cartesian product of all possible values for `e` and `p` forms this family.
+#### Binding Environment
 
-#### 1.2.2 Node Instances (Addresses Within Families)
+A **binding environment** is a positional array of concrete values (type: `Array<ConstValue>`). Its length must equal the arity of the node family. Position 0 holds the value for the first parameter, position 1 for the second, and so on.
 
-A **node instance** is a specific member of a node family, identified by:
-1. An expression pattern (e.g., `full_event(e)`)
-2. A binding environment B: `Array<ConstValue>` that assigns concrete values to all argument positions in the expression
+The type `ConstValue` is a subtype of `Serializable`, defined recursively as:  
+`number | string | null | boolean | Array<Serializable> | Record<string, Serializable>`
 
-**Notation:** We write `expr@B` to denote a node instance, where:
-* `expr` is the expression pattern
-* `B` is the binding environment (positional array)
+**Identity principle:** Two node instances are identical if and only if they have the same functor, same arity, and structurally equal binding environments (compared position by position).
+
+### 1.2 Expressions and Patterns
+
+An **expression** is a textual notation that describes a node family. Expressions appear in schema definitions to declare computation structure.
+
+#### Expression Grammar
+
+```
+expression    := atom | compound
+atom          := identifier
+compound      := identifier "(" arguments ")"
+arguments     := ε | variable ("," variable)*
+variable      := identifier
+identifier    := [A-Za-z_][A-Za-z0-9_]*
+```
+
+Whitespace is allowed and ignored. An atom-expression (no parentheses) and a compound-expression with zero arguments (empty parentheses) denote the same family: both have arity 0.
+
+**REQ-EXPR-01:** All expressions must conform to this grammar.
+
+**REQ-EXPR-02:** For arity-0 families, `identifier` and `identifier()` must be treated as semantically identical.
 
 **Examples:**
+- `all_events` — atom, arity 0
+- `all_events()` — compound with zero variables, arity 0, equivalent to above
+- `event_data(e)` — compound, arity 1, variable `e` at position 0
+- `join(x, y)` — compound, arity 2, variables `x` at position 0 and `y` at position 1
 
-* `full_event(e)` with `B = [{id: "evt_123"}]` identifies the specific node `full_event(e={id: "evt_123"})`.
-* `enhanced_event(e, p)` with `B = [{id: "evt_123"}, {id: "photo_456"}]` identifies one specific enhanced event.
-* Variable names do not affect identity: `full_event(e)@[{id: "123"}]` and `full_event(x)@[{id: "123"}]` are the same node instance.
+#### Canonicalization
 
-**Identity:** Two node instances are identical if and only if:
-1. Their expression patterns have the same functor and arity, AND
-2. Their binding environments are strongly equal (equality of serialized `ConstValue` objects, compared positionally)
+The **canonical form** of an expression is its functor alone: the identifier before any parentheses, with whitespace removed.
 
-#### 1.2.3 Schema as a Template for Infinite Edges
+**REQ-CANON-01:** `canonicalize(expr)` extracts the functor.
 
-A **schema** defines the dependency structure between node families, not between individual nodes.
+**Examples:**
+- `"all_events"` → `"all_events"`
+- `"event_data(e)"` → `"event_data"`
+- `"event_data(x)"` → `"event_data"` (same as above; variable names are syntactic only)
+- `"  join  ( a, b )  "` → `"join"`
 
-When a schema declares:
+Variable names serve documentation and variable-correspondence purposes in schemas but do not affect identity or canonicalization.
+
+**REQ-CANON-02:** Schema pattern matching uses canonical form for O(1) lookup by functor.
+
+### 1.3 Schema Structure
+
+A **schema** is a finite set of **node definitions**, each declaring:
+
 ```javascript
 {
-  output: "full_event(e)",
-  inputs: ["event_data(e)", "metadata(e)"],
-  computor: async ([data, meta], old, bindings) => ({ ...data, ...meta })
+  output: <expression>,       // defines the node family being computed
+  inputs: [<expression>, ...], // dependency families
+  computor: <function>,        // computation logic
+  isDeterministic: <boolean>,  // true if outcome is unique for given inputs
+  hasSideEffects: <boolean>    // true if computor performs actions beyond return value
 }
 ```
 
-This means: **For every binding environment B** (a `Array<ConstValue>` of length 1), the node instance `full_event(e)@B` depends on:
-* `event_data(e)@B` (same positional bindings)
-* `metadata(e)@B` (same positional bindings)
+The `output` expression declares a node family. The `inputs` array declares dependency families. Each input expression's variables must be a subset of the output expression's variables (by name).
 
-The schema implicitly defines infinitely many dependency edges—one set for each possible binding environment.
+**REQ-SCHEMA-01:** Every node definition must have all five fields.
 
-**Note on Variable Names:** The variable name `e` is purely syntactic. The schemas `full_event(e)` and `full_event(x)` are functionally identical—both define an arity-1 family where the first (and only) argument position receives `bindings[0]`.
+**REQ-SCHEMA-02:** Variables appearing in any input expression must also appear in the output expression (Variable Scope Rule).
 
-#### 1.2.4 Public Interface: Addressing Nodes
+**REQ-SCHEMA-03:** All variable names within a single expression must be unique. Expressions like `f(a, b, a)` are invalid.
 
-The public API requires both the `nodeName` (functor) and bindings to address a specific node:
+**REQ-SCHEMA-04:** The `isDeterministic` and `hasSideEffects` fields are semantic declarations about computor behavior. They are not persisted to storage; they guide correctness reasoning.
 
-* `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
-* `invalidate(nodeName, bindings)` — Marks the node instance as potentially-outdated, triggering recomputation on next pull
+#### Schema Validation Rules
 
-**For arity-0 nodes** (nodes with no arguments like `all_events`):
-* The binding environment is empty: `[]`
-* The head alone identifies exactly one node
-* `pull("all_events", [])` and `pull("all_events")` are equivalent
+**REQ-SCHEMA-05 (Uniqueness):** No two node definitions may have output patterns that canonicalize to the same functor with the same arity. This ensures each node family has exactly one definition.
 
-**For arity > 0 nodes** (nodes with arguments):
-* Bindings array length MUST match the arity of the node
-* Bindings are matched to argument positions by position
-* Different bindings address different node instances
-* `pull("full_event", [{id: "123"}])` and `pull("full_event", [{id: "456"}])` address distinct nodes
+**REQ-SCHEMA-06 (Arity Consistency):** If multiple patterns share the same functor, they must all have the same arity. A functor cannot simultaneously represent families of different arities.
 
-**Schema Pattern vs Public NodeName:**
-* Schema definition: `output: "full_event(e)"` — uses expression pattern with variable
-* Public API call: `pull("full_event", [value])` — uses nodeName only, no variable syntax
-* The arity is determined by the schema, not by the caller
+**REQ-SCHEMA-07 (Acyclicity):** Define a directed graph where each node is a schema definition. Draw an edge from definition A to definition B if some input of A matches the output of B (same functor and arity). This graph must be acyclic.
 
-### 1.3 Expression Grammar (Normative)
+Violations of these rules must cause initialization-time errors: `SchemaOverlapError`, `SchemaArityConflictError`, and `SchemaCycleError` respectively.
 
-**REQ-EXPR-01:** All expressions MUST conform to this grammar:
+### 1.4 Variable Correspondence and Binding Propagation
 
-```
-expr          := ws atom_expr ws | ws compound_expr ws
-atom_expr     := ident
-compound_expr := ident ws "(" ws args ws ")"
+When a node instance is evaluated, its binding environment determines the binding environments of its dependencies through **variable correspondence by name**.
 
-args          := "" | arg (ws "," ws arg)*
-arg           := var
-var           := ident
-ident         := [A-Za-z_][A-Za-z0-9_]*
-ws            := [ \t\n\r]*
-```
-
-**REQ-EXPR-02 (Arity-0 Equivalence):** For arity-0 expressions, `ident` and `ident()` MUST be treated as semantically equivalent. Both denote the same schema expression (a family of size 1 with no arguments). Parsing, schema matching, and semantics MUST treat them identically.
-
-**Terminology:**
-* **atom-expression** — an expression with no brackets (e.g., `all_events`). Denotes a family of exactly one node.
-* **compound-expression** — an expression with brackets (e.g., `event_context(e)`, `enhanced_event(e, p)`, `all_events()`). Each argument is a variable. Denotes an infinite family of nodes.
-* **variable** — an identifier in an argument position; represents a parameter that can be bound to any `constvalue`
-* **pattern** — an expression used in a schema definition to describe a family of nodes
-* **free variables** — all variables (identifiers occurring in argument positions) in an expression
-
-**Examples:**
-* `all_events` — atom-expression with zero variables; denotes a singleton family
-* `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
-* `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
-
-### 1.4 Canonical Serialization (Normative)
-
-**REQ-CANON-01:** The function `canonicalize(expr)` MUST produce a unique canonical string that is just the head (functor) of the expression. In particular, it does not include variable names or whitespace.
-
-**Examples:**
-* `"all_events"` → `"all_events"`
-* `"event_context(e)"` → `"event_context"`
-* `"event_context(x)"` → `"event_context"` (same as above)
-* `"enhanced_event(e, p)"` → `"enhanced_event"`
-* `"   enhanced_event   (   x, y)   "` → `"enhanced_event"` (same as above)
-
-**REQ-CANON-03:** Pattern Matching:
-* The canonical form is used for pattern matching and schema indexing
-* Original expression strings (with variable names) are preserved for error messages
-* Schema patterns are canonicalized at initialization for O(1) lookup
-
-**REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a key.
-
-**REQ-CANON-05 (Implementation-Defined Serialization):** The specification does NOT require any particular serialization or encoding scheme for values stored in the database. Implementations MAY choose their own strategy for encoding `DatabaseValue` objects, including:
-* No requirement for canonical encoding
-* No requirement for record key sorting in `Record<string, Serializable>` objects
-* No requirement for a specific encoding of arrays, nested objects, or other structures
-* Freedom to choose efficient representations suitable for the storage backend
-
-The only requirement is that values MUST round-trip without semantic change (REQ-DB-01). Equality of `DatabaseValue` objects is defined by structural equality of the deserialized values, not by byte-level comparison of encoded representations.
-
-### 1.5 NodeKey Format (Normative)
-
-**REQ-KEY-01:** A NodeKey is a deserializable string that uniquely identifies a `NodeInstance` in storage.
-
-**REQ-KEY-02:** All database operations (storing values, freshness, dependencies) MUST use NodeKey as the storage key.
-
-### 1.6 Schema Definition (Normative)
-
-**REQ-SCHEMA-01:** A incremental graph is defined by a set of node schemas:
-
-```typescript
-type NodeDef = {
-  output: string;     // Expression pattern (may contain variables)
-  inputs: Array<string>;   // Dependency expression patterns
-  computor: Computor; // Computation function
-  isDeterministic: boolean; // Whether computor is deterministic (same inputs → same output)
-  hasSideEffects: boolean;  // Whether computor has side effects beyond computing return value
-};
-```
-
-**Note on Determinism and Side Effects:**
-* `isDeterministic`: When `true`, the computor MUST be treated as a deterministic function with respect to `(inputs, oldValue, bindings)`, meaning `Outcomes(S, inputs, oldValue, bindings)` is always a singleton (exactly one possible result). When `false`, the computor MAY produce different outputs even with identical inputs (the outcome set may contain multiple elements or depend on unmodeled factors).
-* `hasSideEffects`: When `true`, the computor MUST be treated as one that may perform actions beyond computing its return value (e.g., logging, network calls, file operations). In the formal model, side effects are treated as a form of nondeterminism—they are not separately tracked in the observable contract.
-* These fields are semantic claims about the computor's behavior and are NOT stored in the database. They are used to justify stronger correctness properties for the deterministic/pure subset of computors. When `isDeterministic=true` and `hasSideEffects=false`, the system can provide stronger guarantees about reproducibility.
-
-**REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
-
-**REQ-SCHEMA-03:** A **source node** is any node instance matching a schema where `inputs = []`.
-
-**REQ-SCHEMA-04:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
-
-**REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MAY NOT be stored in the database persistence layer.
-
-### 1.7 Variable Name Mapping and Positional Bindings (Normative)
-
-**Key Principle:** Bindings are always positional arrays, but variable names in input patterns are mapped to output pattern variables by name to determine the correct positional slice.
-
-**REQ-BINDING-01:** When instantiating input pattern dependencies:
-1. Match each variable in the input pattern to the corresponding variable in the output pattern **by name**
-2. Extract the positional bindings from the output binding environment according to the matched positions
-3. Construct the input binding environment using only the positions needed for that input
+**Principle:** The output expression defines a namespace of variable names. Each input expression's variables are matched to this namespace by name, and the corresponding positional values are extracted to form the input's binding environment.
 
 **Example:**
 
 ```javascript
 {
-  output: "enhanced_event(e, p)",  // Arity 2: position 0 = e, position 1 = p
-  inputs: ["event_context(e)", "photo(p)"],  // Both arity 1
-  computor: async ([ctx, photo], old, bindings) => ({...ctx, photo})
+  output: "enhanced(e, p)",     // position 0 = e, position 1 = p
+  inputs: ["event(e)", "photo(p)"],
+  ...
 }
 ```
 
-When evaluating `enhanced_event(e, p)@[{id: "evt_123"}, {id: "photo_456"}]`:
-- Output bindings: `B_output = [{id: "evt_123"}, {id: "photo_456"}]`
-- For input `event_context(e)`: variable `e` maps to position 0 of output → `B_input = [{id: "evt_123"}]`
-- For input `photo(p)`: variable `p` maps to position 1 of output → `B_input = [{id: "photo_456"}]`
-- Computor receives full output bindings: `bindings = [{id: "evt_123"}, {id: "photo_456"}]`
+When evaluating `enhanced@[V_e, V_p]`:
+- Input `event(e)`: variable `e` at output position 0 → binding environment `[V_e]`
+- Input `photo(p)`: variable `p` at output position 1 → binding environment `[V_p]`
 
-**REQ-BINDING-02:** Variable names in the output pattern define a **namespace** for that schema. All variables in input patterns must exist in this namespace (enforced by REQ-SCHEMA-02).
+**REQ-BINDING-01:** Binding propagation from outputs to inputs proceeds by:
+1. Identify each variable in the input expression
+2. Find that variable's position in the output expression
+3. Extract the value at that position from the output's binding environment
+4. Assemble these values positionally to form the input's binding environment
 
-**REQ-BINDING-03:** Public API calls use `nodeName` (functor only) with positional bindings:
-1. The system matches the nodeName to a schema (REQ-MATCH-01)
-2. The positional bindings are used directly
-3. Variable names are schema-internal only
+**REQ-BINDING-02:** Variable names are schema-internal only. The public addressing mechanism (described in Part V) uses functor and positional bindings without variable syntax.
 
-**Example:**
+### 1.5 Computors and Outcome Sets
+
+A **computor** is an async function with signature:
+
 ```javascript
-// Schema: output: "full_event(e)", inputs: ["event_data(e)"]
-
-// Public API uses nodeName only (no variable syntax):
-await graph.pull("full_event", [{id: "123"}]);
-
-// The nodeName "full_event" matches the schema
-// Bindings [{id: "123"}] are positional (length must equal arity)
-// Result addresses the node instance: full_event@[{id: "123"}]
-// - Same positional bindings: [{id: "123"}] at position 0
+(inputs: Array<DatabaseValue>, 
+ oldValue: DatabaseValue | undefined, 
+ bindings: Array<ConstValue>) 
+  => Promise<DatabaseValue | Unchanged>
 ```
 
-**Pattern Instantiation Summary:** When evaluating a node instance `output@B`:
-1. The computor receives the full output binding environment `B` as its third parameter
-2. Each input pattern `input_i` is instantiated by extracting the relevant positional bindings based on variable name mapping
-3. The computor receives the values of all instantiated input nodes in the order they appear in the `inputs` array
+Where `DatabaseValue` is a subtype of `Serializable` excluding `null`.
 
-### 1.8 Pattern Matching (Normative)
+The `inputs` array contains the values of all dependencies, in the order listed in the schema's `inputs` field.
 
-**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
-1. `P` and `N` have the same functor (identifier), AND
-2. The arity of `P` matches the expected arity for `N`
+The `oldValue` parameter represents the previously computed value at this node instance, if any. It may be `undefined` for first-time evaluations.
 
-**REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
+The `bindings` parameter is the full binding environment for this node instance (the output's bindings, not sliced per-input).
 
-**REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
+#### Outcome Set Model (Spec-Only Abstraction)
 
-**REQ-MATCH-04:** Each head (functor) MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same head appears with different arities (throw `SchemaArityConflictError`).
+For any node definition `D` and arguments `(inputs_vals, old_val, bind_vals)`, define:
 
-**Note on Matching:** Pattern matching in schema definitions is purely structural and does not consider variable names. The pattern `full_event(e)` and `full_event(x)` are equivalent—both define an arity-1 node family. Variable names serve only for documentation and variable mapping between inputs and outputs.
+**Outcomes(D, inputs_vals, old_val, bind_vals)** ⊆ DatabaseValue
 
-**Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
+This is the set of all **semantically valid** values the computor may produce. For deterministic computors (`isDeterministic: true`), this set contains exactly one element. For nondeterministic computors, it may contain multiple elements or depend on external factors not modeled in the signature.
 
-### 1.9 Cycle Detection (Normative)
+The outcome set is a specification device: it describes what values are correct, not how to compute them. Implementations do not enumerate outcome sets; they execute computors and observe results.
 
-**REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
-1. S has input pattern I
-2. T has output pattern O
-3. Patterns I and O match (same functor and arity)
+**Treatment of Side Effects and Nondeterminism:**
 
-**REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
+When `hasSideEffects: true`, the computor may perform actions beyond computing a return value (e.g., logging, network requests, state updates). This specification treats side effects as a form of nondeterminism: they contribute to the variation in possible computor results but are not separately tracked or guaranteed. The only observable contract is the returned value.
 
-### 1.10 Materialization (Normative)
+When `hasSideEffects: false` and `isDeterminism: true`, the computor is a pure function, and stronger equivalence properties hold (see Part II).
 
-**REQ-MAT-01:** A **materialized node** is any `NodeInstance` (identified by `NodeKey`) for which the implementation maintains dependency tracking and freshness state.
+**REQ-COMP-01:** Computors must return a `Promise` resolving to either a `DatabaseValue` or the special sentinel `Unchanged` (discussed in Part III).
 
-**REQ-MAT-02:** Materialization occurs through:
-* `pull(nodeName, bindings)` — creates `NodeInstance` with dependencies, stores value at `NodeKey`, marks `up-to-date`
-* `invalidate(nodeName, bindings)` — materializes a `NodeInstance` at `NodeKey` (so it can participate in persisted "materialized set"), marks `potentially-outdated`
+### 1.6 Baseline Evaluation Semantics
 
-### 1.11 Notes on Nondeterminism and Side Effects (Normative)
+This section defines the **abstract meaning** of computation using a big-step evaluation rule. This baseline intentionally ignores all optimization concerns such as caching, memoization, and freshness tracking.
 
-**Treatment of Side Effects:** In this specification, side effects performed by computors are treated as a form of nondeterminism. They are NOT separately tracked or made part of the observable contract. The formal model uses outcome sets to capture all sources of variation in computor results, whether from true nondeterminism (e.g., random number generation), external state (e.g., reading current time, network calls), or side effects (e.g., logging, metrics).
+#### Big-Step Rule: eval(node_instance) → value
 
-**Observable Contract:** The only observable aspect of a computor is its returned value. Side effects are:
-* Permitted when `hasSideEffects=true`
-* Treated as contributing to the nondeterministic choice from the outcome set
-* Not guaranteed to execute exactly once, at-least-once, or at-most-once
-* Subject to the recomputation policy: computors are NOT invoked for up-to-date nodes (REQ-PULL-04)
+Given a node instance `F@B` (functor F, bindings B):
 
-**Implications for Testing:** Tests cannot observe or verify side effects directly. Tests can only assert properties about returned values. The `hasSideEffects` flag is metadata that enables certain optimizations and reasoning, but does not affect the observable behavior from a testing perspective.
+1. **Lookup schema:** Find the unique node definition `D` whose output pattern has functor `F` and arity matching `|B|`.
+2. **Evaluate dependencies:** For each input pattern `I` in `D.inputs`:
+   - Compute the binding environment `B_I` for input `I` using variable correspondence with `B`
+   - Recursively evaluate `eval(I_functor @ B_I)` to obtain value `v_I`
+   - Collect all dependency values in order: `inputs_vals = [v_0, v_1, ...]`
+3. **Retrieve prior value:** Let `old_val` be the previously computed value at `F@B`, or `undefined` if this is the first evaluation.
+4. **Select outcome:** Nondeterministically choose `result ∈ Outcomes(D, inputs_vals, old_val, B)`.
+5. **Handle Unchanged (see Part III):** If `result` is the special sentinel `Unchanged`, set `new_val = old_val`. Otherwise set `new_val = result`.
+6. **Store and return:** Record `new_val` as the value at `F@B` and return `new_val`.
+
+**Important:** This pseudocode describes input-output behavior only. It does not specify any caching strategy, does not track freshness, and does not mandate "do not recompute if cached." Those constraints appear in Part II as **refinements** of this baseline.
+
+The notation "nondeterministically choose" models both true nondeterminism (random values) and hidden dependencies (external state, time, etc.). Implementations execute the computor function, which may produce different results across invocations for nondeterministic computors.
+
+**Source Nodes:**
+
+A node definition with `inputs: []` is called a **source node**. Its computor receives an empty `inputs` array and is responsible for obtaining values from external state, user input, or initial conditions.
+
+**REQ-EVAL-01:** For any acyclic schema and any node instance, evaluation must terminate (assuming all computors terminate).
+
+**REQ-EVAL-02:** The result of evaluating a node instance is always a `DatabaseValue` (never `undefined`, never the sentinel `Unchanged`).
 
 ---
 
-## 2. Operational Semantics (Normative)
+## Part II — Incremental Evaluation
 
-### 2.0 Semantic Baseline vs Optimization Requirements
+This part introduces state tracking and defines how the system avoids redundant computation while preserving the semantics from Part I.
 
-**Important:** The operational semantics presented in this section describe a **baseline semantics** that defines the observable input/output behavior of the incremental graph system. This baseline:
+### 2.1 Materialization
 
-* Intentionally omits all optimizations and implementation details
-* Does not specify freshness tracking, caching, or "do not re-run when up-to-date" behavior
-* Uses nondeterministic choice from outcome sets to model computor invocations abstractly
-* Serves as the correctness criterion for all implementations
+A node instance becomes **materialized** when the system records its existence in persistent state. Materialized nodes have:
+- A stored value
+- A freshness marker
+- Dependency and dependent relationships tracked for invalidation propagation
 
-**Optimization Requirements:** Any MUST-level performance or optimization requirements (such as REQ-PULL-04's requirement not to re-invoke computors for up-to-date nodes) are constraints on implementations and are specified separately. These optimization requirements are normative (implementations MUST satisfy them), but they are not part of the baseline pseudocode semantics itself.
+**REQ-MAT-01:** Only materialized node instances participate in freshness tracking and invalidation propagation.
 
-**Relationship:** An implementation is correct if:
-1. Its observable behavior matches the baseline semantics (properties P1′, P2, P3, P4)
-2. It satisfies all normative optimization requirements (e.g., REQ-PULL-04)
+**REQ-MAT-02:** A node instance becomes materialized when:
+- It is evaluated by a top-level request (see §2.2), or
+- It is explicitly marked via an invalidation operation (see §2.3).
 
-### 2.1 pull(nodeName, bindings) → NodeValue
+**REQ-MAT-03:** Unmaterialized node instances have no stored state. They may be computed as needed during evaluation but are not tracked.
 
-**Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>`
+### 2.2 Freshness and the Incremental pull Operation
 
-**Big-Step Semantics:**
+Each materialized node instance has a **freshness state**: either `up-to-date` or `potentially-outdated`.
 
-```javascript
-pull(nodeName, B):
-  schema = lookup_schema_by_nodeName(nodeName)
-  nodeKey = createNodeKey(nodeName, B)
-  inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_of(schema)]
-  old_value = stored_value(nodeKey)
-  r ∈ Outcomes(schema, inputs_values, old_value, B)  // nondeterministic choice
-  if r == Unchanged:
-    new_value = old_value
-  else:
-    new_value = r
-  store(nodeKey, new_value)
-  return stored_value(nodeKey)
-```
+An **up-to-date** node instance has a stored value that is known to be consistent with its current dependencies. The system must not re-invoke its computor.
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits all implementation details including freshness tracking, caching, memoization, and the optimization requirement REQ-PULL-04 (which mandates that up-to-date nodes are not re-invoked). Those are constraints on implementations, not properties of this baseline semantics.
+A **potentially-outdated** node instance may have a stale value. Its computor must be invoked on the next access.
 
-**REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
+#### pull Operation
 
-**REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
+The **pull** operation is the incremental refinement of the baseline evaluation from Part I. It accepts a functor and binding environment, evaluates the corresponding node instance, and returns a `DatabaseValue`.
 
-**REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
+**Signature:** `pull(functor: string, bindings: Array<ConstValue>) → Promise<DatabaseValue>`
 
-**REQ-PULL-04 (No spurious recomputation):** If a materialized node instance is `up-to-date` at the time it is encountered during a `pull()`, the implementation MUST return its stored value and MUST NOT invoke its computor. This makes `pull()` use call-by-need semantics and prevents repeated effects/resampling for up-to-date nodes.
+**REQ-PULL-01:** If no schema output pattern has the given functor, throw `InvalidNodeError`.
 
-**Efficiency Optimization (Implementation-Defined):**
+**REQ-PULL-02:** If the length of `bindings` does not match the arity of the schema pattern with the given functor, throw `ArityMismatchError`.
 
-Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
+**REQ-PULL-03:** The return value must always be a `DatabaseValue` (never `undefined`, never `Unchanged`).
 
-### 2.2 invalidate(nodeName, bindings)
+**Incremental Evaluation Strategy:**
 
-**Signature:** `invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>`
+When `pull(F, B)` is called:
 
-**Effects:**
-1. Create `NodeKey` from `nodeName@bindings`
-2. Ensure the node instance is materialized (persist markers sufficient for restart)
-3. Mark that node instance as `potentially-outdated`
-4. Mark all **materialized** transitive dependents as `potentially-outdated`
+1. **Lookup and validate:** Ensure schema pattern exists with functor `F` and arity `|B|`.
+2. **Check freshness:** If node instance `F@B` is materialized and `up-to-date`, return its stored value immediately. Do **not** invoke its computor.
+3. **Recompute if needed:** If `F@B` is unmaterialized or `potentially-outdated`:
+   - Recursively pull all dependencies (which may themselves recompute if outdated)
+   - Invoke the computor with the dependency values, the old stored value (or `undefined`), and `B`
+   - Handle the computor's result (possibly `Unchanged`, see Part III)
+   - Store the resulting value
+   - Mark `F@B` as `up-to-date`
+4. **Materialize and track:** Ensure `F@B` is materialized (record dependencies for future invalidation propagation).
 
-**Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
+**REQ-PULL-04 (Single Invocation per Call):** Within a single top-level `pull` request, each unique node instance's computor must be invoked at most once. This requires tracking in-flight evaluations or using memoization.
 
-**REQ-INV-01:** `invalidate` MUST return a `Promise<void>`.
+**REQ-PULL-05 (No Spurious Recomputation):** An up-to-date materialized node instance must return its stored value without invoking its computor. This is not merely an optimization—it is a mandatory constraint to prevent repeated side effects and resampling of nondeterministic computors.
 
-**REQ-INV-02:** `invalidate` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
+**Correctness Property P1′ (Soundness Under Nondeterminism):**
 
-**REQ-INV-03:** `invalidate` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema.
+For any `pull(F, B)` that returns value `v`, there must exist a valid execution trace of the baseline evaluation (Part I) that produces `v`. In other words, `v` must be consistent with some nondeterministic choice sequence from the `Outcomes` sets of all involved computors.
 
-**REQ-INV-04:** `invalidate` works on any node (source or derived). There is no restriction.
+**Property P1-det (Deterministic Specialization, Corollary):**
 
-**REQ-INV-05:** All operations MUST be executed atomically in a single database batch.
+If all computors reachable from `F@B` have `isDeterministic: true` and `hasSideEffects: false`, then `pull(F, B)` produces the same result as recomputing the entire dependency subtree from scratch with the same input values. This recovers traditional semantic equivalence for the pure deterministic subset.
 
-**REQ-INV-06:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
+**Correctness Property P2 (Progress):**
 
-### 2.3 Unchanged Propagation Optimization
+Every `pull` call terminates, assuming all computors terminate and the schema is acyclic.
 
-**Note:** The rules in this section describe an **optimization mechanism** using the `Unchanged` sentinel. `Unchanged` is not part of the semantic outcome set—it is purely an implementation optimization for avoiding unnecessary storage writes and enabling efficient propagation of unchanged values.
+**Correctness Property P3 (Single Invocation):**
 
-**REQ-UNCH-01:** When a computor returns `Unchanged`:
-1. Node's value MUST NOT be updated (keeps old value)
-2. Node MUST be marked `up-to-date`
-3. The stored value must remain a valid `DatabaseValue` (never the sentinel itself)
+See REQ-PULL-04. Each node instance's computor is invoked at most once per top-level `pull`.
 
-**REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
+**Correctness Property P4 (Freshness Preservation):**
 
-**REQ-UNCH-03:** A computor MUST NOT return `Unchanged` when `oldValue` is `undefined`. If it does, `pull` MAY throw `InvalidUnchangedError`.
+After `pull(F, B)` completes, `F@B` and all its transitive dependencies are marked `up-to-date`.
+
+### 2.3 Invalidation
+
+The **invalidate** operation marks a node instance and all its materialized transitive dependents as `potentially-outdated`. This forces recomputation on the next `pull`.
+
+**Signature:** `invalidate(functor: string, bindings: Array<ConstValue>) → Promise<void>`
+
+**REQ-INV-01:** If no schema output pattern has the given functor, throw `InvalidNodeError`.
+
+**REQ-INV-02:** If the length of `bindings` does not match the arity of the schema pattern, throw `ArityMismatchError`.
+
+**REQ-INV-03:** `invalidate` does not write or compute values. It only updates freshness markers.
+
+**Propagation Semantics:**
+
+When `invalidate(F, B)` is called:
+
+1. **Materialize target:** Ensure node instance `F@B` is materialized (even if it has never been pulled). Record sufficient state for persistence (see Part IV).
+2. **Mark outdated:** Set freshness of `F@B` to `potentially-outdated`.
+3. **Propagate to dependents:** For every materialized node instance `D@B_D` that transitively depends on `F@B`, mark it `potentially-outdated`.
+4. **Atomicity:** All freshness updates must occur atomically (in a single batch operation). Either all succeed or none succeed.
+
+**REQ-INV-04:** Only materialized dependents are marked outdated. Unmaterialized node instances remain unmaterialized (no transitive materialization).
+
+**REQ-INV-05:** Invalidation applies to any node instance, whether source or derived. There is no restriction.
+
+**REQ-INV-06 (Atomicity):** All state updates during a single `invalidate` call must be executed atomically.
+
+### 2.4 Invariants
+
+The system must maintain these invariants for all materialized node instances:
+
+**Invariant I1 (Outdated Propagation):**
+
+If materialized node instance `N@B` is `potentially-outdated`, then every materialized node instance that transitively depends on `N@B` is also `potentially-outdated`.
+
+**Invariant I2 (Up-to-Date Upstream):**
+
+If materialized node instance `N@B` is `up-to-date`, then every materialized node instance that `N@B` transitively depends on is also `up-to-date`.
+
+**Invariant I3′ (Value Admissibility):**
+
+If materialized node instance `N@B` is `up-to-date` with stored value `v`, then there exists some `oldValue` (possibly `undefined`) such that:
+
+`v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`
+
+where `inputs_values` are the current stored values of `N@B`'s instantiated dependencies.
+
+This invariant uses existential quantification over `oldValue` to avoid requiring storage of historical values. The stored value must be consistent with the computor's outcome set for current inputs and some prior value.
 
 ---
 
-## 3. Required Interfaces (Normative)
+## Part III — Optimization Layer: Unchanged
 
-### 3.1 Factory Function
+This part describes optimization mechanisms that reduce storage operations and propagation work while preserving the semantics and constraints from Parts I and II.
+
+### 3.1 The Unchanged Sentinel
+
+**Unchanged** is a unique sentinel value distinct from all `DatabaseValue` instances. Computors may return it to indicate "the result is the same as the prior value."
+
+**REQ-UNCH-01:** `Unchanged` is **not** part of the `Outcomes` set. It is an optimization mechanism only.
+
+**REQ-UNCH-02:** When a computor returns `Unchanged`:
+- The node instance's stored value must not be updated (it retains its existing `DatabaseValue`)
+- The node instance must be marked `up-to-date`
+- The sentinel itself must never be stored or exposed to callers
+
+**REQ-UNCH-03:** `Unchanged` may only be returned when `oldValue` (the second parameter to the computor) is not `undefined`. If a computor returns `Unchanged` when `oldValue` is `undefined`, the implementation may throw `InvalidUnchangedError`.
+
+**REQ-UNCH-04:** From the perspective of callers, a computor returning `Unchanged` is semantically equivalent to returning the current stored value. `pull` always returns a `DatabaseValue`, never `Unchanged`.
+
+**Semantic Equivalence:**
+
+```javascript
+// These two behaviors are indistinguishable to callers:
+// (1) computor returns Unchanged → system keeps old_val
+// (2) computor returns old_val → system stores old_val
+```
+
+### 3.2 Propagation Optimizations
+
+**REQ-UNCH-05:** When a node instance `N@B` is recomputed and returns `Unchanged`, implementations **may** (but are not required to) mark some or all of its materialized dependents as `up-to-date` without recomputing them, **if and only if** it can be proven that their values would remain unchanged.
+
+This optimization is not required and must not alter observable behavior beyond performance. Implementations that choose not to implement it remain conformant.
+
+### 3.3 Exposure and Type Guards
+
+**REQ-UNCH-06:** Implementations must expose:
+- A factory function `makeUnchanged()` returning the sentinel
+- A type guard `isUnchanged(value)` returning `true` only for the sentinel
+
+These are provided for computor implementations to construct and test for the sentinel.
+
+---
+
+## Part IV — Persistence and Restart Contracts
+
+This part defines storage obligations for restart resilience without mandating specific encodings or data structures.
+
+### 4.1 Restart Resilience Requirements
+
+A **restart** occurs when the incremental graph is reconstructed from the same schema definition and the same underlying storage (database).
+
+**REQ-PERSIST-01:** If node instance `N@B` was materialized before restart, then after restart:
+- `N@B` must still be materialized
+- Its stored value must be retrievable
+- Its freshness marker must be preserved
+- Its dependency relationships must be reconstructable (for propagation during invalidate)
+
+**REQ-PERSIST-02:** After restart, calling `invalidate(F, B)` must mark all previously materialized transitive dependents as `potentially-outdated`, without requiring any `pull` operations first.
+
+This ensures that invalidation propagation works immediately after restart based on the persisted dependency graph.
+
+**REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse dependency indices, auxiliary tables, etc.) is implementation-defined. Only the behavioral contract above is normative.
+
+### 4.2 Storage Namespacing and Schema Identity
+
+**REQ-PERSIST-04:** Each schema (set of node definitions) must be assigned a unique **schema identifier**. Storage must be isolated per schema identifier to prevent key collisions when multiple schemas use the same functors.
+
+**REQ-PERSIST-05:** Changing the schema definition (adding nodes, removing nodes, changing arities, changing dependency structure) should result in a different schema identifier, causing the system to use separate storage.
+
+The exact mechanism for computing schema identifiers (hash of definitions, user-provided label, etc.) is implementation-defined.
+
+### 4.3 Encoding and Serialization Freedom
+
+**REQ-PERSIST-06:** Implementations may choose any serialization strategy for `DatabaseValue` objects. There is no requirement for:
+- Canonical encoding of JSON-like structures
+- Sorted keys in `Record<string, Serializable>` objects
+- Specific representations of arrays, numbers, booleans, or strings
+
+**REQ-PERSIST-07:** The only encoding requirement is semantic round-trip fidelity: if value `v` is stored and then retrieved, the deserialized result must be structurally equal to `v` according to JavaScript value equality semantics (deep equality for nested objects and arrays).
+
+**REQ-PERSIST-08:** Implementations may optimize storage layout (compressed formats, columnar representations, external blob storage) as long as retrieval produces structurally equivalent values.
+
+### 4.4 Database Interface Contract
+
+Implementations interact with storage via a **database interface** (exact TypeScript/JavaScript signature provided in Part V). The database interface abstracts storage backends (filesystem, SQLite, network databases, etc.).
+
+**REQ-DB-01:** The database must support:
+- Key-value storage with keys of type `string`
+- Retrieval returning stored values or `undefined` for missing keys
+- Batch operations (multiple puts/deletes executed atomically)
+- Enumeration of keys (for listing materialized nodes)
+
+**REQ-DB-02:** The database need not provide ordering guarantees on key enumeration.
+
+**REQ-DB-03:** Database operations for a single `invalidate` call must be atomic (see REQ-INV-06). This typically requires batch or transaction support.
+
+---
+
+## Part V — JavaScript API and Test Surface
+
+This part consolidates all public interface definitions, error types, and test-observable behavior.
+
+### 5.1 Factory and Core Interface
+
+#### Factory Function
 
 ```typescript
 function makeIncrementalGraph(
   rootDatabase: RootDatabase,
   nodeDefs: Array<NodeDef>
-): IncrementalGraph;
+): IncrementalGraph
 ```
 
-**REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
+**REQ-FACTORY-01:** Must validate all node definitions at construction time. Throw errors immediately for:
+- Invalid expression syntax (`InvalidExpressionError`)
+- Variable scope violations (`InvalidSchemaError`)
+- Overlapping output patterns (`SchemaOverlapError`)
+- Arity conflicts for the same functor (`SchemaArityConflictError`)
+- Cyclic dependency graphs (`SchemaCycleError`)
 
-**REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
+**REQ-FACTORY-02:** Must compute and record a schema identifier for storage namespacing.
 
-**REQ-FACTORY-03:** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
-
-### 3.2 IncrementalGraph Interface
+#### IncrementalGraph Interface
 
 ```typescript
 interface IncrementalGraph {
-  pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
-  invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>;
+  pull(functor: string, bindings?: Array<ConstValue>): Promise<DatabaseValue>;
+  invalidate(functor: string, bindings?: Array<ConstValue>): Promise<void>;
   
-  // Debug interface (REQUIRED)
-  debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  // Required debug interface
+  debugGetFreshness(
+    functor: string, 
+    bindings?: Array<ConstValue>
+  ): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  
   debugListMaterializedNodes(): Promise<Array<string>>;
+  
   debugGetSchemaHash(): string;
 }
 ```
 
-**REQ-IFACE-01:** Implementations MUST provide type guard `isIncrementalGraph(value): boolean`.
+**REQ-IFACE-01:** For arity-0 node families (atom expressions), the `bindings` parameter defaults to `[]` and may be omitted in calls.
 
-**REQ-IFACE-02:** For atom-expressions (arity 0), `bindings` parameter defaults to `[]` and may be omitted.
+**REQ-IFACE-02:** For node families with arity > 0, `bindings` must be provided and its length must match the arity.
 
-**REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
+**REQ-IFACE-03:** Implementations must provide a type guard:
+```typescript
+function isIncrementalGraph(value: unknown): boolean
+```
 
-**REQ-IFACE-04:** Implementations MUST provide the debug interface methods:
-* `debugGetFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"missing"` for unmaterialized nodes.
-* `debugListMaterializedNodes()` — Returns an array of `NodeKey` strings for all materialized node instances.
-* `debugGetSchemaHash()` — Returns the schema identifier used for storage namespacing.
+### 5.2 Node Definition Structure
 
-### 3.3 Database Interfaces
+```typescript
+type NodeDef = {
+  output: string;              // Expression pattern
+  inputs: Array<string>;       // Dependency expression patterns
+  computor: Computor;          // Async computation function
+  isDeterministic: boolean;    // True if outcome is unique for given inputs
+  hasSideEffects: boolean;     // True if computor has observable effects
+}
+```
 
-#### GenericDatabase<TValue>
+**REQ-NODEDEF-01:** All five fields are required. Omitting any field must cause a validation error.
+
+### 5.3 Computor Signature
+
+```typescript
+type Computor = (
+  inputs: Array<DatabaseValue>,
+  oldValue: DatabaseValue | undefined,
+  bindings: Array<ConstValue>
+) => Promise<DatabaseValue | Unchanged>
+```
+
+**REQ-COMP-01:** The `inputs` array contains dependency values in the order they appear in the node definition's `inputs` field.
+
+**REQ-COMP-02:** The `oldValue` parameter is the previously stored value at this node instance, or `undefined` for first-time evaluations.
+
+**REQ-COMP-03:** The `bindings` parameter is the full binding environment for this node instance (positional array matching the output pattern's arity).
+
+**REQ-COMP-04:** Computors may return the `Unchanged` sentinel (obtained via `makeUnchanged()`) to indicate no value change. See Part III for semantics.
+
+### 5.4 Debug Interface (Required)
+
+The debug interface provides observability into internal state for testing and diagnostics. It is **not optional**.
+
+**REQ-DEBUG-01:** `debugGetFreshness(functor, bindings)` must return:
+- `"up-to-date"` if the node instance is materialized and up-to-date
+- `"potentially-outdated"` if the node instance is materialized and outdated
+- `"missing"` if the node instance is not materialized
+
+**REQ-DEBUG-02:** `debugListMaterializedNodes()` must return an array of strings, each uniquely identifying a materialized node instance (implementation-defined key format, often `functor:serialized_bindings`).
+
+**REQ-DEBUG-03:** `debugGetSchemaHash()` must return the schema identifier used for storage namespacing.
+
+### 5.5 Error Taxonomy
+
+All errors must have a stable `.name` property (string matching the error class name) and required fields:
+
+| Error Name                    | Required Fields                                      | Thrown When                                      |
+|-------------------------------|------------------------------------------------------|--------------------------------------------------|
+| `InvalidExpressionError`      | `expression: string`                                 | Expression fails to parse (schema validation)    |
+| `InvalidNodeError`            | `nodeName: string`                                   | Functor not found in schema (public API)         |
+| `ArityMismatchError`          | `nodeName: string, expectedArity: number, actualArity: number` | Binding count doesn't match arity (public API)   |
+| `SchemaOverlapError`          | `patterns: Array<string>`                            | Multiple definitions for same functor+arity      |
+| `SchemaArityConflictError`    | `nodeName: string, arities: Array<number>`           | Same functor with different arities              |
+| `SchemaCycleError`            | `cycle: Array<string>`                               | Cyclic dependency detected                       |
+| `InvalidSchemaError`          | `schemaPattern: string`                              | General schema validation failure                |
+| `MissingValueError`           | `nodeKey: string`                                    | Up-to-date node has no stored value (corruption) |
+| `InvalidUnchangedError`       | (optional additional context)                        | Computor returned Unchanged when oldValue is undefined |
+
+**REQ-ERR-01:** Each error type must have a corresponding type guard function, e.g.:
+```typescript
+function isInvalidNodeError(value: unknown): boolean
+```
+
+### 5.6 Database Interfaces
+
+#### GenericDatabase
 
 ```typescript
 interface GenericDatabase<TValue> {
@@ -443,395 +572,239 @@ interface GenericDatabase<TValue> {
 }
 ```
 
-**REQ-DB-01:** Values MUST round-trip without semantic change.
+**REQ-DBGEN-01:** Values must round-trip without semantic change (structural equality must be preserved).
 
-**REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
-
-**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. No canonical encoding or serialization scheme is required; implementations MAY choose their own strategy for encoding values.
+**REQ-DBGEN-02:** The type parameter `TValue` applies consistently to all operations.
 
 #### RootDatabase
 
 ```typescript
 interface RootDatabase {
-  // Internal interface - specifics are implementation-defined
-  // Must support schema-namespaced storage and isolation
   listSchemas(): AsyncIterable<string>;
   close(): Promise<void>;
+  // Internal methods for schema-namespaced storage (implementation-defined)
 }
 ```
 
-**REQ-ROOT-01:** Implementations MUST provide isolated storage per schema identifier.
+**REQ-DBROOT-01:** Must provide isolated storage per schema identifier (no key collisions across schemas).
 
-**REQ-ROOT-02:** Different schema identifiers MUST NOT share storage or cause key collisions.
+**REQ-DBROOT-02:** Must support batch operations for atomicity (required by invalidate).
 
-### 3.4 Computor Signature
+### 5.7 Test-Observable Behavior
 
-```typescript
-type Computor = (
-  inputs: Array<DatabaseValue>,
-  oldValue: DatabaseValue | undefined,
-  bindings: Array<ConstValue>
-) => Promise<DatabaseValue | Unchanged>;
-```
+This section defines what conformance tests **may** assert.
 
-**Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `DatabaseValue`). The `pull()` operation always returns `Promise<DatabaseValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
+**REQ-TEST-01 (API Shape):** Tests may assert the presence and signatures of:
+- `makeIncrementalGraph`
+- `IncrementalGraph.pull`
+- `IncrementalGraph.invalidate`
+- `IncrementalGraph.debugGetFreshness`
+- `IncrementalGraph.debugListMaterializedNodes`
+- `IncrementalGraph.debugGetSchemaHash`
+- `isIncrementalGraph`
+- Type guards for all error types
 
-**REQ-COMP-01′ (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`. Formally, `Outcomes(S, inputs, oldValue, bindings)` MUST always be a singleton set. If `NodeDef.isDeterministic` is `false`, the computor MAY be nondeterministic (outcome set may contain multiple elements).
+**REQ-TEST-02 (Error Behavior):** Tests may assert error types (via `.name` property) and required fields for expected error conditions.
 
-**REQ-COMP-02′ (Conditional Purity):** If `NodeDef.hasSideEffects` is `false`, the computor MUST NOT have observable side effects. If `NodeDef.hasSideEffects` is `true`, the computor MAY perform side effects (which are treated as nondeterminism in the formal model).
+**REQ-TEST-03 (Correctness Properties):** Tests may assert properties P1′, P2, P3, P4 as specified in Part II.
 
-**REQ-COMP-03:** Computors MAY return `Unchanged` sentinel to indicate no value change.
+**REQ-TEST-04 (Deterministic Equivalence):** Tests may assert that `pull` produces the same result as recomputing from scratch **only** when all reachable computors have `isDeterministic: true` and `hasSideEffects: false`. Tests must not assume determinism otherwise.
 
-**REQ-COMP-04:** Implementations MUST expose `makeUnchanged()` factory and `isUnchanged(value)` type guard.
+**REQ-TEST-05 (Freshness Observability):** Tests may use `debugGetFreshness` to assert freshness states but may not assume any particular internal implementation (versions, epochs, timestamps, etc.).
 
-**REQ-COMP-05:** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position. For example, if the output pattern is `full_event(e)`, then `bindings[0]` contains the value for the first argument position, `e`.
+**REQ-TEST-06 (Restart Resilience):** Tests may assert that after restart (same schema, same database), materialized nodes remain materialized and invalidation propagates correctly without requiring re-pull (see Part IV).
 
-### 3.5 Error Taxonomy
-
-All errors MUST provide stable `.name` property and required fields:
-
-| Error Name | Required Fields | Thrown When |
-|------------|----------------|-------------|
-| `InvalidExpressionError` | `expression: string` | Invalid expression syntax (schema parsing) |
-| `InvalidNodeError` | `nodeName: string` | No schema matches the given nodeName (public API) |
-| `SchemaOverlapError` | `patterns: Array<string>` | Overlapping output patterns at init (schema validation) |
-| `InvalidSchemaError` | `schemaPattern: string` | Schema definition problems at init (schema validation) |
-| `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
-| `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
-| `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
-| `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same head with different arities in schema (schema validation) |
-
-**REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
+**REQ-TEST-07 (Non-Observables):** Tests **may not** assert:
+- Internal storage layout or key formats (beyond behavior)
+- Specific serialization encodings
+- Order of keys in database enumeration
+- Internal data structures or algorithms
 
 ---
 
-## 4. Persistence & Materialization (Normative)
-
-### 4.1 Materialization Markers
-
-**REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node instance set after restart.
-
-**REQ-PERSIST-02:** If node instance `N@B` was materialized before restart, then after restart (same `RootDatabase`, same schema):
-* `invalidate(nodeName, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
-* This MUST occur WITHOUT requiring re-pull
-
-**REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
-
-### 4.2 Invariants
-
-The graph MUST maintain these invariants for all materialized node instances:
-
-**I1 (Outdated Propagation):** If materialized node instance `N@B` is `potentially-outdated`, all materialized transitive dependents are also `potentially-outdated`.
-
-**I2 (Up-to-Date Upstream):** If materialized node instance `N@B` is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
-
-**I3′ (Value Admissibility):** If materialized node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
-* there exists some `oldValue` such that `v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`.
-
-This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy I3′ the same way: their stored value must be consistent with their computor's `Outcomes(...)` set (possibly using the existential `oldValue` quantification).
-
-### 4.3 Correctness Properties
-
-**P1′ (Soundness under nondeterminism):** For any `pull(nodeName, B)` that returns value `v`, `v` is a value permitted by the nondeterministic big-step semantics. That is, there exists a derivation where all computor invocations choose elements from their `Outcomes(...)` sets and the final returned value is `v`.
-
-**P1-det (Deterministic specialization, corollary):** If all computors reachable from node instance `N@B` have `isDeterministic=true` and `hasSideEffects=false`, then P1′ strengthens to: `pull(N, B)` produces the same result as recomputing all values from scratch with the same input values. This recovers the traditional semantic equivalence property for the deterministic and pure subset of computors.
-
-**P2 (Progress):** Every `pull(N, B)` call terminates (assuming computors terminate).
-
-**P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()` for each unique node instance.
-
-**P4 (Freshness Preservation):** After `pull(N, B)`, the node instance `N@B` and all transitive dependencies are `up-to-date`.
-
----
-
-## 5. Test-Visible Contract (Normative)
-
-This section defines exactly what conformance tests MAY assert. All other implementation details are internal and subject to change.
-
-### 5.1 Public API
-
-Tests MAY assert the existence and signatures of:
-
-* `makeIncrementalGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): IncrementalGraph` — Factory function
-* `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
-* `IncrementalGraph.invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>` — Mark node as potentially-outdated
-* `IncrementalGraph.debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">` — Query freshness state (REQUIRED)
-* `IncrementalGraph.debugListMaterializedNodes(): Promise<Array<string>>` — List materialized nodes (REQUIRED)
-* `IncrementalGraph.debugGetSchemaHash(): string` — Get schema identifier (REQUIRED)
-* `isIncrementalGraph(value): boolean` — Type guard
-
-### 5.2 Observable Error Taxonomy
-
-Tests MAY assert error names (via `.name` property) and required fields (see section 3.5 for complete taxonomy).
-
-### 5.3 Canonicalization Requirement
-
-Tests MAY assert:
-* Whitespace normalization in expressions
-* See REQ-CANON-03 and REQ-CANON-04 in section 1.4
-
-### 5.4 Freshness Observability
-
-**REQ-FRESH-01:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
-
-### 5.5 Restart Resilience
-
-**REQ-RESTART-01:** Materialized node instances MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
-
-**REQ-RESTART-02:** After restart, `invalidate(nodeName, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
-
-### 5.6 Behavioral Guarantees
-
-**REQ-BEHAVE-01 = P1′** (see §4.3): `pull(N, B)` MUST produce a result that is permitted by the nondeterministic big-step semantics (Soundness under nondeterminism). For deterministic and pure computors (where all reachable computors have `isDeterministic=true` and `hasSideEffects=false`), this strengthens to the traditional semantic equivalence with recomputing from scratch.
-
-**REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call for each unique node instance (Single Invocation).
-
-**REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N, B)` completes, node instance `N@B` and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
-
-**REQ-BEHAVE-04 (Test Determinism Assumption):** Tests MUST NOT assume deterministic behavior unless all computors in the incremental graph being tested have `isDeterministic=true` and `hasSideEffects=false`. Tests may only assert deterministic equivalence (e.g., "pull produces same result as recomputing from scratch") for graphs where all computors are declared deterministic and side-effect-free.
-
----
-
-## 6. Appendices (Non-Normative)
-
-### Appendix A: Examples
-
-#### A.1 Simple Linear Chain
-
-**Schema:**
-```javascript
-[
-  { output: "all_events", inputs: [], 
-    computor: async ([], old) => old || { events: [] },
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "meta_events", inputs: ["all_events"], 
-    computor: async ([all]) => extractMeta(all),
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "event_context(e)", inputs: ["meta_events"], 
-    computor: async ([meta], old, bindings) => {
-      const e = bindings[0]; // First argument position
-      return meta.find(ev => ev.id === e.id);
-    },
-    isDeterministic: true,
-    hasSideEffects: false }
-]
-```
-
-**Operations:**
-```javascript
-// External state for source nodes
-const allEventsCell = { value: {events: [{id: 'evt_123', data: '...'}]} };
-
-// Invalidate source (atom expression, no bindings needed)
-await graph.invalidate('all_events');
-
-// Pull derived atom expression
-const meta = await graph.pull('meta_events');
-
-// Pull parameterized node with positional bindings
-const context = await graph.pull('event_context', [{id: 'evt_123'}]);
-```
-
-**How it works:**
-* `all_events` is an atom expression—it denotes a single node
-* Schema defines `event_context(e)` as a compound expression—it denotes an infinite family
-* Calling `pull('event_context', [{id: 'evt_123'}])` uses nodeName only, selects one specific member of that family
-* The binding array `[{id: 'evt_123'}]` has length 1, matching the arity defined in the schema
-* Different bindings create different node instances: `event_context@[{id:'evt_123'}]` vs `event_context@[{id:'evt_456'}]`
-* NodeName is constant for a family; only bindings vary between instances
-
-#### A.2 Multiple Parameters
-
-```javascript
-// External state cells
-const allEventsCell = { value: {events: []} };
-const photoStorageCell = { value: {photos: {}} };
-
-[
-  { output: "all_events", inputs: [], 
-    computor: async () => allEventsCell.value,
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "photo_storage", inputs: [],
-    computor: async () => photoStorageCell.value,
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "event_context(e)", inputs: ["all_events"],
-    computor: async ([all], _, bindings) => {
-      const e = bindings[0]; // First position
-      return all.events.find(ev => ev.id === e.id);
-    },
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "photo(p)", inputs: ["photo_storage"],
-    computor: async ([storage], _, bindings) => {
-      const p = bindings[0]; // First position
-      return storage.photos[p.id];
-    },
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "enhanced_event(e, p)", 
-    inputs: ["event_context(e)", "photo(p)"],
-    computor: async ([ctx, photo], _, bindings) => {
-      // bindings[0] is the event, bindings[1] is the photo
-      return {...ctx, photo};
-    },
-    isDeterministic: true,
-    hasSideEffects: false }
-]
-```
-
-**Operations:**
-```javascript
-// External state for source nodes
-const allEventsCell = { value: {events: [{id: 'evt_123'}]} };
-const photoStorageCell = { value: {photos: {'photo_456': {url: '...'}}} };
-
-// Invalidate sources
-await graph.invalidate('all_events');
-await graph.invalidate('photo_storage');
-
-// Pull with multiple positional bindings
-const enhanced = await graph.pull('enhanced_event', [
-  {id: 'evt_123'},
-  {id: 'photo_456'}
-]);
-```
-
-**How it works:**
-* Schema defines `enhanced_event(e, p)` denoting the Cartesian product of all possible event and photo values
-* Public call uses nodeName `"enhanced_event"` with binding array of length 2
-* Position 0 corresponds to the first argument, position 1 to the second
-* The schema declares: for any bindings `B`, `enhanced_event@B` depends on `event_context@B[0..0]` and `photo@B[1..1]`
-* When we pull with `[{id: 'evt_123'}, {id: 'photo_456'}]`, the system instantiates both dependencies with the appropriate positional bindings
-
-#### A.3 Variable Sharing
-
-```javascript
-// External state cell
-const eventDataCell = { value: { statuses: {}, metadata: {} } };
-
-[
-  { output: "event_data", inputs: [],
-    computor: async () => eventDataCell.value,
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "status(e)", inputs: ["event_data"],
-    computor: async ([data], _, bindings) => {
-      const e = bindings[0]; // First position
-      return data.statuses[e.id];
-    },
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "metadata(e)", inputs: ["event_data"],
-    computor: async ([data], _, bindings) => {
-      const e = bindings[0]; // First position
-      return data.metadata[e.id];
-    },
-    isDeterministic: true,
-    hasSideEffects: false },
-  { output: "full_event(e)", 
-    inputs: ["status(e)", "metadata(e)"],
-    computor: async ([status, meta], _, bindings) => {
-      const e = bindings[0]; // First position
-      return {id: e.id, status, meta};
-    },
-    isDeterministic: true,
-    hasSideEffects: false }
-]
-```
-
-**Operations:**
-```javascript
-// External state for source node
-const eventDataCell = { value: {
-  statuses: {'evt_123': 'active'},
-  metadata: {'evt_123': {created: '2024-01-01'}}
-} };
-
-// Invalidate source
-await graph.invalidate('event_data');
-
-// Pull with positional binding
-const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
-// Result: {id: 'evt_123', status: 'active', meta: {created: '2024-01-01'}}
-```
-
-**How it works:**
-* Schema defines all three expressions with arity 1 (one argument position)
-* When pulling `full_event` with `[{id:'evt_123'}]`, both dependencies are instantiated with the same positional binding
-* The binding propagates through the entire dependency chain
-* Variable names (`e` in this case) are schema-internal—public API uses `nodeName` only
-
-### Appendix C: Removed (Debug Interface is now required)
-
-The debug interface has been moved to the main IncrementalGraph interface (§3.2) and is now a MUST requirement for all conforming implementations.
-
-### Appendix D: Implementation Notes
-
-#### D.1 Batching
-
-All database operations within a single `invalidate()` call MUST be batched atomically (as required by REQ-INV-05).
-
-Database operations during `pull()` SHOULD be batched per node recomputation for efficiency.
-
-#### D.2 Dependent Lookup Optimization
-
-To efficiently implement invalidation, implementations SHOULD maintain a reverse dependency index allowing O(1) lookup of immediate dependents.
-
-#### D.3 Reserved for Future Use
-
-This section is reserved for future implementation notes.
-
-### Appendix E: Edge Cases
-
-#### E.1 Unmatched Pull Request
-
-**Error:** `pull("unknown_node", [])` but no schema pattern matches.
-
-**Behavior:** Throw `InvalidNodeError`.
-
-#### E.2 Binding Arity Mismatch
-
-**Error:** `pull("event_context", [])` where we have `event_context(e)` in the schema: wrong number of bindings.
-
-**Behavior:** Throw `ArityMismatchError`.
-
-**Example:**
-```javascript
-// Schema has: output: "event_context(e)" (arity 1)
-
-// ❌ Wrong: Missing binding (empty array)
-await graph.pull("event_context", []);
-
-// ❌ Wrong: Too many bindings
-await graph.pull("event_context", [{id: 'evt_123'}, {extra: 'value'}]);
-
-// ✅ Correct: Exactly one binding for arity-1 expression
-await graph.pull("event_context", [{id: 'evt_123'}]);
-```
-
-#### E.3 Missing Values
-
-If node instance is `up-to-date` but has no stored value, this is database corruption. MUST throw `MissingValueError`.
-
-#### E.4 Atom Expressions with Bindings
-
-**Scenario:** Providing bindings for an atom expression (no arguments).
-
-**Behavior:** Empty bindings array required for atom expressions (arity 0).
-
-**Example:**
-```javascript
-// ✅ Correct for arity 0 node:
-await graph.pull("all_events", []);
-await graph.pull("all_events"); // bindings default to []
-
-// ❌ Wrong: Non-empty bindings for arity 0 node:
-await graph.pull("all_events", [{x: "value"}]); // throws `ArityMismatchError`
-```
+## Appendix — Requirement Index and Crosswalk
+
+This appendix maps all normative requirements to their defining sections and provides a coverage checklist ensuring no requirements from the original specification were silently dropped.
+
+### A.1 Requirement Index
+
+| Requirement ID          | Part | Section | Description                                           |
+|-------------------------|------|---------|-------------------------------------------------------|
+| REQ-EXPR-01             | I    | 1.2     | Expression grammar conformance                        |
+| REQ-EXPR-02             | I    | 1.2     | Arity-0 equivalence: `id` and `id()`                  |
+| REQ-CANON-01            | I    | 1.2     | Canonicalize extracts functor                         |
+| REQ-CANON-02            | I    | 1.2     | Pattern matching uses canonical form                  |
+| REQ-SCHEMA-01           | I    | 1.3     | All node definition fields required                   |
+| REQ-SCHEMA-02           | I    | 1.3     | Variable scope rule (inputs ⊆ output)                 |
+| REQ-SCHEMA-03           | I    | 1.3     | Unique variable names per expression                  |
+| REQ-SCHEMA-04           | I    | 1.3     | isDeterministic and hasSideEffects required           |
+| REQ-SCHEMA-05           | I    | 1.3     | No overlapping output patterns                        |
+| REQ-SCHEMA-06           | I    | 1.3     | Arity consistency for same functor                    |
+| REQ-SCHEMA-07           | I    | 1.3     | Schema must be acyclic                                |
+| REQ-BINDING-01          | I    | 1.4     | Binding propagation by variable name correspondence   |
+| REQ-BINDING-02          | I    | 1.4     | Variable names are schema-internal                    |
+| REQ-COMP-01             | I    | 1.5     | Computor returns Promise<DatabaseValue \| Unchanged>  |
+| REQ-EVAL-01             | I    | 1.6     | Evaluation terminates for acyclic schemas             |
+| REQ-EVAL-02             | I    | 1.6     | Evaluation result is DatabaseValue                    |
+| REQ-MAT-01              | II   | 2.1     | Only materialized nodes tracked                       |
+| REQ-MAT-02              | II   | 2.1     | Materialization occurs via pull or invalidate        |
+| REQ-MAT-03              | II   | 2.1     | Unmaterialized nodes have no stored state             |
+| REQ-PULL-01             | II   | 2.2     | Throw InvalidNodeError if functor not found           |
+| REQ-PULL-02             | II   | 2.2     | Throw ArityMismatchError if binding count wrong       |
+| REQ-PULL-03             | II   | 2.2     | pull returns DatabaseValue (never undefined/Unchanged)|
+| REQ-PULL-04             | II   | 2.2     | Single invocation per node instance per call          |
+| REQ-PULL-05             | II   | 2.2     | Up-to-date nodes skip computor invocation             |
+| REQ-INV-01              | II   | 2.3     | invalidate throws InvalidNodeError if functor unknown |
+| REQ-INV-02              | II   | 2.3     | invalidate throws ArityMismatchError if arity wrong   |
+| REQ-INV-03              | II   | 2.3     | invalidate does not compute values                    |
+| REQ-INV-04              | II   | 2.3     | Only materialized dependents marked outdated          |
+| REQ-INV-05              | II   | 2.3     | invalidate applies to any node                        |
+| REQ-INV-06              | II   | 2.3     | invalidate is atomic                                  |
+| REQ-UNCH-01             | III  | 3.1     | Unchanged not part of Outcomes                        |
+| REQ-UNCH-02             | III  | 3.1     | Unchanged preserves old value, marks up-to-date       |
+| REQ-UNCH-03             | III  | 3.1     | Unchanged invalid when oldValue is undefined          |
+| REQ-UNCH-04             | III  | 3.1     | Unchanged semantically equivalent to returning oldVal |
+| REQ-UNCH-05             | III  | 3.2     | Optional propagation optimization                     |
+| REQ-UNCH-06             | III  | 3.3     | Expose makeUnchanged() and isUnchanged()              |
+| REQ-PERSIST-01          | IV   | 4.1     | Materialized nodes survive restart                    |
+| REQ-PERSIST-02          | IV   | 4.1     | Invalidate propagates after restart without pull      |
+| REQ-PERSIST-03          | IV   | 4.1     | Persistence mechanism is implementation-defined       |
+| REQ-PERSIST-04          | IV   | 4.2     | Schema identifier isolates storage                    |
+| REQ-PERSIST-05          | IV   | 4.2     | Schema changes cause different identifiers            |
+| REQ-PERSIST-06          | IV   | 4.3     | No required canonical encoding                        |
+| REQ-PERSIST-07          | IV   | 4.3     | Semantic round-trip fidelity required                 |
+| REQ-PERSIST-08          | IV   | 4.3     | Storage layout optimization allowed                   |
+| REQ-DB-01               | IV   | 4.4     | Database supports key-value + batch + enumeration     |
+| REQ-DB-02               | IV   | 4.4     | No ordering guarantees required                       |
+| REQ-DB-03               | IV   | 4.4     | Atomic batch for invalidate                           |
+| REQ-FACTORY-01          | V    | 5.1     | Validate schemas at construction                      |
+| REQ-FACTORY-02          | V    | 5.1     | Compute schema identifier                             |
+| REQ-IFACE-01            | V    | 5.1     | Arity-0 bindings default to []                        |
+| REQ-IFACE-02            | V    | 5.1     | Arity>0 requires bindings of correct length           |
+| REQ-IFACE-03            | V    | 5.1     | Provide isIncrementalGraph type guard                 |
+| REQ-NODEDEF-01          | V    | 5.2     | All NodeDef fields required                           |
+| REQ-COMP-01             | V    | 5.3     | inputs array matches definition order                 |
+| REQ-COMP-02             | V    | 5.3     | oldValue is previous stored value or undefined        |
+| REQ-COMP-03             | V    | 5.3     | bindings is full output binding environment           |
+| REQ-COMP-04             | V    | 5.3     | Computors may return Unchanged                        |
+| REQ-DEBUG-01            | V    | 5.4     | debugGetFreshness returns correct state               |
+| REQ-DEBUG-02            | V    | 5.4     | debugListMaterializedNodes returns key array          |
+| REQ-DEBUG-03            | V    | 5.4     | debugGetSchemaHash returns identifier                 |
+| REQ-ERR-01              | V    | 5.5     | All error types have type guards                      |
+| REQ-DBGEN-01            | V    | 5.6     | GenericDatabase values round-trip                     |
+| REQ-DBGEN-02            | V    | 5.6     | Type parameter consistency                            |
+| REQ-DBROOT-01           | V    | 5.6     | RootDatabase isolates per schema                      |
+| REQ-DBROOT-02           | V    | 5.6     | RootDatabase supports batch operations                |
+| REQ-TEST-01             | V    | 5.7     | Tests may assert API shape                            |
+| REQ-TEST-02             | V    | 5.7     | Tests may assert error behavior                       |
+| REQ-TEST-03             | V    | 5.7     | Tests may assert correctness properties               |
+| REQ-TEST-04             | V    | 5.7     | Deterministic equivalence only for pure computors     |
+| REQ-TEST-05             | V    | 5.7     | Freshness observable via debug interface              |
+| REQ-TEST-06             | V    | 5.7     | Restart resilience testable                           |
+| REQ-TEST-07             | V    | 5.7     | Internal implementation details not observable        |
+
+### A.2 Invariants and Properties Index
+
+| Identifier | Part | Section | Description                                           |
+|------------|------|---------|-------------------------------------------------------|
+| I1         | II   | 2.4     | Outdated propagates to dependents                     |
+| I2         | II   | 2.4     | Up-to-date requires up-to-date dependencies           |
+| I3′        | II   | 2.4     | Value admissibility with existential oldValue         |
+| P1′        | II   | 2.2     | Soundness under nondeterminism                        |
+| P1-det     | II   | 2.2     | Deterministic equivalence (pure computors)            |
+| P2         | II   | 2.2     | Progress (termination)                                |
+| P3         | II   | 2.2     | Single invocation per node per call                   |
+| P4         | II   | 2.2     | Freshness preservation after pull                     |
+
+### A.3 Coverage Checklist
+
+This section verifies that all concepts and requirements from the original specification are addressed in the rewrite.
+
+**Expressions and Grammar:**
+- [x] Expression grammar (REQ-EXPR-01)
+- [x] Arity-0 equivalence (REQ-EXPR-02)
+- [x] Canonicalization (REQ-CANON-01, REQ-CANON-02)
+- [x] Variable correspondence (REQ-BINDING-01, REQ-BINDING-02)
+
+**Schema Validation:**
+- [x] Variable scope rule (REQ-SCHEMA-02)
+- [x] Unique variables per expression (REQ-SCHEMA-03)
+- [x] No overlapping patterns (REQ-SCHEMA-05, SchemaOverlapError)
+- [x] Arity consistency (REQ-SCHEMA-06, SchemaArityConflictError)
+- [x] Acyclicity (REQ-SCHEMA-07, SchemaCycleError)
+- [x] isDeterministic and hasSideEffects required (REQ-SCHEMA-04)
+
+**Computors and Semantics:**
+- [x] Computor signature (REQ-COMP-01, REQ-COMP-02, REQ-COMP-03)
+- [x] Outcome sets and nondeterminism (Part I §1.5)
+- [x] Side effects as nondeterminism (Part I §1.5)
+- [x] Baseline evaluation semantics (Part I §1.6)
+
+**Materialization and Freshness:**
+- [x] Materialization definition (REQ-MAT-01, REQ-MAT-02, REQ-MAT-03)
+- [x] Freshness states (Part II §2.2)
+- [x] Up-to-date nodes skip computor (REQ-PULL-05)
+
+**pull Operation:**
+- [x] Error handling (REQ-PULL-01, REQ-PULL-02)
+- [x] Return type (REQ-PULL-03)
+- [x] Single invocation (REQ-PULL-04, P3)
+- [x] Incremental strategy (Part II §2.2)
+
+**invalidate Operation:**
+- [x] Error handling (REQ-INV-01, REQ-INV-02)
+- [x] No value computation (REQ-INV-03)
+- [x] Propagation to materialized dependents (REQ-INV-04)
+- [x] Atomicity (REQ-INV-06)
+- [x] Applies to any node (REQ-INV-05)
+
+**Unchanged Sentinel:**
+- [x] Not part of Outcomes (REQ-UNCH-01)
+- [x] Preserves old value (REQ-UNCH-02)
+- [x] Invalid when oldValue undefined (REQ-UNCH-03)
+- [x] Semantic equivalence (REQ-UNCH-04)
+- [x] Optional propagation optimization (REQ-UNCH-05)
+- [x] Factory and type guard (REQ-UNCH-06)
+
+**Persistence and Restart:**
+- [x] Materialized nodes survive restart (REQ-PERSIST-01)
+- [x] Invalidate works after restart (REQ-PERSIST-02)
+- [x] Schema namespacing (REQ-PERSIST-04, REQ-PERSIST-05)
+- [x] Encoding freedom (REQ-PERSIST-06, REQ-PERSIST-07, REQ-PERSIST-08)
+- [x] Database interface contracts (REQ-DB-01, REQ-DB-02, REQ-DB-03)
+
+**JavaScript API:**
+- [x] Factory function (REQ-FACTORY-01, REQ-FACTORY-02)
+- [x] IncrementalGraph interface (REQ-IFACE-01, REQ-IFACE-02, REQ-IFACE-03)
+- [x] NodeDef structure (REQ-NODEDEF-01)
+- [x] Debug interface required (REQ-DEBUG-01, REQ-DEBUG-02, REQ-DEBUG-03)
+- [x] Error taxonomy (Part V §5.5, REQ-ERR-01)
+- [x] Database interfaces (Part V §5.6)
+
+**Test Surface:**
+- [x] Observable API (REQ-TEST-01)
+- [x] Error behavior (REQ-TEST-02)
+- [x] Correctness properties (REQ-TEST-03)
+- [x] Deterministic equivalence constraints (REQ-TEST-04)
+- [x] Freshness observability (REQ-TEST-05)
+- [x] Restart resilience (REQ-TEST-06)
+- [x] Non-observables (REQ-TEST-07)
+
+**Invariants and Properties:**
+- [x] I1 (Outdated propagation)
+- [x] I2 (Up-to-date upstream)
+- [x] I3′ (Value admissibility)
+- [x] P1′ (Soundness under nondeterminism)
+- [x] P1-det (Deterministic specialization)
+- [x] P2 (Progress)
+- [x] P3 (Single invocation)
+- [x] P4 (Freshness preservation)
+
+**Semantic Notes and Clarifications:**
+No semantic changes were required during this rewrite. All requirements preserve their original meaning. The reorganization clarifies the distinction between:
+- Baseline semantics (Part I) vs incremental constraints (Part II)
+- Semantic requirements (Parts I-II) vs optimization allowances (Part III)
+- Abstract contracts (Parts I-IV) vs implementation interfaces (Part V)
 
 ---
 
@@ -839,10 +812,11 @@ await graph.pull("all_events", [{x: "value"}]); // throws `ArityMismatchError`
 
 An implementation conforms to this specification if and only if:
 
-1. It provides all required types, interfaces, and functions with matching signatures
-2. It throws documented errors with stable names at specified times
-3. It enforces all REQ-* requirements
-4. It produces results consistent with big-step semantics and correctness properties
-5. It passes all conformance tests derived from this specification
+1. It provides all required types, interfaces, and functions with matching signatures (Part V)
+2. Its observable behavior matches the baseline evaluation semantics modulo nondeterministic choice (Part I §1.6)
+3. It enforces all normative requirements (all REQ-* labeled constraints)
+4. It maintains all invariants (I1, I2, I3′) for materialized nodes (Part II §2.4)
+5. It satisfies all correctness properties (P1′, P2, P3, P4) (Part II §2.2)
+6. It passes all conformance tests derived from this specification
 
-Optional features (GraphStorage, Debug interface, etc.) MAY be provided without affecting conformance.
+Conformance does not require any specific internal algorithm, data structure, or optimization strategy. Any implementation meeting these observable requirements is conformant.
