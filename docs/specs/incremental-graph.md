@@ -18,6 +18,10 @@ This part defines the abstract semantics of computation: what values mean and ho
 
 ### 1.1 Foundational Concepts
 
+#### Value Types and Structural Equality
+
+The incremental graph operates on **values**. In the abstract semantics of Part I, values are opaque entities with only one required property: **structural equality**.
+
 #### Node Families and Node Instances
 
 A **node family** is identified by a **functor** (an identifier like `all_events` or `full_event`) and an **arity** (the number of parameter positions). A family with arity `n` represents a conceptually infinite set of computation points, one for each possible combination of `n` argument values.
@@ -31,10 +35,7 @@ A **node instance** is a specific member of a family, pinpointed by providing co
 
 #### Binding Environment
 
-A **binding environment** is a positional array of concrete values (type: `Array<ConstValue>`). Its length must equal the arity of the node family. Position 0 holds the value for the first parameter, position 1 for the second, and so on.
-
-The type `ConstValue` is a subtype of `Serializable`, defined recursively as:  
-`number | string | null | boolean | Array<Serializable> | Record<string, Serializable>`
+A **binding environment** is a positional array of values (type: `Array<ConstValue>`). Its length must equal the arity of the node family. Position 0 holds the value for the first parameter, position 1 for the second, and so on.
 
 **Identity principle:** Two node instances are identical if and only if they have the same functor, same arity, and structurally equal binding environments (compared position by position).
 
@@ -145,28 +146,23 @@ When evaluating `enhanced@[V_e, V_p]`:
 
 ### 1.5 Computors and Outcome Sets
 
-A **computor** is an async function with signature:
+A **computor** is a function that computes a value for a node instance given its dependencies and parameters.
 
-```javascript
-(inputs: Array<ComputedValue>, 
- oldValue: ComputedValue | undefined, 
- bindings: Array<ConstValue>) 
-  => Promise<GeneralComputedValue>
-```
+Conceptually, a computor takes:
+- The values of all dependencies (in the order listed in the schema's `inputs` field)
+- The binding environment for this node instance
 
-The `inputs` array contains the values of all dependencies, in the order listed in the schema's `inputs` field.
+And produces a computed value.
 
-The `oldValue` parameter represents the previously computed value at this node instance, if any. It may be `undefined` for first-time evaluations.
-
-The `bindings` parameter is the full binding environment for this node instance (the output's bindings, not sliced per-input).
+The exact signature will be specified in Part II. In abstract semantics, we only require that computors are deterministic or nondeterministic as declared in the schema.
 
 #### Outcome Set Model (Spec-Only Abstraction)
 
-For any node definition `D` and arguments `(inputs_vals, old_val, bind_vals)`, define:
+For any node definition `D` and arguments `(inputs_vals, bind_vals)`, define:
 
-**Outcomes(D, inputs_vals, old_val, bind_vals)** ⊆ ComputedValue
+**Outcomes(D, inputs_vals, bind_vals)** ⊆ ComputedValue
 
-This is the set of all **semantically valid** values the computor may produce. For deterministic computors (`isDeterministic: true`), this set contains exactly one element. For nondeterministic computors, it may contain multiple elements or depend on external factors not modeled in the signature.
+This is the set of all **semantically valid** values the computor may produce given the specified inputs and bindings. For deterministic computors (`isDeterministic: true`), this set contains exactly one element. For nondeterministic computors, it may contain multiple elements or depend on external factors not modeled here.
 
 The outcome set is a specification device: it describes what values are correct, not how to compute them. Implementations do not enumerate outcome sets; they execute computors and observe results.
 
@@ -187,7 +183,7 @@ Given a node instance `F@B` (functor F, bindings B):
    - Compute the binding environment `B_I` for input `I` using variable correspondence with `B`
    - Recursively evaluate `eval(I_functor @ B_I)` to obtain value `v_I`
    - Collect all dependency values in order: `inputs_vals = [v_0, v_1, ...]`
-3. **Select outcome:** Nondeterministically choose `result ∈ Outcomes(D, inputs_vals, old_val, B)`.
+3. **Select outcome:** Nondeterministically choose `result ∈ Outcomes(D, inputs_vals, B)`.
 
 The notation "nondeterministically choose" models both true nondeterminism (random values) and hidden dependencies (external state, time, etc.). Implementations execute the computor function, which may produce different results across invocations for nondeterministic computors.
 
@@ -226,6 +222,31 @@ An **up-to-date** node instance has a stored value that is known to be consisten
 
 A **potentially-outdated** node instance may have a stale value. Its computor must be invoked on the next access.
 
+#### Computor Signature
+
+The abstract computor concept from Part I is realized with the following concrete signature:
+
+```javascript
+(inputs: Array<ComputedValue>,
+ oldValue: ComputedValue | undefined,
+ bindings: Array<ConstValue>)
+  => Promise<ComputedValue>
+```
+
+The `inputs` array contains the values of all dependencies, in the order listed in the schema's `inputs` field.
+
+The `oldValue` parameter receives the previously stored value at this node instance, or `undefined` for first-time evaluations. This enables optimizations where computors can avoid redundant work by comparing against prior results.
+
+The `bindings` parameter is the full binding environment for this node instance.
+
+#### Incremental Outcome Sets
+
+In the incremental setting, the outcome set concept from Part I is extended to include the `oldValue` parameter:
+
+**Outcomes(D, inputs_vals, old_val, bind_vals)** ⊆ ComputedValue
+
+This represents all semantically valid values the computor may produce given inputs, a prior value, and bindings. In baseline evaluation (Part I), `old_val` would always be `undefined`.
+
 #### pull Operation
 
 The **pull** operation is the incremental refinement of the baseline evaluation from Part I. It accepts a functor and binding environment, evaluates the corresponding node instance, and returns a `ComputedValue`.
@@ -256,9 +277,9 @@ When `pull(F, B)` is called:
 
 **REQ-PULL-05 (No Spurious Recomputation):** An up-to-date materialized node instance must return its stored value without invoking its computor. This is not merely an optimization—it is a mandatory constraint to prevent repeated side effects and resampling of nondeterministic computors.
 
-**Correctness Property P1′ (Soundness Under Nondeterminism):**
+**Correctness Property P1 (Soundness):**
 
-For any `pull(F, B)` that returns value `v`, there must exist a valid execution trace of the baseline evaluation (Part I) that produces `v`. In other words, `v` must be consistent with some nondeterministic choice sequence from the `Outcomes` sets of all involved computors.
+For any `pull(F, B)` that returns value `v`, there must exist a valid execution trace of the baseline evaluation (Part I) that produces `v`. In other words, `v` must be in the `Outcomes` set for the node's definition, inputs, and bindings, and this must hold recursively for all dependencies.
 
 **Property P1-det (Deterministic Specialization, Corollary):**
 
@@ -315,15 +336,15 @@ If materialized node instance `N@B` is `potentially-outdated`, then every materi
 
 If materialized node instance `N@B` is `up-to-date`, then every materialized node instance that `N@B` transitively depends on is also `up-to-date`.
 
-**Invariant I3′ (Value Admissibility):**
+**Invariant I3 (Value Admissibility):**
 
-If materialized node instance `N@B` is `up-to-date` with stored value `v`, then there exists some `oldValue` (possibly `undefined`) such that:
+If materialized node instance `N@B` is `up-to-date` with stored value `v`, then there exists some `old_val` (possibly `undefined`) such that:
 
-`v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`
+`v ∈ Outcomes(schema(N), inputs_values, old_val, B)`
 
 where `inputs_values` are the current stored values of `N@B`'s instantiated dependencies.
 
-This invariant uses existential quantification over `oldValue` to avoid requiring storage of historical values. The stored value must be consistent with the computor's outcome set for current inputs and some prior value.
+This invariant uses existential quantification over `old_val` to avoid requiring storage of historical values. The stored value must be consistent with the computor's outcome set for current inputs and some prior value.
 
 ---
 
@@ -333,7 +354,11 @@ This part describes optimization mechanisms that reduce storage operations and p
 
 ### 3.1 The Unchanged Sentinel
 
-**Unchanged** is a unique sentinel value distinct from all `ComputedValue` instances. Computors may return it to indicate "the result is the same as the prior value."
+**Unchanged** is a unique sentinel value distinct from all `ComputedValue` instances. Computors may return it (in addition to `ComputedValue`) to indicate "the result is the same as the prior value."
+
+This extends the computor return type from Part I's `Promise<ComputedValue>` to `Promise<ComputedValue | Unchanged>`.
+
+This extends the computor return type from `Promise<ComputedValue>` to `Promise<ComputedValue | Unchanged>`.
 
 **REQ-UNCH-01:** `Unchanged` is **not** part of the `Outcomes` set. It is an optimization mechanism only.
 
@@ -373,6 +398,20 @@ These are provided for computor implementations to construct and test for the se
 ## Part IV — Persistence and Restart Contracts
 
 This part defines storage obligations for restart resilience without mandating specific encodings or data structures.
+
+### 4.0 Serializability Constraint
+
+For values to be persistable (storable and retrievable from a database), they must be **serializable**. This specification requires that all values used in the incremental graph belong to the following recursive type:
+
+```
+Serializable = number | string | null | boolean | Array<Serializable> | Record<string, Serializable>
+```
+
+This type represents JSON-compatible values: primitives, arrays, and string-keyed objects. It excludes functions, symbols, `undefined`, and other non-serializable JavaScript entities.
+
+**REQ-PERSIST-00:** All values used as bindings (node parameters) and all values produced by computors must be serializable according to the definition above.
+
+This constraint enables persistence but does not mandate any particular encoding strategy (see §4.3).
 
 ### 4.1 Restart Resilience Requirements
 
@@ -428,6 +467,34 @@ Implementations interact with storage via a **database interface** (exact TypeSc
 ## Part V — JavaScript API and Test Surface
 
 This part consolidates all public interface definitions, error types, and test-observable behavior.
+
+### 5.0 Type Definitions
+
+The following TypeScript type definitions provide the concrete JavaScript types for the incremental graph system:
+
+```typescript
+// Serializable values (from Part IV)
+type Serializable = 
+  | number 
+  | string 
+  | null 
+  | boolean 
+  | Array<Serializable> 
+  | Record<string, Serializable>;
+
+// Values used in binding environments (node parameters)
+type ConstValue = Serializable;
+
+// Values produced by computors and stored at nodes
+type ComputedValue = Serializable;
+
+// The Unchanged sentinel (from Part III)
+type Unchanged = symbol;
+```
+
+**Note:** In this implementation, `ConstValue` and `ComputedValue` are type aliases for `Serializable`. The distinction serves documentation purposes and allows future refinement (e.g., additional validation rules or specialized representations).
+
+**Computor Return Type Extension:** While Part I defines the base computor signature returning `Promise<ComputedValue>`, Part III extends this to `Promise<ComputedValue | Unchanged>` for optimization purposes.
 
 ### 5.1 Factory and Core Interface
 
@@ -593,7 +660,7 @@ This section defines what conformance tests **may** assert.
 
 **REQ-TEST-02 (Error Behavior):** Tests may assert error types (via `.name` property) and required fields for expected error conditions.
 
-**REQ-TEST-03 (Correctness Properties):** Tests may assert properties P1′, P2, P3, P4 as specified in Part II.
+**REQ-TEST-03 (Correctness Properties):** Tests may assert properties P1, P2, P3, P4 as specified in Part II.
 
 **REQ-TEST-04 (Deterministic Equivalence):** Tests may assert that `pull` produces the same result as recomputing from scratch **only** when all reachable computors have `isDeterministic: true` and `hasSideEffects: false`. Tests must not assume determinism otherwise.
 
@@ -653,6 +720,7 @@ This appendix maps all normative requirements to their defining sections and pro
 | REQ-UNCH-04             | III  | 3.1     | Unchanged semantically equivalent to returning oldVal |
 | REQ-UNCH-05             | III  | 3.2     | Optional propagation optimization                     |
 | REQ-UNCH-06             | III  | 3.3     | Expose makeUnchanged() and isUnchanged()              |
+| REQ-PERSIST-00          | IV   | 4.0     | All values must be Serializable                       |
 | REQ-PERSIST-01          | IV   | 4.1     | Materialized nodes survive restart                    |
 | REQ-PERSIST-02          | IV   | 4.1     | Invalidate propagates after restart without pull      |
 | REQ-PERSIST-03          | IV   | 4.1     | Persistence mechanism is implementation-defined       |
@@ -696,8 +764,8 @@ This appendix maps all normative requirements to their defining sections and pro
 |------------|------|---------|-------------------------------------------------------|
 | I1         | II   | 2.4     | Outdated propagates to dependents                     |
 | I2         | II   | 2.4     | Up-to-date requires up-to-date dependencies           |
-| I3′        | II   | 2.4     | Value admissibility with existential oldValue         |
-| P1′        | II   | 2.2     | Soundness under nondeterminism                        |
+| I3         | II   | 2.4     | Value admissibility for stored values                 |
+| P1         | II   | 2.2     | Soundness (consistency with baseline)                 |
 | P1-det     | II   | 2.2     | Deterministic equivalence (pure computors)            |
 | P2         | II   | 2.2     | Progress (termination)                                |
 | P3         | II   | 2.2     | Single invocation per node per call                   |
@@ -780,8 +848,8 @@ This section verifies that all concepts and requirements from the original speci
 **Invariants and Properties:**
 - [x] I1 (Outdated propagation)
 - [x] I2 (Up-to-date upstream)
-- [x] I3′ (Value admissibility)
-- [x] P1′ (Soundness under nondeterminism)
+- [x] I3 (Value admissibility)
+- [x] P1 (Soundness)
 - [x] P1-det (Deterministic specialization)
 - [x] P2 (Progress)
 - [x] P3 (Single invocation)
@@ -802,8 +870,8 @@ An implementation conforms to this specification if and only if:
 1. It provides all required types, interfaces, and functions with matching signatures (Part V)
 2. Its observable behavior matches the baseline evaluation semantics modulo nondeterministic choice (Part I §1.6)
 3. It enforces all normative requirements (all REQ-* labeled constraints)
-4. It maintains all invariants (I1, I2, I3′) for materialized nodes (Part II §2.4)
-5. It satisfies all correctness properties (P1′, P2, P3, P4) (Part II §2.2)
+4. It maintains all invariants (I1, I2, I3) for materialized nodes (Part II §2.4)
+5. It satisfies all correctness properties (P1, P2, P3, P4) (Part II §2.2)
 6. It passes all conformance tests derived from this specification
 
 Conformance does not require any specific internal algorithm, data structure, or optimization strategy. Any implementation meeting these observable requirements is conformant.
