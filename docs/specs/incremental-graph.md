@@ -148,14 +148,6 @@ When evaluating `enhanced@[V_e, V_p]`:
 
 A **computor** is a function that computes a value for a node instance given its dependencies and parameters.
 
-Conceptually, a computor takes:
-- The values of all dependencies (in the order listed in the schema's `inputs` field)
-- The binding environment for this node instance
-
-And produces a computed value.
-
-The exact signature will be specified in Part II. In abstract semantics, we only require that computors are deterministic or nondeterministic as declared in the schema.
-
 #### Outcome Set Model (Spec-Only Abstraction)
 
 For any node definition `D` and arguments `(inputs_vals, bind_vals)`, define:
