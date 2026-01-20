@@ -150,11 +150,13 @@ A **computor** is a function that computes a value for a node instance given its
 
 #### Outcome Set Model (Spec-Only Abstraction)
 
-For any node definition `D` and arguments `(inputs_vals, bind_vals)`, define:
+For any node definition `D` and evaluation context, define:
 
-**Outcomes(D, inputs_vals, bind_vals)** ⊆ ComputedValue
+**Outcomes(D, ...)** ⊆ ComputedValue
 
-This is the set of all **semantically valid** values the computor may produce given the specified inputs and bindings. For deterministic computors (`isDeterministic: true`), this set contains exactly one element. For nondeterministic computors, it may contain multiple elements or depend on external factors not modeled here.
+This is the set of all **semantically valid** values the computor may produce in that context.
+
+For deterministic computors (`isDeterministic: true`), this set contains exactly one element for any given context. For nondeterministic computors, it may contain multiple elements or depend on external factors.
 
 The outcome set is a specification device: it describes what values are correct, not how to compute them. Implementations do not enumerate outcome sets; they execute computors and observe results.
 
@@ -175,7 +177,7 @@ Given a node instance `F@B` (functor F, bindings B):
    - Compute the binding environment `B_I` for input `I` using variable correspondence with `B`
    - Recursively evaluate `eval(I_functor @ B_I)` to obtain value `v_I`
    - Collect all dependency values in order: `inputs_vals = [v_0, v_1, ...]`
-3. **Select outcome:** Nondeterministically choose `result ∈ Outcomes(D, inputs_vals, B)`.
+3. **Select outcome:** Nondeterministically choose a value from the outcome set for `D` given the inputs and bindings.
 
 The notation "nondeterministically choose" models both true nondeterminism (random values) and hidden dependencies (external state, time, etc.). Implementations execute the computor function, which may produce different results across invocations for nondeterministic computors.
 
@@ -231,13 +233,18 @@ The `oldValue` parameter receives the previously stored value at this node insta
 
 The `bindings` parameter is the full binding environment for this node instance.
 
-#### Incremental Outcome Sets
+#### Concrete Outcome Set Signature
 
-In the incremental setting, the outcome set concept from Part I is extended to include the `oldValue` parameter:
+The abstract `Outcomes` set from Part I is realized with the following signature:
 
 **Outcomes(D, inputs_vals, old_val, bind_vals)** ⊆ ComputedValue
 
-This represents all semantically valid values the computor may produce given inputs, a prior value, and bindings. In baseline evaluation (Part I), `old_val` would always be `undefined`.
+Where:
+- `inputs_vals`: values of all dependencies
+- `old_val`: previously stored value at this node (or `undefined` for first evaluation)
+- `bind_vals`: the binding environment
+
+The `old_val` parameter allows computors to make decisions based on prior results, enabling optimizations like avoiding redundant computation.
 
 #### pull Operation
 
