@@ -148,13 +148,13 @@ When evaluating `enhanced@[V_e, V_p]`:
 A **computor** is an async function with signature:
 
 ```javascript
-(inputs: Array<DatabaseValue>, 
- oldValue: DatabaseValue | undefined, 
+(inputs: Array<ComputedValue>, 
+ oldValue: ComputedValue | undefined, 
  bindings: Array<ConstValue>) 
-  => Promise<DatabaseValue | Unchanged>
+  => Promise<ComputedValue | Unchanged>
 ```
 
-Where `DatabaseValue` is a subtype of `Serializable` excluding `null`.
+Where `ComputedValue` is a subtype of `Serializable` excluding `null`.
 
 The `inputs` array contains the values of all dependencies, in the order listed in the schema's `inputs` field.
 
@@ -166,7 +166,7 @@ The `bindings` parameter is the full binding environment for this node instance 
 
 For any node definition `D` and arguments `(inputs_vals, old_val, bind_vals)`, define:
 
-**Outcomes(D, inputs_vals, old_val, bind_vals)** ⊆ DatabaseValue
+**Outcomes(D, inputs_vals, old_val, bind_vals)** ⊆ ComputedValue
 
 This is the set of all **semantically valid** values the computor may produce. For deterministic computors (`isDeterministic: true`), this set contains exactly one element. For nondeterministic computors, it may contain multiple elements or depend on external factors not modeled in the signature.
 
@@ -178,7 +178,7 @@ When `hasSideEffects: true`, the computor may perform actions beyond computing a
 
 When `hasSideEffects: false` and `isDeterminism: true`, the computor is a pure function, and stronger equivalence properties hold (see Part II).
 
-**REQ-COMP-01:** Computors must return a `Promise` resolving to either a `DatabaseValue` or the special sentinel `Unchanged` (discussed in Part III).
+**REQ-COMP-01:** Computors must return a `Promise` resolving to either a `ComputedValue` or the special sentinel `Unchanged` (discussed in Part III).
 
 ### 1.6 Baseline Evaluation Semantics
 
@@ -208,7 +208,7 @@ A node definition with `inputs: []` is called a **source node**. Its computor re
 
 **REQ-EVAL-01:** For any acyclic schema and any node instance, evaluation must terminate (assuming all computors terminate).
 
-**REQ-EVAL-02:** The result of evaluating a node instance is always a `DatabaseValue` (never `undefined`, never the sentinel `Unchanged`).
+**REQ-EVAL-02:** The result of evaluating a node instance is always a `ComputedValue` (never `undefined`, never the sentinel `Unchanged`).
 
 ---
 
@@ -241,15 +241,15 @@ A **potentially-outdated** node instance may have a stale value. Its computor mu
 
 #### pull Operation
 
-The **pull** operation is the incremental refinement of the baseline evaluation from Part I. It accepts a functor and binding environment, evaluates the corresponding node instance, and returns a `DatabaseValue`.
+The **pull** operation is the incremental refinement of the baseline evaluation from Part I. It accepts a functor and binding environment, evaluates the corresponding node instance, and returns a `ComputedValue`.
 
-**Signature:** `pull(functor: string, bindings: Array<ConstValue>) → Promise<DatabaseValue>`
+**Signature:** `pull(functor: string, bindings: Array<ConstValue>) → Promise<ComputedValue>`
 
 **REQ-PULL-01:** If no schema output pattern has the given functor, throw `InvalidNodeError`.
 
 **REQ-PULL-02:** If the length of `bindings` does not match the arity of the schema pattern with the given functor, throw `ArityMismatchError`.
 
-**REQ-PULL-03:** The return value must always be a `DatabaseValue` (never `undefined`, never `Unchanged`).
+**REQ-PULL-03:** The return value must always be a `ComputedValue` (never `undefined`, never `Unchanged`).
 
 **Incremental Evaluation Strategy:**
 
@@ -346,18 +346,18 @@ This part describes optimization mechanisms that reduce storage operations and p
 
 ### 3.1 The Unchanged Sentinel
 
-**Unchanged** is a unique sentinel value distinct from all `DatabaseValue` instances. Computors may return it to indicate "the result is the same as the prior value."
+**Unchanged** is a unique sentinel value distinct from all `ComputedValue` instances. Computors may return it to indicate "the result is the same as the prior value."
 
 **REQ-UNCH-01:** `Unchanged` is **not** part of the `Outcomes` set. It is an optimization mechanism only.
 
 **REQ-UNCH-02:** When a computor returns `Unchanged`:
-- The node instance's stored value must not be updated (it retains its existing `DatabaseValue`)
+- The node instance's stored value must not be updated (it retains its existing `ComputedValue`)
 - The node instance must be marked `up-to-date`
 - The sentinel itself must never be stored or exposed to callers
 
 **REQ-UNCH-03:** `Unchanged` may only be returned when `oldValue` (the second parameter to the computor) is not `undefined`. If a computor returns `Unchanged` when `oldValue` is `undefined`, the implementation may throw `InvalidUnchangedError`.
 
-**REQ-UNCH-04:** From the perspective of callers, a computor returning `Unchanged` is semantically equivalent to returning the current stored value. `pull` always returns a `DatabaseValue`, never `Unchanged`.
+**REQ-UNCH-04:** From the perspective of callers, a computor returning `Unchanged` is semantically equivalent to returning the current stored value. `pull` always returns a `ComputedValue`, never `Unchanged`.
 
 **Semantic Equivalence:**
 
@@ -413,7 +413,7 @@ The exact mechanism for computing schema identifiers (hash of definitions, user-
 
 ### 4.3 Encoding and Serialization Freedom
 
-**REQ-PERSIST-06:** Implementations may choose any serialization strategy for `DatabaseValue` objects. There is no requirement for:
+**REQ-PERSIST-06:** Implementations may choose any serialization strategy for `ComputedValue` objects. There is no requirement for:
 - Canonical encoding of JSON-like structures
 - Sorted keys in `Record<string, Serializable>` objects
 - Specific representations of arrays, numbers, booleans, or strings
@@ -466,7 +466,7 @@ function makeIncrementalGraph(
 
 ```typescript
 interface IncrementalGraph {
-  pull(functor: string, bindings?: Array<ConstValue>): Promise<DatabaseValue>;
+  pull(functor: string, bindings?: Array<ConstValue>): Promise<ComputedValue>;
   invalidate(functor: string, bindings?: Array<ConstValue>): Promise<void>;
   
   // Required debug interface
@@ -508,10 +508,10 @@ type NodeDef = {
 
 ```typescript
 type Computor = (
-  inputs: Array<DatabaseValue>,
-  oldValue: DatabaseValue | undefined,
+  inputs: Array<ComputedValue>,
+  oldValue: ComputedValue | undefined,
   bindings: Array<ConstValue>
-) => Promise<DatabaseValue | Unchanged>
+) => Promise<ComputedValue | Unchanged>
 ```
 
 **REQ-COMP-01:** The `inputs` array contains dependency values in the order they appear in the node definition's `inputs` field.
@@ -643,15 +643,15 @@ This appendix maps all normative requirements to their defining sections and pro
 | REQ-SCHEMA-07           | I    | 1.3     | Schema must be acyclic                                |
 | REQ-BINDING-01          | I    | 1.4     | Binding propagation by variable name correspondence   |
 | REQ-BINDING-02          | I    | 1.4     | Variable names are schema-internal                    |
-| REQ-COMP-01             | I    | 1.5     | Computor returns Promise<DatabaseValue \| Unchanged>  |
+| REQ-COMP-01             | I    | 1.5     | Computor returns Promise<ComputedValue \| Unchanged>  |
 | REQ-EVAL-01             | I    | 1.6     | Evaluation terminates for acyclic schemas             |
-| REQ-EVAL-02             | I    | 1.6     | Evaluation result is DatabaseValue                    |
+| REQ-EVAL-02             | I    | 1.6     | Evaluation result is ComputedValue                    |
 | REQ-MAT-01              | II   | 2.1     | Only materialized nodes tracked                       |
 | REQ-MAT-02              | II   | 2.1     | Materialization occurs via pull or invalidate        |
 | REQ-MAT-03              | II   | 2.1     | Unmaterialized nodes have no stored state             |
 | REQ-PULL-01             | II   | 2.2     | Throw InvalidNodeError if functor not found           |
 | REQ-PULL-02             | II   | 2.2     | Throw ArityMismatchError if binding count wrong       |
-| REQ-PULL-03             | II   | 2.2     | pull returns DatabaseValue (never undefined/Unchanged)|
+| REQ-PULL-03             | II   | 2.2     | pull returns ComputedValue (never undefined/Unchanged)|
 | REQ-PULL-04             | II   | 2.2     | Single invocation per node instance per call          |
 | REQ-PULL-05             | II   | 2.2     | Up-to-date nodes skip computor invocation             |
 | REQ-INV-01              | II   | 2.3     | invalidate throws InvalidNodeError if functor unknown |
