@@ -4,9 +4,9 @@ This specification defines the semantics, implementation constraints, and observ
 
 The document is organized in five parts, each building on the previous:
 
-1. **Part I** establishes pure dataflow semantics without any caching or persistence
+1. **Part I** establishes dataflow semantics
 2. **Part II** adds incrementality through materialization and freshness tracking  
-3. **Part III** describes optimization mechanisms that preserve Part II semantics
+3. **Part III** describes optimization mechanisms
 4. **Part IV** defines persistence contracts for restart resilience
 5. **Part V** specifies the JavaScript API and test surface
 
@@ -83,7 +83,7 @@ Variable names serve documentation and variable-correspondence purposes in schem
 
 ### 1.3 Schema Structure
 
-A **schema** is a finite set of **node definitions**, each declaring:
+A **schema** is a set of **node definitions**, each declaring:
 
 ```javascript
 {
@@ -91,7 +91,7 @@ A **schema** is a finite set of **node definitions**, each declaring:
   inputs: [<expression>, ...], // dependency families
   computor: <function>,        // computation logic
   isDeterministic: <boolean>,  // true if outcome is unique for given inputs
-  hasSideEffects: <boolean>    // true if computor performs actions beyond return value
+  hasSideEffects: <boolean>    // true if computor performs actions outside JavaScript runtime
 }
 ```
 
@@ -151,10 +151,8 @@ A **computor** is an async function with signature:
 (inputs: Array<ComputedValue>, 
  oldValue: ComputedValue | undefined, 
  bindings: Array<ConstValue>) 
-  => Promise<ComputedValue | Unchanged>
+  => Promise<GeneralComputedValue>
 ```
-
-Where `ComputedValue` is a subtype of `Serializable` excluding `null`.
 
 The `inputs` array contains the values of all dependencies, in the order listed in the schema's `inputs` field.
 
@@ -174,11 +172,7 @@ The outcome set is a specification device: it describes what values are correct,
 
 **Treatment of Side Effects and Nondeterminism:**
 
-When `hasSideEffects: true`, the computor may perform actions beyond computing a return value (e.g., logging, network requests, state updates). This specification treats side effects as a form of nondeterminism: they contribute to the variation in possible computor results but are not separately tracked or guaranteed. The only observable contract is the returned value.
-
-When `hasSideEffects: false` and `isDeterminism: true`, the computor is a pure function, and stronger equivalence properties hold (see Part II).
-
-**REQ-COMP-01:** Computors must return a `Promise` resolving to either a `ComputedValue` or the special sentinel `Unchanged` (discussed in Part III).
+When `hasSideEffects: true`, the computor MUST be treated as one that performs actions beyond computing a return value (e.g., logging, network requests, state updates). This specification treats side effects as a form of nondeterminism: they contribute to the variation in possible computor results but are not separately tracked or guaranteed. The only observable contract is the returned value.
 
 ### 1.6 Baseline Evaluation Semantics
 
@@ -193,12 +187,7 @@ Given a node instance `F@B` (functor F, bindings B):
    - Compute the binding environment `B_I` for input `I` using variable correspondence with `B`
    - Recursively evaluate `eval(I_functor @ B_I)` to obtain value `v_I`
    - Collect all dependency values in order: `inputs_vals = [v_0, v_1, ...]`
-3. **Retrieve prior value:** Let `old_val` be the previously computed value at `F@B`, or `undefined` if this is the first evaluation.
-4. **Select outcome:** Nondeterministically choose `result ∈ Outcomes(D, inputs_vals, old_val, B)`.
-5. **Handle Unchanged (see Part III):** If `result` is the special sentinel `Unchanged`, set `new_val = old_val`. Otherwise set `new_val = result`.
-6. **Store and return:** Record `new_val` as the value at `F@B` and return `new_val`.
-
-**Important:** This pseudocode describes input-output behavior only. It does not specify any caching strategy, does not track freshness, and does not mandate "do not recompute if cached." Those constraints appear in Part II as **refinements** of this baseline.
+3. **Select outcome:** Nondeterministically choose `result ∈ Outcomes(D, inputs_vals, old_val, B)`.
 
 The notation "nondeterministically choose" models both true nondeterminism (random values) and hidden dependencies (external state, time, etc.). Implementations execute the computor function, which may produce different results across invocations for nondeterministic computors.
 
@@ -207,8 +196,6 @@ The notation "nondeterministically choose" models both true nondeterminism (rand
 A node definition with `inputs: []` is called a **source node**. Its computor receives an empty `inputs` array and is responsible for obtaining values from external state, user input, or initial conditions.
 
 **REQ-EVAL-01:** For any acyclic schema and any node instance, evaluation must terminate (assuming all computors terminate).
-
-**REQ-EVAL-02:** The result of evaluating a node instance is always a `ComputedValue` (never `undefined`, never the sentinel `Unchanged`).
 
 ---
 
