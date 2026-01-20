@@ -141,7 +141,7 @@ When evaluating `enhanced@[V_e, V_p]`:
 3. Extract the value at that position from the output's binding environment
 4. Assemble these values positionally to form the input's binding environment
 
-**REQ-BINDING-02:** Variable names are schema-internal only. The public addressing mechanism (described in Part V) uses functor and positional bindings without variable syntax.
+**REQ-BINDING-02:** Variable names are schema-internal only. They do not affect identity of individual expressions.
 
 ### 1.5 Computors and Outcome Sets
 
