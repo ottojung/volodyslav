@@ -591,3 +591,15 @@ This invariant uses an existential quantifier over `oldValue` to avoid requiring
 **P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()` for each unique node instance.
 
 **P4 (Freshness Preservation):** After `pull(N, B)`, the node instance `N@B` and all transitive dependencies are `up-to-date`.
+
+---
+
+## 5. Concurrency (Normative)
+
+**REQ-CONCUR-01 (Sequential Consistency):** All `pull()` and `invalidate()` operations MUST behave as if they were executed in some sequential order, even when invoked concurrently.
+
+Formally: For any concurrent execution with operations `{Op₁, Op₂, ..., Opₙ}`, there MUST exist a sequential ordering `Opₚ₍₁₎, Opₚ₍₂₎, ..., Opₚ₍ₙ₎` (where `p` is a permutation) such that the observable results are identical to executing the operations in that sequential order.
+
+**REQ-CONCUR-02:** The observable state of the graph (values, freshness, materialization) MUST be consistent with some sequential execution at all times. No operation may observe partial state from another concurrent operation.
+
+**Note:** Implementations MAY use any concurrency control mechanism to achieve these requirements. The specific strategy (locks, transactions, queuing, etc.) is implementation-defined.
