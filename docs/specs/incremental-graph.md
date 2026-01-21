@@ -366,7 +366,8 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 pull(nodeName, B):
   schema = lookup_schema_by_nodeName(nodeName)
   nodeKey = createNodeKey(nodeName, B)
-  inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_of(nodeKey)]
+  inputs_instances = instantiate_inputs(schema, B) // REQ-BINDING-01
+  inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
   old_value = stored_value(nodeKey)
   r ∈ Outcomes(schema, inputs_values, old_value, B)  // nondeterministic choice
   store(nodeKey, r)
