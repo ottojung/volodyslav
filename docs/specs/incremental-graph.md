@@ -374,7 +374,7 @@ pull(nodeName, B):
   return r
 ```
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits all implementation details including freshness tracking, caching, memoization, and the optimization requirement REQ-PULL-04 (which mandates that up-to-date nodes are not re-invoked). Those are constraints on implementations, not properties of this baseline semantics.
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits implementation details.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
