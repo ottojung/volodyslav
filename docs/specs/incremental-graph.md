@@ -320,11 +320,13 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ### 1.10 Materialization (Normative)
 
-**REQ-MAT-01:** A **materialized node** is any `NodeInstance` (identified by `NodeKey`) for which the implementation maintains dependency tracking and freshness state.
+**REQ-MAT-01:** A **materialized node** is any `NodeInstance` (identified by `NodeKey`) for which the implementation maintains state (values, freshness, dependencies, etc.).
 
 **REQ-MAT-02:** Materialization occurs through:
-* `pull(nodeName, bindings)` — creates `NodeInstance` with dependencies, stores value at `NodeKey`, marks `up-to-date`
-* `invalidate(nodeName, bindings)` — materializes a `NodeInstance` at `NodeKey` (so it can participate in persisted "materialized set"), marks `potentially-outdated`
+* `pull(nodeName, bindings)` — materializes `NodeInstance`, computes and stores value, marks `up-to-date`
+* `invalidate(nodeName, bindings)` — materializes `NodeInstance`, marks `potentially-outdated`
+
+**REQ-MAT-03:** Once materialized, a node instance remains materialized across restarts (required by REQ-PERSIST-01 behavioral equivalence).
 
 ### 1.11 Notes on Nondeterminism and Side Effects (Normative)
 
@@ -394,7 +396,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
-2. Ensure the node instance is materialized (persist markers sufficient for restart)
+2. Ensure the node instance is materialized
 3. Mark that node instance as `potentially-outdated`
 4. Mark all **materialized** transitive dependents as `potentially-outdated`
 
@@ -547,32 +549,36 @@ All errors MUST provide stable `.name` property and required fields:
 
 ---
 
-## 4. Persistence & Materialization (Normative)
+## 4. Persistence (Normative)
 
-### 4.1 Materialization Markers
+### 4.1 Behavioral Equivalence Across Restarts
 
-**REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node instance set after restart.
+**REQ-PERSIST-01 (Observable Equivalence):** Given the same `RootDatabase` and schema, the observable behavior of the incremental graph MUST be identical whether or not a shutdown/restart occurred between any two operations.
 
-**REQ-PERSIST-02:** If node instance `N@B` was materialized before restart, then after restart (same `RootDatabase`, same schema):
-* `invalidate(nodeName, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
-* This MUST occur WITHOUT requiring re-pull
+Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `Opᵢ` is either `pull(nodeName, bindings)` or `invalidate(nodeName, bindings)`, the following two executions MUST produce observably equivalent results:
 
-**REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
+1. **Without restart:** Execute `Op₁, Op₂, ..., Opₙ` consecutively
+2. **With restart:** Execute `Op₁, Op₂, ..., Opₖ`, then shutdown and restart the graph with the same `RootDatabase` and schema, then execute `Opₖ₊₁, ..., Opₙ`
+
+**Observable equivalence** means:
+* All `pull()` calls return structurally equal values (according to `isEqual`)
+* All `invalidate()` calls have the same effect on subsequent operations
+* The same set of computors are invoked with the same inputs (modulo REQ-PULL-04's optimization)
+
+**REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
 
 ### 4.2 Invariants
 
-The graph MUST maintain these invariants for all materialized node instances:
+The graph MUST maintain these invariants at all times (including after restarts):
 
-**I1 (Outdated Propagation):** If materialized node instance `N@B` is `potentially-outdated`, all materialized transitive dependents are also `potentially-outdated`.
+**I1 (Outdated Propagation):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized (pulled or invalidated) are also `potentially-outdated`.
 
-**I2 (Up-to-Date Upstream):** If materialized node instance `N@B` is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
+**I2 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
-**I3′ (Value Admissibility):** If materialized node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
+**I3 (Value Admissibility):** If node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
 * there exists some `oldValue` such that `v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`.
 
-This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy I3′ the same way: their stored value must be consistent with their computor's `Outcomes(...)` set (possibly using the existential `oldValue` quantification).
-
-**I4 (Structural Equality After Shutdown):** After a shutdown and restart (same `RootDatabase`, same schema), if a node instance `N@B` was materialized with value `v` before shutdown, and after restart the node is pulled or invalidated, the stored value `v'` retrieved from storage MUST be structurally equal to `v` (i.e., `isEqual(v, v')` MUST be `true`).
+This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy I3 the same way: their stored value must be consistent with their computor's `Outcomes(...)` set.
 
 ### 4.3 Correctness Properties
 
