@@ -128,7 +128,7 @@ ws            := [ \t\n\r]*
 
 **Terminology:**
 * **atom-expression** — an expression with no brackets (e.g., `all_events`). Denotes a family of exactly one node.
-* **compound-expression** — an expression with brackets (e.g., `event_context(e)`, `enhanced_event(e, p)`, `all_events()`). Each argument is a variable. Denotes an infinite family of nodes.
+* **compound-expression** — an expression with brackets (e.g., `event_context(e)`, `enhanced_event(e, p)`, `all_events()`). Each argument is a variable. If it has one or more variables, it denotes an infinite family of nodes; if it has zero variables (e.g., `all_events()`), it denotes a singleton family (arity 0).
 * **variable** — an identifier in an argument position; represents a parameter that can be bound to any `constvalue`
 * **pattern** — an expression used in a schema definition to describe a family of nodes
 * **free variables** — all variables (identifiers occurring in argument positions) in an expression
