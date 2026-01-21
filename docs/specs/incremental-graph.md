@@ -10,11 +10,11 @@ This document provides a formal specification for the incremental graph's operat
 
 * **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
-* **SimpleValue** - a value type. Defined recursively as: `number | string | null | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Implementations define their own serialization strategy; no canonical encoding or record key sorting is required.
+* **SimpleValue** - a value type. Defined recursively as: `number | string | null | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Equality of `SimpleValue` instances is defined structurally (see §1.4 for the `isEqual` function definition).
 * **ConstValue** - A subtype of `SimpleValue`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
+* **NodeKey** — a string key used for storage, derived from the head and bindings.
 * **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
@@ -62,7 +62,7 @@ A **node instance** is a specific member of a node family, identified by:
 
 **Identity:** Two node instances are identical if and only if:
 1. Their expression patterns have the same functor and arity, AND
-2. Their binding environments are strongly equal (equality of serialized `ConstValue` objects, compared positionally)
+2. Their binding environments are structurally equal (compared positionally using `isEqual`)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
 
@@ -138,7 +138,7 @@ ws            := [ \t\n\r]*
 * `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
 * `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
 
-### 1.4 Canonical Serialization (Normative)
+### 1.4 Structural Equality (Normative)
 
 **REQ-CANON-01:** The function `canonicalize(expr)` MUST produce a unique canonical string that is just the head (functor) of the expression. In particular, it does not include variable names or whitespace.
 
@@ -154,21 +154,67 @@ ws            := [ \t\n\r]*
 * Original expression strings (with variable names) are preserved for error messages
 * Schema patterns are canonicalized at initialization for O(1) lookup
 
-**REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a key.
+**REQ-CANON-04:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
 
-**REQ-CANON-05 (Implementation-Defined Serialization):** The specification does NOT require any particular serialization or encoding scheme for values stored in the database. Implementations MAY choose their own strategy for encoding `ComputedValue` objects, including:
-* No requirement for canonical encoding
-* No requirement for record key sorting in `Record<string, SimpleValue>` objects
-* No requirement for a specific encoding of arrays, nested objects, or other structures
-* Freedom to choose efficient representations suitable for the storage backend
+**REQ-EQUAL-01 (Structural Equality Definition):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines structural equality for `SimpleValue` instances. It is defined recursively as follows:
 
-The only requirement is that values MUST round-trip without semantic change (REQ-DB-01). Equality of `ComputedValue` objects is defined by structural equality of the deserialized values, not by byte-level comparison of encoded representations.
+```javascript
+function isEqual(a, b) {
+  // Primitive types: use JavaScript ===
+  if (typeof a !== 'object' || typeof b !== 'object') {
+    return a === b;
+  }
+  
+  // Both null
+  if (a === null && b === null) {
+    return true;
+  }
+  
+  // One null, one not
+  if (a === null || b === null) {
+    return false;
+  }
+  
+  // Arrays
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!isEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  
+  // One array, one not
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return false;
+  }
+  
+  // Records (objects)
+  const keysA = Object.keys(a).sort();
+  const keysB = Object.keys(b).sort();
+  
+  if (keysA.length !== keysB.length) return false;
+  
+  for (let i = 0; i < keysA.length; i++) {
+    if (keysA[i] !== keysB[i]) return false;
+    if (!isEqual(a[keysA[i]], b[keysA[i]])) return false;
+  }
+  
+  return true;
+}
+```
+
+**REQ-EQUAL-02:** Equality of `SimpleValue` instances is defined by the `isEqual` function. Two values are equal if and only if `isEqual(a, b)` returns `true`.
+
+**REQ-EQUAL-03:** Implementations MAY use any internal representation for storage as long as values retrieved from storage are structurally equal (according to `isEqual`) to the values that were stored.
 
 ### 1.5 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a deSimpleValue string that uniquely identifies a `NodeInstance` in storage.
+**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage.
 
-**REQ-KEY-02:** All database operations (storing values, freshness, dependencies) MUST use NodeKey as the storage key.
+**REQ-KEY-02:** All storage operations (storing values, freshness, dependencies) MUST use NodeKey as the key.
+
+**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each `NodeInstance` (identified by nodeName and bindings) maps to a unique key.
 
 ### 1.6 Schema Definition (Normative)
 
@@ -366,7 +412,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **REQ-INV-04:** `invalidate` works on any node (source or derived). There is no restriction.
 
-**REQ-INV-05:** All operations MUST be executed atomically in a single database batch.
+**REQ-INV-05:** All operations MUST be executed atomically in a single storage batch.
 
 **REQ-INV-06:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
 
@@ -443,11 +489,11 @@ interface GenericDatabase<TValue> {
 }
 ```
 
-**REQ-DB-01:** Values MUST round-trip without semantic change.
+**REQ-DB-01:** Values MUST preserve structural equality across storage operations. That is, if value `v` is stored and later retrieved as `v'`, then `isEqual(v, v')` MUST be `true`.
 
 **REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
 
-**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. No canonical encoding or serialization scheme is required; implementations MAY choose their own strategy for encoding values.
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (structural equality preservation) is satisfied.
 
 #### RootDatabase
 
@@ -530,6 +576,8 @@ The graph MUST maintain these invariants for all materialized node instances:
 
 This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy I3′ the same way: their stored value must be consistent with their computor's `Outcomes(...)` set (possibly using the existential `oldValue` quantification).
 
+**I4 (Structural Equality After Shutdown):** After a shutdown and restart (same `RootDatabase`, same schema), if a node instance `N@B` was materialized with value `v` before shutdown, and after restart the node is pulled or invalidated, the stored value `v'` retrieved from storage MUST be structurally equal to `v` (i.e., `isEqual(v, v')` MUST be `true`).
+
 ### 4.3 Correctness Properties
 
 **P1′ (Soundness under nondeterminism):** For any `pull(nodeName, B)` that returns value `v`, `v` is a value permitted by the nondeterministic big-step semantics. That is, there exists a derivation where all computor invocations choose elements from their `Outcomes(...)` sets and the final returned value is `v`.
@@ -564,11 +612,12 @@ Tests MAY assert the existence and signatures of:
 
 Tests MAY assert error names (via `.name` property) and required fields (see section 3.5 for complete taxonomy).
 
-### 5.3 Canonicalization Requirement
+### 5.3 Expression Canonicalization and Structural Equality
 
 Tests MAY assert:
 * Whitespace normalization in expressions
-* See REQ-CANON-03 and REQ-CANON-04 in section 1.4
+* See REQ-CANON-03 and REQ-CANON-04 in §1.4
+* Structural equality behavior according to `isEqual` function (see REQ-EQUAL-01 and REQ-EQUAL-02 in §1.4)
 
 ### 5.4 Freshness Observability
 
@@ -773,9 +822,9 @@ The debug interface has been moved to the main IncrementalGraph interface (§3.2
 
 #### D.1 Batching
 
-All database operations within a single `invalidate()` call MUST be batched atomically (as required by REQ-INV-05).
+All storage operations within a single `invalidate()` call MUST be batched atomically (as required by REQ-INV-05).
 
-Database operations during `pull()` SHOULD be batched per node recomputation for efficiency.
+Storage operations during `pull()` SHOULD be batched per node recomputation for efficiency.
 
 #### D.2 Dependent Lookup Optimization
 
