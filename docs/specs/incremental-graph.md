@@ -10,7 +10,7 @@ This document provides a formal specification for the incremental graph's operat
 
 * **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
-* **SimpleValue** - a value type. Defined recursively as: `number | string | null | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Equality of `SimpleValue` instances is defined structurally (see §1.4 for the `isEqual` function definition).
+* **SimpleValue** - a value type. Defined recursively as: `number | string | null | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Equality of `SimpleValue` instances is defined structurally (see §1.5 for the `isEqual` function definition).
 * **ConstValue** - A subtype of `SimpleValue`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
@@ -138,23 +138,25 @@ ws            := [ \t\n\r]*
 * `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
 * `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
 
-### 1.4 Structural Equality (Normative)
+### 1.4 Functor Extraction and Pattern Matching (Normative)
 
-**REQ-CANON-01:** The function `canonicalize(expr)` MUST produce a unique canonical string that is just the head (functor) of the expression. In particular, it does not include variable names or whitespace.
+**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the head (identifier) of an expression, excluding variable names and whitespace.
 
 **Examples:**
-* `"all_events"` → `"all_events"`
-* `"event_context(e)"` → `"event_context"`
-* `"event_context(x)"` → `"event_context"` (same as above)
-* `"enhanced_event(e, p)"` → `"enhanced_event"`
-* `"   enhanced_event   (   x, y)   "` → `"enhanced_event"` (same as above)
+* `functor("all_events")` → `"all_events"`
+* `functor("event_context(e)")` → `"event_context"`
+* `functor("event_context(x)")` → `"event_context"` (same as above)
+* `functor("enhanced_event(e, p)")` → `"enhanced_event"`
+* `functor("   enhanced_event   (   x, y)   ")` → `"enhanced_event"` (same as above)
 
-**REQ-CANON-03:** Pattern Matching:
-* The canonical form is used for pattern matching and schema indexing
+**REQ-FUNCTOR-02:** Pattern Matching and Schema Indexing:
+* The functor is used for pattern matching and schema indexing
 * Original expression strings (with variable names) are preserved for error messages
-* Schema patterns are canonicalized at initialization for O(1) lookup
+* Schema patterns are indexed by functor at initialization for O(1) lookup
 
-**REQ-CANON-04:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
+**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
+
+### 1.5 Structural Equality (Normative)
 
 **REQ-EQUAL-01 (Structural Equality Definition):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines structural equality for `SimpleValue` instances. It is defined recursively as follows:
 
@@ -208,7 +210,7 @@ function isEqual(a, b) {
 
 **REQ-EQUAL-03:** Implementations MAY use any internal representation for storage as long as values retrieved from storage are structurally equal (according to `isEqual`) to the values that were stored.
 
-### 1.5 NodeKey Format (Normative)
+### 1.6 NodeKey Format (Normative)
 
 **REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage.
 
@@ -216,7 +218,7 @@ function isEqual(a, b) {
 
 **REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each `NodeInstance` (identified by nodeName and bindings) maps to a unique key.
 
-### 1.6 Schema Definition (Normative)
+### 1.7 Schema Definition (Normative)
 
 **REQ-SCHEMA-01:** A incremental graph is defined by a set of node schemas:
 
@@ -243,7 +245,7 @@ type NodeDef = {
 
 **REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MAY NOT be stored in the database persistence layer.
 
-### 1.7 Variable Name Mapping and Positional Bindings (Normative)
+### 1.8 Variable Name Mapping and Positional Bindings (Normative)
 
 **Key Principle:** Bindings are always positional arrays, but variable names in input patterns are mapped to output pattern variables by name to determine the correct positional slice.
 
@@ -293,7 +295,7 @@ await graph.pull("full_event", [{id: "123"}]);
 2. Each input pattern `input_i` is instantiated by extracting the relevant positional bindings based on variable name mapping
 3. The computor receives the values of all instantiated input nodes in the order they appear in the `inputs` array
 
-### 1.8 Pattern Matching (Normative)
+### 1.9 Pattern Matching (Normative)
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
 1. `P` and `N` have the same functor (identifier), AND
