@@ -814,10 +814,6 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 * The binding propagates through the entire dependency chain
 * Variable names (`e` in this case) are schema-internal—public API uses `nodeName` only
 
-### Appendix C: Removed (Debug Interface is now required)
-
-The debug interface has been moved to the main IncrementalGraph interface (§3.2) and is now a MUST requirement for all conforming implementations.
-
 ### Appendix D: Implementation Notes
 
 #### D.1 Batching
