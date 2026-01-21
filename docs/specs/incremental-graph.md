@@ -370,12 +370,8 @@ pull(nodeName, B):
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_of(schema)]
   old_value = stored_value(nodeKey)
   r ∈ Outcomes(schema, inputs_values, old_value, B)  // nondeterministic choice
-  if r == Unchanged:
-    new_value = old_value
-  else:
-    new_value = r
-  store(nodeKey, new_value)
-  return stored_value(nodeKey)
+  store(nodeKey, r)
+  return r
 ```
 
 **Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits all implementation details including freshness tracking, caching, memoization, and the optimization requirement REQ-PULL-04 (which mandates that up-to-date nodes are not re-invoked). Those are constraints on implementations, not properties of this baseline semantics.
