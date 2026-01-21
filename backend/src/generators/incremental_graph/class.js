@@ -10,7 +10,7 @@ const {
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
@@ -561,7 +561,7 @@ class IncrementalGraphClass {
                 );
             }
         } else {
-            // Must be a valid DatabaseValue (not null/undefined)
+            // Must be a valid ComputedValue (not null/undefined)
             if (computedValue === null || computedValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
                     deserializeNodeKey(nodeKey).head,
@@ -646,7 +646,7 @@ class IncrementalGraphClass {
      * @private
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
-     * @returns {Promise<DatabaseValue>} The node's value
+     * @returns {Promise<ComputedValue>} The node's value
      */
     async unsafePull(nodeName, bindings) {
         ensureNodeNameIsHead(nodeName);
@@ -666,7 +666,7 @@ class IncrementalGraphClass {
      *
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
-     * @returns {Promise<DatabaseValue>} The node's value
+     * @returns {Promise<ComputedValue>} The node's value
      */
     async pull(nodeName, bindings = []) {
         return this.sleeper.withMutex(MUTEX_KEY, () =>

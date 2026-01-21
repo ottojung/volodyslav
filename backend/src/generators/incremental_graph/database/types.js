@@ -58,7 +58,7 @@
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry} DatabaseValue
+ * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry} ComputedValue
  */
 
 /**
@@ -82,11 +82,11 @@ function isFreshness(value) {
 }
 
 /**
- * Type guard to check if a value is a DatabaseValue.
- * Since DatabaseValue is a union of specific object types, we check if it's
+ * Type guard to check if a value is a ComputedValue.
+ * Since ComputedValue is a union of specific object types, we check if it's
  * an object and not a Freshness string.
  * @param {unknown} value
- * @returns {value is DatabaseValue}
+ * @returns {value is ComputedValue}
  */
 function isDatabaseValue(value) {
     return (
@@ -98,7 +98,7 @@ function isDatabaseValue(value) {
 }
 
 /**
- * @typedef {DatabaseValue | Freshness | InputsRecord | NodeKeyString[] | Counter | 1} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | 1} DatabaseStoredValue
  */
 
 /**
@@ -125,7 +125,7 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter>} DatabaseBatchOperation
  */
 
 /**

@@ -15,14 +15,14 @@ This document provides a formal specification for the incremental graph's operat
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
 * **NodeKey** — a string key used for storage, derived from the head and bindings. This is the actual database key.
-* **NodeValue** — computed value at a node (always a `DatabaseValue`). The term `NodeValue` is an alias for `DatabaseValue` in the context of stored node values.
+* **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **Computor** — async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
-* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ DatabaseValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
+* **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
+* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ ComputedValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
 * **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
-* **Unchanged** — unique sentinel value indicating unchanged computation result. This is an **optimization-only** mechanism: when a computor returns `Unchanged`, the runtime stores the previous value without rewriting it. `Unchanged` MUST NOT be a valid `DatabaseValue` (cannot be returned by `pull()`). `Unchanged` does not expand the set of valid semantic results—it is only a shortcut for returning the existing value when that value is semantically admissible for the current inputs.
+* **Unchanged** — unique sentinel value indicating unchanged computation result. This is an **optimization-only** mechanism: when a computor returns `Unchanged`, the runtime stores the previous value without rewriting it. `Unchanged` MUST NOT be a valid `ComputedValue` (cannot be returned by `pull()`). `Unchanged` does not expand the set of valid semantic results—it is only a shortcut for returning the existing value when that value is semantically admissible for the current inputs.
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
-* **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
+* **ComputedValue** — a subtype of `Serializable`, excluding `null`.
 
 ### 1.2 Expressions as an Infinite Graph (Normative)
 
@@ -156,13 +156,13 @@ ws            := [ \t\n\r]*
 
 **REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a key.
 
-**REQ-CANON-05 (Implementation-Defined Serialization):** The specification does NOT require any particular serialization or encoding scheme for values stored in the database. Implementations MAY choose their own strategy for encoding `DatabaseValue` objects, including:
+**REQ-CANON-05 (Implementation-Defined Serialization):** The specification does NOT require any particular serialization or encoding scheme for values stored in the database. Implementations MAY choose their own strategy for encoding `ComputedValue` objects, including:
 * No requirement for canonical encoding
 * No requirement for record key sorting in `Record<string, Serializable>` objects
 * No requirement for a specific encoding of arrays, nested objects, or other structures
 * Freedom to choose efficient representations suitable for the storage backend
 
-The only requirement is that values MUST round-trip without semantic change (REQ-DB-01). Equality of `DatabaseValue` objects is defined by structural equality of the deserialized values, not by byte-level comparison of encoded representations.
+The only requirement is that values MUST round-trip without semantic change (REQ-DB-01). Equality of `ComputedValue` objects is defined by structural equality of the deserialized values, not by byte-level comparison of encoded representations.
 
 ### 1.5 NodeKey Format (Normative)
 
@@ -313,7 +313,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ### 2.1 pull(nodeName, bindings) → NodeValue
 
-**Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>`
+**Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>`
 
 **Big-Step Semantics:**
 
@@ -377,7 +377,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 **REQ-UNCH-01:** When a computor returns `Unchanged`:
 1. Node's value MUST NOT be updated (keeps old value)
 2. Node MUST be marked `up-to-date`
-3. The stored value must remain a valid `DatabaseValue` (never the sentinel itself)
+3. The stored value must remain a valid `ComputedValue` (never the sentinel itself)
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
@@ -406,7 +406,7 @@ function makeIncrementalGraph(
 
 ```typescript
 interface IncrementalGraph {
-  pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
+  pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>;
   invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>;
   
   // Debug interface (REQUIRED)
@@ -468,13 +468,13 @@ interface RootDatabase {
 
 ```typescript
 type Computor = (
-  inputs: Array<DatabaseValue>,
-  oldValue: DatabaseValue | undefined,
+  inputs: Array<ComputedValue>,
+  oldValue: ComputedValue | undefined,
   bindings: Array<ConstValue>
-) => Promise<DatabaseValue | Unchanged>;
+) => Promise<ComputedValue | Unchanged>;
 ```
 
-**Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `DatabaseValue`). The `pull()` operation always returns `Promise<DatabaseValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
+**Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
 **REQ-COMP-01′ (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`. Formally, `Outcomes(S, inputs, oldValue, bindings)` MUST always be a singleton set. If `NodeDef.isDeterministic` is `false`, the computor MAY be nondeterministic (outcome set may contain multiple elements).
 
@@ -553,7 +553,7 @@ This section defines exactly what conformance tests MAY assert. All other implem
 Tests MAY assert the existence and signatures of:
 
 * `makeIncrementalGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): IncrementalGraph` — Factory function
-* `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
+* `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>` — Retrieve/compute node value
 * `IncrementalGraph.invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>` — Mark node as potentially-outdated
 * `IncrementalGraph.debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">` — Query freshness state (REQUIRED)
 * `IncrementalGraph.debugListMaterializedNodes(): Promise<Array<string>>` — List materialized nodes (REQUIRED)

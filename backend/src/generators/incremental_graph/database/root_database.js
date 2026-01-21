@@ -7,7 +7,7 @@ const { makeTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
-/** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
@@ -24,7 +24,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<DatabaseValue>} ValuesDatabase
+ * @typedef {GenericDatabase<ComputedValue>} ValuesDatabase
  */
 
 /**
@@ -123,7 +123,7 @@ class RootDatabaseClass {
         /** @type {SchemaSublevelType} */
         const schemaSublevel = this.db.sublevel(schemaHashStr, { valueEncoding: 'json' });
 
-        /** @type {SimpleSublevel<DatabaseValue>} */
+        /** @type {SimpleSublevel<ComputedValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Freshness>} */
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });

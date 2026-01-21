@@ -4,7 +4,7 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('./database/types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
@@ -17,7 +17,7 @@
 
 /**
  * Union type for values that can be stored in the database.
- * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness} DatabaseStoredValue
  */
 
 /**
@@ -31,12 +31,12 @@
  * Receives inputs, optional old value, and positional bindings array.
  * Bindings are matched to argument positions by position (not by variable name).
  * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>} NodeDefComputor
+ * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>} NodeDefComputor
  */
 
 /**
  * Simpler computor without bindings parameter (used for concrete instantiated nodes).
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => Promise<DatabaseValue | Unchanged>} ConcreteNodeComputor
+ * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined) => Promise<ComputedValue | Unchanged>} ConcreteNodeComputor
  */
 
 /**
@@ -79,7 +79,7 @@
 /**
  * Result of a recompute operation.
  * @typedef {object} RecomputeResult
- * @property {DatabaseValue} value - The computed or cached value
+ * @property {ComputedValue} value - The computed or cached value
  * @property {RecomputeStatus} status - Status of the operation
  */
 

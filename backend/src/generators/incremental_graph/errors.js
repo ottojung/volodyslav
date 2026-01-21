@@ -327,7 +327,7 @@ class InvalidComputorReturnValue extends Error {
     constructor(nodeName, value) {
         super(
             `Computor for node '${nodeName}' returned an invalid value: ${value}. ` +
-                `Computors must return a valid DatabaseValue or Unchanged, not null or undefined.`
+                `Computors must return a valid ComputedValue or Unchanged, not null or undefined.`
         );
         this.name = "InvalidComputorReturnValueError";
         this.nodeName = nodeName;

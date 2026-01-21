@@ -12,7 +12,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 /** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
 /** @typedef {import('./database/root_database').RevdepsDatabase} RevdepsDatabase */
 /** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
-/** @typedef {import('./database/types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
@@ -46,7 +46,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * Batch builder for atomic operations across multiple databases.
  * Each database field is properly typed - no unions or type casts needed.
  * @typedef {object} BatchBuilder
- * @property {BatchDatabaseOps<DatabaseValue>} values - Batch operations for values database
+ * @property {BatchDatabaseOps<ComputedValue>} values - Batch operations for values database
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
  * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
@@ -137,7 +137,7 @@ function makeBatchBuilder(schemaStorage) {
     /** @type {BatchFunction} */
     const ret = async (fn) => {
         // Create separate operations arrays for each sublevel
-        /** @type {Array<DatabasePutOperation<DatabaseValue> | DatabaseDelOperation<DatabaseValue>>} */
+        /** @type {Array<DatabasePutOperation<ComputedValue> | DatabaseDelOperation<ComputedValue>>} */
         const valuesOps = [];
         /** @type {Array<DatabasePutOperation<Freshness> | DatabaseDelOperation<Freshness>>} */
         const freshnessOps = [];
@@ -149,7 +149,7 @@ function makeBatchBuilder(schemaStorage) {
         const countersOps = [];
 
         // Create overlay state for each sublevel
-        /** @type {Map<DatabaseKey, DatabaseValue>} */
+        /** @type {Map<DatabaseKey, ComputedValue>} */
         const valuesPuts = new Map();
         /** @type {Set<DatabaseKey>} */
         const valuesDels = new Set();
