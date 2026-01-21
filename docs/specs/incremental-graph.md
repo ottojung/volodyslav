@@ -560,7 +560,6 @@ Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `
 **Observable equivalence** means:
 * All `pull()` calls return structurally equal values (according to `isEqual`)
 * All `invalidate()` calls have the same effect on subsequent operations
-* The same set of computors are invoked with the same inputs (modulo REQ-PULL-04's optimization)
 
 **REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
 
