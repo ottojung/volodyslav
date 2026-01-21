@@ -349,14 +349,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ### 2.0 Semantic Baseline vs Optimization Requirements
 
-**Important:** The operational semantics presented in this section describe a **baseline semantics** that defines the observable input/output behavior of the incremental graph system. This baseline:
-
-* Intentionally omits all optimizations and implementation details
-* Does not specify freshness tracking, caching, or "do not re-run when up-to-date" behavior
-* Uses nondeterministic choice from outcome sets to model computor invocations abstractly
-* Serves as the correctness criterion for all implementations
-
-**Optimization Requirements:** Any MUST-level performance or optimization requirements (such as REQ-PULL-04's requirement not to re-invoke computors for up-to-date nodes) are constraints on implementations and are specified separately. These optimization requirements are normative (implementations MUST satisfy them), but they are not part of the baseline pseudocode semantics itself.
+**Important:** The operational semantics presented in this section describe a **baseline semantics** that defines the observable input/output behavior of the incremental graph system.
 
 **Relationship:** An implementation is correct if:
 1. Its observable behavior matches the baseline semantics (properties P1′, P2, P3, P4)
