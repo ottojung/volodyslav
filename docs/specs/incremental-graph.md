@@ -881,17 +881,3 @@ await graph.pull("all_events"); // bindings default to []
 // ❌ Wrong: Non-empty bindings for arity 0 node:
 await graph.pull("all_events", [{x: "value"}]); // throws `ArityMismatchError`
 ```
-
----
-
-## Conformance Summary
-
-An implementation conforms to this specification if and only if:
-
-1. It provides all required types, interfaces, and functions with matching signatures
-2. It throws documented errors with stable names at specified times
-3. It enforces all REQ-* requirements
-4. It produces results consistent with big-step semantics and correctness properties
-5. It passes all conformance tests derived from this specification
-
-Optional features (GraphStorage, Debug interface, etc.) MAY be provided without affecting conformance.
