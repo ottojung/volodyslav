@@ -62,7 +62,7 @@ A **node instance** is a specific member of a node family, identified by:
 
 **Identity:** Two node instances are identical if and only if:
 1. Their expression patterns have the same functor and arity, AND
-2. Their binding environments are structurally equal (compared positionally using `isEqual`)
+2. Their binding environments are equal (compared positionally using `isEqual`)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
 
@@ -156,9 +156,9 @@ ws            := [ \t\n\r]*
 
 **REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
 
-### 1.5 Structural Equality (Normative)
+### 1.5 Deep Equality (Normative)
 
-**REQ-EQUAL-01 (Structural Equality Definition):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines structural equality for `SimpleValue` instances. It is defined recursively as follows:
+**REQ-EQUAL-01 (Deep Equality Definition):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines deep equality for `SimpleValue` instances. It is defined recursively as follows:
 
 ```javascript
 function isEqual(a, b) {
@@ -209,7 +209,7 @@ function isEqual(a, b) {
 
 **REQ-EQUAL-02:** Equality of `SimpleValue` instances is defined by the `isEqual` function. Two values are equal if and only if `isEqual(a, b)` returns `true`.
 
-**REQ-EQUAL-03:** Implementations MAY use any internal representation for storage as long as values retrieved from storage are structurally equal (according to `isEqual`) to the values that were stored.
+**REQ-EQUAL-03:** Implementations MAY use any internal representation for storage as long as values retrieved from storage are deeply equal (according to `isEqual`) to the values that were stored.
 
 ### 1.6 NodeKey Format (Normative)
 
@@ -483,11 +483,11 @@ interface GenericDatabase<TValue> {
 }
 ```
 
-**REQ-DB-01:** Values MUST preserve structural equality across storage operations. That is, if value `v` is stored and later retrieved as `v'`, then `isEqual(v, v')` MUST be `true`.
+**REQ-DB-01:** Values MUST preserve deep equality across storage operations. That is, if value `v` is stored and later retrieved as `v'`, then `isEqual(v, v')` MUST be `true`.
 
 **REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
 
-**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (structural equality preservation) is satisfied.
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (deep equality preservation) is satisfied.
 
 #### RootDatabase
 
@@ -558,7 +558,7 @@ Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `
 2. **With restart:** Execute `Op₁, Op₂, ..., Opₖ`, then shutdown and restart the graph with the same `RootDatabase` and schema, then execute `Opₖ₊₁, ..., Opₙ`
 
 **Observable equivalence** means:
-* All `pull()` calls return structurally equal values (according to `isEqual`)
+* All `pull()` calls return equal values (according to `isEqual`)
 * All `invalidate()` calls have the same effect on subsequent operations
 
 **REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
