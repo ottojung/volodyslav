@@ -190,8 +190,8 @@ function isEqual(a, b) {
   }
   
   // Records (objects)
-  const keysA = Object.keys(a).sort();
-  const keysB = Object.keys(b).sort();
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
   
   if (keysA.length !== keysB.length) return false;
   
