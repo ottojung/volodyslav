@@ -192,6 +192,7 @@ function isEqual(a, b) {
   }
   
   // Records (objects)
+  // Important: key order matters.
   const keysA = Object.keys(a);
   const keysB = Object.keys(b);
   
