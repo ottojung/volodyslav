@@ -312,7 +312,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
 
-### 1.9 Cycle Detection (Normative)
+### 1.10 Cycle Detection (Normative)
 
 **REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
 1. S has input pattern I
@@ -321,7 +321,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
 
-### 1.10 Materialization (Normative)
+### 1.11 Materialization (Normative)
 
 **REQ-MAT-01:** A **materialized node** is any `NodeInstance` (identified by `NodeKey`) for which the implementation maintains state (values, freshness, dependencies, etc.).
 
@@ -331,7 +331,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-MAT-03:** Once materialized, a node instance remains materialized across restarts (required by REQ-PERSIST-01 behavioral equivalence).
 
-### 1.11 Notes on Nondeterminism and Side Effects (Normative)
+### 1.12 Notes on Nondeterminism and Side Effects (Normative)
 
 **Treatment of Side Effects:** In this specification, side effects performed by computors are treated as a form of nondeterminism. They are NOT separately tracked or made part of the observable contract. The formal model uses outcome sets to capture all sources of variation in computor results, whether from true nondeterminism (e.g., random number generation), external state (e.g., reading current time, network calls), or side effects (e.g., logging, metrics).
 
