@@ -299,8 +299,9 @@ await graph.pull("full_event", [{id: "123"}]);
 ### 1.9 Pattern Matching (Normative)
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
-1. `P` and `N` have the same functor (identifier), AND
-2. The arity of `P` matches the expected arity for `N`
+1. `P` and `N` have the same functor (identifier).
+
+Because a public `nodeName` does not encode arity, the schema is the single source of truth for arity. The binding array length is validated separately (REQ-PULL-02, REQ-INV-03), and ambiguous arities for the same functor are prohibited (REQ-MATCH-04).
 
 **REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
 
