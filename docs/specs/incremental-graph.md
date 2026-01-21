@@ -588,55 +588,6 @@ This invariant uses an existential quantifier over `oldValue` to avoid requiring
 
 ---
 
-## 5. Test-Visible Contract (Normative)
-
-This section defines exactly what conformance tests MAY assert. All other implementation details are internal and subject to change.
-
-### 5.1 Public API
-
-Tests MAY assert the existence and signatures of:
-
-* `makeIncrementalGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): IncrementalGraph` — Factory function
-* `IncrementalGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>` — Retrieve/compute node value
-* `IncrementalGraph.invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>` — Mark node as potentially-outdated
-* `IncrementalGraph.debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">` — Query freshness state (REQUIRED)
-* `IncrementalGraph.debugListMaterializedNodes(): Promise<Array<string>>` — List materialized nodes (REQUIRED)
-* `IncrementalGraph.debugGetSchemaHash(): string` — Get schema identifier (REQUIRED)
-* `isIncrementalGraph(value): boolean` — Type guard
-
-### 5.2 Observable Error Taxonomy
-
-Tests MAY assert error names (via `.name` property) and required fields (see section 3.5 for complete taxonomy).
-
-### 5.3 Expression Canonicalization and Structural Equality
-
-Tests MAY assert:
-* Whitespace normalization in expressions
-* See REQ-CANON-03 and REQ-CANON-04 in §1.4
-* Structural equality behavior according to `isEqual` function (see REQ-EQUAL-01 and REQ-EQUAL-02 in §1.4)
-
-### 5.4 Freshness Observability
-
-**REQ-FRESH-01:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
-
-### 5.5 Restart Resilience
-
-**REQ-RESTART-01:** Materialized node instances MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
-
-**REQ-RESTART-02:** After restart, `invalidate(nodeName, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
-
-### 5.6 Behavioral Guarantees
-
-**REQ-BEHAVE-01 = P1′** (see §4.3): `pull(N, B)` MUST produce a result that is permitted by the nondeterministic big-step semantics (Soundness under nondeterminism). For deterministic and pure computors (where all reachable computors have `isDeterministic=true` and `hasSideEffects=false`), this strengthens to the traditional semantic equivalence with recomputing from scratch.
-
-**REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call for each unique node instance (Single Invocation).
-
-**REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N, B)` completes, node instance `N@B` and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
-
-**REQ-BEHAVE-04 (Test Determinism Assumption):** Tests MUST NOT assume deterministic behavior unless all computors in the incremental graph being tested have `isDeterministic=true` and `hasSideEffects=false`. Tests may only assert deterministic equivalence (e.g., "pull produces same result as recomputing from scratch") for graphs where all computors are declared deterministic and side-effect-free.
-
----
-
 ## 6. Appendices (Non-Normative)
 
 ### Appendix A: Examples
