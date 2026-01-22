@@ -50,17 +50,14 @@ A **node instance** is a specific member of a node family. As defined in §1.1, 
 * `nodeName` is the functor (e.g., `"full_event"`)
 * `bindings` is a `BindingEnvironment` (positional array of `ConstValue` instances)
 
-**Schema-side notation:** In the context of schema definitions, we may write `expr@B` to denote a node instance where `expr` is an expression pattern (e.g., `full_event(e)`) and `B` is the binding environment. This notation is explanatory: `expr@B` denotes the same node instance as `functor(expr)@B`. In a well-formed schema, each functor corresponds to exactly one arity.
+**Schema-side notation:** In the context of schema definitions, we may write `expr@B` to denote a node instance where `expr` is an expression pattern (e.g., `full_event(e)`) and `B` is the binding environment. This notation is explanatory: `expr@B` denotes the same node instance as `functor(expr)@B`. This is not a separate addressing mechanism—public API addressing always uses `(nodeName, bindings)` as specified in §1.2.5. In a well-formed schema, each functor corresponds to exactly one arity.
 
 **Examples:**
 
 * `full_event(e)` with `B = [{id: "evt_123"}]` identifies the node instance `"full_event"@[{id: "evt_123"}]`.
 * `enhanced_event(e, p)` with `B = [{id: "evt_123"}, {id: "photo_456"}]` identifies the node instance `"enhanced_event"@[{id: "evt_123"}, {id: "photo_456"}]`.
-* Variable names do not affect identity: `full_event(e)@[{id: "123"}]` and `full_event(x)@[{id: "123"}]` denote the same node instance because both have functor `"full_event"`.
 
-**Identity:** Two node instances are identical if and only if:
-1. Their `nodeName` values are equal (same functor), AND
-2. Their `bindings` arrays are equal (compared positionally using `isEqual`)
+**Identity is defined in §1.2.5.**
 
 #### 1.2.3 Schema as a Template for Infinite Edges
 
@@ -121,6 +118,7 @@ This subsection consolidates the rules for how node instances are addressed and 
 * Node identity depends solely on `(nodeName, bindings)` where bindings are compared positionally
 
 **Identity:** Two node instances are identical if and only if:
+
 1. Their `nodeName` values are equal (same functor)
 2. Their `bindings` arrays are equal (compared positionally using `isEqual`)
 
