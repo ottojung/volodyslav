@@ -4,32 +4,6 @@ This document provides a formal specification for the incremental graph's operat
 
 ---
 
-## 0. Normative Structure and Labeling
-
-This specification uses a consistent taxonomy for normative statements to ensure clarity and mechanical readability:
-
-### 0.1 Label Categories
-
-**`REQ-*` (Conformance Requirements):**
-Implementation obligations and input validity requirements. Every `REQ-*` statement MUST contain at least one RFC-style keyword (`MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, `MAY`) and must be testable/checkable. Requirements define what implementations are obligated to do.
-
-**`TERM-*` (Terminology):**
-Glossary entries defining the meaning of specific terms used throughout the specification (e.g., "NodeName", "NodeInstance", "BindingEnvironment"). Terminology entries MUST NOT contain RFC keywords. If there's an obligation associated with a term, it must be stated separately as a `REQ-*`.
-
-**`DEF-*` (Formal Definitions):**
-Formal definitions of relations, functions, and semantic concepts (e.g., pattern matching, overlap, edge existence, equality functions, normalization). These define meaning and semantics but do not impose obligations. DEF-* entries MUST NOT use RFC keywords—they define "what something means" rather than "what must be done."
-
-**`INV-*` (Invariants):**
-State invariants that must hold at all times during system operation (e.g., "outdated propagation", "up-to-date upstream"). Invariants are stated as assertions. The obligation to maintain them is captured by separate `REQ-*` statements that reference the invariants.
-
-**`PROP-*` (Correctness Properties):**
-Correctness claims and theorems about system behavior (e.g., soundness, progress, single invocation). Properties are stated as assertions/claims. There are corresponding `REQ-*` statements requiring implementations to satisfy these properties.
-
-**`NOTE-*` (Non-normative):**
-Explanatory content, examples, rationale, implementation guidance, and optimization suggestions. These do not impose requirements and serve to aid understanding.
-
----
-
 ## 1. Core Definitions (Normative)
 
 ### 1.1 Types
