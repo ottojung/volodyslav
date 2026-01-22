@@ -240,9 +240,9 @@ function isEqual(a: SimpleValue, b: SimpleValue): boolean {
 }
 ```
 
-**REQ-EQUAL-01 (Value Equality):** Equality of `SimpleValue` instances MUST be determined by the `isEqual` function defined in DEF-EQUAL-01. Two values are equal if and only if `isEqual(a, b)` returns `true`.
+Equality of `SimpleValue` instances MUST be determined by the `isEqual` function defined in DEF-EQUAL-01. Two values are equal if and only if `isEqual(a, b)` returns `true`.
 
-**REQ-EQUAL-02 (Storage Equality):** Implementations MAY use any internal representation for storage as long as values retrieved from storage are deeply equal (according to DEF-EQUAL-01) to the values that were stored.
+Implementations MAY use any internal representation for storage as long as values retrieved from storage are deeply equal (according to DEF-EQUAL-01) to the values that were stored.
 
 ### 1.6 NodeKey Format (Normative)
 
