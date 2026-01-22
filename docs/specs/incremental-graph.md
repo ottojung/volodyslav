@@ -396,9 +396,8 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
-2. Ensure the node instance is materialized
-3. Mark that node instance as `potentially-outdated`
-4. Mark all **materialized** transitive dependents as `potentially-outdated`
+2. Mark that node instance as `potentially-outdated`
+3. Mark all materialized transitive dependents as `potentially-outdated`
 
 **Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
@@ -408,9 +407,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **REQ-INV-03:** `invalidate` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema.
 
-**REQ-INV-04:** `invalidate` works on any node (source or derived). There is no restriction.
-
-**REQ-INV-05:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
+**REQ-INV-04:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
 
 ### 2.3 Unchanged Propagation Optimization
 
