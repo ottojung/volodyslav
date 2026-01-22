@@ -317,11 +317,13 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if they have the same functor (identifier). Normalization rules from §1.3.1 apply.
 
-**REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor.
+**REQ-MATCH-02:** If the same functor appears more than once across schema outputs, the system MUST reject the schema with one of the following errors:
+1. If the arities differ, throw `SchemaArityConflictError`.
+2. If the arities are the same, throw `SchemaOverlapError`.
 
-**REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
+**REQ-MATCH-03:** Two output patterns **overlap** if they have the same functor and the same arity.
 
-**REQ-MATCH-04:** Each functor MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same functor appears with different arities (throw `SchemaArityConflictError`).
+**REQ-MATCH-04:** Each functor MUST have a single, unique arity across all schema outputs.
 
 **Note:** See §1.2.5 for the complete addressing and identity rules, including how schema arity is determined and validated.
 
