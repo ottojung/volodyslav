@@ -250,7 +250,7 @@ Implementations MAY use any internal representation for storage as long as value
 
 **REQ-KEY-02:** All storage operations (storing values, freshness, dependencies) MUST use NodeKey as the key.
 
-**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each unique `(nodeName, bindings)` pair maps to a unique NodeKey.
+The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each unique `(nodeName, bindings)` pair maps to a unique NodeKey.
 
 ### 1.7 Schema Definition (Normative)
 
