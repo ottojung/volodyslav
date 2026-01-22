@@ -15,7 +15,7 @@
 
 const { isFreshness } = require('../src/generators/incremental_graph/database');
 const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/incremental_graph/node_key');
-const { canonicalize } = require('../src/generators/incremental_graph/expr');
+const { functor } = require('../src/generators/incremental_graph/expr');
 const { isJsonKey } = require('./test_json_key_helper');
 
 /**
@@ -28,8 +28,8 @@ function toJsonKey(key) {
     if (isJsonKey(key)) {
         return key;
     }
-    const canonical = canonicalize(key);
-    const nodeKey = createNodeKeyFromPattern(canonical, []);
+    const head = functor(key);
+    const nodeKey = createNodeKeyFromPattern(head, []);
     const nodeKeyString = serializeNodeKey(nodeKey);
     return nodeKeyString;
 }

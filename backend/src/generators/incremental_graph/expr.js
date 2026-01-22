@@ -1,5 +1,5 @@
 /**
- * Expression parsing and canonicalization.
+ * Expression parsing and functor extraction.
  */
 
 const {
@@ -329,17 +329,16 @@ function renderExpr(expr) {
 }
 
 /**
- * Canonicalizes an expression string.
+ * Extracts the functor (head) from an expression string.
  *
- * @param {SchemaPattern | ParsedExpr} str - The expression string to canonicalize
- * @returns {SchemaPattern} The canonical form (still a valid expression)
+ * @param {SchemaPattern | ParsedExpr} str - The expression string to inspect
+ * @returns {NodeName} The functor/head of the expression
  * @throws {Error} If the expression is malformed
  */
-function canonicalize(str) {
+function functor(str) {
     const parsed =
         typeof str === "object" && "name" in str ? str : parseExpr(str);
-    const nodeNameStr = nodeNameToString(parsed.name);
-    return stringToSchemaPattern(nodeNameStr);
+    return parsed.name;
 }
 
 /**
@@ -396,7 +395,7 @@ function canonicalizeMapping(inputExpressions, outputExpression) {
 
 module.exports = {
     parseExpr,
-    canonicalize,
+    functor,
     canonicalizeMapping,
     renderExpr,
     renderArg,

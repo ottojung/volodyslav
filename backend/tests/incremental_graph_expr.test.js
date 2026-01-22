@@ -4,7 +4,7 @@
 
 const {
     parseExpr,
-    canonicalize,
+    functor,
     canonicalizeMapping,
     renderExpr,
 } = require("../src/generators/incremental_graph/expr");
@@ -107,39 +107,39 @@ describe("incremental_graph/expr", () => {
         });
     });
 
-    describe("canonicalize()", () => {
-        test("canonicalizes an atom", () => {
-            expect(canonicalize("all_events")).toBe("all_events");
-            expect(canonicalize("  all_events  ")).toBe("all_events");
+    describe("functor()", () => {
+        test("extracts a functor from an atom", () => {
+            expect(functor("all_events")).toBe("all_events");
+            expect(functor("  all_events  ")).toBe("all_events");
         });
 
-        test("canonicalizes empty argument list to head/0", () => {
-            expect(canonicalize("foo()")).toBe("foo");
-            expect(canonicalize("foo( )")).toBe("foo");
+        test("extracts functor from empty argument list", () => {
+            expect(functor("foo()")).toBe("foo");
+            expect(functor("foo( )")).toBe("foo");
         });
 
-        test("canonicalizes to head/arity format", () => {
-            expect(canonicalize("event_context(e)")).toBe("event_context");
-            expect(canonicalize("event_context( e )")).toBe("event_context");
-            expect(canonicalize("event_context(x)")).toBe("event_context");
+        test("extracts functor independent of variable names", () => {
+            expect(functor("event_context(e)")).toBe("event_context");
+            expect(functor("event_context( e )")).toBe("event_context");
+            expect(functor("event_context(x)")).toBe("event_context");
         });
 
-        test("canonicalizes with multiple args to head/arity", () => {
-            expect(canonicalize("foo(a,b,c)")).toBe("foo");
-            expect(canonicalize("foo( a , b , c )")).toBe("foo");
-            expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo");
+        test("extracts functor from multiple args", () => {
+            expect(functor("foo(a,b,c)")).toBe("foo");
+            expect(functor("foo( a , b , c )")).toBe("foo");
+            expect(functor(" foo ( a , b , c ) ")).toBe("foo");
         });
 
-        test("variable names don't affect canonicalization", () => {
-            expect(canonicalize("event_context(e)")).toBe("event_context");
-            expect(canonicalize("event_context(x)")).toBe("event_context");
-            expect(canonicalize("enhanced_event(e, p)")).toBe("enhanced_event");
-            expect(canonicalize("enhanced_event(x, y)")).toBe("enhanced_event");
+        test("variable names don't affect functor extraction", () => {
+            expect(functor("event_context(e)")).toBe("event_context");
+            expect(functor("event_context(x)")).toBe("event_context");
+            expect(functor("enhanced_event(e, p)")).toBe("enhanced_event");
+            expect(functor("enhanced_event(x, y)")).toBe("enhanced_event");
         });
 
         test("throws on malformed expression", () => {
-            expect(() => canonicalize("")).toThrow();
-            expect(() => canonicalize("foo(")).toThrow();
+            expect(() => functor("")).toThrow();
+            expect(() => functor("foo(")).toThrow();
         });
     });
 
