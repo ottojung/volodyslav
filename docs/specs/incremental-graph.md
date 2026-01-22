@@ -195,6 +195,7 @@ function isEqual(a, b) {
   
   // Records (objects)
   // Important: key order does not matter.
+  // Note: key sorting is not required for persistence.
   const keysA = Object.keys(a).sort();
   const keysB = Object.keys(b).sort();
   
