@@ -8,16 +8,34 @@ This document provides a formal specification for the incremental graph's operat
 
 ### 1.1 Types
 
-* **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
-* **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
+#### 1.1.1 Core Identity Types
+
+* **Functor** — an identifier string (the head of an expression), e.g., `"full_event"` or `"all_events"`. Alias for "head".
+* **Arity** — a non-negative integer representing the number of argument positions in an expression pattern.
+* **NodeSignature** — a pair `(functor: Functor, arity: Arity)` that uniquely identifies a node family. Two patterns have the same NodeSignature if and only if they have the same functor and the same arity. NodeSignature is the true identity of a node family—all schema operations (matching, overlap detection, cycle detection, hashing) are based on NodeSignature, not on variable names or surface syntax.
+* **ParsedPattern** — the normalized abstract syntax tree of an expression pattern. Conceptually: `{ signature: NodeSignature, varsByPos: Array<string>, raw: string }`. The `signature` determines identity and matching; `varsByPos` preserves variable names in positional order for variable mapping; `raw` preserves the original string for diagnostics.
+* **NodeName** — an identifier string (functor only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix. **Schema Well-Formedness Invariant:** Each functor appears with exactly one arity in the schema set (enforced by REQ-MATCH-04 and REQ-FACTORY-03). Therefore, at runtime, a `NodeName` uniquely determines a `NodeSignature`.
+
+#### 1.1.2 Schema and Pattern Types
+
+* **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping. Must conform to the expression grammar (Section 1.3).
+
+#### 1.1.3 Value Types
+
 * **SimpleValue** - a value type. Defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them. Note that it excludes `undefined`, `null`, functions, symbols.
 * **ConstValue** - a subtype of `SimpleValue`.
 * **ComputedValue** — a subtype of `SimpleValue`.
-* **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
-* **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a string key used for storage, derived from the head and bindings.
 * **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
+
+#### 1.1.4 Addressing and Storage Types
+
+* **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
+* **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`. Two node instances are identical if they have the same NodeSignature and their bindings are equal (positionally, using `isEqual`).
+* **NodeKey** — a string key used for storage, derived from the NodeSignature (or nodeName + arity, given the invariant) and bindings. The specific format is implementation-defined (see Section 1.6).
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
+
+#### 1.1.5 Computation Types
+
 * **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
 * **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(nodeKey, inputs, oldValue) ⊆ ComputedValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
 * **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
@@ -140,9 +158,210 @@ ws            := [ \t\n\r]*
 * `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
 * `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
 
-### 1.4 Functor Extraction and Pattern Matching (Normative)
+### 1.4 Expression Parsing and Canonicalization (Normative)
 
-**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the head (identifier) of an expression, excluding variable names and whitespace.
+This section defines normative procedures for parsing expression patterns into a canonical abstract syntax tree and for canonicalizing schema definitions to make identity and equivalence explicit.
+
+#### 1.4.1 Expression Parsing
+
+**REQ-PARSE-01:** The function `parseExpr(expr: string) -> ParsedPattern` parses an expression string into its canonical abstract syntax tree with the following properties:
+
+1. **Whitespace Normalization:** Leading, trailing, and internal whitespace is normalized according to the grammar (Section 1.3).
+2. **Arity-0 Normalization:** Both `ident` and `ident()` parse to the same AST: `{ signature: (ident, 0), varsByPos: [], raw: expr }`.
+3. **Variable Extraction:** Variables are extracted in positional order and stored in `varsByPos`.
+4. **Signature Computation:** The `signature` field contains `(functor, arity)` where `functor` is the identifier and `arity` is the length of `varsByPos`.
+
+**Example:**
+
+```javascript
+parseExpr("all_events")
+  → { signature: ("all_events", 0), varsByPos: [], raw: "all_events" }
+
+parseExpr("all_events()")
+  → { signature: ("all_events", 0), varsByPos: [], raw: "all_events()" }
+
+parseExpr("full_event(e)")
+  → { signature: ("full_event", 1), varsByPos: ["e"], raw: "full_event(e)" }
+
+parseExpr("full_event(x)")
+  → { signature: ("full_event", 1), varsByPos: ["x"], raw: "full_event(x)" }
+
+parseExpr("   enhanced_event  ( e , p )   ")
+  → { signature: ("enhanced_event", 2), varsByPos: ["e", "p"], raw: "   enhanced_event  ( e , p )   " }
+```
+
+**REQ-PARSE-02:** Pattern identity and matching MUST be based solely on `signature` (functor + arity), never on variable names or surface syntax.
+
+#### 1.4.2 Canonical Variable Naming for Schema Equivalence
+
+To make schema hashing and equivalence checking invariant under consistent variable renaming (alpha-equivalence), schemas are canonicalized before hashing or comparison.
+
+**REQ-CANON-01:** The function `canonicalizeNodeDef(nodeDef: NodeDef) -> CanonicalNodeDef` performs the following transformation:
+
+1. **Parse Output:** Parse `nodeDef.output` to get `outputParsed = parseExpr(nodeDef.output)`.
+2. **Assign Canonical Variables:** Create a mapping from original output variables to canonical variables `v0, v1, ..., v(n-1)` based on their positional order in `outputParsed.varsByPos`.
+3. **Canonicalize Output:** Represent the canonical output as `(functor, arity)` with canonical variable list `["v0", "v1", ..., "v(n-1)"]`.
+4. **Canonicalize Inputs:** For each input pattern:
+   * Parse the input pattern to get its `signature` and `varsByPos`.
+   * Map each input variable to its corresponding output variable by name, then to the canonical variable.
+   * Construct the canonical input pattern with the signature and remapped canonical variables.
+
+**Example:**
+
+Original schema:
+```javascript
+{
+  output: "full_event(e)",
+  inputs: ["event_data(e)", "metadata(e)"]
+}
+```
+
+Canonical form:
+```javascript
+{
+  output: { signature: ("full_event", 1), vars: ["v0"] },
+  inputs: [
+    { signature: ("event_data", 1), vars: ["v0"] },
+    { signature: ("metadata", 1), vars: ["v0"] }
+  ]
+}
+```
+
+Renaming `e` to `x` produces the same canonical form:
+```javascript
+{
+  output: "full_event(x)",
+  inputs: ["event_data(x)", "metadata(x)"]
+}
+// Canonicalizes to the same result as above
+```
+
+**REQ-CANON-02:** Schema hashing (for storage namespacing and schema identification) MUST use the canonical form of all NodeDefs. Two schemas that differ only in consistent variable renaming MUST produce the same schema hash.
+
+**REQ-CANON-03:** Overlap detection, cycle detection, and arity conflict detection MUST use `NodeSignature` (functor + arity) for pattern matching, independent of variable names.
+
+#### 1.4.3 Canonical Representation Concepts
+
+The canonical representation is used internally for:
+* **Schema Indexing:** Organizing schemas by `(functor, arity)` for O(1) lookup.
+* **Overlap Detection:** Checking if two patterns have the same `NodeSignature`.
+* **Arity Conflict Detection:** Ensuring each functor maps to exactly one arity.
+* **Cycle Detection:** Building and analyzing the dependency graph using `NodeSignature` edges.
+* **Schema Hashing:** Computing a deterministic hash of the schema for storage namespacing.
+
+**REQ-CANON-04 (Canonical Pattern Signature):** For diagnostic and internal indexing purposes, a NodeSignature MAY be represented as the string `functor + "/" + arity` (e.g., `"full_event/1"`, `"all_events/0"`), but this representation is for human readability only and is not required for storage.
+
+**REQ-CANON-05 (Canonical Expression Form):** For diagnostic purposes, a canonical expression form MAY be rendered as `functor(v0, v1, ..., v(n-1))` with canonical variables. This form is used only for error messages and debugging, not for storage or identity.
+
+**REQ-CANON-06 (Independence from NodeKey):** The canonical representation used for schema operations is distinct from the NodeKey format used for storage. NodeKey format remains implementation-defined (Section 1.7), but MUST be functionally derived from `(NodeSignature, bindings)` and MUST NOT depend on variable names or surface syntax.
+
+#### 1.4.4 End-to-End Examples
+
+These examples demonstrate how the parsing, canonicalization, and addressing model works in practice.
+
+**Example 1: Arity-0 Equivalence**
+
+```javascript
+// Schema definitions with arity-0 patterns:
+const schema1 = { output: "all_events", inputs: [], computor: async () => [...] };
+const schema2 = { output: "all_events()", inputs: [], computor: async () => [...] };
+
+// Both parse to the same NodeSignature:
+parseExpr("all_events")    → { signature: ("all_events", 0), varsByPos: [], ... }
+parseExpr("all_events()")  → { signature: ("all_events", 0), varsByPos: [], ... }
+
+// Therefore, they are considered overlapping and would trigger SchemaOverlapError
+// if both were included in the same schema set.
+
+// Public API calls:
+pull("all_events")        // bindings normalized to []
+pull("all_events", [])    // equivalent to above
+
+// Both produce the same NodeKey (implementation-defined format, but functionally
+// determined by NodeSignature ("all_events", 0) and bindings [])
+```
+
+**Example 2: Variable Renaming Invariance**
+
+```javascript
+// These two schemas are alpha-equivalent (differ only in variable naming):
+const schemaA = {
+  output: "full_event(e)",
+  inputs: ["event_data(e)", "metadata(e)"],
+  computor: async ([data, meta], old, bindings) => ({ ...data, ...meta })
+};
+
+const schemaB = {
+  output: "full_event(x)",
+  inputs: ["event_data(x)", "metadata(x)"],
+  computor: async ([data, meta], old, bindings) => ({ ...data, ...meta })
+};
+
+// Parsing produces different varsByPos but same signature:
+parseExpr("full_event(e)")  → { signature: ("full_event", 1), varsByPos: ["e"], ... }
+parseExpr("full_event(x)")  → { signature: ("full_event", 1), varsByPos: ["x"], ... }
+
+// Canonicalization produces identical representations:
+canonicalizeNodeDef(schemaA) → {
+  output: { signature: ("full_event", 1), vars: ["v0"] },
+  inputs: [
+    { signature: ("event_data", 1), vars: ["v0"] },
+    { signature: ("metadata", 1), vars: ["v0"] }
+  ]
+}
+
+canonicalizeNodeDef(schemaB) → same as above
+
+// Therefore:
+// - They produce the same schema hash
+// - They are considered overlapping (would trigger SchemaOverlapError)
+// - For the same bindings, they produce the same NodeKey
+
+// Public API:
+pull("full_event", [{id: "123"}])
+// Works with either schema (but not both in the same graph)
+// NodeKey depends on NodeSignature ("full_event", 1) and bindings [{id: "123"}],
+// not on whether the schema used variable "e" or "x"
+```
+
+**Example 3: NodeSignature-Based Matching**
+
+```javascript
+// Schema:
+const schema = {
+  output: "enhanced_event(e, p)",
+  inputs: ["event_context(e)", "photo(p)"],
+  computor: async ([ctx, photo], old, bindings) => ({...ctx, photo})
+};
+
+// Parsing:
+parseExpr("enhanced_event(e, p)")  → { signature: ("enhanced_event", 2), varsByPos: ["e", "p"], ... }
+parseExpr("event_context(e)")       → { signature: ("event_context", 1), varsByPos: ["e"], ... }
+parseExpr("photo(p)")               → { signature: ("photo", 1), varsByPos: ["p"], ... }
+
+// Pattern matching for dependency edges:
+// - enhanced_event depends on event_context because they match by signature? No.
+//   They have different signatures: ("enhanced_event", 2) vs ("event_context", 1)
+// - If another schema has output "event_context(x)", it matches the input
+//   "event_context(e)" because they have the same signature: ("event_context", 1)
+
+// Variable mapping:
+// When evaluating enhanced_event@[{id: "evt_123"}, {id: "photo_456"}]:
+// - Variable "e" at position 0 of output → bindings[0] = {id: "evt_123"}
+// - Variable "p" at position 1 of output → bindings[1] = {id: "photo_456"}
+// - Input "event_context(e)" needs variable "e" → extract position 0 → [{id: "evt_123"}]
+// - Input "photo(p)" needs variable "p" → extract position 1 → [{id: "photo_456"}]
+
+// Public API:
+pull("enhanced_event", [{id: "evt_123"}, {id: "photo_456"}])
+// NodeKey derived from NodeSignature ("enhanced_event", 2) and full bindings array
+```
+
+### 1.5 Functor Extraction and Pattern Matching (Normative)
+
+**Note:** This section is informational and describes helper operations. The normative parsing and canonicalization procedures are defined in Section 1.4.
+
+**REQ-FUNCTOR-01:** The function `functor(expr)` extracts and returns the head (identifier) of an expression, excluding variable names and whitespace. This is equivalent to extracting the `functor` component of the `NodeSignature` from `parseExpr(expr).signature`.
 
 **Examples:**
 * `functor("all_events")` → `"all_events"`
@@ -152,13 +371,13 @@ ws            := [ \t\n\r]*
 * `functor("   enhanced_event   (   x, y)   ")` → `"enhanced_event"` (same as above)
 
 **REQ-FUNCTOR-02:** Pattern Matching and Schema Indexing:
-* The functor is used for pattern matching and schema indexing
-* Original expression strings (with variable names) are preserved for error messages
-* Schema patterns are indexed by functor at initialization for O(1) lookup
+* Schema patterns are indexed by `NodeSignature` (functor + arity) at initialization for efficient lookup.
+* Original expression strings are preserved in the `raw` field of `ParsedPattern` for error messages and diagnostics.
+* All pattern matching operations use `NodeSignature`, never variable names or surface syntax.
 
-**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
+**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from the `NodeSignature` (or equivalently, nodeName given the uniqueness invariant) and the `BindingEnvironment`. The specific encoding is implementation-defined (Section 1.6), but MUST be an injective function of `(NodeSignature, bindings)`.
 
-### 1.5 Deep Equality (Normative)
+### 1.6 Deep Equality (Normative)
 
 **REQ-EQUAL-01 (Deep Equality Definition):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines deep equality for `SimpleValue` instances. It is defined recursively as follows:
 
@@ -210,15 +429,26 @@ function isEqual(a, b) {
 
 **REQ-EQUAL-03:** Implementations MAY use any internal representation for storage as long as values retrieved from storage are deeply equal (according to `isEqual`) to the values that were stored.
 
-### 1.6 NodeKey Format (Normative)
+### 1.7 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage.
+**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage. Each `NodeInstance` is determined by its `NodeSignature` and `BindingEnvironment`.
 
 **REQ-KEY-02:** All storage operations (storing values, freshness, dependencies) MUST use NodeKey as the key.
 
-**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each `NodeInstance` (identified by nodeName and bindings) maps to a unique key.
+**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats.
 
-### 1.7 Schema Definition (Normative)
+**REQ-KEY-04 (Functional Contract):** NodeKey MUST be an injective (one-to-one) function of `(NodeSignature, bindings)`. Given the schema well-formedness invariant (each functor has unique arity), this is equivalent to being a function of `(nodeName, bindings)`.
+
+**REQ-KEY-05 (Canonical Independence):** The NodeKey derivation MUST NOT depend on:
+* Whether the schema pattern used `ident` vs `ident()` for arity-0 expressions.
+* Whitespace in schema patterns.
+* Variable names in schema patterns (e.g., `full_event(e)` vs `full_event(x)` must produce the same NodeKey for the same bindings).
+
+In other words, NodeKey depends only on the `NodeSignature` (functor + arity) and the `BindingEnvironment`, not on any aspect of surface syntax or variable naming.
+
+**REQ-KEY-06 (Uniqueness):** Each `NodeInstance` MUST map to exactly one NodeKey. Two `NodeInstance` values with different `NodeSignature` or non-equal `bindings` (compared using `isEqual`) MUST map to different NodeKeys.
+
+### 1.8 Schema Definition (Normative)
 
 **REQ-SCHEMA-01:** A incremental graph is defined by a set of node schemas:
 
@@ -307,16 +537,33 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 
 **Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
 
-### 1.10 Cycle Detection (Normative)
+### 1.10 Pattern Matching (Normative)
 
-**REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
-1. S has input pattern I
-2. T has output pattern O
-3. Patterns I and O match (same functor and arity)
+**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
+1. The `NodeSignature` of `P` has the same functor as `N`.
 
-**REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
+Because a public `nodeName` does not encode arity, the schema is the single source of truth for arity. The binding array length is validated separately (REQ-PULL-02, REQ-INV-03), and ambiguous arities for the same functor are prohibited (REQ-MATCH-04).
 
-### 1.11 Materialization (Normative)
+**REQ-MATCH-02:** Two output patterns **overlap** if and only if they have the same `NodeSignature` (same functor and same arity). Equivalently, two patterns overlap if `parseExpr(P1).signature == parseExpr(P2).signature`.
+
+**REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
+
+**REQ-MATCH-04:** Each functor MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same functor appears with different arities (throw `SchemaArityConflictError`). This invariant ensures that `NodeName` uniquely determines `NodeSignature` at runtime.
+
+**Note on NodeSignature-Based Matching:** All pattern matching in schema definitions is based on `NodeSignature` (functor + arity) and does not consider variable names or surface syntax. The patterns `full_event(e)` and `full_event(x)` have the same `NodeSignature` and are therefore considered identical for all schema operations. Variable names are preserved only for variable mapping between inputs and outputs (Section 1.9).
+
+**Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
+
+### 1.11 Cycle Detection (Normative)
+
+**REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if and only if:
+1. S has an input pattern I
+2. T has an output pattern O
+3. Patterns I and O have the same `NodeSignature` (same functor and arity)
+
+**REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`). Cycle detection operates on the dependency graph where nodes are `NodeSignature` values and edges are determined by REQ-CYCLE-01.
+
+### 1.12 Materialization (Normative)
 
 **REQ-MAT-01:** A **materialized node** is any `NodeInstance` (identified by `NodeKey`) for which the implementation maintains state (values, freshness, dependencies, etc.).
 
@@ -354,11 +601,24 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 
 **Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>`
 
+**REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
+
+**REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length (after normalization per REQ-ARGS-01) does not match the arity defined in the schema for the given nodeName.
+
+**REQ-PULL-05 (Validation-Before-Key Ordering):** Implementations MUST validate schema existence (REQ-PULL-01) and arity (REQ-PULL-02) BEFORE computing the NodeKey or touching any storage. The NodeKey derivation function itself MUST be a pure function that does not read from or write to storage and cannot throw exceptions for invalid inputs (validation errors must be thrown before calling it).
+
 **Big-Step Semantics:**
 
 ```javascript
 pull(nodeName, B):
+  // 1. Validate schema and arity FIRST
+  validate_schema_exists(nodeName)         // throws InvalidNodeError if missing
+  validate_arity_matches(nodeName, B)      // throws ArityMismatchError if wrong length
+  
+  // 2. Only after validation, compute NodeKey (pure function, no side effects)
   nodeKey = createNodeKey(nodeName, B)
+  
+  // 3. Proceed with graph traversal
   inputs_instances = instantiate_inputs(nodeKey)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
   if isUpToDate(nodeKey) return stored_value(nodeKey)
@@ -368,11 +628,7 @@ pull(nodeName, B):
   return r
 ```
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits implementation details.
-
-**REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
-
-**REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. The key requirement is that validation (steps that can throw errors) happens before any storage operations or NodeKey computation.
 
 **REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
 
@@ -386,18 +642,21 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **Signature:** `invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>`
 
-**Effects:**
-1. Create `NodeKey` from `nodeName@bindings`
-2. Mark that node instance as `potentially-outdated`
-3. Mark all materialized transitive dependents as `potentially-outdated`
-
-**Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
-
 **REQ-INV-01:** `invalidate` MUST return a `Promise<void>`.
 
 **REQ-INV-02:** `invalidate` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
-**REQ-INV-03:** `invalidate` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema.
+**REQ-INV-03:** `invalidate` MUST throw `ArityMismatchError` if `bindings` array length (after normalization per REQ-ARGS-01) does not match the arity defined in the schema.
+
+**REQ-INV-05 (Validation-Before-Key Ordering):** Like `pull`, `invalidate` MUST validate schema existence and arity BEFORE computing NodeKey or touching storage.
+
+**Effects:**
+1. Validate schema exists and arity matches (throws on failure)
+2. Compute `NodeKey` from `nodeName@bindings` (pure function)
+3. Mark that node instance as `potentially-outdated`
+4. Mark all materialized transitive dependents as `potentially-outdated`
+
+**Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
 **REQ-INV-04:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
 
