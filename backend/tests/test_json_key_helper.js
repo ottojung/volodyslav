@@ -4,7 +4,7 @@
  */
 
 const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/incremental_graph/node_key");
-const { canonicalize } = require("../src/generators/incremental_graph/expr");
+const { functor } = require("../src/generators/incremental_graph/expr");
 
 /**
  * Converts a node name to its JSON key format.
@@ -14,8 +14,8 @@ const { canonicalize } = require("../src/generators/incremental_graph/expr");
  * @returns {string} JSON key
  */
 function toJsonKey(nodeName, bindings = []) {
-    const canonical = canonicalize(nodeName);
-    const nodeKey = createNodeKeyFromPattern(canonical, bindings);
+    const head = functor(nodeName);
+    const nodeKey = createNodeKeyFromPattern(head, bindings);
     const nodeKeyString = serializeNodeKey(nodeKey);
     return nodeKeyString;
 }
