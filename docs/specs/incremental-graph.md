@@ -8,14 +8,14 @@ This document provides a formal specification for the incremental graph's operat
 
 ### 1.1 Types
 
-* **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
+* **NodeName** — an identifier string (the functor), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
 * **SimpleValue** - a value type. Defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them. Note that it excludes `undefined`, `null`, functions, symbols.
 * **ConstValue** - a subtype of `SimpleValue`.
 * **ComputedValue** — a subtype of `SimpleValue`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a string key used for storage, derived from the head and bindings.
+* **NodeKey** — a string key used for storage, derived from the nodeName and bindings.
 * **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
@@ -33,7 +33,7 @@ This section establishes the fundamental mental model for understanding how expr
 An **expression** is a symbolic template that denotes a (possibly infinite) family of nodes. The expression defines the structure, while variable bindings select a specific member of that family.
 
 **Components:**
-* The **head** (or **functor**) of an expression is its identifier—the name that categorizes the family.
+* The **functor** of an expression is its identifier—the name that categorizes the family.
 * The **arguments** are variable positions that can be assigned concrete `ConstValue` instances at runtime.
 
 **Examples:**
@@ -94,7 +94,7 @@ The public API requires both the `nodeName` (functor) and bindings to address a 
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
 * The binding environment is empty: `[]`
-* The head alone identifies exactly one node
+* The functor alone identifies exactly one node
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
 
 **For arity > 0 nodes** (nodes with arguments):
@@ -142,7 +142,7 @@ ws            := [ \t\n\r]*
 
 ### 1.4 Functor Extraction and Pattern Matching (Normative)
 
-**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the head (identifier) of an expression, excluding variable names and whitespace.
+**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the functor (identifier) of an expression, excluding variable names and whitespace.
 
 **Examples:**
 * `functor("all_events")` → `"all_events"`
@@ -301,7 +301,7 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
-**REQ-MATCH-04:** Each head (functor) MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same head appears with different arities (throw `SchemaArityConflictError`).
+**REQ-MATCH-04:** Each functor MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
 **Note on Matching:** Pattern matching in schema definitions is purely structural and does not consider variable names. The pattern `full_event(e)` and `full_event(x)` are equivalent—both define an arity-1 node family. Variable names serve only for documentation and variable mapping between inputs and outputs.
 
@@ -431,7 +431,7 @@ function makeIncrementalGraph(
 
 **REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
 
-**REQ-FACTORY-03:** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
+**REQ-FACTORY-03:** MUST reject schemas where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
 ### 3.2 IncrementalGraph Interface
 
@@ -530,7 +530,7 @@ All errors MUST provide stable `.name` property and required fields:
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
-| `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same head with different arities in schema (schema validation) |
+| `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
