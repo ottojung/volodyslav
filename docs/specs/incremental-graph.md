@@ -410,9 +410,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **REQ-INV-04:** `invalidate` works on any node (source or derived). There is no restriction.
 
-**REQ-INV-05:** All operations MUST be executed atomically in a single storage batch.
-
-**REQ-INV-06:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
+**REQ-INV-05:** Only dependents that have been previously materialized (pulled or invalidated) are marked outdated. Unmaterialized node instances remain unmaterialized.
 
 ### 2.3 Unchanged Propagation Optimization
 
