@@ -169,16 +169,6 @@ function isEqual(a, b) {
     return a === b;
   }
   
-  // Both null
-  if (a === null && b === null) {
-    return true;
-  }
-  
-  // One null, one not
-  if (a === null || b === null) {
-    return false;
-  }
-  
   // Arrays
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
