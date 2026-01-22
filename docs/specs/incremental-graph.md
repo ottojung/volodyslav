@@ -174,7 +174,7 @@ function isEqual(a, b) {
   if (typeof a !== 'object' || typeof b !== 'object') {
     return a === b;
   }
-  
+
   // Arrays
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
@@ -183,25 +183,25 @@ function isEqual(a, b) {
     }
     return true;
   }
-  
+
   // One array, one not
   if (Array.isArray(a) || Array.isArray(b)) {
     return false;
   }
-  
+
   // Records (objects)
   // Important: key order does not matter.
   // Note: key sorting is not required for persistence.
   const keysA = Object.keys(a).sort();
   const keysB = Object.keys(b).sort();
-  
+
   if (keysA.length !== keysB.length) return false;
-  
+
   for (let i = 0; i < keysA.length; i++) {
     if (keysA[i] !== keysB[i]) return false;
     if (!isEqual(a[keysA[i]], b[keysA[i]])) return false;
   }
-  
+
   return true;
 }
 ```
