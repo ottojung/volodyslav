@@ -185,8 +185,8 @@ For schema parsing and pattern matching, expressions are normalized using these 
 
 **REQ-EQUAL-01 (Deep Equality Definition):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines deep equality for `SimpleValue` instances. It is defined recursively as follows:
 
-```javascript
-function isEqual(a, b) {
+```typescript
+function isEqual(a: SimpleValue, b: SimpleValue): boolean {
   if (typeof a === 'number' && typeof b === 'number') {
     if (isNaN(a) && isNaN(b)) {
       return true; // NaN is equal to NaN
