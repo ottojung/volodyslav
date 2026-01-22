@@ -266,11 +266,9 @@ type NodeDef = {
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
-**REQ-SCHEMA-03:** A **source node** is any node instance matching a schema where `inputs = []`.
+**TERM (source node):** A **source node** is any node instance matching a schema where `inputs = []`.
 
-**REQ-SCHEMA-04:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
-
-**REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MAY NOT be stored in the database persistence layer.
+**REQ-SCHEMA-03:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
 
 ### 1.8 Variable Name Mapping and Positional Bindings (Normative)
 
