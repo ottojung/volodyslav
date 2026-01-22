@@ -108,6 +108,8 @@ The public API requires both the `nodeName` (functor) and bindings to address a 
 * Public API call: `pull("full_event", [value])` — uses nodeName only, no variable syntax
 * The arity is determined by the schema, not by the caller
 
+**REQ-ARGS-01 (Bindings Normalization):** If `bindings` is omitted or `undefined`, treat it as `[]`. If the schema arity is not 0, the runtime MUST throw an `ArityMismatchError`.
+
 ### 1.3 Expression Grammar (Normative)
 
 **REQ-EXPR-01:** All expressions MUST conform to this grammar:
