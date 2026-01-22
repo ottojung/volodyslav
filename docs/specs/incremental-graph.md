@@ -378,14 +378,14 @@ await graph.pull("full_event", [{id: "123"}]);
 pull(nodeName, bindings):
   // 1. Normalize bindings (REQ-ARGS-01)
   if bindings is undefined: bindings = []
-  
+
   // 2. Validate nodeName exists in schema (REQ-PULL-01)
   schema = find_schema_by_nodeName(nodeName)
   if schema is undefined: throw InvalidNodeError
-  
+
   // 3. Validate bindings length matches arity (REQ-PULL-02)
   if bindings.length ≠ schema.arity: throw ArityMismatchError
-  
+
   // 4. Derive NodeKey and proceed
   nodeKey = createNodeKey(nodeName, bindings)
   inputs_instances = instantiate_inputs(schema, bindings)
