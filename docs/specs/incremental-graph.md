@@ -469,7 +469,7 @@ interface IncrementalGraph {
   
   // Debug interface (REQUIRED)
   debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
-  debugListMaterializedNodes(): Promise<Array<string>>;
+  debugListMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
   debugGetSchemaHash(): string;
 }
 ```
@@ -482,7 +482,7 @@ interface IncrementalGraph {
 
 **REQ-IFACE-04:** Implementations MUST provide the debug interface methods:
 * `debugGetFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"missing"` for unmaterialized nodes.
-* `debugListMaterializedNodes()` — Returns an array of `NodeKey` strings for all materialized node instances.
+* `debugListMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
 * `debugGetSchemaHash()` — Returns the schema identifier used for storage namespacing.
 
 ### 3.3 Database Interfaces
