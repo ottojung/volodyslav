@@ -28,20 +28,6 @@ Correctness claims and theorems about system behavior (e.g., soundness, progress
 **`NOTE-*` (Non-normative):**
 Explanatory content, examples, rationale, implementation guidance, and optimization suggestions. These do not impose requirements and serve to aid understanding.
 
-### 0.2 ID Format Rules
-
-* All identifiers MUST use ASCII characters only: `[A-Z0-9-]`
-* No prime characters (`′`), apostrophes (`'`), or other non-ASCII symbols
-* For variants of the same concept, use suffixes like `-01A`, `-01B` instead of primes
-* IDs must be stable and suitable for use as anchors, grep patterns, and cross-references
-
-### 0.3 Consistency Rules
-
-* RFC keywords (`MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, `MAY`) may appear ONLY in `REQ-*` statements
-* No `REQ-*` statement may be purely definitional without an obligation
-* All glossary terms should be labeled with `TERM-*`
-* All invariants and properties must have stable labels (`INV-*`, `PROP-*`)
-
 ---
 
 ## 1. Core Definitions (Normative)
