@@ -194,7 +194,7 @@ For schema parsing and pattern matching, expressions are normalized using these 
 
 ### 1.5 Deep Equality (Normative)
 
-**DEF-EQUAL-01 (Deep Equality):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines deep equality for `SimpleValue` instances. It is defined recursively as follows:
+**DEF-EQUAL-01 (Deep Equality):** The function `isEqual` defines deep equality for `SimpleValue` instances. It is defined recursively as follows:
 
 ```typescript
 function isEqual(a: SimpleValue, b: SimpleValue): boolean {
