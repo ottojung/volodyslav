@@ -8,14 +8,14 @@ This document provides a formal specification for the incremental graph's operat
 
 ### 1.1 Types
 
-* **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
+* **NodeName** — an identifier string (the functor), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
 * **SimpleValue** - a value type. Defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them. Note that it excludes `undefined`, `null`, functions, symbols.
 * **ConstValue** - a subtype of `SimpleValue`.
 * **ComputedValue** — a subtype of `SimpleValue`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a string key used for storage, derived from the head and bindings.
+* **NodeKey** — a string key used for storage, derived from the nodeName and bindings.
 * **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
@@ -33,7 +33,7 @@ This section establishes the fundamental mental model for understanding how expr
 An **expression** is a symbolic template that denotes a (possibly infinite) family of nodes. The expression defines the structure, while variable bindings select a specific member of that family.
 
 **Components:**
-* The **head** (or **functor**) of an expression is its identifier—the name that categorizes the family.
+* The **functor** of an expression is its identifier—the name that categorizes the family.
 * The **arguments** are variable positions that can be assigned concrete `ConstValue` instances at runtime.
 
 **Examples:**
@@ -83,8 +83,6 @@ This means: **For every binding environment B** (a `Array<ConstValue>` of length
 
 The schema implicitly defines infinitely many dependency edges—one set for each possible binding environment.
 
-**Note on Variable Names:** The variable name `e` is purely syntactic. The schemas `full_event(e)` and `full_event(x)` are functionally identical—both define an arity-1 family where the first (and only) argument position receives `bindings[0]`.
-
 #### 1.2.4 Public Interface: Addressing Nodes
 
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
@@ -93,22 +91,40 @@ The public API requires both the `nodeName` (functor) and bindings to address a 
 * `invalidate(nodeName, bindings)` — Marks the node instance as potentially-outdated, triggering recomputation on next pull
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
-* The binding environment is empty: `[]`
-* The head alone identifies exactly one node
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
 
-**For arity > 0 nodes** (nodes with arguments):
-* Bindings array length MUST match the arity of the node
-* Bindings are matched to argument positions by position
-* Different bindings address different node instances
+**For arity > 0 nodes**:
 * `pull("full_event", [{id: "123"}])` and `pull("full_event", [{id: "456"}])` address distinct nodes
 
-**Schema Pattern vs Public NodeName:**
-* Schema definition: `output: "full_event(e)"` — uses expression pattern with variable
-* Public API call: `pull("full_event", [value])` — uses nodeName only, no variable syntax
-* The arity is determined by the schema, not by the caller
-
 **REQ-ARGS-01 (Bindings Normalization):** If `bindings` is omitted or `undefined`, treat it as `[]`. If the schema arity is not 0, the runtime MUST throw an `ArityMismatchError`.
+
+**See §1.2.5 for complete addressing and identity rules.**
+
+#### 1.2.5 Node Addressing and Identity (Normative)
+
+This subsection consolidates the rules for how node instances are addressed and identified.
+
+**Addressing:** A node instance is addressed in the public API by `(nodeName, bindings)`:
+* `nodeName` is a string identifier (the functor) without variable syntax or arity suffix
+* `bindings` is a positional array of `ConstValue` instances
+
+**Arity Source of Truth:** The schema is the **single source of truth** for the arity of each `nodeName`:
+* Each `nodeName` (functor) MUST have exactly one arity across all schema outputs (enforced by REQ-MATCH-04)
+* The arity is determined by the number of variables in the schema's output pattern
+* `bindings.length` MUST equal the schema-defined arity (otherwise `ArityMismatchError` per REQ-PULL-02, REQ-INV-03)
+
+**Arity-0 Equivalence:** For nodes with no arguments:
+* `ident` and `ident()` in schema patterns are equivalent
+* `pull("nodeName", [])` and `pull("nodeName")` are equivalent (REQ-ARGS-01)
+
+**Variable Names:** Variable names in schema patterns do NOT affect node identity or matching:
+* `full_event(e)` and `full_event(x)` define the same node family (arity-1, functor `"full_event"`)
+* Variable names exist only for documentation and variable mapping between inputs/outputs (§1.8)
+* Node identity depends solely on `(nodeName, bindings)` where bindings are compared positionally
+
+**Identity:** Two node instances are identical if and only if:
+1. Their `nodeName` values are equal (same functor)
+2. Their `bindings` arrays are equal (compared positionally using `isEqual`)
 
 ### 1.3 Expression Grammar (Normative)
 
@@ -140,23 +156,34 @@ ws            := [ \t\n\r]*
 * `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
 * `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
 
+#### 1.3.1 Expression Normalization (Normative)
+
+For schema parsing and pattern matching, expressions are normalized using these semantic equivalence rules:
+
+1. **Whitespace:** Surrounding and internal whitespace is ignored. `event(e)` and `  event  (  e  )  ` are equivalent.
+
+2. **Arity-0 Forms:** For arity-0 expressions, the atom form `ident` and compound form `ident()` are semantically equivalent (REQ-EXPR-02). Both denote the same node family with zero arguments.
+
+3. **Variable Names:** Variable names are ignored for identity and matching purposes. `event(e)` and `event(x)` are equivalent—both define an arity-1 family with functor `"event"`. Variable names matter only for variable mapping (§1.8).
+
+**Purpose:** These normalization rules define semantic equivalence for schema matching, overlap detection, and cycle detection. They do NOT prescribe any internal representation or storage encoding.
+
 ### 1.4 Functor Extraction and Pattern Matching (Normative)
 
-**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the head (identifier) of an expression, excluding variable names and whitespace.
+**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the functor (identifier) of an expression. Normalization rules from §1.3.1 apply (whitespace and variable names are ignored).
 
 **Examples:**
 * `functor("all_events")` → `"all_events"`
 * `functor("event_context(e)")` → `"event_context"`
-* `functor("event_context(x)")` → `"event_context"` (same as above)
+* `functor("event_context(x)")` → `"event_context"` (same functor per §1.3.1)
 * `functor("enhanced_event(e, p)")` → `"enhanced_event"`
-* `functor("   enhanced_event   (   x, y)   ")` → `"enhanced_event"` (same as above)
 
 **REQ-FUNCTOR-02:** Pattern Matching and Schema Indexing:
 * The functor is used for pattern matching and schema indexing
-* Original expression strings (with variable names) are preserved for error messages
+* Original expression strings are preserved for error messages
 * Schema patterns are indexed by functor at initialization for O(1) lookup
 
-**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
+**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from `(nodeName, bindings)` as specified in §1.6.
 
 ### 1.5 Deep Equality (Normative)
 
@@ -212,11 +239,11 @@ function isEqual(a, b) {
 
 ### 1.6 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage.
+**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage. It is derived from `(nodeName, bindings)`.
 
 **REQ-KEY-02:** All storage operations (storing values, freshness, dependencies) MUST use NodeKey as the key.
 
-**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each `NodeInstance` (identified by nodeName and bindings) maps to a unique key.
+**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each unique `(nodeName, bindings)` pair maps to a unique NodeKey.
 
 ### 1.7 Schema Definition (Normative)
 
@@ -292,20 +319,15 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ### 1.9 Pattern Matching (Normative)
 
-**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
-1. `P` and `N` have the same functor (identifier).
-
-Because a public `nodeName` does not encode arity, the schema is the single source of truth for arity. The binding array length is validated separately (REQ-PULL-02, REQ-INV-03), and ambiguous arities for the same functor are prohibited (REQ-MATCH-04).
+**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if they have the same functor (identifier). Normalization rules from §1.3.1 apply.
 
 **REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
-**REQ-MATCH-04:** Each head (functor) MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same head appears with different arities (throw `SchemaArityConflictError`).
+**REQ-MATCH-04:** Each functor MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
-**Note on Matching:** Pattern matching in schema definitions is purely structural and does not consider variable names. The pattern `full_event(e)` and `full_event(x)` are equivalent—both define an arity-1 node family. Variable names serve only for documentation and variable mapping between inputs and outputs.
-
-**Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
+**Note:** See §1.2.5 for the complete addressing and identity rules, including how schema arity is determined and validated.
 
 ### 1.10 Cycle Detection (Normative)
 
@@ -357,11 +379,22 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 **Big-Step Semantics:**
 
 ```javascript
-pull(nodeName, B):
-  nodeKey = createNodeKey(nodeName, B)
-  inputs_instances = instantiate_inputs(nodeKey)
+pull(nodeName, bindings):
+  // Normalize bindings (REQ-ARGS-01)
+  if bindings is undefined: bindings = []
+  
+  // Validate nodeName exists in schema (REQ-PULL-01)
+  schema = find_schema_by_nodeName(nodeName)
+  if schema is undefined: throw InvalidNodeError
+  
+  // Validate bindings length matches arity (REQ-PULL-02)
+  if bindings.length ≠ schema.arity: throw ArityMismatchError
+  
+  // Derive NodeKey and proceed
+  nodeKey = createNodeKey(nodeName, bindings)
+  inputs_instances = instantiate_inputs(schema, bindings)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
-  if isUpToDate(nodeKey) return stored_value(nodeKey)
+  if isUpToDate(nodeKey): return stored_value(nodeKey)
   old_value = stored_value(nodeKey)
   r ∈ Outcomes(nodeKey, inputs_values, old_value)  // nondeterministic choice
   store(nodeKey, r)
@@ -431,7 +464,7 @@ function makeIncrementalGraph(
 
 **REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
 
-**REQ-FACTORY-03:** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
+**REQ-FACTORY-03:** MUST reject schemas where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
 ### 3.2 IncrementalGraph Interface
 
@@ -530,7 +563,7 @@ All errors MUST provide stable `.name` property and required fields:
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
-| `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same head with different arities in schema (schema validation) |
+| `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
