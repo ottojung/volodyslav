@@ -192,12 +192,6 @@ For schema parsing and pattern matching, expressions are normalized using these 
 * `functor("event_context(x)")` → `"event_context"` (same functor per §1.3.1)
 * `functor("enhanced_event(e, p)")` → `"enhanced_event"`
 
-**REQ-FUNCTOR-01 (Pattern Matching):** The functor MUST be used for pattern matching and schema indexing. Original expression strings MUST be preserved for error messages.
-
-**NOTE-FUNCTOR-01 (Optimization):** For efficient lookup, implementations may index schema patterns by functor at initialization to achieve O(1) lookup performance.
-
-**REQ-FUNCTOR-02 (Storage Keys):** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from `(nodeName, bindings)` as specified in §1.6.
-
 ### 1.5 Deep Equality (Normative)
 
 **DEF-EQUAL-01 (Deep Equality):** The function `isEqual(a: SimpleValue, b: SimpleValue): boolean` defines deep equality for `SimpleValue` instances. It is defined recursively as follows:
