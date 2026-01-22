@@ -83,8 +83,6 @@ This means: **For every binding environment B** (a `Array<ConstValue>` of length
 
 The schema implicitly defines infinitely many dependency edges—one set for each possible binding environment.
 
-**Note on Variable Names:** The variable name `e` is purely syntactic. The schemas `full_event(e)` and `full_event(x)` are functionally identical—both define an arity-1 family where the first (and only) argument position receives `bindings[0]`.
-
 #### 1.2.4 Public Interface: Addressing Nodes
 
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
@@ -93,22 +91,14 @@ The public API requires both the `nodeName` (functor) and bindings to address a 
 * `invalidate(nodeName, bindings)` — Marks the node instance as potentially-outdated, triggering recomputation on next pull
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
-* The binding environment is empty: `[]`
-* The functor alone identifies exactly one node
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
 
-**For arity > 0 nodes** (nodes with arguments):
-* Bindings array length MUST match the arity of the node
-* Bindings are matched to argument positions by position
-* Different bindings address different node instances
+**For arity > 0 nodes**:
 * `pull("full_event", [{id: "123"}])` and `pull("full_event", [{id: "456"}])` address distinct nodes
 
-**Schema Pattern vs Public NodeName:**
-* Schema definition: `output: "full_event(e)"` — uses expression pattern with variable
-* Public API call: `pull("full_event", [value])` — uses nodeName only, no variable syntax
-* The arity is determined by the schema, not by the caller
-
 **REQ-ARGS-01 (Bindings Normalization):** If `bindings` is omitted or `undefined`, treat it as `[]`. If the schema arity is not 0, the runtime MUST throw an `ArityMismatchError`.
+
+**See §1.2.5 for complete addressing and identity rules.**
 
 #### 1.2.5 Node Addressing and Identity (Normative)
 
@@ -389,11 +379,22 @@ await graph.pull("full_event", [{id: "123"}]);
 **Big-Step Semantics:**
 
 ```javascript
-pull(nodeName, B):
-  nodeKey = createNodeKey(nodeName, B)
-  inputs_instances = instantiate_inputs(nodeKey)
+pull(nodeName, bindings):
+  // Normalize bindings (REQ-ARGS-01)
+  if bindings is undefined: bindings = []
+  
+  // Validate nodeName exists in schema (REQ-PULL-01)
+  schema = find_schema_by_nodeName(nodeName)
+  if schema is undefined: throw InvalidNodeError
+  
+  // Validate bindings length matches arity (REQ-PULL-02)
+  if bindings.length ≠ schema.arity: throw ArityMismatchError
+  
+  // Derive NodeKey and proceed
+  nodeKey = createNodeKey(nodeName, bindings)
+  inputs_instances = instantiate_inputs(schema, bindings)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
-  if isUpToDate(nodeKey) return stored_value(nodeKey)
+  if isUpToDate(nodeKey): return stored_value(nodeKey)
   old_value = stored_value(nodeKey)
   r ∈ Outcomes(nodeKey, inputs_values, old_value)  // nondeterministic choice
   store(nodeKey, r)
