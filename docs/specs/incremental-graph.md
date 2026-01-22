@@ -386,7 +386,7 @@ pull(nodeName, bindings):
   return r
 ```
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits implementation details.
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
