@@ -110,6 +110,32 @@ The public API requires both the `nodeName` (functor) and bindings to address a 
 
 **REQ-ARGS-01 (Bindings Normalization):** If `bindings` is omitted or `undefined`, treat it as `[]`. If the schema arity is not 0, the runtime MUST throw an `ArityMismatchError`.
 
+#### 1.2.5 Node Addressing and Identity (Normative)
+
+This subsection consolidates the rules for how node instances are addressed and identified.
+
+**Addressing:** A node instance is addressed in the public API by `(nodeName, bindings)`:
+* `nodeName` is a string identifier (the functor) without variable syntax or arity suffix
+* `bindings` is a positional array of `ConstValue` instances
+
+**Arity Source of Truth:** The schema is the **single source of truth** for the arity of each `nodeName`:
+* Each `nodeName` (functor) MUST have exactly one arity across all schema outputs (enforced by REQ-MATCH-04)
+* The arity is determined by the number of variables in the schema's output pattern
+* `bindings.length` MUST equal the schema-defined arity (otherwise `ArityMismatchError` per REQ-PULL-02, REQ-INV-03)
+
+**Arity-0 Equivalence:** For nodes with no arguments:
+* `ident` and `ident()` in schema patterns are equivalent
+* `pull("nodeName", [])` and `pull("nodeName")` are equivalent (REQ-ARGS-01)
+
+**Variable Names:** Variable names in schema patterns do NOT affect node identity or matching:
+* `full_event(e)` and `full_event(x)` define the same node family (arity-1, functor `"full_event"`)
+* Variable names exist only for documentation and variable mapping between inputs/outputs (§1.8)
+* Node identity depends solely on `(nodeName, bindings)` where bindings are compared positionally
+
+**Identity:** Two node instances are identical if and only if:
+1. Their `nodeName` values are equal (same functor)
+2. Their `bindings` arrays are equal (compared positionally using `isEqual`)
+
 ### 1.3 Expression Grammar (Normative)
 
 **REQ-EXPR-01:** All expressions MUST conform to this grammar:
@@ -140,23 +166,34 @@ ws            := [ \t\n\r]*
 * `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
 * `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
 
+#### 1.3.1 Expression Normalization (Normative)
+
+For schema parsing and pattern matching, expressions are normalized using these semantic equivalence rules:
+
+1. **Whitespace:** Surrounding and internal whitespace is ignored. `event(e)` and `  event  (  e  )  ` are equivalent.
+
+2. **Arity-0 Forms:** For arity-0 expressions, the atom form `ident` and compound form `ident()` are semantically equivalent (REQ-EXPR-02). Both denote the same node family with zero arguments.
+
+3. **Variable Names:** Variable names are ignored for identity and matching purposes. `event(e)` and `event(x)` are equivalent—both define an arity-1 family with functor `"event"`. Variable names matter only for variable mapping (§1.8).
+
+**Purpose:** These normalization rules define semantic equivalence for schema matching, overlap detection, and cycle detection. They do NOT prescribe any internal representation or storage encoding.
+
 ### 1.4 Functor Extraction and Pattern Matching (Normative)
 
-**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the functor (identifier) of an expression, excluding variable names and whitespace.
+**REQ-FUNCTOR-01:** The function `functor(expr)` MUST extract and return the functor (identifier) of an expression. Normalization rules from §1.3.1 apply (whitespace and variable names are ignored).
 
 **Examples:**
 * `functor("all_events")` → `"all_events"`
 * `functor("event_context(e)")` → `"event_context"`
-* `functor("event_context(x)")` → `"event_context"` (same as above)
+* `functor("event_context(x)")` → `"event_context"` (same functor per §1.3.1)
 * `functor("enhanced_event(e, p)")` → `"enhanced_event"`
-* `functor("   enhanced_event   (   x, y)   ")` → `"enhanced_event"` (same as above)
 
 **REQ-FUNCTOR-02:** Pattern Matching and Schema Indexing:
 * The functor is used for pattern matching and schema indexing
-* Original expression strings (with variable names) are preserved for error messages
+* Original expression strings are preserved for error messages
 * Schema patterns are indexed by functor at initialization for O(1) lookup
 
-**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a unique key.
+**REQ-FUNCTOR-03:** All storage operations MUST use NodeKey as their keys. A NodeKey is derived from `(nodeName, bindings)` as specified in §1.6.
 
 ### 1.5 Deep Equality (Normative)
 
@@ -212,11 +249,11 @@ function isEqual(a, b) {
 
 ### 1.6 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage.
+**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage. It is derived from `(nodeName, bindings)`.
 
 **REQ-KEY-02:** All storage operations (storing values, freshness, dependencies) MUST use NodeKey as the key.
 
-**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each `NodeInstance` (identified by nodeName and bindings) maps to a unique key.
+**REQ-KEY-03:** The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each unique `(nodeName, bindings)` pair maps to a unique NodeKey.
 
 ### 1.7 Schema Definition (Normative)
 
@@ -292,10 +329,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ### 1.9 Pattern Matching (Normative)
 
-**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
-1. `P` and `N` have the same functor (identifier).
-
-Because a public `nodeName` does not encode arity, the schema is the single source of truth for arity. The binding array length is validated separately (REQ-PULL-02, REQ-INV-03), and ambiguous arities for the same functor are prohibited (REQ-MATCH-04).
+**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if they have the same functor (identifier). Normalization rules from §1.3.1 apply.
 
 **REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
 
@@ -303,9 +337,7 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 
 **REQ-MATCH-04:** Each functor MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
-**Note on Matching:** Pattern matching in schema definitions is purely structural and does not consider variable names. The pattern `full_event(e)` and `full_event(x)` are equivalent—both define an arity-1 node family. Variable names serve only for documentation and variable mapping between inputs and outputs.
-
-**Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
+**Note:** See §1.2.5 for the complete addressing and identity rules, including how schema arity is determined and validated.
 
 ### 1.10 Cycle Detection (Normative)
 
