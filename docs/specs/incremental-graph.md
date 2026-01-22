@@ -19,7 +19,7 @@ This document provides a formal specification for the incremental graph's operat
 * **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
-* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(S, inputs, oldValue, bindings) ⊆ ComputedValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
+* **Outcomes** — For any schema node def `S` and arguments `(inputs, oldValue, bindings)`, define `Outcomes(nodeKey, inputs, oldValue) ⊆ ComputedValue`. It represents the set of all **semantic** values that could be produced by the computor in any permitted execution context. This set may be infinite. Note: `Unchanged` is NOT part of `Outcomes` — it is an optimization sentinel only.
 * **Computor invocation (spec-only)** — When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
 * **Unchanged** — unique sentinel value indicating unchanged computation result. This is an **optimization-only** mechanism: when a computor returns `Unchanged`, the runtime stores the previous value without rewriting it. `Unchanged` MUST NOT be a valid `ComputedValue` (cannot be returned by `pull()`). `Unchanged` does not expand the set of valid semantic results—it is only a shortcut for returning the existing value when that value is semantically admissible for the current inputs.
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
@@ -232,11 +232,6 @@ type NodeDef = {
 };
 ```
 
-**Note on Determinism and Side Effects:**
-* `isDeterministic`: When `true`, the computor MUST be treated as a deterministic function with respect to `(inputs, oldValue, bindings)`, meaning `Outcomes(S, inputs, oldValue, bindings)` is always a singleton (exactly one possible result). When `false`, the computor MAY produce different outputs even with identical inputs (the outcome set may contain multiple elements or depend on unmodeled factors).
-* `hasSideEffects`: When `true`, the computor MUST be treated as one that may perform actions beyond computing its return value (e.g., logging, network calls, file operations). In the formal model, side effects are treated as a form of nondeterminism—they are not separately tracked in the observable contract.
-* These fields are semantic claims about the computor's behavior and are NOT stored in the database. They are used to justify stronger correctness properties for the deterministic/pure subset of computors. When `isDeterministic=true` and `hasSideEffects=false`, the system can provide stronger guarantees about reproducibility.
-
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
 **REQ-SCHEMA-03:** A **source node** is any node instance matching a schema where `inputs = []`.
@@ -363,13 +358,12 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 
 ```javascript
 pull(nodeName, B):
-  schema = lookup_schema_by_nodeName(nodeName)
   nodeKey = createNodeKey(nodeName, B)
-  inputs_instances = instantiate_inputs(schema, B) // REQ-BINDING-01
+  inputs_instances = instantiate_inputs(nodeKey)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
   if isUpToDate(nodeKey) return stored_value(nodeKey)
   old_value = stored_value(nodeKey)
-  r ∈ Outcomes(schema, inputs_values, old_value, B)  // nondeterministic choice
+  r ∈ Outcomes(nodeKey, inputs_values, old_value)  // nondeterministic choice
   store(nodeKey, r)
   return r
 ```
@@ -513,9 +507,9 @@ type Computor = (
 
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
-**REQ-COMP-01′ (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be deterministic with respect to `(inputs, oldValue, bindings)`. Formally, `Outcomes(S, inputs, oldValue, bindings)` MUST always be a singleton set. If `NodeDef.isDeterministic` is `false`, the computor MAY be nondeterministic (outcome set may contain multiple elements).
+**REQ-COMP-01′ (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be treated as deterministic with respect to `(nodeKey, inputs, oldValue)`. Formally, `Outcomes(nodeKey, inputs, oldValue)` MUST always be a singleton set.
 
-**REQ-COMP-02′ (Conditional Purity):** If `NodeDef.hasSideEffects` is `false`, the computor MUST NOT have observable side effects. If `NodeDef.hasSideEffects` is `true`, the computor MAY perform side effects (which are treated as nondeterminism in the formal model).
+**REQ-COMP-02′ (Conditional Purity):** If `NodeDef.hasSideEffects` is `false`, the computor MUST be treated as one that does not have observable side effects.
 
 **REQ-COMP-03:** Computors MAY return `Unchanged` sentinel to indicate no value change.
 
@@ -569,7 +563,7 @@ The graph MUST maintain these invariants at all times (including after restarts)
 **I2 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
 **I3 (Value Admissibility):** If node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` MUST satisfy:
-* there exists some `oldValue` such that `v ∈ Outcomes(schema(N), inputs_values, oldValue, B)`.
+* there exists some `oldValue` such that `v ∈ Outcomes(nodeKey, inputs_values, oldValue)`.
 
 This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy I3 the same way: their stored value must be consistent with their computor's `Outcomes(...)` set.
 
