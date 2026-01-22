@@ -79,7 +79,7 @@ A **node instance** is a specific member of a node family, identified by:
 * Variable names do not affect identity: `full_event(e)@[{id: "123"}]` and `full_event(x)@[{id: "123"}]` are the same node instance.
 
 **Identity:** Two node instances are identical if and only if:
-1. Their expression patterns have the same functor and arity, AND
+1. Their expression patterns have the same `NodeSignature` (same functor and arity), AND
 2. Their binding environments are equal (compared positionally using `isEqual`)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
@@ -470,7 +470,7 @@ type NodeDef = {
 
 **REQ-SCHEMA-05:** The `isDeterministic` and `hasSideEffects` fields are REQUIRED in all `NodeDef` definitions. They MAY NOT be stored in the database persistence layer.
 
-### 1.8 Variable Name Mapping and Positional Bindings (Normative)
+### 1.9 Variable Name Mapping and Positional Bindings (Normative)
 
 **Key Principle:** Bindings are always positional arrays, but variable names in input patterns are mapped to output pattern variables by name to determine the correct positional slice.
 
@@ -520,23 +520,6 @@ await graph.pull("full_event", [{id: "123"}]);
 2. Each input pattern `input_i` is instantiated by extracting the relevant positional bindings based on variable name mapping
 3. The computor receives the values of all instantiated input nodes in the order they appear in the `inputs` array
 
-### 1.9 Pattern Matching (Normative)
-
-**REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
-1. `P` and `N` have the same functor (identifier).
-
-Because a public `nodeName` does not encode arity, the schema is the single source of truth for arity. The binding array length is validated separately (REQ-PULL-02, REQ-INV-03), and ambiguous arities for the same functor are prohibited (REQ-MATCH-04).
-
-**REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
-
-**REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
-
-**REQ-MATCH-04:** Each head (functor) MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same head appears with different arities (throw `SchemaArityConflictError`).
-
-**Note on Matching:** Pattern matching in schema definitions is purely structural and does not consider variable names. The pattern `full_event(e)` and `full_event(x)` are equivalent—both define an arity-1 node family. Variable names serve only for documentation and variable mapping between inputs and outputs.
-
-**Note on Public API:** The public API uses only the nodeName (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
-
 ### 1.10 Pattern Matching (Normative)
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if:
@@ -573,7 +556,7 @@ Because a public `nodeName` does not encode arity, the schema is the single sour
 
 **REQ-MAT-03:** Once materialized, a node instance remains materialized across restarts (required by REQ-PERSIST-01 behavioral equivalence).
 
-### 1.12 Notes on Nondeterminism and Side Effects (Normative)
+### 1.13 Notes on Nondeterminism and Side Effects (Normative)
 
 **Treatment of Side Effects:** In this specification, side effects performed by computors are treated as a form of nondeterminism. They are NOT separately tracked or made part of the observable contract. The formal model uses outcome sets to capture all sources of variation in computor results, whether from true nondeterminism (e.g., random number generation), external state (e.g., reading current time, network calls), or side effects (e.g., logging, metrics).
 
@@ -688,9 +671,9 @@ function makeIncrementalGraph(
 
 **REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
 
-**REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
+**REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing. The schema identifier MUST be computed from the canonical form of all NodeDefs (per REQ-CANON-02), ensuring that schemas differing only in consistent variable renaming produce the same identifier.
 
-**REQ-FACTORY-03:** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
+**REQ-FACTORY-03:** MUST reject schemas where the same functor appears with different arities (throw `SchemaArityConflictError`). This enforces the invariant that each `NodeName` (functor) uniquely determines a `NodeSignature` at runtime.
 
 ### 3.2 IncrementalGraph Interface
 
