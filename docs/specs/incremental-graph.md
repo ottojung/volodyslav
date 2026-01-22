@@ -15,7 +15,7 @@ This document provides a formal specification for the incremental graph's operat
 * **ComputedValue** — a subtype of `SimpleValue`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — a string key used for storage, derived from the nodeName and bindings.
+* **NodeKey** — a string key used for storage, derived from `(nodeName, bindings)`.
 * **NodeValue** — computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`
@@ -46,23 +46,21 @@ An **expression** is a symbolic template that denotes a (possibly infinite) fami
 
 #### 1.2.2 Node Instances (Addresses Within Families)
 
-A **node instance** is a specific member of a node family, identified by:
-1. An expression pattern (e.g., `full_event(e)`)
-2. A binding environment B: `Array<ConstValue>` that assigns concrete values to all argument positions in the expression
+A **node instance** is a specific member of a node family. As defined in §1.1, node instances are identified by `(nodeName, bindings)` where:
+* `nodeName` is the functor (e.g., `"full_event"`)
+* `bindings` is a `BindingEnvironment` (positional array of `ConstValue` instances)
 
-**Notation:** We write `expr@B` to denote a node instance, where:
-* `expr` is the expression pattern
-* `B` is the binding environment (positional array)
+**Schema-side notation:** In the context of schema definitions, we may write `expr@B` to denote a node instance where `expr` is an expression pattern (e.g., `full_event(e)`) and `B` is the binding environment. This notation is explanatory: `expr@B` denotes the same node instance as `functor(expr)@B`. In a well-formed schema, each functor corresponds to exactly one arity.
 
 **Examples:**
 
-* `full_event(e)` with `B = [{id: "evt_123"}]` identifies the specific node `full_event(e={id: "evt_123"})`.
-* `enhanced_event(e, p)` with `B = [{id: "evt_123"}, {id: "photo_456"}]` identifies one specific enhanced event.
-* Variable names do not affect identity: `full_event(e)@[{id: "123"}]` and `full_event(x)@[{id: "123"}]` are the same node instance.
+* `full_event(e)` with `B = [{id: "evt_123"}]` identifies the node instance `"full_event"@[{id: "evt_123"}]`.
+* `enhanced_event(e, p)` with `B = [{id: "evt_123"}, {id: "photo_456"}]` identifies the node instance `"enhanced_event"@[{id: "evt_123"}, {id: "photo_456"}]`.
+* Variable names do not affect identity: `full_event(e)@[{id: "123"}]` and `full_event(x)@[{id: "123"}]` denote the same node instance because both have functor `"full_event"`.
 
 **Identity:** Two node instances are identical if and only if:
-1. Their expression patterns have the same functor and arity, AND
-2. Their binding environments are equal (compared positionally using `isEqual`)
+1. Their `nodeName` values are equal (same functor), AND
+2. Their `bindings` arrays are equal (compared positionally using `isEqual`)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
 
@@ -321,7 +319,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** a nodeName `N` if and only if they have the same functor (identifier). Normalization rules from §1.3.1 apply.
 
-**REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
+**REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor.
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
@@ -334,7 +332,7 @@ await graph.pull("full_event", [{id: "123"}]);
 **REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
 1. S has input pattern I
 2. T has output pattern O
-3. Patterns I and O match (same functor and arity)
+3. Patterns I and O match (same functor)
 
 **REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
 
@@ -380,17 +378,17 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ```javascript
 pull(nodeName, bindings):
-  // Normalize bindings (REQ-ARGS-01)
+  // 1. Normalize bindings (REQ-ARGS-01)
   if bindings is undefined: bindings = []
   
-  // Validate nodeName exists in schema (REQ-PULL-01)
+  // 2. Validate nodeName exists in schema (REQ-PULL-01)
   schema = find_schema_by_nodeName(nodeName)
   if schema is undefined: throw InvalidNodeError
   
-  // Validate bindings length matches arity (REQ-PULL-02)
+  // 3. Validate bindings length matches arity (REQ-PULL-02)
   if bindings.length ≠ schema.arity: throw ArityMismatchError
   
-  // Derive NodeKey and proceed
+  // 4. Derive NodeKey and proceed
   nodeKey = createNodeKey(nodeName, bindings)
   inputs_instances = instantiate_inputs(schema, bindings)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
