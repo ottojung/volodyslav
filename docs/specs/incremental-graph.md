@@ -162,9 +162,9 @@ This subsection consolidates the rules for how node instances are addressed and 
 * `bindings` is a positional array of `ConstValue` instances
 
 **Arity Source of Truth:** The schema is the **single source of truth** for the arity of each `nodeName`:
-* Each `nodeName` (functor) MUST have exactly one arity across all schema outputs (enforced by REQ-MATCH-04)
+* Each `nodeName` (functor) has exactly one arity across all schema outputs (enforced by REQ-MATCH-02)
 * The arity is determined by the number of variables in the schema's output pattern
-* `bindings.length` MUST equal the schema-defined arity (otherwise `ArityMismatchError` per REQ-PULL-02, REQ-INV-03)
+* `bindings.length` equals the schema-defined arity (otherwise `ArityMismatchError` per REQ-PULL-02, REQ-INV-03)
 
 **Arity-0 Equivalence:** For nodes with no arguments:
 * `ident` and `ident()` in schema patterns are equivalent
@@ -451,7 +451,7 @@ pull(nodeName, bindings):
 
 **REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
 
-**REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
+**REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property PROP-03).
 
 **REQ-PULL-04 (No spurious recomputation):** If a materialized node instance is `up-to-date` at the time it is encountered during a `pull()`, the implementation MUST return its stored value and MUST NOT invoke its computor. This makes `pull()` use call-by-need semantics and prevents repeated effects/resampling for up-to-date nodes.
 
