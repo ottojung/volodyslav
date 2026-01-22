@@ -164,6 +164,14 @@ ws            := [ \t\n\r]*
 
 ```javascript
 function isEqual(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') {
+    if (isNaN(a) && isNaN(b)) {
+      return true; // NaN is equal to NaN
+    } else if (a === Infinity && b === Infinity) {
+      return true;
+    }
+  }
+
   // Primitive types: use JavaScript ===
   if (typeof a !== 'object' || typeof b !== 'object') {
     return a === b;
