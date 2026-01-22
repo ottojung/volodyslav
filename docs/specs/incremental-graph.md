@@ -248,8 +248,6 @@ Implementations MAY use any internal representation for storage as long as value
 
 **REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage. It is derived from `(nodeName, bindings)`.
 
-**REQ-KEY-02:** All storage operations (storing values, freshness, dependencies) MUST use NodeKey as the key.
-
 The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each unique `(nodeName, bindings)` pair maps to a unique NodeKey.
 
 ### 1.7 Schema Definition (Normative)
