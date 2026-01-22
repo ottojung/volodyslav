@@ -367,6 +367,7 @@ pull(nodeName, B):
   nodeKey = createNodeKey(nodeName, B)
   inputs_instances = instantiate_inputs(schema, B) // REQ-BINDING-01
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_instances]
+  if isUpToDate(nodeKey) return stored_value(nodeKey)
   old_value = stored_value(nodeKey)
   r ∈ Outcomes(schema, inputs_values, old_value, B)  // nondeterministic choice
   store(nodeKey, r)
