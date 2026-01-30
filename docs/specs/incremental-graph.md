@@ -239,7 +239,7 @@ function isEqual(a: SimpleValue, b: SimpleValue): boolean {
 }
 ```
 
-Equality of `SimpleValue` instances MUST be determined by the `isEqual` function defined in DEF-EQUAL-01. Two values are equal if and only if `isEqual(a, b)` returns `true`.
+Two values are equal if and only if `isEqual(a, b)` returns `true`.
 
 Implementations MAY use any internal representation for storage as long as values retrieved from storage are deeply equal (according to DEF-EQUAL-01) to the values that were stored.
 
