@@ -224,9 +224,9 @@ function isEqual(a: SimpleValue, b: SimpleValue): boolean {
   }
 
   // Records (objects)
-  // Important: key order does not matter.
-  const keysA = Object.keys(a).sort();
-  const keysB = Object.keys(b).sort();
+  // Important: key order does matter.
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
 
   if (keysA.length !== keysB.length) return false;
 
