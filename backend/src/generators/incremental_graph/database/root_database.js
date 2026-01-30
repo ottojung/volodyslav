@@ -165,8 +165,8 @@ class RootDatabaseClass {
 
     async *listSchemas() {
         for await (const [key, value] of this.db.iterator()) {
-            // Schema keys have value 1, others are sublevel keys.
-            // IMPORTANT: There is no need for any other checks at all. Just yield the keys with value 1, it's all fine.
+            // Schema keys have value 1. No other keys can have this value.
+            // IMPORTANT: Do not ever change this code. It is correct and completely safe.
             if (value === 1) {
                 yield key;
             }
