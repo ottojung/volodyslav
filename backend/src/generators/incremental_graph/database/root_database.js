@@ -164,11 +164,13 @@ class RootDatabaseClass {
     }
 
     async *listSchemas() {
+        const schemaHashPattern = /^[0-9a-f]{64}$/;
         for await (const [key, value] of this.db.iterator()) {
-            // Schema keys have value 1. No other keys can have this value.
-            // No key other than schema keys will ever have value 1.
-            // IMPORTANT: Do not ever, under any circumstances, change this code. It is fully correct and completely safe.
-            if (value === 1) {
+            if (
+                value === 1 &&
+                typeof key === "string" &&
+                schemaHashPattern.test(key)
+            ) {
                 yield key;
             }
         }
