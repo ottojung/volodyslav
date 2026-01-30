@@ -8,6 +8,8 @@ const { makeUnchanged, isUnchanged } = require('./unchanged');
 const { 
     makeInvalidNodeError, 
     isInvalidNode,
+    makeInvalidNodeNameError,
+    isInvalidNodeName,
     makeInvalidSchemaError,
     isInvalidSchema, 
     makeSchemaPatternNotAllowedError, 
@@ -41,6 +43,8 @@ module.exports = {
     isUnchanged,
     makeInvalidNodeError,
     isInvalidNode,
+    makeInvalidNodeNameError,
+    isInvalidNodeName,
     makeInvalidSchemaError,
     isInvalidSchema,
     makeSchemaPatternNotAllowedError,

@@ -32,6 +32,7 @@ const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
 const {
     makeInvalidNodeError,
+    makeInvalidNodeNameError,
     makeMissingValueError,
     makeInvalidComputorReturnValueError,
     makeInvalidUnchangedError,
@@ -70,8 +71,16 @@ const MUTEX_KEY = "incremental-graph-operations";
  * @param {string} nodeName
  */
 function ensureNodeNameIsHead(nodeName) {
-    const schemaPattern = stringToSchemaPattern(nodeName);
-    const parsed = parseExpr(schemaPattern);
+    let parsed;
+    try {
+        const schemaPattern = stringToSchemaPattern(nodeName);
+        parsed = parseExpr(schemaPattern);
+    } catch (error) {
+        if (/[(),]/.test(nodeName)) {
+            throw error;
+        }
+        throw makeInvalidNodeNameError(nodeName);
+    }
     if (parsed.kind === "call") {
         throw makeSchemaPatternNotAllowedError(nodeName);
     }

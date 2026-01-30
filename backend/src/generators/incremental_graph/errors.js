@@ -36,6 +36,38 @@ function isInvalidNode(object) {
 }
 
 /**
+ * Error for invalid node name values.
+ */
+class InvalidNodeName extends Error {
+    /**
+     * @param {string} nodeName
+     */
+    constructor(nodeName) {
+        super(`Invalid node name '${nodeName}'. Node names must be valid identifiers.`);
+        this.name = "InvalidNodeNameError";
+        this.nodeName = nodeName;
+    }
+}
+
+/**
+ * Constructs an InvalidNodeName error.
+ * @param {string} nodeName
+ * @returns {InvalidNodeName}
+ */
+function makeInvalidNodeNameError(nodeName) {
+    return new InvalidNodeName(nodeName);
+}
+
+/**
+ * Type guard for InvalidNodeName.
+ * @param {unknown} object
+ * @returns {object is InvalidNodeName}
+ */
+function isInvalidNodeName(object) {
+    return object instanceof InvalidNodeName;
+}
+
+/**
  * Error for invalid schema definitions.
  */
 class InvalidSchema extends Error {
@@ -430,6 +462,8 @@ function isSchemaArityConflict(object) {
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
+    makeInvalidNodeNameError,
+    isInvalidNodeName,
     makeInvalidSchemaError,
     isInvalidSchema,
     makeSchemaPatternNotAllowedError,
