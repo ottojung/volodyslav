@@ -1,13 +1,13 @@
 /**
  * Node key handling - stores node identities as JSON objects.
- * 
+ *
  * A concrete node key is: {head: string, args: Array<ConstValue>}
  * This provides clean serialization for any JSON-serializable binding values.
- * 
+ *
  * Example:
  * - Pattern: "event(e)" with bindings [{id: 5, time: "today"}]
  * - Concrete key: '{"head":"event","args":[{"id":5,"time":"today"}]}'
- * 
+ *
  * Benefits:
  * - Makes serialization/deserialization straightforward
  * - Works naturally with any JSON-serializable binding values
@@ -15,7 +15,12 @@
  */
 
 const { makeArityMismatchError } = require("./errors");
-const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString } = require("./database");
+const {
+    stringToNodeKeyString,
+    nodeNameToString,
+    stringToNodeName,
+    nodeKeyStringToString,
+} = require("./database");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
@@ -64,20 +69,20 @@ function createNodeKeyFromPattern(pattern, bindings) {
     const { parseExpr } = require("./expr");
     const expr = parseExpr(pattern);
     const head = expr.name;
-    
+
     if (expr.kind === "atom") {
         if (bindings.length !== 0) {
             throw makeArityMismatchError(head, 0, bindings.length);
         }
         return { head, args: [] };
     }
-    
+
     // For call expressions, use positional bindings
     // The arity must match the bindings array length
     if (expr.args.length !== bindings.length) {
         throw makeArityMismatchError(head, expr.args.length, bindings.length);
     }
-    
+
     // Simply use the bindings array as args (variable names are ignored)
     return { head, args: bindings };
 }
