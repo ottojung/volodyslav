@@ -8,7 +8,7 @@ This document provides a formal specification for the incremental graph's operat
 
 ### 1.1 Types
 
-**TERM-01 (NodeName):** An identifier string (the functor), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does not include variable syntax or arity suffix.
+**TERM-01 (NodeName):** An `ident` string (see §1.3; the functor), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does not include variable syntax or arity suffix.
 
 **TERM-02 (SchemaPattern):** An expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used only in schema definitions to denote families of nodes and for variable mapping.
 
@@ -20,7 +20,7 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 
-**REQ-BINDINGS-01 (Well-formed Bindings):** The length of a `BindingEnvironment` array MUST match the arity of the node it is used with.
+**REQ-BINDING-00 (Well-formed Bindings):** The length of a `BindingEnvironment` array MUST match the arity of the node it is used with.
 
 **TERM-07 (NodeInstance):** A specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
 
@@ -38,7 +38,7 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-12 (Unchanged):** Unique sentinel value indicating unchanged computation result. This is an optimization-only mechanism: when a computor returns `Unchanged`, the runtime stores the previous value without rewriting it. `Unchanged` does not expand the set of valid semantic results—it is only a shortcut for returning the existing value when that value is semantically admissible for the current inputs.
 
-**REQ-UNCHANGED-01 (Unchanged Validity):** `Unchanged` MUST NOT be a valid `ComputedValue` and cannot be returned by `pull()`.
+**REQ-UNCH-00 (Unchanged Validity):** `Unchanged` MUST NOT be a valid `ComputedValue` and cannot be returned by `pull()`.
 
 **TERM-13 (Variable):** Parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 
@@ -118,7 +118,7 @@ The public API requires both the `nodeName` (functor) and bindings to address a 
 This subsection consolidates the rules for how node instances are addressed and identified.
 
 **Addressing:** A node instance is addressed in the public API by `(nodeName, bindings)`:
-* `nodeName` is a string identifier (the functor) without variable syntax or arity suffix
+* `nodeName` is an `ident` identifier (the functor) without variable syntax or arity suffix
 * `bindings` is a positional array of `ConstValue` instances
 
 **Arity Source of Truth:** The schema is the **single source of truth** for the arity of each `nodeName`:
@@ -225,7 +225,6 @@ function isEqual(a: SimpleValue, b: SimpleValue): boolean {
 
   // Records (objects)
   // Important: key order does not matter.
-  // Note: key sorting is not required for persistence.
   const keysA = Object.keys(a).sort();
   const keysB = Object.keys(b).sort();
 
@@ -246,9 +245,12 @@ Implementations MAY use any internal representation for storage as long as value
 
 ### 1.6 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage. It is derived from `(nodeName, bindings)`.
+**REQ-KEY-01:** A NodeKey is a string that uniquely identifies a `NodeInstance` in storage. It is derived from `(nodeName, bindings)`. The specific format of NodeKey is implementation-defined.
+Different implementations MAY use different key formats as long as NodeKey respects node instance identity (see §1.2.5).
 
-The specific format of NodeKey is implementation-defined. Different implementations MAY use different key formats as long as each unique `(nodeName, bindings)` pair maps to a unique NodeKey.
+**REQ-KEY-02 (Identity-preserving NodeKey):**
+If two node instances are identical per §1.2.5 (same `nodeName` and position-wise `isEqual` on `bindings`), they MUST map to the same NodeKey.
+If they are not identical per §1.2.5, they MUST map to different NodeKeys.
 
 ### 1.7 Schema Definition (Normative)
 
@@ -375,7 +377,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **Relationship:** An implementation is correct if:
 1. Its observable behavior matches the baseline semantics (properties PROP-01, PROP-02, PROP-03, PROP-04)
-2. It satisfies all normative optimization requirements (e.g., REQ-PULL-04)
+2. It satisfies all additional normative requirements not captured by PROP-01..04
 
 ### 2.1 pull(nodeName, bindings) → NodeValue
 
@@ -552,11 +554,14 @@ type Computor = (
 |------------|----------------|-------------|
 | `InvalidExpressionError` | `expression: string` | Invalid expression syntax (schema parsing) |
 | `InvalidNodeError` | `nodeName: string` | No schema matches the given nodeName (public API) |
+| `InvalidNodeNameError` | `nodeName: string` | nodeName is not a valid `ident` (public API) |
 | `SchemaOverlapError` | `patterns: Array<string>` | Overlapping output patterns at init (schema validation) |
 | `InvalidSchemaError` | `schemaPattern: string` | Schema definition problems at init (schema validation) |
+| `InvalidNodeDefError` | `index: number, field: string` | nodeDefs entry has invalid shape/type (schema validation) |
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
+| `InvalidBindingsError` | `nodeName: string, bindings: unknown` | bindings is not an array or contains invalid values (public API) |
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 
