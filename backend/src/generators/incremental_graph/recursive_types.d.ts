@@ -1,2 +1,2 @@
 
-export type ConstValue = number | string | null | ConstValueArray | Record<string, ConstValue>;
+export type ConstValue = number | string | null | Array<ConstValue> | Record<string, ConstValue>;
