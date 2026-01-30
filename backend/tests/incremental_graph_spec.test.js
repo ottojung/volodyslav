@@ -601,6 +601,28 @@ describe("pull/set concrete-ness & node existence errors", () => {
         );
     });
 
+    test("pull rejects invalid node names with InvalidNodeNameError", async () => {
+        const db = new InMemoryDatabase();
+        const g = buildGraph(db, [
+            { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
+        ]);
+
+        await expect(g.pull("invalid-name")).rejects.toMatchObject({
+            name: "InvalidNodeNameError",
+        });
+    });
+
+    test("invalidate rejects invalid node names with InvalidNodeNameError", async () => {
+        const db = new InMemoryDatabase();
+        const g = buildGraph(db, [
+            { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
+        ]);
+
+        await expect(g.invalidate("invalid-name")).rejects.toMatchObject({
+            name: "InvalidNodeNameError",
+        });
+    });
+
     test("pull unknown concrete node throws InvalidNodeError", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
