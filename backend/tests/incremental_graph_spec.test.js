@@ -1433,8 +1433,8 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         const list = await g.debugListMaterializedNodes();
         expect(Array.isArray(list)).toBe(true);
-        expect(list).toContain(toJsonKey("a"));
-        expect(list).toContain(toJsonKey("b"));
+        expect(list).toContainEqual(["a", []]);
+        expect(list).toContainEqual(["b", []]);
 
         const fb = await g.debugGetFreshness("b");
         expect(fb).toBe("up-to-date");
@@ -1460,14 +1460,14 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         // Initially empty
         const list0 = await g.debugListMaterializedNodes();
-        expect(list0).not.toContain(toJsonKey("source"));
+        expect(list0).not.toContainEqual(["source", []]);
 
         // After set, source must be materialized
         sourceCell.value = { n: 42 };
         await g.invalidate("source");
 
         const list1 = await g.debugListMaterializedNodes();
-        expect(list1).toContain(toJsonKey("source"));
+        expect(list1).toContainEqual(["source", []]);
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
@@ -1499,14 +1499,14 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         // Initially empty
         const list0 = await g.debugListMaterializedNodes();
-        expect(list0).not.toContain(toJsonKey("leaf"));
+        expect(list0).not.toContainEqual(["leaf", []]);
 
         // After pull, leaf must be materialized
         const value = await g.pull("leaf");
         expect(value).toEqual({ n: 0 });
 
         const list1 = await g.debugListMaterializedNodes();
-        expect(list1).toContain(toJsonKey("leaf"));
+        expect(list1).toContainEqual(["leaf", []]);
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
