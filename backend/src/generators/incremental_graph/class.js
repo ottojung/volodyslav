@@ -538,7 +538,7 @@ class IncrementalGraphClass {
                         batch.freshness.put(nodeKey, "up-to-date");
 
                         // Return cached value without calling computor
-                        return { value: oldValue, status: "unchanged" };
+                        return { value: oldValue, status: "cached" };
                     }
 
                     // Counters don't match: need to recompute (fall through)
