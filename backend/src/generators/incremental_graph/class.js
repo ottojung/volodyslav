@@ -780,10 +780,14 @@ class IncrementalGraphClass {
 
     /**
      * List all materialized nodes (canonical names).
-     * @returns {Promise<NodeKeyString[]>}
+     * @returns {Promise<Array<[NodeName, Array<ConstValue>]>>}
      */
     async debugListMaterializedNodes() {
-        return this.storage.listMaterializedNodes();
+        const materializedNodes = await this.storage.listMaterializedNodes();
+        return materializedNodes.map((nodeKey) => {
+            const parsed = deserializeNodeKey(nodeKey);
+            return [parsed.head, parsed.args];
+        });
     }
 
     /**
