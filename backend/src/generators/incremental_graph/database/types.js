@@ -359,6 +359,10 @@ function schemaHashToString(schemaHash) {
  */
 
 /**
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, SchemaHash, 1>} ListOfSchemasType
+ */
+
+/**
  * @template T
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, DatabaseKey, T>} SimpleSublevel
  */

@@ -7,6 +7,7 @@ const { makeTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
+/** @typedef {import('./types').ListOfSchemasType} ListOfSchemasType */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Counter} Counter */
@@ -100,7 +101,7 @@ class RootDatabaseClass {
     /**
      * The sublevel for listing all schemas.
      * @private
-     * @type {SchemaSublevelType}
+     * @type {ListOfSchemasType}
      */
     listOfSchemas;
 
@@ -177,9 +178,7 @@ class RootDatabaseClass {
      */
     async *listSchemas() {
         for await (const key of this.listOfSchemas.keys()) {
-            if (typeof key === "string") {
-                yield key;
-            }
+            yield key;
         }
     }
 
