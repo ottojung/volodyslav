@@ -76,7 +76,8 @@ class InvalidSchema extends Error {
      * @param {string} schemaPattern
      */
     constructor(message, schemaPattern) {
-        super(`Invalid schema '${schemaPattern}': ${message}`);
+        const qSchemaPattern = JSON.stringify(schemaPattern);
+        super(`Invalid schema ${qSchemaPattern}: ${message}`);
         this.name = "InvalidSchemaError";
         this.schemaPattern = schemaPattern;
     }
