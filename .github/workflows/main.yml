@@ -68,9 +68,38 @@ jobs:
 
         steps:
             - uses: actions/checkout@v3
+              with:
+                fetch-depth: 0 # Fetch all history for git describe
+
+            - name: Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Derive version from latest git tag
+              id: gitver
+              shell: bash
+              run: |
+                VERSION="$(git describe | sed 's/^v//')"
+                echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                echo "Using version: $VERSION"
 
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v2
+              uses: docker/setup-buildx-action@v3
 
-            - name: Build
-              run: docker build --tag volodyslav --file Dockerfile .
+            - name: Build docker image
+              uses: docker/build-push-action@v6
+              with:
+                context: .
+                file: Dockerfile
+                push: ${{ github.ref == 'refs/heads/master' }}
+                tags: |
+                  ghcr.io/ottojung/volodyslav:${{ steps.gitver.outputs.version }}
+                  ghcr.io/ottojung/volodyslav:latest
+                cache-from: type=gha,scope=docker-volodyslav
+                cache-to: type=gha,mode=max,scope=docker-volodyslav
+
+            - name: Run docker image entrypoint
+              run: docker run ghcr.io/ottojung/volodyslav --version
