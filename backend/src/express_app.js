@@ -1,23 +1,8 @@
 const express = require("express");
 const { gentleWrap } = require("./gentlewrap");
+const { makeServerAddressAlreadyInUseError } = require("./express_app_errors");
 
 /** @typedef {import('./server').Capabilities} Capabilities */
-
-class ServerAddressAlreadyInUseError extends Error {
-    constructor() {
-        super(
-            "Server address is already in use. This usually means that the server is already running."
-        );
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is ServerAddressAlreadyInUseError}
- */
-function isServerAddressAlreadyInUseError(object) {
-    return object instanceof ServerAddressAlreadyInUseError;
-}
 
 /**
  * @returns {express.Express}
@@ -50,7 +35,7 @@ async function run(capabilities, app, fun) {
             "error",
             /** @param {NodeJS.ErrnoException} error */ (error) => {
                 if (error.code === "EADDRINUSE") {
-                    reject(new ServerAddressAlreadyInUseError());
+                    reject(makeServerAddressAlreadyInUseError());
                 } else {
                     reject(error);
                 }
@@ -72,5 +57,4 @@ async function run(capabilities, app, fun) {
 module.exports = {
     make,
     run,
-    isServerAddressAlreadyInUseError,
 };
