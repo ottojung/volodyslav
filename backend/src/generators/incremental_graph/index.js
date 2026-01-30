@@ -24,6 +24,8 @@ const {
     isMissingValue,
     makeSchemaOverlapError,
     isSchemaOverlap,
+    makeInvalidUnchangedError,
+    isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
 } = require('./errors');
@@ -55,6 +57,8 @@ module.exports = {
     isMissingValue,
     makeSchemaOverlapError,
     isSchemaOverlap,
+    makeInvalidUnchangedError,
+    isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
 };

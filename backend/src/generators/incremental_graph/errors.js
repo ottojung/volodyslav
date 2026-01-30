@@ -355,6 +355,41 @@ function isInvalidComputorReturnValue(object) {
 }
 
 /**
+ * Error for returning Unchanged without a previous value.
+ */
+class InvalidUnchanged extends Error {
+    /**
+     * @param {NodeKeyString} nodeKey
+     */
+    constructor(nodeKey) {
+        super(
+            `Computor returned Unchanged for node '${nodeKey}' without an existing value. ` +
+                `Unchanged is only valid when an old value is present.`
+        );
+        this.name = "InvalidUnchangedError";
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * Constructs an InvalidUnchanged error.
+ * @param {NodeKeyString} nodeKey
+ * @returns {InvalidUnchanged}
+ */
+function makeInvalidUnchangedError(nodeKey) {
+    return new InvalidUnchanged(nodeKey);
+}
+
+/**
+ * Type guard for InvalidUnchanged.
+ * @param {unknown} object
+ * @returns {object is InvalidUnchanged}
+ */
+function isInvalidUnchanged(object) {
+    return object instanceof InvalidUnchanged;
+}
+
+/**
  * Error for schema arity conflict (same head with different arities).
  */
 class SchemaArityConflict extends Error {
@@ -413,6 +448,8 @@ module.exports = {
     isSchemaOverlap,
     makeInvalidComputorReturnValueError,
     isInvalidComputorReturnValue,
+    makeInvalidUnchangedError,
+    isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
 };

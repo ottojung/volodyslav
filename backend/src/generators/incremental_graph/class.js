@@ -34,6 +34,7 @@ const {
     makeInvalidNodeError,
     makeMissingValueError,
     makeInvalidComputorReturnValueError,
+    makeInvalidUnchangedError,
     makeArityMismatchError,
     makeSchemaPatternNotAllowedError,
 } = require("./errors");
@@ -555,10 +556,7 @@ class IncrementalGraphClass {
         if (isUnchanged(computedValue)) {
             // Must have a previous value
             if (oldValue === undefined) {
-                throw makeInvalidComputorReturnValueError(
-                    deserializeNodeKey(nodeKey).head,
-                    "Unchanged (but no previous value exists)"
-                );
+                throw makeInvalidUnchangedError(nodeKey);
             }
         } else {
             // Must be a valid ComputedValue (not null/undefined)
