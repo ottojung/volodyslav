@@ -3,6 +3,5 @@ WORKDIR /workspace
 COPY package* frontend/package* backend/package* ./
 RUN npm install
 COPY . .
-RUN npm ci
 RUN sh scripts/install /usr/local
 ENTRYPOINT [ "volodyslav" ]
