@@ -252,41 +252,6 @@ function isInvalidExpression(object) {
 }
 
 /**
- * Error for attempting to set a non-source node.
- */
-class InvalidSet extends Error {
-    /**
-     * @param {NodeName} nodeName
-     */
-    constructor(nodeName) {
-        super(
-            `Cannot set non-source node '${nodeName}'. ` +
-                `Only source nodes (nodes with no inputs) can be set directly.`
-        );
-        this.name = "InvalidSetError";
-        this.nodeName = nodeName;
-    }
-}
-
-/**
- * Constructs an InvalidSet error.
- * @param {NodeName} nodeName
- * @returns {InvalidSet}
- */
-function makeInvalidSetError(nodeName) {
-    return new InvalidSet(nodeName);
-}
-
-/**
- * Type guard for InvalidSet.
- * @param {unknown} object
- * @returns {object is InvalidSet}
- */
-function isInvalidSet(object) {
-    return object instanceof InvalidSet;
-}
-
-/**
  * Error for schema cycle detection.
  */
 class SchemaCycle extends Error {
@@ -514,8 +479,6 @@ module.exports = {
     isInvalidBindings,
     makeInvalidExpressionError,
     isInvalidExpression,
-    makeInvalidSetError,
-    isInvalidSet,
     makeSchemaCycleError,
     isSchemaCycle,
     makeMissingValueError,
