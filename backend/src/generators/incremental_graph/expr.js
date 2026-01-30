@@ -48,6 +48,19 @@ const { makeInvalidExpressionError } = require("./errors");
  */
 
 /**
+ * Check if a string is a valid identifier.
+ * @param {string} value
+ * @returns {boolean}
+ */
+function checkIfIdentifier(value) {
+    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/**
  * Lexer for tokenizing expression strings.
  */
 class Lexer {
@@ -106,7 +119,7 @@ class Lexer {
         }
 
         // Check if it's a valid identifier
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+        if (!checkIfIdentifier(value)) {
             throw new Error(
                 `Invalid identifier at position ${startPos}: ${value}`
             );
@@ -399,4 +412,5 @@ module.exports = {
     canonicalizeMapping,
     renderExpr,
     renderArg,
+    checkIfIdentifier,
 };

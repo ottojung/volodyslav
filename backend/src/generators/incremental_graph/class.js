@@ -51,7 +51,7 @@ const {
     createVariablePositionMap,
     extractInputBindings,
 } = require("./compiled_node");
-const { parseExpr, renderExpr, canonicalizeMapping } = require("./expr");
+const { parseExpr, renderExpr, canonicalizeMapping, checkIfIdentifier } = require("./expr");
 const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
@@ -72,17 +72,15 @@ const MUTEX_KEY = "incremental-graph-operations";
  * @param {string} nodeName
  */
 function ensureNodeNameIsHead(nodeName) {
-    if (/\s/.test(nodeName)) {
-        throw makeInvalidNodeNameError(nodeName);
+    if (checkIfIdentifier(nodeName)) {
+        return;
     }
+
     let parsed;
     try {
         const schemaPattern = stringToSchemaPattern(nodeName);
         parsed = parseExpr(schemaPattern);
     } catch (error) {
-        if (/[(),]/.test(nodeName)) {
-            throw error;
-        }
         throw makeInvalidNodeNameError(nodeName);
     }
     if (parsed.kind === "call") {
