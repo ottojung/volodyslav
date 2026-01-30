@@ -178,6 +178,44 @@ function isArityMismatch(object) {
 }
 
 /**
+ * Error for invalid bindings values.
+ */
+class InvalidBindings extends Error {
+    /**
+     * @param {NodeName} nodeName - The node name (functor/head)
+     * @param {unknown} bindings
+     */
+    constructor(nodeName, bindings) {
+        super(
+            `Invalid bindings for nodeName '${nodeName}'. ` +
+                `Bindings must be an array of ConstValue instances.`
+        );
+        this.name = "InvalidBindingsError";
+        this.nodeName = nodeName;
+        this.bindings = bindings;
+    }
+}
+
+/**
+ * Constructs an InvalidBindings error.
+ * @param {NodeName} nodeName - The node name (functor/head)
+ * @param {unknown} bindings
+ * @returns {InvalidBindings}
+ */
+function makeInvalidBindingsError(nodeName, bindings) {
+    return new InvalidBindings(nodeName, bindings);
+}
+
+/**
+ * Type guard for InvalidBindings.
+ * @param {unknown} object
+ * @returns {object is InvalidBindings}
+ */
+function isInvalidBindings(object) {
+    return object instanceof InvalidBindings;
+}
+
+/**
  * Error for invalid expression syntax (parse failures).
  */
 class InvalidExpression extends Error {
@@ -470,6 +508,8 @@ module.exports = {
     isSchemaPatternNotAllowed,
     makeArityMismatchError,
     isArityMismatch,
+    makeInvalidBindingsError,
+    isInvalidBindings,
     makeInvalidExpressionError,
     isInvalidExpression,
     makeInvalidSetError,

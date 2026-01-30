@@ -37,6 +37,7 @@ const {
     makeInvalidComputorReturnValueError,
     makeInvalidUnchangedError,
     makeArityMismatchError,
+    makeInvalidBindingsError,
     makeSchemaPatternNotAllowedError,
 } = require("./errors");
 const {
@@ -93,6 +94,9 @@ function ensureNodeNameIsHead(nodeName) {
  * @returns {void}
  */
 function checkArity(compiledNode, bindings) {
+    if (!Array.isArray(bindings)) {
+        throw makeInvalidBindingsError(compiledNode.head, bindings);
+    }
     if (compiledNode.arity !== bindings.length) {
         throw makeArityMismatchError(
             compiledNode.head,
