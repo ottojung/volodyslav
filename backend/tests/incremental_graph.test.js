@@ -1788,15 +1788,15 @@ describe("generators/incremental_graph", () => {
             await graph.invalidate("node1");
             
             const nodes = await graph.debugListMaterializedNodes();
-            expect(nodes).toContain(toJsonKey("node1"));
-            expect(nodes).not.toContain(toJsonKey("node2"));
+            expect(nodes).toContainEqual(["node1", []]);
+            expect(nodes).not.toContainEqual(["node2", []]);
 
             // Pull node2
             await graph.pull("node2");
             
             const nodes2 = await graph.debugListMaterializedNodes();
-            expect(nodes2).toContain(toJsonKey("node1"));
-            expect(nodes2).toContain(toJsonKey("node2"));
+            expect(nodes2).toContainEqual(["node1", []]);
+            expect(nodes2).toContainEqual(["node2", []]);
             expect(nodes2.length).toBe(2);
 
             await db.close();
