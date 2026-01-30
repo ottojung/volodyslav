@@ -72,6 +72,9 @@ const MUTEX_KEY = "incremental-graph-operations";
  * @param {string} nodeName
  */
 function ensureNodeNameIsHead(nodeName) {
+    if (/\s/.test(nodeName)) {
+        throw makeInvalidNodeNameError(nodeName);
+    }
     let parsed;
     try {
         const schemaPattern = stringToSchemaPattern(nodeName);
