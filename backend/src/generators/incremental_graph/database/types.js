@@ -73,15 +73,6 @@
  */
 
 /**
- * Type guard to check if a value is a Freshness state.
- * @param {unknown} value
- * @returns {value is Freshness}
- */
-function isFreshness(value) {
-    return value === "up-to-date" || value === "potentially-outdated";
-}
-
-/**
  * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | 1} DatabaseStoredValue
  */
 
@@ -352,7 +343,6 @@ function schemaHashToString(schemaHash) {
  */
 
 module.exports = {
-    isFreshness,
     schemaHashToString,
     stringToSchemaHash,
     SchemaHashClass,

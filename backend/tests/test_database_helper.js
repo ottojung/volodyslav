@@ -13,7 +13,6 @@
  *   await testDb.put("key", "up-to-date");  // stores to storage.freshness
  */
 
-const { isFreshness } = require('../src/generators/incremental_graph/database');
 const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/incremental_graph/node_key');
 const { functor } = require('../src/generators/incremental_graph/expr');
 const { isJsonKey } = require('./test_json_key_helper');
@@ -51,7 +50,7 @@ function makeTestDatabase(graph) {
          */
         async put(key, value) {
             const jsonKey = toJsonKey(key);
-            if (isFreshness(value)) {
+            if (value === "up-to-date" || value === "potentially-outdated") {
                 await storage.freshness.put(jsonKey, value);
             } else {
                 await storage.values.put(jsonKey, value);
