@@ -85,6 +85,8 @@ function ensureNodeNameIsHead(nodeName) {
     }
     if (parsed.kind === "call") {
         throw makeSchemaPatternNotAllowedError(nodeName);
+    } else {
+        throw makeInvalidNodeNameError(nodeName);
     }
 }
 
