@@ -11,7 +11,6 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Counter} Counter */
-/** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').SchemaHash} SchemaHash */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */

@@ -502,7 +502,7 @@ describe("Schema validation (construction-time errors)", () => {
 });
 
 describe("Expression parsing & canonicalization at API boundaries", () => {
-    test("rejects non-natural numbers: negative", async () => {
+    test("rejects compound expressions", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             {
@@ -514,14 +514,12 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             },
         ]);
 
-        // In the new API, "id(-1)" would be parsed as a call expression
-        // but the parser rejects negative numbers, throwing InvalidExpression
-        await expect(g.pull("id(-1)")).rejects.toMatchObject({
-            name: "InvalidExpressionError",
+        await expect(g.pull("id(1,2)")).rejects.toMatchObject({
+            name: "InvalidNodeNameError",
         });
     });
 
-    test("rejects non-natural numbers: float", async () => {
+    test("rejects abstract expressions", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             {
@@ -533,18 +531,16 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             },
         ]);
 
-        // In the new API, "id(1.2)" would be parsed as a call expression
-        // but the parser rejects floats, throwing InvalidExpression
-        await expect(g.pull("id(1.2)")).rejects.toMatchObject({
-            name: "InvalidExpressionError",
+        await expect(g.pull("id(x)")).rejects.toMatchObject({
+            name: "SchemaPatternNotAllowedError",
         });
     });
 
-    test("rejects nat with leading zeros: 01", async () => {
+    test("rejects bracketed atoms", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             {
-                output: "id(n)",
+                output: "id()",
                 inputs: [],
                 computor: async (_i, _o, b) => ({ n: b[0] }),
                 isDeterministic: true,
@@ -552,10 +548,8 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             },
         ]);
 
-        // In the new API, "id(01)" would be parsed as a call expression
-        // but the parser rejects leading zeros, throwing InvalidExpression
-        await expect(g.pull("id(01)")).rejects.toMatchObject({
-            name: "InvalidExpressionError",
+        await expect(g.pull("id()")).rejects.toMatchObject({
+            name: "SchemaPatternNotAllowedError",
         });
     });
 });

@@ -14,11 +14,6 @@
  */
 
 /**
- * Union type for values that can be stored in the database.
- * @typedef {ComputedValue | Freshness} DatabaseStoredValue
- */
-
-/**
  * Capabilities needed for IncrementalGraph operations
  * @typedef {object} IncrementalGraphCapabilities
  * @property {RootDatabase} database - A root database instance
