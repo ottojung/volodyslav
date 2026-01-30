@@ -1,21 +1,24 @@
 /**
  * Test helper to create a compatibility database interface.
  * This helps tests transition from old db.put() pattern to new storage pattern.
- * 
+ *
  * Usage:
  *   const db = await getRootDatabase(capabilities);
  *   const graphDef = [..];
  *   const graph = makeIncrementalGraph(db, graphDef);
  *   const testDb = makeTestDatabase(graph);
- *   
+ *
  *   // Now use old pattern:
  *   await testDb.put("key", value);  // stores to storage.values
  *   await testDb.put("key", "up-to-date");  // stores to storage.freshness
  */
 
-const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/incremental_graph/node_key');
-const { functor } = require('../src/generators/incremental_graph/expr');
-const { isJsonKey } = require('./test_json_key_helper');
+const {
+    createNodeKeyFromPattern,
+    serializeNodeKey,
+} = require("../src/generators/incremental_graph/node_key");
+const { functor } = require("../src/generators/incremental_graph/expr");
+const { isJsonKey } = require("./test_json_key_helper");
 
 /**
  * Converts a node name to JSON key format if needed.
@@ -40,7 +43,7 @@ function toJsonKey(key) {
  */
 function makeTestDatabase(graph) {
     const storage = graph.getStorage();
-    
+
     return {
         /**
          * Put a value. Automatically routes to values or freshness database based on type.
@@ -56,7 +59,7 @@ function makeTestDatabase(graph) {
                 await storage.values.put(jsonKey, value);
             }
         },
-        
+
         /**
          * Delete a value. Tries both databases.
          * Automatically converts node names to JSON key format.
@@ -74,7 +77,7 @@ function makeTestDatabase(graph) {
             } catch (e) {
                 // Ignore if not found
             }
-        }
+        },
     };
 }
 
