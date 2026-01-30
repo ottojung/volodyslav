@@ -225,7 +225,8 @@ class InvalidExpression extends Error {
      * @param {string} reason
      */
     constructor(expression, reason) {
-        super(`Invalid expression '${expression}': ${reason}`);
+        const qExpression = JSON.stringify(expression);
+        super(`Invalid expression ${qExpression}: ${reason}`);
         this.name = "InvalidExpressionError";
         this.expression = expression;
     }
