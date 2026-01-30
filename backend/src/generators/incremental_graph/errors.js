@@ -43,7 +43,7 @@ class InvalidNodeName extends Error {
      * @param {string} nodeName
      */
     constructor(nodeName) {
-        super(`Invalid node name '${nodeName}'. Node names must be valid identifiers.`);
+        super(`Invalid node name ${JSON.stringify(nodeName)}. Node names must be valid identifiers.`);
         this.name = "InvalidNodeNameError";
         this.nodeName = nodeName;
     }
