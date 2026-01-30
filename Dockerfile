@@ -5,3 +5,5 @@ RUN npm install
 # copy everything
 COPY . .
 RUN npm ci
+RUN sh scripts/install /usr/local
+ENTRYPOINT [ "volodyslav" ]
