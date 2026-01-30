@@ -320,7 +320,7 @@ function renderArg(arg) {
  */
 function renderExpr(expr) {
     const nodeNameStr = nodeNameToString(expr.name);
-    if (expr.kind === "atom") {
+    if (expr.kind === "atom" || expr.args.length === 0) {
         return stringToSchemaPattern(nodeNameStr);
     } else {
         const renderedArgs = expr.args.map(renderArg).join(",");
