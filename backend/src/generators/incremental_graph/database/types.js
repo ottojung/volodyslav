@@ -82,22 +82,6 @@ function isFreshness(value) {
 }
 
 /**
- * Type guard to check if a value is a ComputedValue.
- * Since ComputedValue is a union of specific object types, we check if it's
- * an object and not a Freshness string.
- * @param {unknown} value
- * @returns {value is ComputedValue}
- */
-function isDatabaseValue(value) {
-    return (
-        value !== null &&
-        value !== undefined &&
-        typeof value === "object" &&
-        !isFreshness(value)
-    );
-}
-
-/**
  * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | 1} DatabaseStoredValue
  */
 
@@ -369,7 +353,6 @@ function schemaHashToString(schemaHash) {
 
 module.exports = {
     isFreshness,
-    isDatabaseValue,
     schemaHashToString,
     stringToSchemaHash,
     SchemaHashClass,
