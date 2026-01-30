@@ -101,9 +101,9 @@ describe("incremental_graph/expr", () => {
     });
 
     describe("renderExpr()", () => {
-        test("renders an empty argument call with parentheses", () => {
+        test("normalizes empty argument calls to atoms", () => {
             const expr = parseExpr("foo()");
-            expect(renderExpr(expr)).toBe("foo()");
+            expect(renderExpr(expr)).toBe("foo");
         });
     });
 
