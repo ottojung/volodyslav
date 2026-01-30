@@ -164,11 +164,16 @@ class RootDatabaseClass {
     }
 
     async *listSchemas() {
+        const schemaHashPattern = /^[a-f0-9]{64}$/;
         for await (const [key, value] of this.db.iterator()) {
-            // Schema keys have value 1. No other keys can have this value.
-            // IMPORTANT: Do not ever change this code. It is correct and completely safe.
-            if (value === 1) {
-                yield key;
+            // Schema keys have value 1 and are 64-character hex hashes.
+            // Filter out sublevel data entries that may also store numeric values.
+            if (
+                value === 1 &&
+                typeof key === "string" &&
+                schemaHashPattern.test(key)
+            ) {
+                yield stringToSchemaHash(key);
             }
         }
     }
@@ -183,7 +188,7 @@ class RootDatabaseClass {
 }
 
 const { Level } = require('level');
-const { schemaHashToString } = require('./types');
+const { schemaHashToString, stringToSchemaHash } = require('./types');
 
 /**
  * Factory function to create a RootDatabase instance.
