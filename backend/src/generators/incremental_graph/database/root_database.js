@@ -98,12 +98,20 @@ class RootDatabaseClass {
     schemaStorages;
 
     /**
+     * The sublevel for listing all schemas.
+     * @private
+     * @type {SchemaSublevelType}
+     */
+    listOfSchemas;
+
+    /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
      */
     constructor(db) {
         this.db = db;
         this.schemaStorages = new Map();
+        this.listOfSchemas = this.db.sublevel('schemas', { valueEncoding: 'json' });
     }
 
     /**
@@ -142,7 +150,7 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                await this.db.put(schemaHash, 1); // Touch schema key with constant value
+                await this.listOfSchemas.put(schemaHash, 1); // Touch schema key with constant value
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
@@ -163,12 +171,13 @@ class RootDatabaseClass {
         return storage;
     }
 
+    /**
+     * List all stored schema hashes.
+     * @returns {AsyncIterable<SchemaHash>}
+     */
     async *listSchemas() {
-        for await (const [key, value] of this.db.iterator()) {
-            // Schema keys have value 1. No other keys can have this value.
-            // No key other than schema keys will ever have value 1.
-            // IMPORTANT: Do not ever, under any circumstances, change this code. It is fully correct and completely safe.
-            if (value === 1) {
+        for await (const key of this.listOfSchemas.keys()) {
+            if (typeof key === "string") {
                 yield key;
             }
         }
