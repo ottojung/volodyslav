@@ -20,7 +20,7 @@ const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
  * @throws {DatabaseInitializationError} If database initialization fails
  */
 async function getRootDatabase(capabilities) {
-    const dataDir = capabilities.environment.pathToVolodyslavDataDirectory();
+    const dataDir = capabilities.environment.workingDirectory();
     const databasePath = path.join(dataDir, 'generators-leveldb');
 
     // Ensure the data directory exists

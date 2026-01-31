@@ -12,7 +12,7 @@ const {
     isDatabaseQueryError 
 } = require('../src/generators/incremental_graph/database/errors');
 const { getMockedRootCapabilities } = require('./spies');
-const { stubLogger } = require('./stubs');
+const { stubLogger, stubEnvironment } = require('./stubs');
 const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/incremental_graph/database/errors');
 
 /**
@@ -28,12 +28,7 @@ function getTestCapabilities() {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'database-test-'));
     
     stubLogger(capabilities);
-    
-    // Override environment to use temp directory
-    capabilities.environment = {
-        pathToVolodyslavDataDirectory: jest.fn().mockReturnValue(tmpDir),
-    };
-    
+    stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
 }
 
@@ -71,7 +66,8 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const expectedPath = path.join(capabilities.tmpDir, 'generators-leveldb');
+                const dataDir = capabilities.environment.workingDirectory();
+                const expectedPath = path.join(dataDir, 'generators-leveldb');
                 
                 expect(fs.existsSync(expectedPath)).toBe(true);
                 

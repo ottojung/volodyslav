@@ -5,14 +5,13 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
     makeInterface,
     isInterface,
 } = require("../src/generators/interface");
 const eventId = require("../src/event/id");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger } = require("./stubs");
+const { stubLogger, stubEnvironment } = require("./stubs");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -27,14 +26,8 @@ function getTestCapabilities() {
     const tmpDir = fs.mkdtempSync(
         path.join(os.tmpdir(), "interface-test-")
     );
-
     stubLogger(capabilities);
-
-    // Override environment to use temp directory
-    capabilities.environment = {
-        pathToVolodyslavDataDirectory: jest.fn().mockReturnValue(tmpDir),
-    };
-
+    stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
 }
 
@@ -53,12 +46,8 @@ describe("generators/interface", () => {
         test("creates and returns an interface instance", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
-
+                const iface = await makeInterface(capabilities);
                 expect(isInterface(iface)).toBe(true);
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -69,8 +58,7 @@ describe("generators/interface", () => {
         test("stores events in database under all_events key", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 const events = [
                     {
@@ -100,8 +88,6 @@ describe("generators/interface", () => {
                 
                 const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
                 expect(freshness).toBe("up-to-date");
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -110,8 +96,7 @@ describe("generators/interface", () => {
         test("overwrites previous events on subsequent updates", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 const firstEvents = [
                     {
@@ -147,8 +132,6 @@ describe("generators/interface", () => {
                 expect(result.events).toHaveLength(2);
                 expect(result.events[0].id).toBe("event-2");
                 expect(result.events[1].id).toBe("event-3");
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -157,8 +140,7 @@ describe("generators/interface", () => {
         test("handles empty events array", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 await iface.update([]);
 
@@ -168,8 +150,6 @@ describe("generators/interface", () => {
                 
                 const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
                 expect(freshness).toBe("up-to-date");
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -180,8 +160,7 @@ describe("generators/interface", () => {
         test("returns context for event with shared hashtags", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 const events = [
                     {
@@ -227,8 +206,6 @@ describe("generators/interface", () => {
                 expect(contextIds).toContain("1");
                 expect(contextIds).toContain("2");
                 expect(contextIds).not.toContain("3");
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -237,8 +214,7 @@ describe("generators/interface", () => {
         test("returns only the event itself when no shared hashtags", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 const events = [
                     {
@@ -259,8 +235,6 @@ describe("generators/interface", () => {
 
                 expect(context).toHaveLength(1);
                 expect(context[0].id.identifier).toBe("1");
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -269,8 +243,7 @@ describe("generators/interface", () => {
         test("propagates through incremental graph before returning context", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 // Add events
                 const events = [
@@ -299,8 +272,6 @@ describe("generators/interface", () => {
                 expect(eventContextEntry).toBeDefined();
                 expect(eventContextEntry.type).toBe("event_context");
                 expect(eventContextEntry.contexts).toHaveLength(1);
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -311,15 +282,12 @@ describe("generators/interface", () => {
         test("isInterface correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                const iface = makeInterface(db);
+                const iface = await makeInterface(capabilities);
 
                 expect(isInterface(iface)).toBe(true);
                 expect(isInterface({})).toBe(false);
                 expect(isInterface(null)).toBe(false);
                 expect(isInterface(undefined)).toBe(false);
-
-                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }

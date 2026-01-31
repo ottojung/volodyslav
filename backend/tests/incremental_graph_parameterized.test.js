@@ -12,7 +12,7 @@ const {
     isSchemaPatternNotAllowed,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger } = require("./stubs");
+const { stubLogger, stubEnvironment } = require("./stubs");
 
 /**
  * Creates test capabilities with a temporary data directory.
@@ -24,11 +24,7 @@ function getTestCapabilities() {
     );
 
     stubLogger(capabilities);
-
-    capabilities.environment = {
-        pathToVolodyslavDataDirectory: jest.fn().mockReturnValue(tmpDir),
-    };
-
+    stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
 }
 

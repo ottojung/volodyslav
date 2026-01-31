@@ -13,7 +13,7 @@ const {
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase } = require("./test_database_helper");
-const { stubLogger } = require("./stubs");
+const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
 /**
@@ -26,11 +26,7 @@ function getTestCapabilities() {
     );
 
     stubLogger(capabilities);
-
-    capabilities.environment = {
-        pathToVolodyslavDataDirectory: jest.fn().mockReturnValue(tmpDir),
-    };
-
+    stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
 }
 

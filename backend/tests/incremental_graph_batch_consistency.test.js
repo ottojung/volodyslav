@@ -9,7 +9,7 @@ const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger } = require("./stubs");
+const { stubLogger, stubEnvironment } = require("./stubs");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -26,12 +26,7 @@ function getTestCapabilities() {
     );
 
     stubLogger(capabilities);
-
-    // Override environment to use temp directory
-    capabilities.environment = {
-        pathToVolodyslavDataDirectory: jest.fn().mockReturnValue(tmpDir),
-    };
-
+    stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
 }
 

@@ -13,7 +13,7 @@ const {
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
-const { stubLogger } = require("./stubs");
+const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
 /**
@@ -31,12 +31,7 @@ function getTestCapabilities() {
     );
 
     stubLogger(capabilities);
-
-    // Override environment to use temp directory
-    capabilities.environment = {
-        pathToVolodyslavDataDirectory: jest.fn().mockReturnValue(tmpDir),
-    };
-
+    stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
 }
 
