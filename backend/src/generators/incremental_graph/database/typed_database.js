@@ -61,14 +61,20 @@ class TypedDatabaseClass {
     /**
      * Retrieve a value from the database.
      *
-     * Note: Level v10+ returns `undefined` for missing keys rather than throwing an error.
-     * This is the expected behavior and we pass it through directly.
-     *
      * @param {import('./types').DatabaseKey} key - The key to retrieve
      * @returns {Promise<TValue | undefined>}
      */
     async get(key) {
-        return this.sublevel.get(key);
+        try {
+            return await this.sublevel.get(key);
+        } catch (error) {
+            if (error instanceof Error && "code" in error) {
+                if (error.code === "LEVEL_NOT_FOUND") {
+                    return undefined;
+                }
+            }
+            throw error;
+        }
     }
 
     /**
