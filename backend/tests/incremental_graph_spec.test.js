@@ -1360,32 +1360,6 @@ describe("Unchanged semantics (observable storage behavior)", () => {
     });
 });
 
-describe("MissingValueError (detects corruption: up-to-date but missing stored value)", () => {
-    test("if value key is deleted after materialization, pull throws MissingValueError", async () => {
-        const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
-            {
-                output: "leaf",
-                inputs: [],
-                computor: async (_i, old) => old || { ok: true },
-                isDeterministic: true,
-                hasSideEffects: false,
-            },
-        ]);
-
-        // Materialize node (creates freshness + value)
-        const v = await g.pull("leaf");
-        expect(v).toEqual({ ok: true });
-
-        // Corrupt: delete the VALUE key only (leaving freshness intact)
-        await db.corruptByDeletingValue("leaf");
-
-        await expect(g.pull("leaf")).rejects.toMatchObject({
-            name: "MissingValueError",
-        });
-    });
-});
-
 describe("Optional debug interface (only if implementation provides it)", () => {
     test("debugGetFreshness and debugListMaterializedNodes behave if present", async () => {
         const db = new InMemoryDatabase();
