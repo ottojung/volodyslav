@@ -586,7 +586,7 @@ Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `
 
 ### 4.2 Invariants
 
-**INV-01 (Outdated Propagation):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized (pulled or invalidated) are also `potentially-outdated`.
+**INV-01 (Outdated Downstream):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized (pulled or invalidated) are also `potentially-outdated`.
 
 **INV-02 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
