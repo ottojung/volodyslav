@@ -334,6 +334,15 @@ class IncrementalGraphClass {
                 batch
             );
 
+            // Ensure reverse dependencies are indexed for this materialized node.
+            if (nodeDefinition.inputs.length > 0) {
+                await this.storage.ensureReverseDepsIndexed(
+                    nodeDefinition.output,
+                    nodeDefinition.inputs,
+                    batch
+                );
+            }
+
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(nodeDefinition.output, batch);
         });
