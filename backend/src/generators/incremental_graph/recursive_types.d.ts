@@ -1,2 +1,2 @@
 
-export type ConstValue = number | string | null | Array<ConstValue> | { [key: string]: ConstValue };
+export type ConstValue = number | string | Array<ConstValue> | { [key: string]: ConstValue };
