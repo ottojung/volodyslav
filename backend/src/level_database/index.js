@@ -8,11 +8,11 @@ const { Level } = require('level');
 
 /**
  * @template K, V
- * @param {ExistingFile} databasePath 
+ * @param {string} databasePath 
  * @returns {Level<K, V>}
  */
 function initialize(databasePath) {
-    return new Level(databasePath.path, { valueEncoding: 'json' });
+    return new Level(databasePath, { valueEncoding: 'json' });
 }
 
 function make() {
@@ -23,7 +23,7 @@ function make() {
 
 /**
  * @typedef {object} LevelDatabase
- * @property {<K,V>(databasePath: ExistingFile) => Level<K, V>} initialize
+ * @property {<K,V>(databasePath: string) => Level<K, V>} initialize
  */
 
 module.exports = {

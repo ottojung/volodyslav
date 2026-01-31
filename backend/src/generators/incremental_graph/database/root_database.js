@@ -190,17 +190,26 @@ class RootDatabaseClass {
     }
 }
 
-const { Level } = require('level');
 const { schemaHashToString } = require('./types');
 
 /**
+ * @typedef {import('../../../level_database').LevelDatabase} LevelDatabase
+ */
+
+/**
+ * @typedef {object} RootDatabaseCapabilities
+ * @property {LevelDatabase} levelDatabase - The Level database capability
+ */
+
+/**
  * Factory function to create a RootDatabase instance.
+ * @param {RootDatabaseCapabilities} capabilities - The capabilities required to create the database
  * @param {string} databasePath - Path to the database directory
  * @returns {Promise<RootDatabaseClass>}
  */
-async function makeRootDatabase(databasePath) {
+async function makeRootDatabase(capabilities, databasePath) {
     /** @type {RootLevelType} */
-    const db = new Level(databasePath, { valueEncoding: 'json' });
+    const db = capabilities.levelDatabase.initialize(databasePath);
     await db.open();
     return new RootDatabaseClass(db);
 }
