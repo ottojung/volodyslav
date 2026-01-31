@@ -4,9 +4,9 @@
 
 const { parseExpr, renderExpr } = require("./expr");
 const { stringToSchemaPattern } = require("./database");
-const { 
-    makeInvalidSchemaError, 
-    makeSchemaOverlapError, 
+const {
+    makeInvalidSchemaError,
+    makeSchemaOverlapError,
     makeSchemaCycleError,
     makeSchemaArityConflictError,
 } = require("./errors");
@@ -27,7 +27,7 @@ const {
 function extractVariables(expr) {
     /** @type {Set<string>} */
     const vars = new Set();
-    
+
     if (expr.kind === "call") {
         for (const arg of expr.args) {
             // Only identifiers are variables
@@ -36,7 +36,7 @@ function extractVariables(expr) {
             }
         }
     }
-    
+
     return vars;
 }
 
@@ -49,12 +49,12 @@ function extractVariables(expr) {
 function findRepeatedVarPositions(outputExpr) {
     /** @type {Map<string, number[]>} */
     const positions = new Map();
-    
+
     if (outputExpr.kind === "call") {
         for (let i = 0; i < outputExpr.args.length; i++) {
             const arg = outputExpr.args[i];
             if (arg === undefined) continue;
-            
+
             if (arg.kind === "identifier") {
                 const varName = arg.value;
                 if (!positions.has(varName)) {
@@ -67,7 +67,7 @@ function findRepeatedVarPositions(outputExpr) {
             }
         }
     }
-    
+
     // Filter to only include variables that appear more than once
     const repeated = new Map();
     for (const [varName, posList] of positions.entries()) {
@@ -75,7 +75,7 @@ function findRepeatedVarPositions(outputExpr) {
             repeated.set(varName, posList);
         }
     }
-    
+
     return repeated;
 }
 
@@ -88,7 +88,7 @@ function validateNoDuplicateVariables(expr, exprStr) {
     if (expr.kind !== "call") {
         return; // Atoms have no variables
     }
-    
+
     const seen = new Set();
     for (const arg of expr.args) {
         if (arg.kind === "identifier") {
@@ -96,7 +96,7 @@ function validateNoDuplicateVariables(expr, exprStr) {
             if (seen.has(varName)) {
                 throw makeInvalidSchemaError(
                     `Duplicate variable '${varName}' in expression`,
-                    exprStr
+                    exprStr,
                 );
             }
             seen.add(varName);
@@ -114,20 +114,20 @@ function validateNoDuplicateVariables(expr, exprStr) {
 function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
     const outputVars = extractVariables(outputExpr);
     const inputVars = new Set();
-    
+
     for (const inputExpr of inputExprs) {
         const vars = extractVariables(inputExpr);
         for (const v of vars) {
             inputVars.add(v);
         }
     }
-    
+
     // Check that all input variables are in output variables
     for (const inputVar of inputVars) {
         if (!outputVars.has(inputVar)) {
             throw makeInvalidSchemaError(
                 `Input variable '${inputVar}' is not present in output pattern`,
-                outputStr
+                outputStr,
             );
         }
     }
@@ -136,7 +136,7 @@ function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
 /**
  * Minimal pattern interface for overlap checking.
  * @typedef {object} PatternForOverlap
- * @property {ParsedExpr} outputExpr - The output expression  
+ * @property {ParsedExpr} outputExpr - The output expression
  * @property {NodeName} head - Head/name of the pattern
  * @property {number} arity - Number of arguments
  */
@@ -145,7 +145,7 @@ function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
  * Checks if two patterns can potentially match the same concrete keys.
  * With constants removed, patterns overlap if and only if they have
  * the same head (functor) and the same arity.
- * 
+ *
  * @param {PatternForOverlap} node1
  * @param {PatternForOverlap} node2
  * @returns {boolean} True if patterns can overlap
@@ -165,15 +165,16 @@ function validateNoOverlap(compiledNodes) {
         for (let j = i + 1; j < compiledNodes.length; j++) {
             const node1 = compiledNodes[i];
             const node2 = compiledNodes[j];
-            
+
             if (node1 === undefined || node2 === undefined) {
                 throw new Error("Unexpected undefined node in validation");
             }
-            
+
             if (patternsCanOverlap(node1, node2)) {
-                throw makeSchemaOverlapError(
-                    [node1.canonicalOutput, node2.canonicalOutput]
-                );
+                throw makeSchemaOverlapError([
+                    node1.canonicalOutput,
+                    node2.canonicalOutput,
+                ]);
             }
         }
     }
@@ -198,7 +199,7 @@ function validateAcyclic(compiledNodes) {
             const inputDummy = {
                 outputExpr: inputExpr,
                 head: inputExpr.name,
-                arity: inputExpr.kind === 'call' ? inputExpr.args.length : 0,
+                arity: inputExpr.kind === "call" ? inputExpr.args.length : 0,
             };
 
             for (const potentialDep of compiledNodes) {
@@ -230,9 +231,10 @@ function validateAcyclic(compiledNodes) {
             if (!visited.has(neighbor)) {
                 dfs(neighbor);
             } else if (recursionStack.has(neighbor)) {
-                throw makeSchemaCycleError(
-                    [node.canonicalOutput, neighbor.canonicalOutput]
-                );
+                throw makeSchemaCycleError([
+                    node.canonicalOutput,
+                    neighbor.canonicalOutput,
+                ]);
             }
         }
 
@@ -255,20 +257,20 @@ function validateAcyclic(compiledNodes) {
 function validateSingleArityPerHead(compiledNodes) {
     /** @type {Map<NodeName, Set<number>>} */
     const headToArities = new Map();
-    
+
     for (const node of compiledNodes) {
         const head = node.head;
-        
+
         if (!headToArities.has(head)) {
             headToArities.set(head, new Set());
         }
-        
+
         const arities = headToArities.get(head);
         if (arities) {
             arities.add(node.arity);
         }
     }
-    
+
     // Check for conflicts
     for (const [head, arities] of headToArities.entries()) {
         if (arities.size > 1) {
@@ -288,18 +290,18 @@ function validateInputArities(compiledNodes) {
     // Build map of head -> expected arity from output patterns
     /** @type {Map<NodeName, number>} */
     const headToArity = new Map();
-    
+
     for (const node of compiledNodes) {
         headToArity.set(node.head, node.arity);
     }
-    
+
     // Validate all input patterns
     for (const node of compiledNodes) {
         for (let i = 0; i < node.inputExprs.length; i++) {
             const inputExpr = node.inputExprs[i];
             const inputStr = node.source.inputs[i];
             if (!inputExpr || !inputStr) continue;
-            
+
             const inputHead = inputExpr.name;
             const inputArity = inputExpr.args.length;
             const expectedArity = headToArity.get(inputHead);
@@ -307,16 +309,16 @@ function validateInputArities(compiledNodes) {
             if (expectedArity === undefined) {
                 throw makeInvalidSchemaError(
                     `Input pattern '${inputStr}' references undefined head '${inputHead}'. ` +
-                    `Every input pattern must match a schema output pattern.`,
-                    node.source.output
+                        `Every input pattern must match a schema output pattern.`,
+                    node.source.output,
                 );
             }
 
             if (inputArity !== expectedArity) {
                 throw makeInvalidSchemaError(
                     `Input pattern '${inputStr}' has arity ${inputArity}, but head '${inputHead}' is defined with arity ${expectedArity}. ` +
-                    `All references to the same head must use consistent arity (expected ${expectedArity} arguments)`,
-                    node.source.output
+                        `All references to the same head must use consistent arity (expected ${expectedArity} arguments)`,
+                    node.source.output,
                 );
             }
         }
@@ -332,14 +334,14 @@ function compileNodeDef(nodeDef) {
     // Parse output
     const outputExpr = parseExpr(stringToSchemaPattern(nodeDef.output));
     const canonicalOutput = renderExpr(outputExpr);
-    
+
     // Validate no duplicate variables in output
     validateNoDuplicateVariables(outputExpr, nodeDef.output);
-    
+
     // Parse inputs
     const inputExprs = nodeDef.inputs.map(stringToSchemaPattern).map(parseExpr);
     const canonicalInputs = inputExprs.map(renderExpr);
-    
+
     // Validate no duplicate variables in any input
     for (let i = 0; i < nodeDef.inputs.length; i++) {
         const inputExpr = inputExprs[i];
@@ -348,18 +350,18 @@ function compileNodeDef(nodeDef) {
             validateNoDuplicateVariables(inputExpr, inputStr);
         }
     }
-    
+
     // Extract head and arity from output
     const head = outputExpr.name;
     const arity = outputExpr.args.length;
-    
+
     // Determine if output is a pattern (contains variables)
     const outputVars = extractVariables(outputExpr);
     const isPattern = outputVars.size > 0;
-    
+
     // Find repeated variable positions
     const repeatedVarPositions = findRepeatedVarPositions(outputExpr);
-    
+
     // Extract variables used in inputs
     const varsUsedInInputs = new Set();
     for (const inputExpr of inputExprs) {
@@ -368,10 +370,10 @@ function compileNodeDef(nodeDef) {
             varsUsedInInputs.add(v);
         }
     }
-    
+
     // Validate variable coverage
     validateVariableCoverage(outputExpr, inputExprs, nodeDef.output);
-    
+
     return {
         source: nodeDef,
         outputExpr,
@@ -395,12 +397,12 @@ function compileNodeDef(nodeDef) {
 function createVariablePositionMap(outputExpr) {
     /** @type {Map<string, number>} */
     const varToPosition = new Map();
-    
+
     if (outputExpr.kind === "call") {
         for (let i = 0; i < outputExpr.args.length; i++) {
             const arg = outputExpr.args[i];
             if (arg === undefined) continue;
-            
+
             if (arg.kind === "identifier") {
                 const varName = arg.value;
                 // Use first occurrence if variable appears multiple times
@@ -410,7 +412,7 @@ function createVariablePositionMap(outputExpr) {
             }
         }
     }
-    
+
     return varToPosition;
 }
 
@@ -427,7 +429,7 @@ function extractInputBindings(inputExpr, outputBindings, varToPosition) {
     if (inputExpr.kind === "atom") {
         return [];
     }
-    
+
     // For call expressions, map each argument variable to its binding value
     const inputBindings = [];
     for (const arg of inputExpr.args) {
@@ -436,19 +438,19 @@ function extractInputBindings(inputExpr, outputBindings, varToPosition) {
             const position = varToPosition.get(varName);
             if (position === undefined) {
                 throw new Error(
-                    `Variable '${varName}' not found in output pattern (should have been caught by validation)`
+                    `Variable '${varName}' not found in output pattern (should have been caught by validation)`,
                 );
             }
             const binding = outputBindings[position];
             if (binding === undefined) {
                 throw new Error(
-                    `No binding provided for variable '${varName}' at position ${position}`
+                    `No binding provided for variable '${varName}' at position ${position}`,
                 );
             }
             inputBindings.push(binding);
         }
     }
-    
+
     return inputBindings;
 }
 
