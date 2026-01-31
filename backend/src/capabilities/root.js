@@ -24,6 +24,7 @@
 /** @typedef {import('../runtime_state_storage').RuntimeStateCapability} RuntimeStateCapability */
 /** @typedef {import('../threading').Threading} Threading */
 /** @typedef {import('../wifi').WifiConnectionChecker} WifiConnectionChecker */
+/** @typedef {import('../level_database').LevelDatabase} LevelDatabase */
 
 
 /**
@@ -50,6 +51,7 @@
  * @property {RuntimeStateCapability} state - A runtime state storage instance.
  * @property {Threading} threading - A threading instance.
  * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
+ * @property {LevelDatabase} levelDatabase - A level database instance.
  */
 
 const random = require("../random");
@@ -76,6 +78,7 @@ const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
 const schedule = require('../scheduler');
 const runtimeStateStorage = require('../runtime_state_storage');
 const threadingCapability = require('../threading');
+const levelDatabaseCapability = require('../level_database');
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -114,6 +117,7 @@ const make = () => {
         scheduler: schedule.make(() => ret),
         state: runtimeStateStorage.make(() => ret),
         threading,
+        levelDatabase: levelDatabaseCapability.make(),
     };
 
     return ret;
