@@ -246,41 +246,6 @@ function isSchemaCycle(object) {
 }
 
 /**
- * Error for missing value when node is marked up-to-date.
- */
-class MissingValue extends Error {
-    /**
-     * @param {NodeKeyString} nodeKey
-     */
-    constructor(nodeKey) {
-        super(
-            `Expected value for up-to-date node '${nodeKey}', but found none. ` +
-                `This indicates database corruption or an implementation bug.`
-        );
-        this.name = "MissingValueError";
-        this.nodeKey = nodeKey;
-    }
-}
-
-/**
- * Constructs a MissingValue error.
- * @param {NodeKeyString} nodeKey
- * @returns {MissingValue}
- */
-function makeMissingValueError(nodeKey) {
-    return new MissingValue(nodeKey);
-}
-
-/**
- * Type guard for MissingValue.
- * @param {unknown} object
- * @returns {object is MissingValue}
- */
-function isMissingValue(object) {
-    return object instanceof MissingValue;
-}
-
-/**
  * Error for overlapping schema patterns.
  */
 class SchemaOverlap extends Error {
@@ -441,8 +406,6 @@ module.exports = {
     isInvalidExpression,
     makeSchemaCycleError,
     isSchemaCycle,
-    makeMissingValueError,
-    isMissingValue,
     makeSchemaOverlapError,
     isSchemaOverlap,
     makeInvalidComputorReturnValueError,

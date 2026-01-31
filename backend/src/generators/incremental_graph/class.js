@@ -33,7 +33,6 @@ const { isUnchanged } = require("./unchanged");
 const {
     makeInvalidNodeError,
     makeInvalidNodeNameError,
-    makeMissingValueError,
     makeInvalidComputorReturnValueError,
     makeInvalidUnchangedError,
     makeArityMismatchError,
@@ -619,7 +618,7 @@ class IncrementalGraphClass {
             // Return old value (must exist if Unchanged returned)
             const result = await batch.values.get(nodeKey);
             if (result === undefined) {
-                throw makeMissingValueError(nodeKey);
+                throw makeInvalidUnchangedError(nodeKey);
             }
             return { value: result, status: "unchanged" };
         } else {
@@ -733,7 +732,7 @@ class IncrementalGraphClass {
             if (nodeFreshness === "up-to-date") {
                 const result = await batch.values.get(nodeKeyStr);
                 if (result === undefined) {
-                    throw makeMissingValueError(nodeKeyStr);
+                    throw new Error(`Impossible: up-to-date node has no stored value: ${nodeKeyStr}`);
                 }
                 return { value: result, status: "cached" };
             }
