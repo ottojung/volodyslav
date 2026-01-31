@@ -27,12 +27,14 @@ const {
     makeSchemaArityConflictError,
     isSchemaArityConflict,
 } = require('./errors');
+const { makeRootDatabase } = require('./database');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 module.exports = {
+    makeRootDatabase,
     makeIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,

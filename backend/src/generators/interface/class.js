@@ -5,8 +5,10 @@
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
+/** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
-const { makeIncrementalGraph } = require("../incremental_graph");
+const path = require('path');
+const { makeIncrementalGraph, makeRootDatabase } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 
 /**
@@ -84,10 +86,13 @@ class InterfaceClass {
 
 /**
  * Factory function to create an Interface instance.
- * @param {RootDatabase} database - The root database instance
- * @returns {InterfaceClass}
+ * @param {GeneratorsCapabilities} capabilities
+ * @returns {Promise<InterfaceClass>}
  */
-function makeInterface(database) {
+async function makeInterface(capabilities) {
+    const wd = capabilities.environment.workingDirectory();
+    const databasePath = path.join(wd, "generators-database");
+    const database = await makeRootDatabase(capabilities, databasePath);
     return new InterfaceClass(database);
 }
 
