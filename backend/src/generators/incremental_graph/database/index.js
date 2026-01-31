@@ -37,7 +37,7 @@ async function getRootDatabase(capabilities) {
 
     // Open or create the database
     try {
-        const db = await makeRootDatabase(databasePath);
+        const db = await makeRootDatabase(capabilities, databasePath);
         capabilities.logger.logDebug({ databasePath }, 'Root database opened');
         return db;
     } catch (error) {

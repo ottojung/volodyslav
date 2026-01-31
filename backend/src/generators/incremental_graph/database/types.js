@@ -5,6 +5,7 @@
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../../../logger').Logger} Logger */
+/** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
 
 /**
  * @template K, V
@@ -24,6 +25,7 @@
  * @property {FileCreator} creator - A file creator instance
  * @property {DatabaseEnvironment} environment - An environment instance
  * @property {Logger} logger - A logger instance
+ * @property {LevelDatabase} levelDatabase - A level database instance
  */
 
 /**
