@@ -268,8 +268,13 @@ class IncrementalGraphClass {
                 // Node not yet materialized, skip
                 continue;
             } else if (currentFreshness === "potentially-outdated") {
-                // Already potentially-outdated, skip
-                continue;
+                // Already potentially-outdated: still propagate to dependents.
+                nodesBecomingOutdated.add(output);
+                await this.propagateOutdated(
+                    output,
+                    batch,
+                    nodesBecomingOutdated
+                );
             } else {
                 /** @type {never} */
                 const x = currentFreshness;
