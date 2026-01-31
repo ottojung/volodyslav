@@ -37,7 +37,6 @@ const {
     makeInvalidComputorReturnValueError,
     makeInvalidUnchangedError,
     makeArityMismatchError,
-    makeInvalidBindingsError,
     makeSchemaPatternNotAllowedError,
 } = require("./errors");
 const {

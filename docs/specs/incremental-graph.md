@@ -561,7 +561,6 @@ type Computor = (
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
-| `InvalidBindingsError` | `nodeName: string, bindings: unknown` | bindings is not an array or contains invalid values (public API) |
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 
