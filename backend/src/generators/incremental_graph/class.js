@@ -268,7 +268,7 @@ class IncrementalGraphClass {
                 // Node not yet materialized, skip
                 continue;
             } else if (currentFreshness === "potentially-outdated") {
-                // Already potentially-outdated, skip. This relies on invariant 
+                // Already potentially-outdated, skip. This relies on invariant INV-01.
                 continue;
             } else {
                 /** @type {never} */
