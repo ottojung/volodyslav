@@ -28,11 +28,11 @@
  */
 
 /**
- * @typedef {string} VersionString
+ * @typedef {(oldValue: unknown) => Promise<ComputedValue | Unchanged>} NodeDefMigration
  */
 
 /**
- * @typedef {(oldValue: unknown) => Promise<ComputedValue | Unchanged>} NodeDefMigration
+ * @typedef {import('./database/types').VersionString} VersionString
  */
 
 /**

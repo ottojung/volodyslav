@@ -24,6 +24,10 @@
  */
 
 /**
+ * @typedef {string} VersionString
+ */
+
+/**
  * @typedef {import('../../../event').Event} Event
  */
 
@@ -331,7 +335,7 @@ function schemaHashToString(schemaHash) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, SchemaHash, 1>} ListOfSchemasType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, SchemaHash, VersionString>} ListOfSchemasType
  */
 
 /**
