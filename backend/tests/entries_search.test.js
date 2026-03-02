@@ -190,6 +190,24 @@ describe("GET /api/entries with search", () => {
         expect(res.body.next).toBeDefined();
     });
 
+    it("next URL preserves search parameter", async () => {
+        const { app } = await makeTestApp();
+
+        await createTestEntry(app, "food - First meal");
+        await createTestEntry(app, "food - Second meal");
+        await createTestEntry(app, "food - Third meal");
+        await createTestEntry(app, "sleep - Went to bed");
+
+        const res = await request(app).get("/api/entries?search=food&limit=2&page=1");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.next).not.toBeNull();
+        const nextUrl = new URL(res.body.next);
+        expect(nextUrl.searchParams.get("search")).toBe("food");
+        expect(nextUrl.searchParams.get("page")).toBe("2");
+        expect(nextUrl.searchParams.get("limit")).toBe("2");
+    });
+
     it("search pagination page 2 returns remaining results", async () => {
         const { app } = await makeTestApp();
 
