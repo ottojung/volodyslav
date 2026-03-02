@@ -4,9 +4,11 @@
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../../../logger').Logger} Logger */
 /** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
 /** @typedef {import('../../../environment').Environment} Environment */
+/** @typedef {import('../../../subprocess/command').Command} Command */
 
 /**
  * @template K, V
@@ -18,9 +20,15 @@
  * @typedef {object} DatabaseCapabilities
  * @property {FileChecker} checker - A file checker instance
  * @property {FileCreator} creator - A file creator instance
+ * @property {FileReader} reader - A file reader instance
  * @property {Environment} environment - An environment instance
  * @property {Logger} logger - A logger instance
  * @property {LevelDatabase} levelDatabase - A level database instance
+ * @property {Command} git - A command instance for Git operations.
+ */
+
+/**
+ * @typedef {string} VersionString
  */
 
 /**
@@ -331,7 +339,7 @@ function schemaHashToString(schemaHash) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, SchemaHash, 1>} ListOfSchemasType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, SchemaHash, VersionString>} ListOfSchemasType
  */
 
 /**

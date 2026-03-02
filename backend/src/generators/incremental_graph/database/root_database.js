@@ -3,6 +3,7 @@
  * Provides schema-namespaced storage using LevelDB sublevels.
  */
 
+const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
@@ -14,6 +15,7 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').SchemaHash} SchemaHash */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').VersionString} VersionString */
 
 /**
  * @template T
@@ -107,9 +109,11 @@ class RootDatabaseClass {
     /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
+     * @param {VersionString} version - The version of the database
      */
-    constructor(db) {
+    constructor(db, version) {
         this.db = db;
+        this.version = version;
         this.schemaStorages = new Map();
         this.listOfSchemas = this.db.sublevel('schemas', { valueEncoding: 'json' });
     }
@@ -150,7 +154,7 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                await this.listOfSchemas.put(schemaHash, 1); // Touch schema key with constant value
+                await this.listOfSchemas.put(schemaHash, this.version);
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
@@ -197,8 +201,28 @@ const { schemaHashToString } = require('./types');
  */
 
 /**
+ * @typedef {import('../../../subprocess/command').Command} Command
+ */
+
+/**
+ * @typedef {import('../../../logger').Logger} Logger
+ */
+
+/**
+ * @typedef {import('../../../filesystem/reader').FileReader} FileReader
+ */
+
+/**
+ * @typedef {import('../../../filesystem/checker').FileChecker} FileChecker
+ */
+
+/**
  * @typedef {object} RootDatabaseCapabilities
  * @property {LevelDatabase} levelDatabase - The Level database capability
+ * @property {Command} git - A command instance for Git operations.
+ * @property {Logger} logger - A logger instance.
+ * @property {FileReader} reader - A file reader instance.
+ * @property {FileChecker} checker - A file checker instance.
  */
 
 /**
@@ -208,10 +232,11 @@ const { schemaHashToString } = require('./types');
  * @returns {Promise<RootDatabaseClass>}
  */
 async function makeRootDatabase(capabilities, databasePath) {
+    const version = await getVersion(capabilities);
     /** @type {RootLevelType} */
     const db = capabilities.levelDatabase.initialize(databasePath);
     await db.open();
-    return new RootDatabaseClass(db);
+    return new RootDatabaseClass(db, version);
 }
 
 /**

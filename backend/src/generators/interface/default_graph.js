@@ -1,5 +1,5 @@
 
-const { isUnchanged } = require("../incremental_graph");
+const { isUnchanged, makeUnchanged } = require("../incremental_graph");
 const { metaEvents, eventContext } = require("../individual");
 
 /**
@@ -14,6 +14,9 @@ function createDefaultGraphDefinition(getAllEvents) {
             inputs: [],
             computor: async (_inputs, _oldValue, _bindings) => {
                 return getAllEvents();
+            },
+            migrations: {
+                "v0.1.0": async (_oldValue) => makeUnchanged(),
             },
             isDeterministic: true,
             hasSideEffects: false,
@@ -53,6 +56,7 @@ function createDefaultGraphDefinition(getAllEvents) {
                     meta_events: result,
                 };
             },
+            migrations: {},
             isDeterministic: true,
             hasSideEffects: false,
         },
@@ -78,6 +82,7 @@ function createDefaultGraphDefinition(getAllEvents) {
                     contexts: contexts,
                 };
             },
+            migrations: {},
             isDeterministic: true,
             hasSideEffects: false,
         },
