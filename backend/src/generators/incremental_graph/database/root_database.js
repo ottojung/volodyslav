@@ -201,8 +201,28 @@ const { schemaHashToString } = require('./types');
  */
 
 /**
+ * @typedef {import('../../../subprocess/command').Command} Command
+ */
+
+/**
+ * @typedef {import('../../../logger').Logger} Logger
+ */
+
+/**
+ * @typedef {import('../../../filesystem/reader').FileReader} FileReader
+ */
+
+/**
+ * @typedef {import('../../../filesystem/checker').FileChecker} FileChecker
+ */
+
+/**
  * @typedef {object} RootDatabaseCapabilities
  * @property {LevelDatabase} levelDatabase - The Level database capability
+ * @property {Command} git - A command instance for Git operations.
+ * @property {Logger} logger - A logger instance.
+ * @property {FileReader} reader - A file reader instance.
+ * @property {FileChecker} checker - A file checker instance.
  */
 
 /**
