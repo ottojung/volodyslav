@@ -270,9 +270,10 @@ class IncrementalGraphClass {
      * @private
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
+     * @param {BatchBuilder | undefined} [externalBatch] - Optional external batch to use instead of opening a new one
      * @returns {Promise<void>}
      */
-    async unsafeInvalidate(nodeName, bindings) {
+    async unsafeInvalidate(nodeName, bindings, externalBatch = undefined) {
         ensureNodeNameIsHead(nodeName);
         const nodeNameTyped = stringToNodeName(nodeName);
 
@@ -295,8 +296,11 @@ class IncrementalGraphClass {
             bindings
         );
 
-        // Use batch builder for atomic operations
-        await this.storage.withBatch(async (batch) => {
+        /**
+         * @param {BatchBuilder} batch
+         * @returns {Promise<void>}
+         */
+        const run = async (batch) => {
             // Mark this key as potentially-outdated (not up-to-date)
             batch.freshness.put(nodeDefinition.output, "potentially-outdated");
 
@@ -320,7 +324,12 @@ class IncrementalGraphClass {
 
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(nodeDefinition.output, batch);
-        });
+        };
+
+        if (externalBatch !== undefined) {
+            return run(externalBatch);
+        }
+        await this.storage.withBatch(run);
     }
 
     /**
@@ -329,11 +338,12 @@ class IncrementalGraphClass {
      * Thread-safe: uses sleeper's withMutex to serialize access with other invalidate/pull operations.
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @param {BatchBuilder | undefined} [externalBatch] - Optional external batch; all writes go into it
      * @returns {Promise<void>}
      */
-    async invalidate(nodeName, bindings = []) {
+    async invalidate(nodeName, bindings = [], externalBatch = undefined) {
         return this.sleeper.withMutex(MUTEX_KEY, () =>
-            this.unsafeInvalidate(nodeName, bindings)
+            this.unsafeInvalidate(nodeName, bindings, externalBatch)
         );
     }
 
@@ -433,21 +443,24 @@ class IncrementalGraphClass {
      * @private
      * @param {ConcreteNode} nodeDefinition - The node to maybe recalculate
      * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @param {BatchBuilder | undefined} externalBatch - Propagated external batch (or undefined)
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, batch) {
+    async maybeRecalculate(nodeDefinition, batch, externalBatch) {
         const nodeKey = nodeDefinition.output;
 
         // Get old value (use batch-consistent read)
         const oldValue = await batch.values.get(nodeKey);
 
-        // Pull all inputs (recursively ensures they're up-to-date)
+        // Pull all inputs (recursively ensures they're up-to-date).
+        // Pass externalBatch (not batch): when undefined each recursive pull gets
+        // its own independent batch; when provided all recurse into the same one.
         const inputValues = [];
         const currentInputCounters = [];
         
         for (const inputKey of nodeDefinition.inputs) {
             const { value: inputValue } =
-                await this.pullByNodeKeyStringWithStatus(inputKey);
+                await this.pullByNodeKeyStringWithStatus(inputKey, externalBatch);
             inputValues.push(inputValue);
             
             // Get the counter for this input (must exist if node was pulled)
@@ -639,12 +652,13 @@ class IncrementalGraphClass {
      * @private
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
+     * @param {BatchBuilder | undefined} [externalBatch] - Optional external batch
      * @returns {Promise<ComputedValue>} The node's value
      */
-    async unsafePull(nodeName, bindings) {
+    async unsafePull(nodeName, bindings, externalBatch = undefined) {
         ensureNodeNameIsHead(nodeName);
         const nodeNameValue = stringToNodeName(nodeName);
-        const { value } = await this.pullWithStatus(nodeNameValue, bindings);
+        const { value } = await this.pullWithStatus(nodeNameValue, bindings, externalBatch);
         return value;
     }
 
@@ -659,11 +673,12 @@ class IncrementalGraphClass {
      *
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @param {BatchBuilder | undefined} [externalBatch] - Optional external batch; all writes go into it
      * @returns {Promise<ComputedValue>} The node's value
      */
-    async pull(nodeName, bindings = []) {
+    async pull(nodeName, bindings = [], externalBatch = undefined) {
         return this.sleeper.withMutex(MUTEX_KEY, () =>
-            this.unsafePull(nodeName, bindings)
+            this.unsafePull(nodeName, bindings, externalBatch)
         );
     }
 
@@ -673,12 +688,13 @@ class IncrementalGraphClass {
      * @private
      * @param {NodeName} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]]
+     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName, bindings = []) {
+    async pullWithStatus(nodeName, bindings = [], externalBatch = undefined) {
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        return await this.pullByNodeKeyStringWithStatus(concreteKey);
+        return await this.pullByNodeKeyStringWithStatus(concreteKey, externalBatch);
     }
 
     /**
@@ -686,10 +702,17 @@ class IncrementalGraphClass {
      * Accepts serialized NodeKey JSON string.
      * @private
      * @param {NodeKeyString} nodeKeyStr - Serialized NodeKey JSON string
+     * @param {BatchBuilder | undefined} [externalBatch] - When provided, use it instead of
+     *   opening a new withBatch.  When absent, open a fresh independent batch (original
+     *   semantics: each node's pull is its own atomic commit).
      * @returns {Promise<RecomputeResult>}
      */
-    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
-        return this.storage.withBatch(async (batch) => {
+    async pullByNodeKeyStringWithStatus(nodeKeyStr, externalBatch = undefined) {
+        /**
+         * @param {BatchBuilder} batch
+         * @returns {Promise<RecomputeResult>}
+         */
+        const run = async (batch) => {
             const nodeKey = deserializeNodeKey(nodeKeyStr);
             const nodeName = nodeKey.head;
             const bindings = nodeKey.args;
@@ -721,9 +744,15 @@ class IncrementalGraphClass {
                 return { value: result, status: "cached" };
             }
 
-            // Potentially-outdated or undefined freshness: need to maybe recalculate
-            return await this.maybeRecalculate(nodeDefinition, batch);
-        });
+            // Potentially-outdated or undefined freshness: need to maybe recalculate.
+            // Pass externalBatch so recursive input pulls share it when appropriate.
+            return await this.maybeRecalculate(nodeDefinition, batch, externalBatch);
+        };
+
+        if (externalBatch !== undefined) {
+            return run(externalBatch);
+        }
+        return this.storage.withBatch(run);
     }
 
     /**
