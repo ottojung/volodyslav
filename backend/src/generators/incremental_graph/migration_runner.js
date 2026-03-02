@@ -118,6 +118,10 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
             ops.push(
                 newStorage.freshness.putOp(nodeKey, "potentially-outdated")
             );
+            const counter = await prevStorage.counters.get(nodeKey);
+            if (counter !== undefined) {
+                ops.push(newStorage.counters.putOp(nodeKey, counter));
+            }
         }
     }
 
