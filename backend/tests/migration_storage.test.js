@@ -152,7 +152,7 @@ describe("MigrationStorage", () => {
             await expect(ms.delete(A)).resolves.toBeUndefined();
         });
 
-        test("override(A, v) twice with same value succeeds (idempotent)", async () => {
+        test("override(A, v) twice with same value fails", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -160,7 +160,8 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.override(A, DUMMY_VALUE);
-            await expect(ms.override(A, DUMMY_VALUE)).resolves.toBeUndefined();
+            const err = await ms.override(A, DUMMY_VALUE).catch((e) => e);
+            expect(isOverrideConflict(err)).toBe(true);
         });
 
         test("override(A, v1) then override(A, v2) throws OverrideConflictError", async () => {
