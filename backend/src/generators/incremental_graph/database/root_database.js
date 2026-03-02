@@ -119,11 +119,11 @@ class RootDatabaseClass {
     }
 
     /**
-     * Get schema-specific storage for the current version (creates if needed).
+     * Get schema-specific storage for an arbitrary version (creates if needed).
+     * @param {Version} version
      * @returns {SchemaStorage}
      */
-    getSchemaStorage() {
-        const version = this.version;
+    getSchemaStorageForVersion(version) {
         // Check cache first
         const cached = this.schemaStorages.get(version);
         if (cached) {
@@ -172,6 +172,14 @@ class RootDatabaseClass {
         this.schemaStorages.set(version, storage);
 
         return storage;
+    }
+
+    /**
+     * Get schema-specific storage for the current version (creates if needed).
+     * @returns {SchemaStorage}
+     */
+    getSchemaStorage() {
+        return this.getSchemaStorageForVersion(this.version);
     }
 
     /**
