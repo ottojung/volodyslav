@@ -25,6 +25,12 @@ function stubEnvironment(capabilities) {
             const dir = output;
             return path.join(dir, "results");
         });
+    capabilities.environment.temporaryDirectory = jest
+        .fn()
+        .mockImplementation(() => {
+            const dir = output;
+            return path.join(dir, "results", "temporary");
+        });
     capabilities.environment.eventLogRepository = jest
         .fn()
         .mockImplementation(() => {

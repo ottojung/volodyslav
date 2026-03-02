@@ -59,7 +59,7 @@ describe("Request Identifier", () => {
             expect(capabilities.creator.createDirectory).toHaveBeenCalledWith(
                 dirPath
             );
-            expect(dirPath).toBe(path.join(uploadDir, "test123"));
+            expect(dirPath).toBe(path.join(uploadDir, "temporary", "test123"));
         });
 
         it("handles special characters in request identifier", async () => {
@@ -72,7 +72,7 @@ describe("Request Identifier", () => {
             expect(capabilities.creator.createDirectory).toHaveBeenCalledWith(
                 dirPath
             );
-            expect(dirPath).toBe(path.join(uploadDir, "test#123"));
+            expect(dirPath).toBe(path.join(uploadDir, "temporary", "test#123"));
         });
     });
 
@@ -90,7 +90,7 @@ describe("Request Identifier", () => {
             await expect(isDone(capabilities, reqId)).resolves.toBe(true);
             await expect(
                 capabilities.checker.fileExists(
-                    path.join(uploadDir, "test123.done")
+                    path.join(uploadDir, "temporary", "test123.done")
                 )
             ).resolves.not.toBeNull();
         });

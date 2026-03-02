@@ -134,7 +134,7 @@ function random(capabilities) {
  * @returns {Promise<void>}
  */
 async function markDone(capabilities, reqId) {
-    const uploadDir = capabilities.environment.workingDirectory();
+    const uploadDir = capabilities.environment.temporaryDirectory();
     await capabilities.creator.createDirectory(uploadDir);
     const target = path.join(uploadDir, reqId.identifier + ".done");
     await capabilities.creator.createFile(target);
@@ -146,7 +146,7 @@ async function markDone(capabilities, reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(capabilities, reqId) {
-    const uploadDir = capabilities.environment.workingDirectory();
+    const uploadDir = capabilities.environment.temporaryDirectory();
     const target = path.join(uploadDir, reqId.identifier + ".done");
     const proof = await capabilities.checker.fileExists(target);
     if (proof === null) {
@@ -163,7 +163,7 @@ async function isDone(capabilities, reqId) {
  * @returns {Promise<string>} The path to the created directory
  */
 async function makeDirectory(capabilities, reqId) {
-    const uploadDir = capabilities.environment.workingDirectory();
+    const uploadDir = capabilities.environment.temporaryDirectory();
     const dirPath = path.join(uploadDir, reqId.identifier);
     await capabilities.creator.createDirectory(dirPath);
     return dirPath;

@@ -99,7 +99,7 @@ async function createDirectory(dirPath) {
  * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
  */
 async function createTemporaryDirectory(capabilities) {
-    const tmpDir = capabilities.environment.workingDirectory();
+    const tmpDir = capabilities.environment.temporaryDirectory();
     const uniquePrefix = path.join(tmpDir, "tmp-");
     try {
         await fs.mkdir(tmpDir, { recursive: true });
