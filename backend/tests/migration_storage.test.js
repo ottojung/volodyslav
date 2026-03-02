@@ -13,6 +13,7 @@ const {
     isGetMissingNode,
     isGetMissingValue,
     isMissingDependencyMetadata,
+    isCreateExistingNode,
 } = require("../src/generators/incremental_graph/migration_errors");
 const { toJsonKey } = require("./test_json_key_helper");
 
@@ -562,6 +563,89 @@ describe("MigrationStorage", () => {
             // invalidate(A) will try to propagate to B which is incompatible → SchemaCompatibilityError
             const err = await ms.invalidate(nk("A")).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Section 9: create() method
+    // -----------------------------------------------------------------------
+    describe("Section 9: create() method", () => {
+        test("create(newNode, value) on a node not in S succeeds", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "NEW"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            await ms.keep(A);
+            await expect(ms.create(nk("NEW"), DUMMY_VALUE)).resolves.toBeUndefined();
+        });
+
+        test("create(existingNode) throws CreateExistingNodeError", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            const err = await ms.create(A, DUMMY_VALUE).catch((e) => e);
+            expect(isCreateExistingNode(err)).toBe(true);
+        });
+
+        test("create() on a node not in new schema throws SchemaCompatibilityError", async () => {
+            const storage = makeInMemorySchemaStorage();
+            // New schema has only A — not NEW
+            const headIndex = makeHeadIndex(["A"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            await ms.keep(A);
+            const err = await ms.create(nk("NEW"), DUMMY_VALUE).catch((e) => e);
+            expect(isSchemaCompatibility(err)).toBe(true);
+        });
+
+        test("create() twice on same node throws DecisionConflictError", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "NEW"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            await ms.keep(A);
+            await ms.create(nk("NEW"), DUMMY_VALUE);
+            const err = await ms.create(nk("NEW"), DUMMY_VALUE_2).catch((e) => e);
+            expect(isDecisionConflict(err)).toBe(true);
+        });
+
+        test("create() decision appears in finalize() result", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "NEW"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.values.put(A, DUMMY_VALUE);
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            await ms.keep(A);
+            await ms.create(nk("NEW"), DUMMY_VALUE_2);
+            const decisions = await ms.finalize();
+
+            const createDecision = decisions.get(nk("NEW"));
+            expect(createDecision?.kind).toBe("create");
+            expect(createDecision?.value).toEqual(DUMMY_VALUE_2);
+        });
+
+        test("create() does not affect completeness check (S nodes still need decisions)", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "NEW"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            // Only create a new node, don't decide A
+            await ms.create(nk("NEW"), DUMMY_VALUE);
+            const err = await ms.finalize().catch((e) => e);
+            expect(isUndecidedNodes(err)).toBe(true);
         });
     });
 });

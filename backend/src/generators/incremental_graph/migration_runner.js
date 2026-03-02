@@ -58,6 +58,7 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
 
     for (const [nodeKey, decision] of decisions) {
         if (decision.kind === "delete") continue;
+        if (decision.kind === "create") continue; // Skip: newly created nodes have no previous inputs to migrate
 
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;
@@ -77,6 +78,15 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
 
     for (const [nodeKey, decision] of decisions) {
         if (decision.kind === "delete") continue;
+
+        if (decision.kind === "create") {
+            // New node - write with initial value and empty inputs record.
+            ops.push(newStorage.values.putOp(nodeKey, decision.value));
+            ops.push(newStorage.freshness.putOp(nodeKey, "up-to-date"));
+            ops.push(newStorage.inputs.putOp(nodeKey, { inputs: [], inputCounters: [] }));
+            ops.push(newStorage.counters.putOp(nodeKey, 1));
+            continue;
+        }
 
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;

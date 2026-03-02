@@ -47,6 +47,8 @@ const {
     isGetMissingValue,
     makeMissingDependencyMetadataError,
     isMissingDependencyMetadata,
+    makeCreateExistingNodeError,
+    isCreateExistingNode,
 } = require('./migration_errors');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
@@ -99,4 +101,6 @@ module.exports = {
     isGetMissingValue,
     makeMissingDependencyMetadataError,
     isMissingDependencyMetadata,
+    makeCreateExistingNodeError,
+    isCreateExistingNode,
 };

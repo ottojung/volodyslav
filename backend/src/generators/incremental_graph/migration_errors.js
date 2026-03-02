@@ -273,11 +273,46 @@ function isMissingDependencyMetadata(object) {
     return object instanceof MissingDependencyMetadata;
 }
 
+/**
+ * Thrown when create() is called on a node that already exists in the previous version.
+ */
+class CreateExistingNode extends Error {
+    /**
+     * @param {NodeKeyString} nodeKey
+     */
+    constructor(nodeKey) {
+        super(
+            `Cannot create node ${nodeKey}: it already exists in the previous version. ` +
+                `Use override() to change its value instead.`
+        );
+        this.name = "CreateExistingNodeError";
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * @param {NodeKeyString} nodeKey
+ * @returns {CreateExistingNode}
+ */
+function makeCreateExistingNodeError(nodeKey) {
+    return new CreateExistingNode(nodeKey);
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is CreateExistingNode}
+ */
+function isCreateExistingNode(object) {
+    return object instanceof CreateExistingNode;
+}
+
 module.exports = {
     makeDecisionConflictError,
     isDecisionConflict,
     makeOverrideConflictError,
     isOverrideConflict,
+    makeCreateExistingNodeError,
+    isCreateExistingNode,
     makeUndecidedNodesError,
     isUndecidedNodes,
     makePartialDeleteFanInError,
