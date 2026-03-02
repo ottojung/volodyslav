@@ -133,9 +133,6 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * @returns {Promise<void>}
  */
 async function runMigration(rootDatabase, nodeDefs, callback) {
-    const newVersion = rootDatabase.version;
-
-    // Find all stored schema versions and use the last one seen as the previous
     // version.  Version strings are application git-hashes (opaque), so we
     // cannot order them numerically.  In practice exactly two versions exist at
     // migration time: the old one and the new one that has not been written yet.
