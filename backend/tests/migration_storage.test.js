@@ -160,8 +160,8 @@ describe("MigrationStorage", () => {
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
-            await ms.override(A, DUMMY_VALUE);
-            const err = await ms.override(A, DUMMY_VALUE).catch((e) => e);
+            await ms.override(A, Promise.resolve(DUMMY_VALUE));
+            const err = await ms.override(A, Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isOverrideConflict(err)).toBe(true);
         });
 
@@ -172,8 +172,8 @@ describe("MigrationStorage", () => {
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
-            await ms.override(A, DUMMY_VALUE);
-            const err = await ms.override(A, DUMMY_VALUE_2).catch((e) => e);
+            await ms.override(A, Promise.resolve(DUMMY_VALUE));
+            const err = await ms.override(A, Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
             expect(isOverrideConflict(err)).toBe(true);
         });
 
@@ -208,7 +208,7 @@ describe("MigrationStorage", () => {
 
             await ms.keep(nk("D"));
             // override(A) propagates INVALIDATE to B and D → D has KEEP → conflict
-            const err = await ms.override(nk("A"), DUMMY_VALUE).catch((e) => e);
+            const err = await ms.override(nk("A"), Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
     });
@@ -260,7 +260,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
-            await ms.override(A, DUMMY_VALUE_2);
+            await ms.override(A, Promise.resolve(DUMMY_VALUE_2));
             const result = await ms.get(A);
             expect(result).toEqual(DUMMY_VALUE); // still old value
         });
@@ -309,7 +309,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            await ms.override(nk("A"), DUMMY_VALUE_2);
+            await ms.override(nk("A"), Promise.resolve(DUMMY_VALUE_2));
             await ms.keep(nk("C"));
             const decisions = await ms.finalize();
 
@@ -323,7 +323,7 @@ describe("MigrationStorage", () => {
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.keep(nk("D"));
-            const err = await ms.override(nk("A"), DUMMY_VALUE_2).catch((e) => e);
+            const err = await ms.override(nk("A"), Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
     });
@@ -540,7 +540,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const err = await ms.override(nk("A"), DUMMY_VALUE).catch((e) => e);
+            const err = await ms.override(nk("A"), Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
@@ -578,7 +578,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await expect(ms.create(nk("NEW"), DUMMY_VALUE)).resolves.toBeUndefined();
+            await expect(ms.create(nk("NEW"), Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
         });
 
         test("create(existingNode) throws CreateExistingNodeError", async () => {
@@ -588,7 +588,7 @@ describe("MigrationStorage", () => {
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
-            const err = await ms.create(A, DUMMY_VALUE).catch((e) => e);
+            const err = await ms.create(A, Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isCreateExistingNode(err)).toBe(true);
         });
 
@@ -601,7 +601,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            const err = await ms.create(nk("NEW"), DUMMY_VALUE).catch((e) => e);
+            const err = await ms.create(nk("NEW"), Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
@@ -613,8 +613,8 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await ms.create(nk("NEW"), DUMMY_VALUE);
-            const err = await ms.create(nk("NEW"), DUMMY_VALUE_2).catch((e) => e);
+            await ms.create(nk("NEW"), Promise.resolve(DUMMY_VALUE));
+            const err = await ms.create(nk("NEW"), Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
 
@@ -627,12 +627,12 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await ms.create(nk("NEW"), DUMMY_VALUE_2);
+            await ms.create(nk("NEW"), Promise.resolve(DUMMY_VALUE_2));
             const decisions = await ms.finalize();
 
             const createDecision = decisions.get(nk("NEW"));
             expect(createDecision?.kind).toBe("create");
-            expect(createDecision?.value).toEqual(DUMMY_VALUE_2);
+            expect(await createDecision?.value).toEqual(DUMMY_VALUE_2);
         });
 
         test("create() does not affect completeness check (S nodes still need decisions)", async () => {
@@ -643,9 +643,39 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             // Only create a new node, don't decide A
-            await ms.create(nk("NEW"), DUMMY_VALUE);
+            await ms.create(nk("NEW"), Promise.resolve(DUMMY_VALUE));
             const err = await ms.finalize().catch((e) => e);
             expect(isUndecidedNodes(err)).toBe(true);
+        });
+
+        test("create() accepts a pending promise (value is not awaited during planning)", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "NEW"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            await ms.keep(A);
+            // Pass a promise that never resolves; create() should return immediately
+            const neverResolves = new Promise(() => {});
+            await expect(ms.create(nk("NEW"), neverResolves)).resolves.toBeUndefined();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Section 10: override() accepts promise
+    // -----------------------------------------------------------------------
+    describe("Section 10: override() accepts promise", () => {
+        test("override() accepts a pending promise (value is not awaited during planning)", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            // Pass a promise that never resolves; override() should return immediately
+            const neverResolves = new Promise(() => {});
+            await expect(ms.override(A, neverResolves)).resolves.toBeUndefined();
         });
     });
 });
