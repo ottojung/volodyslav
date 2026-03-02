@@ -51,4 +51,24 @@ async function getConfig(capabilities) {
     return config;
 }
 
-module.exports = { getConfig };
+/**
+ * Saves a new configuration to the event log.
+ *
+ * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {import('./config/structure').Config} config - The new config to save.
+ * @returns {Promise<void>}
+ */
+async function setConfig(capabilities, config) {
+    await transaction(capabilities, async (storage) => {
+        storage.setConfig(config);
+    });
+
+    capabilities.logger.logInfo(
+        {
+            shortcutCount: config.shortcuts.length,
+        },
+        `Saved config with ${config.shortcuts.length} shortcuts`
+    );
+}
+
+module.exports = { getConfig, setConfig };
