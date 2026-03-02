@@ -89,6 +89,9 @@ function App() {
           <Link to="/search">
             <Button colorScheme="purple" variant="outline" w="200px">Search Entries</Button>
           </Link>
+          <Link to="/config">
+            <Button colorScheme="gray" variant="outline" w="200px">Manage Config</Button>
+          </Link>
         </VStack>
       </VStack>
     </Box>

@@ -184,6 +184,32 @@ export const fetchConfig = async () => {
 };
 
 /**
+ * Updates the entire configuration via the API.
+ * @param {Config} config - The new configuration to save.
+ * @returns {Promise<Config|null>} - The saved configuration, or null on failure.
+ */
+export const updateConfig = async (config) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/config`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(config),
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.config;
+        } else {
+            logger.warn("Failed to update config:", response.status);
+            return null;
+        }
+    } catch (error) {
+        logger.error("Error updating config:", error);
+        return null;
+    }
+};
+
+/**
  * Deletes an entry by id via the API.
  * @param {string} id - Entry identifier to delete.
  * @returns {Promise<boolean>} - True on success, false otherwise.

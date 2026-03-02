@@ -98,7 +98,7 @@ describe("GET /api/transcribe_all", () => {
         expect(res.status).toBe(500);
         const expectedSuccesses = ["a.mp4", "c.mp4"].map((fname) => ({
             source: { path: path.join(tmp, fname) }, 
-            target: { path: path.join(uploadDir, reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
+            target: { path: path.join(uploadDir, "requests", reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
         })); 
         expect(res.body).toEqual({
             success: false,
@@ -109,7 +109,7 @@ describe("GET /api/transcribe_all", () => {
         });
 
         // Even with failures, .done file should be created
-        const doneFlag = path.join(uploadDir, reqId + ".done");
+        const doneFlag = path.join(uploadDir, "requests", reqId + ".done");
         expect(fs.existsSync(doneFlag)).toBe(true);
     });
 
@@ -133,14 +133,14 @@ describe("GET /api/transcribe_all", () => {
         expect(res.status).toBe(200);
         const expectedAllSuccesses = ["x.mp4", "y.mp4"].map((fname) => ({
             source: { path: path.join(tmp, fname) }, 
-            target: { path: path.join(uploadDir, reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
+            target: { path: path.join(uploadDir, "requests", reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
         })); 
         expect(res.body).toEqual({
             success: true,
             result: { successes: expectedAllSuccesses, failures: [] },
         });
         // Check that .done file exists
-        const doneFlag = path.join(uploadDir, reqId + ".done");
+        const doneFlag = path.join(uploadDir, "requests", reqId + ".done");
         expect(fs.existsSync(doneFlag)).toBe(true);
     });
 });

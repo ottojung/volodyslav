@@ -129,12 +129,21 @@ function random(capabilities) {
 }
 
 /**
+ * Returns the directory path for storing request-related files.
+ * @param {Environment} environment
+ * @returns {string}
+ */
+function getRequestsDirectory(environment) {
+    return path.join(environment.workingDirectory(), "requests");
+}
+
+/**
  * @param {MarkDoneCapabilities} capabilities
  * @param {RequestIdentifier} reqId
  * @returns {Promise<void>}
  */
 async function markDone(capabilities, reqId) {
-    const uploadDir = capabilities.environment.workingDirectory();
+    const uploadDir = getRequestsDirectory(capabilities.environment);
     await capabilities.creator.createDirectory(uploadDir);
     const target = path.join(uploadDir, reqId.identifier + ".done");
     await capabilities.creator.createFile(target);
@@ -146,7 +155,7 @@ async function markDone(capabilities, reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(capabilities, reqId) {
-    const uploadDir = capabilities.environment.workingDirectory();
+    const uploadDir = getRequestsDirectory(capabilities.environment);
     const target = path.join(uploadDir, reqId.identifier + ".done");
     const proof = await capabilities.checker.fileExists(target);
     if (proof === null) {
@@ -163,7 +172,7 @@ async function isDone(capabilities, reqId) {
  * @returns {Promise<string>} The path to the created directory
  */
 async function makeDirectory(capabilities, reqId) {
-    const uploadDir = capabilities.environment.workingDirectory();
+    const uploadDir = getRequestsDirectory(capabilities.environment);
     const dirPath = path.join(uploadDir, reqId.identifier);
     await capabilities.creator.createDirectory(dirPath);
     return dirPath;
