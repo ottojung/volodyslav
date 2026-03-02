@@ -182,6 +182,7 @@ class MigrationStorageClass {
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
+                if (JSON.stringify(existing.value) === JSON.stringify(value)) return;
                 throw makeOverrideConflictError(nodeKey);
             }
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
