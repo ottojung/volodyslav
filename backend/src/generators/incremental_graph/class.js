@@ -114,7 +114,7 @@ function checkArity(compiledNode, bindings) {
  *
  * Bindings:
  * - pull(nodeName, bindings) accepts optional bindings: Array<ConstValue>
- * - Bindings are any JSON-serializable values (primitives or objects)
+ * - Bindings are JSON-serializable values
  * - Different bindings create separate cached instances
  * - Computors receive bindings as third parameter
  *
