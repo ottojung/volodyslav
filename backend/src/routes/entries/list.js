@@ -111,6 +111,9 @@ function buildNextPageUrl(req, pagination, hasMore) {
     url.searchParams.set("page", String(pagination.page + 1));
     url.searchParams.set("limit", String(pagination.limit));
     url.searchParams.set("order", pagination.order);
+    if (pagination.search !== undefined) {
+        url.searchParams.set("search", pagination.search);
+    }
 
     return url.toString();
 }

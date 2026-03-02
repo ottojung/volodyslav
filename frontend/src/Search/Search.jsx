@@ -57,6 +57,7 @@ export default function Search() {
         if (pattern.trim() === "") {
             setResults([]);
             setError(null);
+            setIsLoading(false);
             return;
         }
 
