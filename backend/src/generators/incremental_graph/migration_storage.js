@@ -14,6 +14,7 @@ const {
     makeMissingDependencyMetadataError,
     makeUndecidedNodesError,
     makePartialDeleteFanInError,
+    makeCreateExistingNodeError,
 } = require("./migration_errors");
 
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -27,7 +28,8 @@ const {
  * @typedef {{ kind: 'override', value: ComputedValue }} OverrideDecision
  * @typedef {{ kind: 'invalidate' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision} Decision
+ * @typedef {{ kind: 'create', value: ComputedValue }} CreateDecision
+ * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
 
 /**
@@ -227,6 +229,27 @@ class MigrationStorageClass {
             throw makeDecisionConflictError(nodeKey, existing.kind, "delete");
         }
         this.decisions.set(nodeKey, { kind: "delete" });
+    }
+
+    /**
+     * Create a new node in the new schema version with an initial value.
+     * The node must NOT exist in the previous version (use override() instead).
+     * The node must exist in the new schema.
+     * The new node is created as up-to-date with the provided value and empty inputs.
+     * @param {NodeKeyString} nodeKey
+     * @param {ComputedValue} value
+     * @returns {Promise<void>}
+     */
+    async create(nodeKey, value) {
+        if (this.materializedNodes.has(nodeKey)) {
+            throw makeCreateExistingNodeError(nodeKey);
+        }
+        checkSchemaCompatibility(nodeKey, this.newHeadIndex);
+        const existing = this.decisions.get(nodeKey);
+        if (existing !== undefined) {
+            throw makeDecisionConflictError(nodeKey, existing.kind, "create");
+        }
+        this.decisions.set(nodeKey, { kind: "create", value });
     }
 
     /**

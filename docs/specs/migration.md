@@ -46,6 +46,7 @@ All methods are `async`.
 | `override(nodeKey, value)` | Replace the node's value with `value`. |
 | `invalidate(nodeKey)` | Mark the node for recomputation. |
 | `delete(nodeKey)` | Remove the node from the new version entirely. |
+| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with `value` as its initial value. |
 
 ### Traversal methods
 
@@ -62,16 +63,18 @@ All methods are `async`.
 
 ### Idempotency
 
-Calling the same decision twice (except for same-value `override`) is allowed and has no effect.
+Calling the same decision twice (except for same-value `override` and `create`) is allowed and has no effect.
 
 ### Conflict detection
 
 * Calling **different** decisions on the same node throws `DecisionConflictError`.
 * Calling `override()` twice with **different values** throws `OverrideConflictError`.
+* Calling `create()` twice on the same node throws `DecisionConflictError`.
+* Calling `create()` on a node that exists in the previous version throws `CreateExistingNodeError`.
 
 ### Schema compatibility
 
-`keep`, `override`, and `invalidate` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
+`keep`, `override`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
 
 ### Propagation rules
 
@@ -96,9 +99,10 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 |-------------|------------|
 | `DecisionConflictError` | Two different decisions assigned to the same node. |
 | `OverrideConflictError` | `override()` called twice with different values. |
+| `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `PartialDeleteFanInError` | DELETE propagation reaches a fan-in node not all of whose inputs are deleted. |
-| `SchemaCompatibilityError` | `keep`/`override`/`invalidate` on a node absent from the new schema. |
+| `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `GetMissingValueError` | `get()` called for a node in `S` with no computed value. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted inputs metadata. |
