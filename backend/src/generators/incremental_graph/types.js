@@ -32,11 +32,11 @@
  */
 
 /**
- * @typedef {import('./database/types').VersionString} VersionString
+ * @typedef {import('./database/types').Version} Version
  */
 
 /**
- * @typedef {Record<VersionString, NodeDefMigration>} NodeDefMigrations
+ * @typedef {Partial<Record<string, NodeDefMigration>>} NodeDefMigrations
  */
 
 /**

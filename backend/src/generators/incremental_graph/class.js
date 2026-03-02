@@ -6,6 +6,7 @@ const {
     stringToNodeName,
     stringToSchemaPattern,
     nodeKeyStringToString,
+    versionToString,
 } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -20,6 +21,7 @@ const {
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').SchemaPattern} SchemaPattern */
+/** @typedef {import('./types').Version} Version */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
@@ -160,7 +162,7 @@ class IncrementalGraphClass {
     /**
      * The application version string used for storage namespacing.
      * @private
-     * @type {string}
+     * @type {Version}
      */
     dbVersion;
 
@@ -781,7 +783,7 @@ class IncrementalGraphClass {
      * @returns {string}
      */
     debugGetDbVersion() {
-        return this.dbVersion;
+        return versionToString(this.dbVersion);
     }
 }
 

@@ -5,6 +5,7 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
+const { stringToVersion, versionToString } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -14,7 +15,7 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./types').VersionString} VersionString */
+/** @typedef {import('./types').Version} Version */
 
 /**
  * @template T
@@ -94,7 +95,7 @@ class RootDatabaseClass {
     /**
      * Cache of schema storages.
      * @private
-     * @type {Map<VersionString, SchemaStorage>}
+     * @type {Map<Version, SchemaStorage>}
      */
     schemaStorages;
 
@@ -108,7 +109,7 @@ class RootDatabaseClass {
     /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
-     * @param {VersionString} version - The version of the database
+     * @param {Version} version - The version of the database
      */
     constructor(db, version) {
         this.db = db;
@@ -131,7 +132,7 @@ class RootDatabaseClass {
 
         // Create new schema storage with sublevels
         /** @type {SchemaSublevelType} */
-        const schemaSublevel = this.db.sublevel(version, { valueEncoding: 'json' });
+        const schemaSublevel = this.db.sublevel(versionToString(version), { valueEncoding: 'json' });
 
         /** @type {SimpleSublevel<ComputedValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
@@ -175,7 +176,7 @@ class RootDatabaseClass {
 
     /**
      * List all stored version strings.
-     * @returns {AsyncIterable<VersionString>}
+     * @returns {AsyncIterable<Version>}
      */
     async *listSchemas() {
         for await (const key of this.listOfSchemas.keys()) {
@@ -229,7 +230,7 @@ class RootDatabaseClass {
  * @returns {Promise<RootDatabaseClass>}
  */
 async function makeRootDatabase(capabilities, databasePath) {
-    const version = await getVersion(capabilities);
+    const version = stringToVersion(await getVersion(capabilities));
     /** @type {RootLevelType} */
     const db = capabilities.levelDatabase.initialize(databasePath);
     await db.open();
