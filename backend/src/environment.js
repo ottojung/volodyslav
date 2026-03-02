@@ -2,8 +2,6 @@
  * This module handles environment variable retrieval and validation.
  */
 
-const path = require("path");
-
 /**
  * @typedef {ReturnType<make>} Environment
  */
@@ -47,10 +45,6 @@ function openaiAPIKey() {
 
 function workingDirectory() {
     return getEnv("VOLODYSLAV_WORKING_DIRECTORY");
-}
-
-function temporaryDirectory() {
-    return path.join(workingDirectory(), "temporary");
 }
 
 function myServerPort() {
@@ -109,7 +103,6 @@ function make() {
         ensureEnvironmentIsInitialized,    
         openaiAPIKey,
         workingDirectory,
-        temporaryDirectory,
         myServerPort,
         logLevel,
         logFile,

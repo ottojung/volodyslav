@@ -34,7 +34,7 @@ describe("POST /api/upload", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: ["test1.jpg"] });
         const uploadedFile1 = await capabilities.checker.fileExists(
-            path.join(uploadDir, "temporary", reqId, "test1.jpg"),
+            path.join(uploadDir, "requests", reqId, "test1.jpg"),
         );
         expect(uploadedFile1).not.toBeNull();
     });
@@ -52,7 +52,7 @@ describe("POST /api/upload", () => {
         expect(res1.statusCode).toBe(200);
         expect(res1.body).toEqual({ success: true, files: ["first.jpg"] });
         const firstFile = await capabilities.checker.fileExists(
-            path.join(uploadDir, "temporary", reqId1, "first.jpg"),
+            path.join(uploadDir, "requests", reqId1, "first.jpg"),
         );
         expect(firstFile).not.toBeNull();
 
@@ -65,7 +65,7 @@ describe("POST /api/upload", () => {
         expect(res2.statusCode).toBe(200);
         expect(res2.body).toEqual({ success: true, files: ["second.jpg"] });
         const secondFile = await capabilities.checker.fileExists(
-            path.join(uploadDir, "temporary", reqId2, "second.jpg"),
+            path.join(uploadDir, "requests", reqId2, "second.jpg"),
         );
         expect(secondFile).not.toBeNull();
     });
