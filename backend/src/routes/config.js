@@ -1,6 +1,6 @@
 const express = require("express");
-const { getConfig } = require("../config_api");
-const { serialize } = require("../config");
+const { getConfig, setConfig } = require("../config_api");
+const { serialize, tryDeserialize } = require("../config");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -48,6 +48,13 @@ function makeRouter(capabilities) {
         await handleConfigGet(req, res, capabilities);
     });
 
+    /**
+     * PUT /config - Replace the entire configuration
+     */
+    router.put("/config", async (req, res) => {
+        await handleConfigPut(req, res, capabilities);
+    });
+
     return router;
 }
 
@@ -83,6 +90,48 @@ async function handleConfigGet(_req, res, capabilities) {
                 stack: error instanceof Error ? error.stack : undefined,
             },
             `Failed to fetch config: ${message}`
+        );
+
+        res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+}
+
+/**
+ * Handles the PUT /config logic.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res - Responds with ConfigResponse on success or ConfigErrorResponse on error
+ * @param {Capabilities} capabilities
+ */
+async function handleConfigPut(req, res, capabilities) {
+    try {
+        const body = req.body;
+
+        const config = tryDeserialize(body);
+
+        if (config instanceof Error) {
+            res.status(400).json({
+                error: config.message,
+            });
+            return;
+        }
+
+        await setConfig(capabilities, config);
+
+        const serializedConfig = serialize(config);
+        res.json({
+            config: serializedConfig,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+
+        capabilities.logger.logError(
+            {
+                error: message,
+                stack: error instanceof Error ? error.stack : undefined,
+            },
+            `Failed to update config: ${message}`
         );
 
         res.status(500).json({

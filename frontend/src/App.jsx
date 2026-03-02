@@ -86,6 +86,9 @@ function App() {
           <Link to="/describe">
             <Button colorScheme="blue" variant="outline" w="200px">Log an Event</Button>
           </Link>
+          <Link to="/config">
+            <Button colorScheme="gray" variant="outline" w="200px">Manage Config</Button>
+          </Link>
         </VStack>
       </VStack>
     </Box>
