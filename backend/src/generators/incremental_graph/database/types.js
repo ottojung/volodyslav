@@ -334,7 +334,7 @@ function nodeNameToString(nodeName) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, Version, Version>} ListOfSchemasType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, number, Version>} ListOfSchemasType
  */
 
 /**
