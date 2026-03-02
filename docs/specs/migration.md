@@ -43,10 +43,10 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeKey)` | Return the previous-version value. |
 | `keep(nodeKey)` | Preserve node as-is in the new version. |
-| `override(nodeKey, value)` | Replace the node's value with `value`. |
+| `override(nodeKey, value)` | Replace the node's value with the result of `value` (a `Promise<ComputedValue>`). |
 | `invalidate(nodeKey)` | Mark the node for recomputation. |
 | `delete(nodeKey)` | Remove the node from the new version entirely. |
-| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with `value` as its initial value. |
+| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with the result of `value` (a `Promise<ComputedValue>`) as its initial value. |
 
 ### Traversal methods
 
@@ -63,12 +63,12 @@ All methods are `async`.
 
 ### Idempotency
 
-Calling the same decision twice (except for same-value `override` and `create`) is allowed and has no effect.
+Calling the same decision twice (except for `override` and `create`) is allowed and has no effect.
 
 ### Conflict detection
 
 * Calling **different** decisions on the same node throws `DecisionConflictError`.
-* Calling `override()` twice with **different values** throws `OverrideConflictError`.
+* Calling `override()` more than once on the same node throws `OverrideConflictError`.
 * Calling `create()` twice on the same node throws `DecisionConflictError`.
 * Calling `create()` on a node that exists in the previous version throws `CreateExistingNodeError`.
 

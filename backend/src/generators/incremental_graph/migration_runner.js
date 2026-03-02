@@ -81,7 +81,7 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
 
         if (decision.kind === "create") {
             // New node - write with initial value and empty inputs record.
-            ops.push(newStorage.values.putOp(nodeKey, decision.value));
+            ops.push(newStorage.values.putOp(nodeKey, await decision.value));
             ops.push(newStorage.freshness.putOp(nodeKey, "up-to-date"));
             ops.push(newStorage.inputs.putOp(nodeKey, { inputs: [], inputCounters: [] }));
             ops.push(newStorage.counters.putOp(nodeKey, 1));
@@ -108,7 +108,7 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
                 ops.push(newStorage.counters.putOp(nodeKey, counter));
             }
         } else if (decision.kind === "override") {
-            ops.push(newStorage.values.putOp(nodeKey, decision.value));
+            ops.push(newStorage.values.putOp(nodeKey, await decision.value));
             ops.push(newStorage.freshness.putOp(nodeKey, "up-to-date"));
             const prevCounter = await prevStorage.counters.get(nodeKey);
             const newCounter = prevCounter !== undefined ? prevCounter + 1 : 1;
