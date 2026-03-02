@@ -27,8 +27,51 @@
  * @property {Command} git - A command instance for Git operations.
  */
 
+class VersionClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("Version cannot be instantiated");
+        }
+    }
+}
+
 /**
- * @typedef {string} VersionString
+ * @param {string} _value
+ * @returns {_value is Version}
+ */
+function castToVersion(_value) {
+    return true;
+}
+
+/**
+ * @param {string} VersionStr 
+ * @returns {Version}
+ */
+function stringToVersion(VersionStr) {
+    if (castToVersion(VersionStr)) {
+        return VersionStr;
+    }
+    throw new Error("Invalid version string");
+}
+
+/**
+ * @param {Version} Version
+ * @returns {string}
+ */
+function versionToString(Version) {
+    if (typeof Version === "string") {
+        return Version;
+    }
+    throw new Error("Invalid version type");
+}
+
+/**
+ * @typedef {VersionClass} Version
  */
 
 /**
@@ -291,7 +334,7 @@ function nodeNameToString(nodeName) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, VersionString, VersionString>} ListOfSchemasType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, Version, Version>} ListOfSchemasType
  */
 
 /**
@@ -300,6 +343,9 @@ function nodeNameToString(nodeName) {
  */
 
 module.exports = {
+    versionToString,
+    stringToVersion,
+    VersionClass,
     nodeNameToString,
     stringToNodeName,
     NodeNameClass,
