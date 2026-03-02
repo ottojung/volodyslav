@@ -119,11 +119,11 @@ class RootDatabaseClass {
     }
 
     /**
-     * Get schema-specific storage for the current version (creates if needed).
+     * Get schema-specific storage for an arbitrary version (creates if needed).
+     * @param {Version} version
      * @returns {SchemaStorage}
      */
-    getSchemaStorage() {
-        const version = this.version;
+    getSchemaStorageForVersion(version) {
         // Check cache first
         const cached = this.schemaStorages.get(version);
         if (cached) {
@@ -153,7 +153,11 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                await this.listOfSchemas.put(version, version);
+                const existing = await this.listOfSchemas.get(version);
+                if (existing === undefined) {
+                    const count = await this.numberOfSchemas();
+                    await this.listOfSchemas.put(version, count);
+                }
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
@@ -175,6 +179,14 @@ class RootDatabaseClass {
     }
 
     /**
+     * Get schema-specific storage for the current version (creates if needed).
+     * @returns {SchemaStorage}
+     */
+    getSchemaStorage() {
+        return this.getSchemaStorageForVersion(this.version);
+    }
+
+    /**
      * List all stored version strings.
      * @returns {AsyncIterable<Version>}
      */
@@ -182,6 +194,37 @@ class RootDatabaseClass {
         for await (const key of this.listOfSchemas.keys()) {
             yield key;
         }
+    }
+
+    /**
+     * Get the number of stored schemas.
+     * @returns {Promise<number>}
+     */
+    async numberOfSchemas() {
+        let count = 0;
+        for await (const value of this.listOfSchemas.values()) {
+            if (value < 0) {
+                throw new Error(`Invalid schema index ${value} in listOfSchemas`);
+            }
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Get the latest stored schema version, or undefined if no schemas are stored.
+     * @returns {Promise<Version|undefined>}
+     */
+    async lastSchema() {
+        let lastVersion = undefined;
+        let lastIndex = -1;
+        for await (const [key, value] of this.listOfSchemas.iterator()) {
+            if (value > lastIndex) {
+                lastVersion = key;
+                lastIndex = value;
+            }
+        }
+        return lastVersion;
     }
 
     /**
