@@ -154,7 +154,7 @@ class RootDatabaseClass {
 
             if (!touchedSchema) {
                 const count = await this.numberOfSchemas();
-                await this.listOfSchemas.put(count, version);
+                await this.listOfSchemas.put(version, count);
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
@@ -188,8 +188,8 @@ class RootDatabaseClass {
      * @returns {AsyncIterable<Version>}
      */
     async *listSchemas() {
-        for await (const value of this.listOfSchemas.values()) {
-            yield value;
+        for await (const key of this.listOfSchemas.keys()) {
+            yield key;
         }
     }
 
@@ -199,9 +199,9 @@ class RootDatabaseClass {
      */
     async numberOfSchemas() {
         let count = 0;
-        for await (const key of this.listOfSchemas.keys()) {
-            if (key < 0) {
-                throw new Error(`Invalid schema index ${key} in listOfSchemas`);
+        for await (const value of this.listOfSchemas.values()) {
+            if (value < 0) {
+                throw new Error(`Invalid schema index ${value} in listOfSchemas`);
             }
             count++;
         }
@@ -216,9 +216,9 @@ class RootDatabaseClass {
         let lastVersion = undefined;
         let lastIndex = -1;
         for await (const [key, value] of this.listOfSchemas.iterator()) {
-            if (key > lastIndex) {
-                lastVersion = value;
-                lastIndex = key;
+            if (value > lastIndex) {
+                lastVersion = key;
+                lastIndex = value;
             }
         }
         return lastVersion;
