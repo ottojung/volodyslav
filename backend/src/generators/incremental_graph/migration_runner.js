@@ -159,6 +159,12 @@ async function runMigration(rootDatabase, nodeDefs, callback) {
         return;
     }
 
+    const currentVersion = rootDatabase.version;
+    if (prevVersion === currentVersion) {
+        // The same version is okay.
+        return;
+    }
+
     const prevStorage = rootDatabase.getSchemaStorageForVersion(prevVersion);
     const newStorage = rootDatabase.getSchemaStorage();
 
