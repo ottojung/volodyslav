@@ -21,19 +21,23 @@ function deepClone(obj) {
 /**
  * Minimal in-memory Database that matches the RootDatabase interface.
  */
+const DEFAULT_SCHEMA_KEY = '__default__';
 class InMemoryDatabase {
     constructor() {
         /** @type {Map<string, Map<string, any>>} */
         this.schemas = new Map();
         /** @type {boolean} */
         this.closed = false;
+        /** @type {string} */
+        this.version = 'test-version';
     }
 
-    getSchemaStorage(schemaHash) {
-        if (!this.schemas.has(schemaHash)) {
-            this.schemas.set(schemaHash, new Map());
+    getSchemaStorage() {
+        const key = DEFAULT_SCHEMA_KEY;
+        if (!this.schemas.has(key)) {
+            this.schemas.set(key, new Map());
         }
-        const schemaMap = this.schemas.get(schemaHash);
+        const schemaMap = this.schemas.get(key);
 
         const createSublevel = (name) => {
             const prefix = `${name}:`;

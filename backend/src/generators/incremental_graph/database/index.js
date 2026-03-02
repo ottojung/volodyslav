@@ -5,7 +5,7 @@
 
 const path = require('path');
 const { DatabaseInitializationError } = require('./errors');
-const { schemaHashToString, stringToSchemaHash, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, schemaPatternToString, stringToSchemaPattern } = require('./types');
+const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString } = require('./types');
 const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 
@@ -56,8 +56,6 @@ module.exports = {
     isRootDatabase,
     makeTypedDatabase,
     isTypedDatabase,
-    schemaHashToString,
-    stringToSchemaHash,
     stringToNodeKeyString,
     nodeNameToString,
     stringToNodeName,

@@ -60,11 +60,6 @@
  */
 
 /**
- * A schema hash string identifying an incremental graph schema.
- * @typedef {import('./database/types').SchemaHash} SchemaHash
- */
-
-/**
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
  * @typedef {object} ConcreteNode

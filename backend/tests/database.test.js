@@ -354,22 +354,18 @@ describe('generators/database', () => {
     });
 
     describe('Schema isolation', () => {
-        test('different schemas have isolated storage', async () => {
+        test('getSchemaStorage returns storage', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const storage1 = db.getSchemaStorage('schema1');
-                const storage2 = db.getSchemaStorage('schema2');
+                const storage = db.getSchemaStorage();
                 
-                await storage1.values.put('key', { value: { data: 'schema1' }, isDirty: false });
-                await storage2.values.put('key', { value: { data: 'schema2' }, isDirty: false });
+                await storage.values.put('key', { value: { data: 'test' }, isDirty: false });
                 
-                const val1 = await storage1.values.get('key');
-                const val2 = await storage2.values.get('key');
+                const val = await storage.values.get('key');
                 
-                expect(val1.value.data).toBe('schema1');
-                expect(val2.value.data).toBe('schema2');
+                expect(val.value.data).toBe('test');
                 
                 await db.close();
             } finally {
@@ -377,25 +373,23 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns all schema hashes', async () => {
+        test('listSchemas returns version after storage is touched', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const storage1 = db.getSchemaStorage('schema1');
-                const storage2 = db.getSchemaStorage('schema2');
+                const storage = db.getSchemaStorage();
                 
-                // Touch the schemas by doing a batch operation
-                await storage1.batch([storage1.values.putOp('key', { value: {}, isDirty: false })]);
-                await storage2.batch([storage2.values.putOp('key', { value: {}, isDirty: false })]);
+                // Touch the schema by doing a batch operation
+                await storage.batch([storage.values.putOp('key', { value: {}, isDirty: false })]);
                 
                 const schemas = [];
                 for await (const schema of db.listSchemas()) {
                     schemas.push(schema);
                 }
                 
-                expect(schemas).toContain('schema1');
-                expect(schemas).toContain('schema2');
+                expect(schemas).toHaveLength(1);
+                expect(schemas[0]).toBe(db.version);
                 
                 await db.close();
             } finally {
@@ -421,13 +415,13 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns schema after getSchemaStorage is called', async () => {
+        test('listSchemas returns version after getSchemaStorage is called', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                // Calling getSchemaStorage and doing a batch should touch the schema
-                const storage = db.getSchemaStorage('singleSchema');
+                // Calling getSchemaStorage and doing a batch should record the version
+                const storage = db.getSchemaStorage();
                 await storage.batch([storage.values.putOp('dummy', { value: {}, isDirty: false })]);
                 
                 const schemas = [];
@@ -435,7 +429,8 @@ describe('generators/database', () => {
                     schemas.push(schema);
                 }
                 
-                expect(schemas).toEqual(['singleSchema']);
+                expect(schemas).toHaveLength(1);
+                expect(schemas[0]).toBe(db.version);
                 
                 await db.close();
             } finally {
@@ -443,28 +438,24 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns multiple schemas in any order', async () => {
+        test('listSchemas returns only one entry when storage is touched multiple times', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const storage1 = db.getSchemaStorage('alpha');
-                const storage2 = db.getSchemaStorage('beta');
-                const storage3 = db.getSchemaStorage('gamma');
+                const storage = db.getSchemaStorage();
                 
-                await storage1.batch([storage1.values.putOp('dummy1', { value: {}, isDirty: false })]);
-                await storage2.batch([storage2.values.putOp('dummy2', { value: {}, isDirty: false })]);
-                await storage3.batch([storage3.values.putOp('dummy3', { value: {}, isDirty: false })]);
+                await storage.batch([storage.values.putOp('dummy1', { value: {}, isDirty: false })]);
+                await storage.batch([storage.values.putOp('dummy2', { value: {}, isDirty: false })]);
+                await storage.batch([storage.values.putOp('dummy3', { value: {}, isDirty: false })]);
                 
                 const schemas = [];
                 for await (const schema of db.listSchemas()) {
                     schemas.push(schema);
                 }
                 
-                expect(schemas).toHaveLength(3);
-                expect(schemas).toContain('alpha');
-                expect(schemas).toContain('beta');
-                expect(schemas).toContain('gamma');
+                expect(schemas).toHaveLength(1);
+                expect(schemas[0]).toBe(db.version);
                 
                 await db.close();
             } finally {

@@ -458,7 +458,7 @@ function makeIncrementalGraph(
 
 **REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
 
-**REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
+**REQ-FACTORY-02:** MUST use `dbVersion` (the application version string) for internal storage namespacing.
 
 **REQ-FACTORY-03:** MUST reject schemas where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
@@ -472,7 +472,7 @@ interface IncrementalGraph {
   // Debug interface (REQUIRED)
   debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   debugListMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
-  debugGetSchemaHash(): string;
+  debugGetDbVersion(): string;
 }
 ```
 
@@ -485,7 +485,7 @@ interface IncrementalGraph {
 **REQ-IFACE-04:** Implementations MUST provide the debug interface methods:
 * `debugGetFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"missing"` for unmaterialized nodes.
 * `debugListMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
-* `debugGetSchemaHash()` — Returns the schema identifier used for storage namespacing.
+* `debugGetDbVersion()` — Returns the version string used for storage namespacing.
 
 ### 3.3 Database Interfaces
 

@@ -26,6 +26,7 @@ function expectHasOwn(err, prop) {
  * Minimal in-memory Database that matches the RootDatabase interface.
  * We implement the sublevel structure in memory.
  */
+const DEFAULT_SCHEMA_KEY = '__default__';
 class InMemoryDatabase {
     constructor() {
         /** @type {Map<string, Map<string, any>>} */
@@ -40,13 +41,16 @@ class InMemoryDatabase {
         this.putLog = [];
         /** @type {Array<any>} */
         this.getValueLog = [];
+        /** @type {string} */
+        this.version = 'test-version';
     }
 
-    getSchemaStorage(schemaHash) {
-        if (!this.schemas.has(schemaHash)) {
-            this.schemas.set(schemaHash, new Map());
+    getSchemaStorage() {
+        const key = DEFAULT_SCHEMA_KEY;
+        if (!this.schemas.has(key)) {
+            this.schemas.set(key, new Map());
         }
-        const schemaMap = this.schemas.get(schemaHash);
+        const schemaMap = this.schemas.get(key);
 
         // Don't capture logs in closure - use arrow functions to preserve 'this' context
         const createSublevel = (name) => {
@@ -130,8 +134,8 @@ class InMemoryDatabase {
     }
 
     async *listSchemas() {
-        for (const schemaHash of this.schemas.keys()) {
-            yield schemaHash;
+        for (const key of this.schemas.keys()) {
+            yield key;
         }
     }
 
@@ -198,16 +202,16 @@ class InMemoryDatabase {
     /**
      * Helper to seed a schema storage directly (for testing seeded databases).
      * This bypasses normal indexing to simulate partially-seeded databases.
-     * @param {string} schemaHash - The schema hash
      * @param {string} sublevel - The sublevel name ('values', 'freshness', 'inputs', 'revdeps')
      * @param {string} key - The key
      * @param {any} value - The value
      */
-    async seedSchemaStorage(schemaHash, sublevel, key, value) {
-        if (!this.schemas.has(schemaHash)) {
-            this.schemas.set(schemaHash, new Map());
+    async seedSchemaStorage(sublevel, key, value) {
+        const schemaKey = DEFAULT_SCHEMA_KEY;
+        if (!this.schemas.has(schemaKey)) {
+            this.schemas.set(schemaKey, new Map());
         }
-        const schemaMap = this.schemas.get(schemaHash);
+        const schemaMap = this.schemas.get(schemaKey);
         const fullKey = `${sublevel}:${key}`;
         schemaMap.set(fullKey, deepClone(value));
     }

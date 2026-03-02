@@ -19,7 +19,6 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 /** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./database/types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./types').SchemaHash} SchemaHash */
 /** @typedef {import('./database/types').DatabaseKey} DatabaseKey */
 
 /**
@@ -206,11 +205,10 @@ function makeBatchBuilder(schemaStorage) {
  * Creates a GraphStorage instance using typed databases.
  *
  * @param {RootDatabase} rootDatabase - The root database instance
- * @param {SchemaHash} schemaHash - The schema hash for namespacing
  * @returns {GraphStorage}
  */
-function makeGraphStorage(rootDatabase, schemaHash) {
-    const schemaStorage = rootDatabase.getSchemaStorage(schemaHash);
+function makeGraphStorage(rootDatabase) {
+    const schemaStorage = rootDatabase.getSchemaStorage();
 
     /**
      * Ensure a node is marked as materialized in the inputs database.
