@@ -144,12 +144,28 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *
+ * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database (current version is new)
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @returns {Promise<void>}
  */
-async function runMigration(rootDatabase, nodeDefs, callback) {
+async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
+    return await capabilities.sleeper.withMutex("migration", async () => {
+        await runMigrationUnsafe(rootDatabase, nodeDefs, callback);
+    });
+}
+
+/**
+ * The unlocked version of runMigration. Should not be called directly.
+ *
+ * @param {RootDatabase} rootDatabase - Opened root database (current version is new)
+ * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
+ * @param {(storage: MigrationStorage) => Promise<void>} callback
+ * @returns {Promise<void>}
+ */
+async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
+{
     /** @type {import('./database/types').Version | undefined} */
     let prevVersion = await rootDatabase.lastSchema();
     if (prevVersion === undefined) {
