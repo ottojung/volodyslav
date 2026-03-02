@@ -14,7 +14,6 @@ const {
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
-const { toJsonKey } = require("./test_json_key_helper");
 
 /**
  * Creates test capabilities with a temporary data directory.
@@ -113,18 +112,40 @@ describe("Incremental graph persistence and restart", () => {
         });
     });
 
-    describe("Schema hash namespacing", () => {
-        test("different schemas use different namespaces", async () => {
+    describe("Version-based namespacing", () => {
+        test("dbVersion is the application version string", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const cellA = { value: { value: 0 } };
+            const schemas = [
+                {
+                    output: "A",
+                    inputs: [],
+                    computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeIncrementalGraph(db, schemas);
+            const version = graph.debugGetDbVersion();
+
+            // The version should be a non-empty string (the application version)
+            expect(typeof version).toBe("string");
+            expect(version.length).toBeGreaterThan(0);
+
+            await db.close();
+        });
+
+        test("two graphs from the same database share the same dbVersion", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
 
             const schemas1 = [
                 {
                     output: "A",
                     inputs: [],
-                    computor: () => cellA.value,
+                    computor: () => ({ value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -134,53 +155,24 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "A",
                     inputs: [],
-                    computor: () => cellA.value,
+                    computor: () => ({ value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "B",
                     inputs: ["A"],
-                    computor: (inputs, _oldValue, _bindings) => ({
-                        value: inputs[0].value * 2,
-                    }),
+                    computor: (inputs) => ({ value: inputs[0].value * 2 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
             ];
 
-            // Create graph with schema1
             const graph1 = makeIncrementalGraph(db, schemas1);
-            const hash1 = graph1.schemaHash;
-
-            cellA.value = { value: 10 };
-            await graph1.invalidate("A");
-
-            // Create graph with schema2 (different schema)
             const graph2 = makeIncrementalGraph(db, schemas2);
-            const hash2 = graph2.schemaHash;
 
-            // Different schemas should have different hashes
-            expect(hash1).not.toBe(hash2);
-
-            // Pull B with schema2
-            await graph2.pull("B");
-
-            // Verify that schema2 can list dependents properly
-            const storage2 = graph2.getStorage();
-            let dependents2;
-            await storage2.withBatch(async (batch) => {
-                dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
-            });
-            expect(dependents2).toContain(toJsonKey("B"));
-
-            // Verify schema1's namespace is separate (no B in schema1)
-            const storage1 = graph1.getStorage();
-            let dependents1;
-            await storage1.withBatch(async (batch) => {
-                dependents1 = await storage1.listDependents(toJsonKey("A"), batch);
-            });
-            expect(dependents1).not.toContain(toJsonKey("B")); // schema1 doesn't have B node
+            // Both graphs use the same application version as namespace
+            expect(graph1.debugGetDbVersion()).toBe(graph2.debugGetDbVersion());
 
             await db.close();
         });

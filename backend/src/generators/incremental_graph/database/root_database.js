@@ -13,7 +13,6 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {import('./types').SchemaHash} SchemaHash */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').VersionString} VersionString */
 
@@ -65,8 +64,8 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * Storage container for a single incremental graph schema.
- * All data (values, freshness, indices) is isolated per schema hash.
+ * Storage container for a single incremental graph version namespace.
+ * All data (values, freshness, indices) is isolated per application version.
  * @typedef {object} SchemaStorage
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
@@ -82,7 +81,7 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * Root database class providing schema-namespaced storage.
+ * Root database class providing version-namespaced storage.
  */
 class RootDatabaseClass {
     /**
@@ -93,18 +92,24 @@ class RootDatabaseClass {
     db;
 
     /**
-     * Cache of schema storages.
+     * Cache of version storages.
      * @private
-     * @type {Map<SchemaHash, SchemaStorage>}
+     * @type {Map<VersionString, SchemaStorage>}
      */
-    schemaStorages;
+    versionStorages;
 
     /**
-     * The sublevel for listing all schemas.
+     * The sublevel for listing all stored versions.
      * @private
      * @type {ListOfSchemasType}
      */
     listOfSchemas;
+
+    /**
+     * The application version string used as the storage namespace.
+     * @type {VersionString}
+     */
+    version;
 
     /**
      * @constructor
@@ -114,50 +119,49 @@ class RootDatabaseClass {
     constructor(db, version) {
         this.db = db;
         this.version = version;
-        this.schemaStorages = new Map();
+        this.versionStorages = new Map();
         this.listOfSchemas = this.db.sublevel('schemas', { valueEncoding: 'json' });
     }
 
     /**
-     * Get schema-specific storage (creates if needed).
-     * @param {SchemaHash} schemaHash - The schema hash
+     * Get version-specific storage (creates if needed).
+     * @param {VersionString} dbVersion - The application version string
      * @returns {SchemaStorage}
      */
-    getSchemaStorage(schemaHash) {
+    getVersionStorage(dbVersion) {
         // Check cache first
-        const schemaHashStr = schemaHashToString(schemaHash);
-        const cached = this.schemaStorages.get(schemaHash);
+        const cached = this.versionStorages.get(dbVersion);
         if (cached) {
             return cached;
         }
 
-        // Create new schema storage with sublevels
+        // Create new version storage with sublevels
         /** @type {SchemaSublevelType} */
-        const schemaSublevel = this.db.sublevel(schemaHashStr, { valueEncoding: 'json' });
+        const versionSublevel = this.db.sublevel(dbVersion, { valueEncoding: 'json' });
 
         /** @type {SimpleSublevel<ComputedValue>} */
-        const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
+        const valuesSublevel = versionSublevel.sublevel('values', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Freshness>} */
-        const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
+        const freshnessSublevel = versionSublevel.sublevel('freshness', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<InputsRecord>} */
-        const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
+        const inputsSublevel = versionSublevel.sublevel('inputs', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<NodeKeyString[]>} */
-        const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+        const revdepsSublevel = versionSublevel.sublevel('revdeps', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Counter>} */
-        const countersSublevel = schemaSublevel.sublevel('counters', { valueEncoding: 'json' });
+        const countersSublevel = versionSublevel.sublevel('counters', { valueEncoding: 'json' });
 
-        let touchedSchema = false;
+        let touchedVersion = false;
         /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
         const batch = async (operations) => {
             if (operations.length === 0) {
                 return;
             }
 
-            if (!touchedSchema) {
-                await this.listOfSchemas.put(schemaHash, this.version);
-                touchedSchema = true;
+            if (!touchedVersion) {
+                await this.listOfSchemas.put(dbVersion, this.version);
+                touchedVersion = true;
             }
-            await schemaSublevel.batch(operations);
+            await versionSublevel.batch(operations);
         };
 
         const storage = {
@@ -170,14 +174,14 @@ class RootDatabaseClass {
         };
 
         // Cache for future use
-        this.schemaStorages.set(schemaHash, storage);
+        this.versionStorages.set(dbVersion, storage);
 
         return storage;
     }
 
     /**
-     * List all stored schema hashes.
-     * @returns {AsyncIterable<SchemaHash>}
+     * List all stored version strings.
+     * @returns {AsyncIterable<VersionString>}
      */
     async *listSchemas() {
         for await (const key of this.listOfSchemas.keys()) {
@@ -193,8 +197,6 @@ class RootDatabaseClass {
         await this.db.close();
     }
 }
-
-const { schemaHashToString } = require('./types');
 
 /**
  * @typedef {import('../../../level_database').LevelDatabase} LevelDatabase

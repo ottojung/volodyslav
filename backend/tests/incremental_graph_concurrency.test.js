@@ -27,13 +27,15 @@ class InMemoryDatabase {
         this.schemas = new Map();
         /** @type {boolean} */
         this.closed = false;
+        /** @type {string} */
+        this.version = "test-version";
     }
 
-    getSchemaStorage(schemaHash) {
-        if (!this.schemas.has(schemaHash)) {
-            this.schemas.set(schemaHash, new Map());
+    getVersionStorage(dbVersion) {
+        if (!this.schemas.has(dbVersion)) {
+            this.schemas.set(dbVersion, new Map());
         }
-        const schemaMap = this.schemas.get(schemaHash);
+        const schemaMap = this.schemas.get(dbVersion);
 
         const createSublevel = (name) => {
             const prefix = `${name}:`;

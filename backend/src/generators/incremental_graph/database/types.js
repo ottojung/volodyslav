@@ -259,54 +259,6 @@ function nodeNameToString(nodeName) {
  * @typedef {NodeNameClass} NodeName
  */
 
-class SchemaHashClass {
-    /**
-     * @private
-     * @type {undefined}
-     */
-    __brand;
-    constructor() {
-        if (this.__brand !== undefined) {
-            throw new Error("SchemaHash cannot be instantiated");
-        }
-    }
-}
-
-/**
- * A schema hash string identifying an incremental graph schema.
- * @typedef {SchemaHashClass} SchemaHash
- */
-
-/**
- * @param {string} _value
- * @returns {_value is SchemaHash}
- */
-function castToSchemaHash(_value) {
-    return true;
-}
-
-/**
- * @param {string} schemaHashStr 
- * @returns {SchemaHash}
- */
-function stringToSchemaHash(schemaHashStr) {
-    if (castToSchemaHash(schemaHashStr)) {
-        return schemaHashStr;
-    }
-    throw new Error("Invalid schema hash string");
-}
-
-/**
- * @param {SchemaHash} schemaHash
- * @returns {string}
- */
-function schemaHashToString(schemaHash) {
-    if (typeof schemaHash === "string") {
-        return schemaHash;
-    }
-    throw new Error("Invalid schema hash type");
-}
-
 /**
  * @template F
  * @template K
@@ -323,7 +275,7 @@ function schemaHashToString(schemaHash) {
  */
 
 /** 
- * @typedef {NodeKeyString | SchemaHash} DatabaseKey
+ * @typedef {NodeKeyString | VersionString} DatabaseKey
  */
 
 /**
@@ -339,7 +291,7 @@ function schemaHashToString(schemaHash) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, SchemaHash, VersionString>} ListOfSchemasType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, VersionString, VersionString>} ListOfSchemasType
  */
 
 /**
@@ -348,9 +300,6 @@ function schemaHashToString(schemaHash) {
  */
 
 module.exports = {
-    schemaHashToString,
-    stringToSchemaHash,
-    SchemaHashClass,
     nodeNameToString,
     stringToNodeName,
     NodeNameClass,

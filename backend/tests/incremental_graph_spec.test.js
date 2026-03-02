@@ -40,13 +40,15 @@ class InMemoryDatabase {
         this.putLog = [];
         /** @type {Array<any>} */
         this.getValueLog = [];
+        /** @type {string} */
+        this.version = "test-version";
     }
 
-    getSchemaStorage(schemaHash) {
-        if (!this.schemas.has(schemaHash)) {
-            this.schemas.set(schemaHash, new Map());
+    getVersionStorage(dbVersion) {
+        if (!this.schemas.has(dbVersion)) {
+            this.schemas.set(dbVersion, new Map());
         }
-        const schemaMap = this.schemas.get(schemaHash);
+        const schemaMap = this.schemas.get(dbVersion);
 
         // Don't capture logs in closure - use arrow functions to preserve 'this' context
         const createSublevel = (name) => {
@@ -130,8 +132,8 @@ class InMemoryDatabase {
     }
 
     async *listSchemas() {
-        for (const schemaHash of this.schemas.keys()) {
-            yield schemaHash;
+        for (const dbVersion of this.schemas.keys()) {
+            yield dbVersion;
         }
     }
 
@@ -196,18 +198,18 @@ class InMemoryDatabase {
     }
 
     /**
-     * Helper to seed a schema storage directly (for testing seeded databases).
+     * Helper to seed a version storage directly (for testing seeded databases).
      * This bypasses normal indexing to simulate partially-seeded databases.
-     * @param {string} schemaHash - The schema hash
+     * @param {string} dbVersion - The application version string
      * @param {string} sublevel - The sublevel name ('values', 'freshness', 'inputs', 'revdeps')
      * @param {string} key - The key
      * @param {any} value - The value
      */
-    async seedSchemaStorage(schemaHash, sublevel, key, value) {
-        if (!this.schemas.has(schemaHash)) {
-            this.schemas.set(schemaHash, new Map());
+    async seedVersionStorage(dbVersion, sublevel, key, value) {
+        if (!this.schemas.has(dbVersion)) {
+            this.schemas.set(dbVersion, new Map());
         }
-        const schemaMap = this.schemas.get(schemaHash);
+        const schemaMap = this.schemas.get(dbVersion);
         const fullKey = `${sublevel}:${key}`;
         schemaMap.set(fullKey, deepClone(value));
     }

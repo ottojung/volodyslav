@@ -4,7 +4,6 @@
 
 const {
     stringToNodeName,
-    stringToSchemaHash,
     stringToSchemaPattern,
     nodeKeyStringToString,
 } = require("./database");
@@ -21,14 +20,13 @@ const {
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').SchemaPattern} SchemaPattern */
-/** @typedef {import('./types').SchemaHash} SchemaHash */
+/** @typedef {import('./database/types').VersionString} VersionString */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./node_key').NodeKey} NodeKey */
 /** @typedef {import('./types').ConcreteNodeComputor} ConcreteNodeComputor */
 
-const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
 const {
     makeInvalidNodeError,
@@ -49,7 +47,7 @@ const {
     createVariablePositionMap,
     extractInputBindings,
 } = require("./compiled_node");
-const { parseExpr, renderExpr, canonicalizeMapping, checkIfIdentifier } = require("./expr");
+const { parseExpr, renderExpr, checkIfIdentifier } = require("./expr");
 const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
@@ -154,12 +152,12 @@ class IncrementalGraphClass {
     concreteInstantiations;
 
     /**
-     * Stable hash of the schema (compiled nodes).
-     * Used to namespace DB keys so different schemas don't interfere.
+     * Application version string used to namespace DB keys.
+     * Ensures different application versions don't interfere with each other.
      * @private
-     * @type {SchemaHash}
+     * @type {VersionString}
      */
-    schemaHash;
+    dbVersion;
 
     /**
      * Graph storage helper for managing persistent state.
@@ -197,23 +195,11 @@ class IncrementalGraphClass {
         // Validate input patterns use correct arities
         validateInputArities(compiledNodes);
 
-        // Compute schema hash for namespacing DB keys
-        // Use a stable canonical representation of the schema
-        const schemaRepresentation = compiledNodes
-            .map((node) => ({
-                mapping: canonicalizeMapping(node.inputExprs, node.outputExpr),
-            }))
-            .sort((a, b) => a.mapping.localeCompare(b.mapping));
-
-        const schemaJson = JSON.stringify(schemaRepresentation);
-        const hash = crypto
-            .createHash("sha256")
-            .update(schemaJson)
-            .digest("hex");
-        this.schemaHash = stringToSchemaHash(hash);
+        // Use the application version string as the storage namespace
+        this.dbVersion = rootDatabase.version;
 
         // Initialize storage helper
-        this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
+        this.storage = makeGraphStorage(rootDatabase, this.dbVersion);
 
         // Build nodeName index for O(1) lookup by nodeName (functor) only
         this.headIndex = new Map();
@@ -795,20 +781,19 @@ class IncrementalGraphClass {
     }
 
     /**
-     * Get the schema hash for testing purposes.
-     * @returns {SchemaHash}
+     * Get the application version string used for storage namespacing.
+     * @returns {VersionString}
      */
-    getSchemaHash() {
-        return this.schemaHash;
+    getDbVersion() {
+        return this.dbVersion;
     }
 
     /**
-     * Get the schema hash for debugging purposes (debug interface).
-     * This is an alias for getSchemaHash() as required by the spec.
-     * @returns {SchemaHash}
+     * Get the application version string used for storage namespacing (debug interface).
+     * @returns {VersionString}
      */
-    debugGetSchemaHash() {
-        return this.schemaHash;
+    debugGetDbVersion() {
+        return this.dbVersion;
     }
 }
 
