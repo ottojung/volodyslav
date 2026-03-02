@@ -150,12 +150,6 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * @returns {Promise<void>}
  */
 async function runMigration(rootDatabase, nodeDefs, callback) {
-    // version.  Version strings are application git-hashes (opaque), so we
-    // cannot order them numerically.  In practice exactly two versions exist at
-    // migration time: the old one and the new one that has not been written yet.
-    // If somehow more than two exist, the last non-current version encountered
-    // during iteration is used; authors needing a specific prior version should
-    // pass it explicitly via a future overload.
     /** @type {import('./database/types').Version | undefined} */
     let prevVersion = await rootDatabase.lastSchema();
     if (prevVersion === undefined) {
