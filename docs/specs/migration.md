@@ -62,7 +62,7 @@ All methods are `async`.
 
 ### Idempotency
 
-Calling the same decision twice (with the same value for `override`) is allowed and has no effect.
+Calling the same decision twice (except for same-value `override`) is allowed and has no effect.
 
 ### Conflict detection
 
