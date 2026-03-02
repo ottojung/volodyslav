@@ -96,4 +96,45 @@ describe("PUT /api/config", () => {
         expect(res.statusCode).toBe(400);
         expect(res.body).toHaveProperty("error");
     });
+
+    it("returns 400 when a shortcut has an empty pattern", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/config")
+            .send({ help: "test", shortcuts: [["", "replacement"]] })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/empty pattern/);
+    });
+
+    it("returns 400 when a shortcut pattern is an invalid regex", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/config")
+            .send({ help: "test", shortcuts: [["(", "replacement"]] })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/invalid regex pattern/);
+    });
+
+    it("accepts shortcuts with valid regex patterns", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/config")
+            .send({
+                help: "test",
+                shortcuts: [
+                    ["\\bbreakfast\\b", "food [when this morning]"],
+                    ["slept (\\d+)h", "sleep [duration $1 hours]"],
+                ],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(200);
+    });
 });

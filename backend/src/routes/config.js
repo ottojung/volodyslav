@@ -99,6 +99,25 @@ async function handleConfigGet(_req, res, capabilities) {
 }
 
 /**
+ * Validates that all shortcut patterns in a config are non-empty and compile as valid JS regexes.
+ * @param {import('../config/structure').Config} config
+ * @returns {string|null} - Error message if invalid, null if valid
+ */
+function validateShortcutPatterns(config) {
+    for (const [i, shortcut] of config.shortcuts.entries()) {
+        if (shortcut.pattern === "") {
+            return `Shortcut at index ${i} has an empty pattern`;
+        }
+        try {
+            new RegExp(shortcut.pattern);
+        } catch (error) {
+            return `Shortcut at index ${i} has an invalid regex pattern "${shortcut.pattern}": ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+    return null;
+}
+
+/**
  * Handles the PUT /config logic.
  * @param {import('express').Request} req
  * @param {import('express').Response} res - Responds with ConfigResponse on success or ConfigErrorResponse on error
@@ -113,6 +132,14 @@ async function handleConfigPut(req, res, capabilities) {
         if (config instanceof Error) {
             res.status(400).json({
                 error: config.message,
+            });
+            return;
+        }
+
+        const patternError = validateShortcutPatterns(config);
+        if (patternError !== null) {
+            res.status(400).json({
+                error: patternError,
             });
             return;
         }
