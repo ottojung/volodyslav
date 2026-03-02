@@ -86,6 +86,9 @@ function App() {
           <Link to="/describe">
             <Button colorScheme="blue" variant="outline" w="200px">Log an Event</Button>
           </Link>
+          <Link to="/search">
+            <Button colorScheme="purple" variant="outline" w="200px">Search Entries</Button>
+          </Link>
         </VStack>
       </VStack>
     </Box>

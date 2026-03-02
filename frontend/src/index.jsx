@@ -5,6 +5,8 @@ import App from './App.jsx';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Camera from './Camera/Camera.jsx';
 import DescriptionEntry from './DescriptionEntry/DescriptionEntry.jsx';
+import Search from './Search/Search.jsx';
+import EntryDetail from './EntryDetail/EntryDetail.jsx';
 import { ChakraProvider } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 
@@ -34,6 +36,8 @@ ReactDOM.createRoot(root).render(
           <Route path="/camera" element={<Camera />} />
           <Route path="/camera.html" element={<Camera />} />
           <Route path="/describe" element={<DescriptionEntry />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/entry/:id" element={<EntryDetail />} />
           <Route path="*" element={<App />} />
         </Routes>
       </BrowserRouter>
