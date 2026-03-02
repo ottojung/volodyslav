@@ -67,7 +67,13 @@ describe("runMigration", () => {
             migrations: {},
         }];
 
-        await runMigration(rootDatabase, nodeDefs, async (storage) => {
+        const capabilities = {
+            sleeper: {
+                withMutex: async (_name, procedure) => procedure(),
+            },
+        };
+
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
             await storage.invalidate(nodeKey);
         });
 

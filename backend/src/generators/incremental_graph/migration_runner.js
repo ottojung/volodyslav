@@ -25,6 +25,12 @@ const { makeMigrationStorage } = require("./migration_storage");
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./migration_storage').Decision} Decision */
+/** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {SleepCapability} sleeper - Sleeper capability for mutex operations.
+ */
 
 /**
  * Collect all materialized node keys from a schema storage.
