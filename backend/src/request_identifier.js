@@ -184,8 +184,6 @@ module.exports = {
     markDone,
     isDone,
     makeDirectory,
-    MissingRequestIdentifierError,
     isMissingRequestIdentifierError,
-    InvalidRequestIdentifierError,
     isInvalidRequestIdentifierError,
 };
