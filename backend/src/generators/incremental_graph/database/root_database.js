@@ -153,8 +153,11 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                const count = await this.numberOfSchemas();
-                await this.listOfSchemas.put(version, count);
+                const existing = await this.listOfSchemas.get(version);
+                if (existing !== undefined) {
+                    const count = await this.numberOfSchemas();
+                    await this.listOfSchemas.put(version, count);
+                }
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
