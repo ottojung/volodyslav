@@ -28,6 +28,26 @@ const {
     isSchemaArityConflict,
 } = require('./errors');
 const { makeRootDatabase } = require('./database');
+const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
+const { runMigration } = require('./migration_runner');
+const {
+    makeDecisionConflictError,
+    isDecisionConflict,
+    makeOverrideConflictError,
+    isOverrideConflict,
+    makeUndecidedNodesError,
+    isUndecidedNodes,
+    makePartialDeleteFanInError,
+    isPartialDeleteFanIn,
+    makeSchemaCompatibilityError,
+    isSchemaCompatibility,
+    makeGetMissingNodeError,
+    isGetMissingNode,
+    makeGetMissingValueError,
+    isGetMissingValue,
+    makeMissingDependencyMetadataError,
+    isMissingDependencyMetadata,
+} = require('./migration_errors');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -59,4 +79,24 @@ module.exports = {
     isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
+    // Migration API
+    makeMigrationStorage,
+    isMigrationStorage,
+    runMigration,
+    makeDecisionConflictError,
+    isDecisionConflict,
+    makeOverrideConflictError,
+    isOverrideConflict,
+    makeUndecidedNodesError,
+    isUndecidedNodes,
+    makePartialDeleteFanInError,
+    isPartialDeleteFanIn,
+    makeSchemaCompatibilityError,
+    isSchemaCompatibility,
+    makeGetMissingNodeError,
+    isGetMissingNode,
+    makeGetMissingValueError,
+    isGetMissingValue,
+    makeMissingDependencyMetadataError,
+    isMissingDependencyMetadata,
 };
