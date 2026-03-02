@@ -1,4 +1,4 @@
-const { getEntries } = require("../../entry");
+const { getEntries, isEntryValidationError } = require("../../entry");
 const { serialize } = require("../../event");
 
 /**
@@ -38,6 +38,7 @@ const { serialize } = require("../../event");
  * @property {number} page - The current page number (1-based)
  * @property {number} limit - The number of items per page
  * @property {'dateAscending'|'dateDescending'} order - The order to sort entries by date
+ * @property {string} [search] - Optional regex to filter entries
  */
 
 /**
@@ -50,6 +51,7 @@ function parsePaginationParams(query) {
     const pageRaw = query["page"];
     const limitRaw = query["limit"];
     const orderRaw = query["order"];
+    const searchRaw = query["search"];
 
     const page = Math.max(
         1,
@@ -83,7 +85,11 @@ function parsePaginationParams(query) {
             ? orderStr
             : 'dateDescending';
 
-    return { page, limit, order };
+    const search = searchRaw !== undefined
+        ? String(Array.isArray(searchRaw) ? searchRaw[0] : searchRaw)
+        : undefined;
+
+    return { page, limit, order, search };
 }
 
 /**
@@ -129,6 +135,11 @@ async function handleEntriesGet(req, res, capabilities, reqId) {
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+
+        if (isEntryValidationError(error)) {
+            res.status(400).json({ error: message });
+            return;
+        }
 
         capabilities.logger.logError(
             {

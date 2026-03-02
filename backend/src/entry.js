@@ -124,6 +124,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @property {number} page - The current page number (1-based)
  * @property {number} limit - The number of items per page
  * @property {'dateAscending'|'dateDescending'} [order] - The order to sort entries by date
+ * @property {string} [search] - Optional regex to filter entries by type or description
  */
 
 /**
@@ -144,7 +145,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @returns {Promise<PaginationResult>} - The paginated entries result.
  */
 async function getEntries(capabilities, pagination) {
-    const { page, limit, order = 'dateDescending' } = pagination;
+    const { page, limit, order = 'dateDescending', search } = pagination;
 
     if (!Number.isInteger(page) || page < 1) {
         throw new EntryValidationError('page must be a positive integer');
@@ -156,13 +157,30 @@ async function getEntries(capabilities, pagination) {
         throw new EntryValidationError('order must be either "dateAscending" or "dateDescending"');
     }
 
+    /** @type {RegExp|null} */
+    let searchRegex = null;
+    if (search !== undefined && search !== '') {
+        try {
+            searchRegex = new RegExp(search, 'i');
+        } catch {
+            throw new EntryValidationError('search must be a valid regular expression');
+        }
+    }
+
     // Fetch all entries from storage
     const entries = await transaction(capabilities, async (storage) => {
         return await storage.getExistingEntries();
     });
 
+    // Filter entries by search regex if provided
+    const filteredEntries = searchRegex === null
+        ? entries
+        : entries.filter(entry =>
+            searchRegex.test(entry.type) || searchRegex.test(entry.description)
+        );
+
     // Sort entries by date
-    const sortedEntries = [...entries].sort((a, b) => {
+    const sortedEntries = [...filteredEntries].sort((a, b) => {
         const comparison = a.date.compare(b.date);
         return order === 'dateAscending' ? comparison : -comparison;
     });
@@ -214,9 +232,26 @@ async function deleteEntry(capabilities, id) {
     );
 }
 
+/**
+ * Retrieves a single entry from the event log by its id.
+ *
+ * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {string} id - The identifier of the entry to retrieve.
+ * @returns {Promise<import('./event/structure').Event|null>} - The entry, or null if not found.
+ */
+async function getEntryById(capabilities, id) {
+    const entries = await transaction(capabilities, async (storage) => {
+        return await storage.getExistingEntries();
+    });
+
+    const found = entries.find(entry => entry.id.identifier === id);
+    return found !== undefined ? found : null;
+}
+
 module.exports = {
     createEntry,
     getEntries,
+    getEntryById,
     deleteEntry,
     makeEntryValidationError,
     isEntryValidationError,
