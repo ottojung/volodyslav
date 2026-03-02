@@ -31,43 +31,6 @@ const {
  */
 
 /**
- * Deep equality check for JSON-serializable values.
- * Handles nested objects and arrays without relying on key ordering.
- * @param {unknown} a
- * @param {unknown} b
- * @returns {boolean}
- */
-function deepEqual(a, b) {
-    if (a === b) return true;
-    if (a === null || b === null) return false;
-    if (typeof a !== "object" || typeof b !== "object") return false;
-    if (Array.isArray(a) !== Array.isArray(b)) return false;
-    if (Array.isArray(a) && Array.isArray(b)) {
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i++) {
-            if (!deepEqual(a[i], b[i])) return false;
-        }
-        return true;
-    }
-    // Both are non-null, non-array objects.  Use Object.entries so keys are
-    // compared in a sorted, order-independent manner without type casts.
-    const cmp = (/** @type {string} */ ka, /** @type {string} */ kb) =>
-        ka < kb ? -1 : ka > kb ? 1 : 0;
-    const aEntries = Object.entries(a).sort(([ka], [kb]) => cmp(ka, kb));
-    const bEntries = Object.entries(b).sort(([ka], [kb]) => cmp(ka, kb));
-    if (aEntries.length !== bEntries.length) return false;
-    for (let i = 0; i < aEntries.length; i++) {
-        const aEntry = aEntries[i];
-        const bEntry = bEntries[i];
-        // noUncheckedIndexedAccess guard (always defined given length check above)
-        if (aEntry === undefined || bEntry === undefined) return false;
-        if (aEntry[0] !== bEntry[0]) return false;
-        if (!deepEqual(aEntry[1], bEntry[1])) return false;
-    }
-    return true;
-}
-
-/**
  * Checks whether a node is compatible with the new schema.
  * @param {NodeKeyString} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
@@ -219,9 +182,6 @@ class MigrationStorageClass {
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
-                if (deepEqual(existing.value, value)) {
-                    return;
-                }
                 throw makeOverrideConflictError(nodeKey);
             }
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
