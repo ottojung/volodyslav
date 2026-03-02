@@ -314,7 +314,7 @@ describe("incremental_graph/expr", () => {
         });
 
         test("real-world example from schema validation", () => {
-            // Simulates actual usage in class.js for schema hashing
+            // Simulates actual usage in class.js for schema canonicalization
             const inputExprs = [
                 parseExpr("all_events"),
                 parseExpr("event_context(e)"),

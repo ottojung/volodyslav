@@ -113,8 +113,8 @@ describe("Incremental graph persistence and restart", () => {
         });
     });
 
-    describe("Schema hash namespacing", () => {
-        test("different schemas use different namespaces", async () => {
+    describe("Version namespacing", () => {
+        test("graphs with the same database use the same dbVersion", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -151,17 +151,17 @@ describe("Incremental graph persistence and restart", () => {
 
             // Create graph with schema1
             const graph1 = makeIncrementalGraph(db, schemas1);
-            const hash1 = graph1.schemaHash;
+            const version1 = graph1.debugGetDbVersion();
 
             cellA.value = { value: 10 };
             await graph1.invalidate("A");
 
             // Create graph with schema2 (different schema)
             const graph2 = makeIncrementalGraph(db, schemas2);
-            const hash2 = graph2.schemaHash;
+            const version2 = graph2.debugGetDbVersion();
 
-            // Different schemas should have different hashes
-            expect(hash1).not.toBe(hash2);
+            // Both graphs use the same dbVersion since they share the same database
+            expect(version1).toBe(version2);
 
             // Pull B with schema2
             await graph2.pull("B");
@@ -173,14 +173,6 @@ describe("Incremental graph persistence and restart", () => {
                 dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
             });
             expect(dependents2).toContain(toJsonKey("B"));
-
-            // Verify schema1's namespace is separate (no B in schema1)
-            const storage1 = graph1.getStorage();
-            let dependents1;
-            await storage1.withBatch(async (batch) => {
-                dependents1 = await storage1.listDependents(toJsonKey("A"), batch);
-            });
-            expect(dependents1).not.toContain(toJsonKey("B")); // schema1 doesn't have B node
 
             await db.close();
         });
