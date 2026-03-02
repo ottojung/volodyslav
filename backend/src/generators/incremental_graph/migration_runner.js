@@ -142,15 +142,9 @@ async function runMigration(rootDatabase, nodeDefs, callback) {
     // If somehow more than two exist, the last non-current version encountered
     // during iteration is used; authors needing a specific prior version should
     // pass it explicitly via a future overload.
-    /** @type {import('./database/types').Version | null} */
-    let prevVersion = null;
-    for await (const v of rootDatabase.listSchemas()) {
-        if (v !== newVersion) {
-            prevVersion = v;
-        }
-    }
-
-    if (prevVersion === null) {
+    /** @type {import('./database/types').Version | undefined} */
+    let prevVersion = await rootDatabase.lastSchema();
+    if (prevVersion === undefined) {
         // No previous version; nothing to migrate.
         return;
     }
