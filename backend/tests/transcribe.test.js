@@ -77,7 +77,7 @@ describe("GET /api/transcribe", () => {
 
         // Verify file was written to uploadDir under the request identifier
         const uploadDir = capabilities.environment.workingDirectory();
-        const savedPath = path.join(uploadDir, reqId, outputFilename);
+        const savedPath = path.join(uploadDir, "requests", reqId, outputFilename);
         const savedFileProof = await capabilities.checker.fileExists(savedPath);
         expect(savedFileProof).not.toBeNull();
         const content = await capabilities.reader.readFileAsText(savedPath);
