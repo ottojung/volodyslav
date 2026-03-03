@@ -43,10 +43,10 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeKey)` | Return the previous-version value. |
 | `keep(nodeKey)` | Preserve node as-is in the new version. |
-| `override(nodeKey, value)` | Replace the node's value with the result of `value` (a `Promise<ComputedValue>`). |
+| `override(nodeKey, value)` | Replace the node's value with the result of `value(nodeKey)` (a `NodeKey => Promise<ComputedValue>`). |
 | `invalidate(nodeKey)` | Mark the node for recomputation. |
 | `delete(nodeKey)` | Remove the node from the new version entirely. |
-| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with the result of `value` (a `Promise<ComputedValue>`) as its initial value. |
+| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with the result of `value(nodeKey)` (a `NodeKey => Promise<ComputedValue>`) as its initial value. |
 
 ### Traversal methods
 

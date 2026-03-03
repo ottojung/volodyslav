@@ -25,10 +25,10 @@ const {
 
 /**
  * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: Promise<ComputedValue> }} OverrideDecision
+ * @typedef {{ kind: 'override', value: (nodeKey: NodeKeyString) => Promise<ComputedValue> }} OverrideDecision
  * @typedef {{ kind: 'invalidate' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {{ kind: 'create', value: Promise<ComputedValue> }} CreateDecision
+ * @typedef {{ kind: 'create', value: (nodeKey: NodeKeyString) => Promise<ComputedValue> }} CreateDecision
  * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
 
@@ -172,7 +172,7 @@ class MigrationStorageClass {
     /**
      * Assign an OVERRIDE decision to a node with a new value.
      * @param {NodeKeyString} nodeKey
-     * @param {Promise<ComputedValue>} value
+     * @param {(nodeKey: NodeKeyString) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
     async override(nodeKey, value) {
@@ -236,7 +236,7 @@ class MigrationStorageClass {
      * The node must exist in the new schema.
      * The new node is created as up-to-date with the provided value and empty inputs.
      * @param {NodeKeyString} nodeKey
-     * @param {Promise<ComputedValue>} value
+     * @param {(nodeKey: NodeKeyString) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
     async create(nodeKey, value) {
