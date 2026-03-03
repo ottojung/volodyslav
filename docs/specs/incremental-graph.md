@@ -458,9 +458,7 @@ function makeIncrementalGraph(
 
 **REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
 
-**REQ-FACTORY-02:** MUST use `dbVersion` (the application version string) for internal storage namespacing.
-
-**REQ-FACTORY-03:** MUST reject schemas where the same functor appears with different arities (throw `SchemaArityConflictError`).
+**REQ-FACTORY-02:** MUST reject schemas where the same functor appears with different arities (throw `SchemaArityConflictError`).
 
 ### 3.2 IncrementalGraph Interface
 
