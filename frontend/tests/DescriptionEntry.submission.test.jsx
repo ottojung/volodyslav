@@ -28,6 +28,13 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
     retrievePhotos: jest.fn(),
 }));
 
+// Mock react-router-dom to intercept navigation
+const mockNavigate = jest.fn();
+jest.mock("react-router-dom", () => ({
+    ...jest.requireActual("react-router-dom"),
+    useNavigate: () => mockNavigate,
+}));
+
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
@@ -72,6 +79,7 @@ describe("DescriptionEntry", () => {
         // Reset mocks before each test
         submitEntry.mockClear();
         fetchConfig.mockClear();
+        mockNavigate.mockClear();
 
         // Reset camera mocks - use mockReset to clear all state
         generateRequestIdentifier.mockReset();
@@ -232,6 +240,48 @@ describe("DescriptionEntry", () => {
 
         // Should have called submitEntry twice
         expect(submitEntry).toHaveBeenCalledTimes(2);
+    });
+
+    it("navigates to search page after successful submission", async () => {
+        render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Help")).toBeInTheDocument();
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        fireEvent.change(input, { target: { value: "test event" } });
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalledWith("/search");
+        });
+    });
+
+    it("does not navigate to search page when submission fails", async () => {
+        submitEntry.mockRejectedValue(new Error("Network error"));
+
+        render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Help")).toBeInTheDocument();
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        fireEvent.change(input, { target: { value: "test event" } });
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
+
+        await waitFor(() => {
+            expect(submitEntry).toHaveBeenCalled();
+        });
+
+        expect(mockNavigate).not.toHaveBeenCalled();
     });
 
 });
