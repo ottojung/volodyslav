@@ -29,29 +29,30 @@ function parseEntries(results) {
 /**
  * Searches entries using a regex pattern.
  * @param {string} pattern - The regex pattern to search for.
- * @param {number} [limit=50] - Maximum number of results.
- * @returns {Promise<{results: Entry[], error?: string}>}
+ * @param {number} [page=1] - Page number (1-based).
+ * @param {number} [limit=50] - Maximum number of results per page.
+ * @returns {Promise<{results: Entry[], hasMore: boolean, error?: string}>}
  */
-export async function searchEntries(pattern, limit = 50) {
+export async function searchEntries(pattern, page = 1, limit = 50) {
     try {
-        const url = `${API_BASE_URL}/entries?search=${encodeURIComponent(pattern)}&limit=${limit}&order=dateDescending`;
+        const url = `${API_BASE_URL}/entries?search=${encodeURIComponent(pattern)}&page=${page}&limit=${limit}&order=dateDescending`;
         const response = await fetch(url);
 
         if (response.status === 400) {
             const data = await response.json();
-            return { results: [], error: data.error || "Invalid search pattern" };
+            return { results: [], hasMore: false, error: data.error || "Invalid search pattern" };
         }
 
         if (response.ok) {
             const data = await response.json();
-            return { results: parseEntries(data.results) };
+            return { results: parseEntries(data.results), hasMore: data.next !== null };
         }
 
         logger.warn("Failed to search entries:", response.status);
-        return { results: [], error: "Failed to fetch results" };
+        return { results: [], hasMore: false, error: "Failed to fetch results" };
     } catch (error) {
         logger.error("Error searching entries:", error);
-        return { results: [], error: "Network error" };
+        return { results: [], hasMore: false, error: "Network error" };
     }
 }
 
