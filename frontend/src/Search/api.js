@@ -78,3 +78,26 @@ export async function fetchEntryById(id) {
         return null;
     }
 }
+
+/**
+ * Deletes an entry by its id.
+ * @param {string} id - The entry id.
+ * @returns {Promise<boolean>} True on success, false on failure.
+ */
+export async function deleteEntryById(id) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/entries?id=${encodeURIComponent(id)}`, {
+            method: "DELETE",
+        });
+
+        if (response.ok) {
+            return true;
+        }
+
+        logger.warn("Failed to delete entry:", response.status);
+        return false;
+    } catch (error) {
+        logger.error("Error deleting entry:", error);
+        return false;
+    }
+}

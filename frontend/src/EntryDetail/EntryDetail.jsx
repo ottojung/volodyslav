@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import {
     Container,
     VStack,
@@ -12,8 +12,9 @@ import {
     Spinner,
     Box,
     Badge,
+    Button,
 } from "@chakra-ui/react";
-import { fetchEntryById } from "../Search/api.js";
+import { fetchEntryById, deleteEntryById } from "../Search/api.js";
 import {
     SPACING,
     SIZES,
@@ -94,6 +95,7 @@ function FieldRow({ fieldKey, value }) {
 export default function EntryDetail() {
     const { id } = useParams();
     const location = useLocation();
+    const navigate = useNavigate();
 
     /** @type {Entry|null} */
     const stateEntry = location.state?.entry ?? null;
@@ -101,6 +103,7 @@ export default function EntryDetail() {
     const [entry, setEntry] = useState(stateEntry);
     const [isLoading, setIsLoading] = useState(stateEntry === null);
     const [notFound, setNotFound] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         if (stateEntry !== null || id === undefined) return;
@@ -115,6 +118,17 @@ export default function EntryDetail() {
             setIsLoading(false);
         });
     }, [id, stateEntry]);
+
+    async function handleDelete() {
+        if (entry === null) return;
+        setIsDeleting(true);
+        const success = await deleteEntryById(entry.id);
+        if (success) {
+            navigate("/search");
+        } else {
+            setIsDeleting(false);
+        }
+    }
 
     if (isLoading) {
         return (
@@ -145,8 +159,18 @@ export default function EntryDetail() {
             <VStack spacing={SPACING.xxl} align="stretch" justify="flex-start">
                 <Card {...CARD_STYLES.main}>
                     <CardBody p={SPACING.lg}>
-                        <HStack spacing={2} mb={SPACING.md}>
+                        <HStack spacing={2} mb={SPACING.md} justify="space-between">
                             <Badge {...BADGE_STYLES}>{entry.type}</Badge>
+                            <Button
+                                colorScheme="red"
+                                size="sm"
+                                variant="outline"
+                                onClick={handleDelete}
+                                isLoading={isDeleting}
+                                loadingText="Deleting..."
+                            >
+                                Delete
+                            </Button>
                         </HStack>
                         <VStack spacing={SPACING.sm} align="stretch">
                             {fields.map((field) => (
