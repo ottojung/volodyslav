@@ -35,6 +35,16 @@ const EMPTY_ENTRIES = [];
 const NO_ERROR = null;
 
 /**
+ * Returns the regex pattern to use for searching.
+ * When the user input is empty, defaults to ".*" to match all entries.
+ * @param {string} pattern - The raw user input pattern.
+ * @returns {string}
+ */
+function resolveSearchPattern(pattern) {
+    return pattern.trim() === "" ? ".*" : pattern;
+}
+
+/**
  * Search page component.
  * Shows a regex search field at the top and matching entries below.
  * Clicking an entry navigates to its detail page.
@@ -58,20 +68,13 @@ export default function Search() {
     }, []);
 
     useEffect(() => {
-        if (pattern.trim() === "") {
-            setResults([]);
-            setError(null);
-            setIsLoading(false);
-            setPage(1);
-            setHasMore(false);
-            return;
-        }
+        const resolvedPattern = resolveSearchPattern(pattern);
 
         setIsLoading(true);
         setError(null);
 
         const timer = setTimeout(async () => {
-            const { results: found, hasMore: more, error: err } = await searchEntries(pattern, 1);
+            const { results: found, hasMore: more, error: err } = await searchEntries(resolvedPattern, 1);
             setResults(found);
             setPage(1);
             setHasMore(more);
@@ -91,8 +94,9 @@ export default function Search() {
 
     async function handleLoadMore() {
         const nextPage = page + 1;
+        const resolvedPattern = resolveSearchPattern(pattern);
         setIsLoading(true);
-        const { results: found, hasMore: more, error: err } = await searchEntries(pattern, nextPage);
+        const { results: found, hasMore: more, error: err } = await searchEntries(resolvedPattern, nextPage);
         if (err === undefined) {
             setResults(prev => [...prev, ...found]);
             setPage(nextPage);

@@ -57,15 +57,35 @@ describe("Search page", () => {
         ).toBeInTheDocument();
     });
 
-    it("does not search when input is empty", async () => {
+    it("shows recent entries on initial load", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry({ description: "- Recent entry" })] });
+
         render(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
         );
 
-        act(() => { jest.runAllTimers(); });
-        expect(searchEntries).not.toHaveBeenCalled();
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("- Recent entry")).toBeInTheDocument();
+        });
+
+        expect(searchEntries).toHaveBeenCalledWith(".*", 1);
+    });
+
+    it("searches with .* pattern when input is empty to show recent entries", async () => {
+        searchEntries.mockResolvedValue({ results: [] });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+        expect(searchEntries).toHaveBeenCalledWith(".*", 1);
     });
 
     it("does not show 'no results' message when input is empty", () => {
@@ -224,8 +244,11 @@ describe("Search page", () => {
         });
     });
 
-    it("clears results when input is cleared", async () => {
-        searchEntries.mockResolvedValue({ results: [mockEntry()] });
+    it("shows recent entries when input is cleared", async () => {
+        searchEntries
+            .mockResolvedValueOnce({ results: [] })
+            .mockResolvedValueOnce({ results: [mockEntry()] })
+            .mockResolvedValueOnce({ results: [] });
 
         render(
             <MemoryRouter>
@@ -234,8 +257,11 @@ describe("Search page", () => {
         );
 
         const input = screen.getByPlaceholderText("Search entries by regex...");
-        fireEvent.change(input, { target: { value: "food" } });
 
+        // Wait for initial recent-entries load
+        await act(async () => { jest.runAllTimers(); });
+
+        fireEvent.change(input, { target: { value: "food" } });
         await act(async () => { jest.runAllTimers(); });
 
         await waitFor(() => {
@@ -243,9 +269,10 @@ describe("Search page", () => {
         });
 
         fireEvent.change(input, { target: { value: "" } });
+        await act(async () => { jest.runAllTimers(); });
 
         await waitFor(() => {
-            expect(screen.queryByText("- Ate pizza")).not.toBeInTheDocument();
+            expect(searchEntries).toHaveBeenLastCalledWith(".*", 1);
         });
     });
 
