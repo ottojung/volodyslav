@@ -356,8 +356,13 @@ async function importLegacyToSlot(db, legacyVersion) {
     for (const subname of ['values', 'freshness', 'inputs', 'revdeps', 'counters']) {
         const src = srcSublevel.sublevel(subname, { valueEncoding: 'json' });
         const dst = dstSublevel.sublevel(subname, { valueEncoding: 'json' });
+        /** @type {Array<{type: 'put', key: string, value: string}>} */
+        const ops = [];
         for await (const [key, value] of src.iterator()) {
-            await dst.put(key, value);
+            ops.push({ type: 'put', key, value });
+        }
+        if (ops.length > 0) {
+            await dst.batch(ops);
         }
     }
 

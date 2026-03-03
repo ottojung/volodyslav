@@ -43,24 +43,23 @@ function makeSchemaStorage() {
 
 describe("runMigration", () => {
     test("invalidate preserves counters from previous storage", async () => {
-        const previousStorage = makeSchemaStorage();
-        const currentStorage = makeSchemaStorage();
+        const activeStorage = makeSchemaStorage();
+        const inactiveStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
 
-        await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
-        await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
-        await previousStorage.freshness.put(nodeKey, "up-to-date");
-        await previousStorage.counters.put(nodeKey, 5);
+        await activeStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await activeStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await activeStorage.freshness.put(nodeKey, "up-to-date");
+        await activeStorage.counters.put(nodeKey, 5);
 
         const rootDatabase = {
             version: "current",
             async getStoredVersion() { return "previous"; },
-            getActiveSlotStorage() { return previousStorage; },
-            getInactiveSlotStorage() { return currentStorage; },
+            getActiveSlotStorage() { return activeStorage; },
+            getInactiveSlotStorage() { return inactiveStorage; },
             async clearInactiveSlot() {},
             async swapSlots() {},
         };
-
         const nodeDefs = [{
             output: "A",
             inputs: [],
@@ -80,8 +79,8 @@ describe("runMigration", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(currentStorage.counters.get(nodeKey)).resolves.toBe(5);
-        await expect(currentStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
+        await expect(inactiveStorage.counters.get(nodeKey)).resolves.toBe(5);
+        await expect(inactiveStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
     });
 
     test("skips migration when stored version matches current version", async () => {
@@ -135,21 +134,21 @@ describe("runMigration", () => {
     });
 
     test("swapSlots is called after migration", async () => {
-        const previousStorage = makeSchemaStorage();
-        const currentStorage = makeSchemaStorage();
+        const activeStorage = makeSchemaStorage();
+        const inactiveStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         let swapCalled = false;
 
-        await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
-        await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
-        await previousStorage.freshness.put(nodeKey, "up-to-date");
-        await previousStorage.counters.put(nodeKey, 3);
+        await activeStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await activeStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await activeStorage.freshness.put(nodeKey, "up-to-date");
+        await activeStorage.counters.put(nodeKey, 3);
 
         const rootDatabase = {
             version: "2.0.0",
             async getStoredVersion() { return "1.0.0"; },
-            getActiveSlotStorage() { return previousStorage; },
-            getInactiveSlotStorage() { return currentStorage; },
+            getActiveSlotStorage() { return activeStorage; },
+            getInactiveSlotStorage() { return inactiveStorage; },
             async clearInactiveSlot() {},
             async swapSlots() { swapCalled = true; },
         };

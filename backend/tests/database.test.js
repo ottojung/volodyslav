@@ -444,7 +444,7 @@ describe('generators/database', () => {
                 await db.clearInactiveSlot();
                 
                 // Verify data is gone.
-                const after = await db.getInactiveSlotStorage().values.get('testkey');
+                const after = await inactive.values.get('testkey');
                 expect(after).toBeUndefined();
                 
                 await db.close();
