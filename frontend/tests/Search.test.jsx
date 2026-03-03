@@ -98,7 +98,7 @@ describe("Search page", () => {
     });
 
     it("calls searchEntries with the typed pattern", async () => {
-        searchEntries.mockResolvedValue({ results: [] });
+        searchEntries.mockResolvedValue({ results: [], hasMore: false });
 
         render(
             <MemoryRouter>
@@ -112,7 +112,7 @@ describe("Search page", () => {
         await act(async () => { jest.runAllTimers(); });
 
         await waitFor(() => {
-            expect(searchEntries).toHaveBeenCalledWith("food");
+            expect(searchEntries).toHaveBeenCalledWith("food", 1);
         });
     });
 
@@ -325,14 +325,14 @@ describe("Search page", () => {
         expect(searchEntries).toHaveBeenCalled();
 
         // Resolve search so no test hangs
-        resolveSearch({ results: [] });
+        resolveSearch({ results: [], hasMore: false });
         await waitFor(() => {
             expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
         });
     });
 
     it("debounces search calls so only one API call fires", async () => {
-        searchEntries.mockResolvedValue({ results: [] });
+        searchEntries.mockResolvedValue({ results: [], hasMore: false });
 
         render(
             <MemoryRouter>
@@ -352,7 +352,217 @@ describe("Search page", () => {
 
         await waitFor(() => {
             // Should have been called at most with just "food" (last value)
-            expect(searchEntries).toHaveBeenLastCalledWith("food");
+            expect(searchEntries).toHaveBeenLastCalledWith("food", 1);
+        });
+    });
+
+    it("shows 'Load more' button when hasMore is true", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: true });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("Load more")).toBeInTheDocument();
+        });
+    });
+
+    it("does not show 'Load more' button when hasMore is false", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+        });
+    });
+
+    it("shows 'All matching entries are displayed' when hasMore is false and results exist", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("All matching entries are displayed.")).toBeInTheDocument();
+        });
+    });
+
+    it("does not show 'All matching entries are displayed' when there are no results", async () => {
+        searchEntries.mockResolvedValue({ results: [], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.queryByText("All matching entries are displayed.")).not.toBeInTheDocument();
+        });
+    });
+
+    it("clicking 'Load more' calls searchEntries with page 2", async () => {
+        searchEntries
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "2" })], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("Load more")).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText("Load more"));
+        });
+
+        await waitFor(() => {
+            expect(searchEntries).toHaveBeenCalledWith("food", 2);
+        });
+    });
+
+    it("clicking 'Load more' appends new results to existing ones", async () => {
+        searchEntries
+            .mockResolvedValueOnce({
+                results: [mockEntry({ id: "1", description: "- First entry" })],
+                hasMore: true,
+            })
+            .mockResolvedValueOnce({
+                results: [mockEntry({ id: "2", description: "- Second entry" })],
+                hasMore: false,
+            });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("- First entry")).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText("Load more"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("- First entry")).toBeInTheDocument();
+            expect(screen.getByText("- Second entry")).toBeInTheDocument();
+        });
+    });
+
+    it("hides 'Load more' button after loading all results", async () => {
+        searchEntries
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "2" })], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("Load more")).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText("Load more"));
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+            expect(screen.getByText("All matching entries are displayed.")).toBeInTheDocument();
+        });
+    });
+
+    it("resets pagination when the search pattern changes", async () => {
+        searchEntries
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "2" })], hasMore: false })
+            .mockResolvedValueOnce({ results: [mockEntry({ id: "3" })], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("Load more")).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText("Load more"));
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+        });
+
+        // Change the pattern, triggering a fresh search
+        fireEvent.change(input, { target: { value: "sleep" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(searchEntries).toHaveBeenLastCalledWith("sleep", 1);
         });
     });
 });

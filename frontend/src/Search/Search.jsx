@@ -11,6 +11,7 @@ import {
     HStack,
     Badge,
     Spinner,
+    Button,
 } from "@chakra-ui/react";
 import { searchEntries } from "./api.js";
 import { formatRelativeDate } from "../DescriptionEntry/utils.js";
@@ -21,6 +22,7 @@ import {
     INPUT_STYLES,
     TEXT_STYLES,
     BADGE_STYLES,
+    BUTTON_STYLES,
 } from "../DescriptionEntry/styles.js";
 
 /**
@@ -43,6 +45,8 @@ export default function Search() {
     const [results, setResults] = useState(EMPTY_ENTRIES);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(NO_ERROR);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(false);
     const inputRef = useRef(null);
     const navigate = useNavigate();
 
@@ -58,6 +62,8 @@ export default function Search() {
             setResults([]);
             setError(null);
             setIsLoading(false);
+            setPage(1);
+            setHasMore(false);
             return;
         }
 
@@ -65,8 +71,10 @@ export default function Search() {
         setError(null);
 
         const timer = setTimeout(async () => {
-            const { results: found, error: err } = await searchEntries(pattern);
+            const { results: found, hasMore: more, error: err } = await searchEntries(pattern, 1);
             setResults(found);
+            setPage(1);
+            setHasMore(more);
             setError(err !== undefined ? err : null);
             setIsLoading(false);
         }, 300);
@@ -79,6 +87,20 @@ export default function Search() {
      */
     function handleEntryClick(entry) {
         navigate(`/entry/${entry.id}`, { state: { entry } });
+    }
+
+    async function handleLoadMore() {
+        const nextPage = page + 1;
+        setIsLoading(true);
+        const { results: found, hasMore: more, error: err } = await searchEntries(pattern, nextPage);
+        if (err === undefined) {
+            setResults(prev => [...prev, ...found]);
+            setPage(nextPage);
+            setHasMore(more);
+        } else {
+            setError(err);
+        }
+        setIsLoading(false);
     }
 
     return (
@@ -136,6 +158,24 @@ export default function Search() {
                                     </Box>
                                 ))}
                             </VStack>
+                        </CardBody>
+                    </Card>
+                )}
+
+                {!isLoading && error === null && hasMore && (
+                    <Box textAlign="center">
+                        <Button {...BUTTON_STYLES.primary} onClick={handleLoadMore}>
+                            Load more
+                        </Button>
+                    </Box>
+                )}
+
+                {!isLoading && error === null && results.length > 0 && !hasMore && (
+                    <Card {...CARD_STYLES.secondary}>
+                        <CardBody p={SPACING.lg}>
+                            <Text {...TEXT_STYLES.helper} textAlign="center">
+                                All matching entries are displayed.
+                            </Text>
                         </CardBody>
                     </Card>
                 )}
