@@ -7,6 +7,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 jest.mock("../src/Search/api", () => ({
     searchEntries: jest.fn(),
     fetchEntryById: jest.fn(),
+    deleteEntryById: jest.fn(),
 }));
 
 // Mock the logger module
@@ -20,7 +21,7 @@ jest.mock("../src/DescriptionEntry/logger", () => ({
 }));
 
 import EntryDetail from "../src/EntryDetail/EntryDetail.jsx";
-import { fetchEntryById } from "../src/Search/api";
+import { fetchEntryById, deleteEntryById } from "../src/Search/api";
 
 const mockEntry = {
     id: "entry-123",
@@ -52,6 +53,7 @@ function renderWithRoute(pathname, state = undefined) {
 describe("EntryDetail page", () => {
     beforeEach(() => {
         fetchEntryById.mockClear();
+        deleteEntryById.mockClear();
     });
 
     // --- Rendering with state ---
@@ -123,8 +125,8 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         const copyButtons = screen.getAllByRole("button");
-        // id, date, type, description, input, original, modifiers.certainty = 7 fields
-        expect(copyButtons.length).toBeGreaterThanOrEqual(7);
+        // id, date, type, description, input, original, modifiers.certainty = 7 copy buttons + 1 delete button
+        expect(copyButtons.length).toBeGreaterThanOrEqual(8);
     });
 
     it("does not fetch from API when entry is in state", () => {
@@ -222,8 +224,8 @@ describe("EntryDetail page", () => {
         const copyIcon = screen.getAllByText("⎘")[0];
         expect(copyIcon).toBeInTheDocument();
 
-        // Click the copy button (nearest button to the icon)
-        const copyButton = screen.getAllByRole("button")[0];
+        // Click the copy button for the "id" field specifically
+        const copyButton = screen.getByRole("button", { name: "Copy id" });
         await act(async () => { fireEvent.click(copyButton); });
 
         // Should show checkmark after copy
@@ -240,10 +242,62 @@ describe("EntryDetail page", () => {
 
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        // Click the copy button for the "id" field (first button)
-        const copyButton = screen.getAllByRole("button")[0];
+        // Click the copy button for the "id" field specifically
+        const copyButton = screen.getByRole("button", { name: "Copy id" });
         await act(async () => { fireEvent.click(copyButton); });
 
         expect(mockWriteText).toHaveBeenCalled();
+    });
+
+    // --- Delete button ---
+
+    it("shows a delete button", () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+    });
+
+    it("calls deleteEntryById with the entry id when delete button is clicked", async () => {
+        deleteEntryById.mockResolvedValue(true);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        const deleteButton = screen.getByRole("button", { name: /delete/i });
+        await act(async () => { fireEvent.click(deleteButton); });
+
+        expect(deleteEntryById).toHaveBeenCalledWith("entry-123");
+    });
+
+    it("navigates to /search after successful deletion", async () => {
+        deleteEntryById.mockResolvedValue(true);
+
+        render(
+            <MemoryRouter initialEntries={[{ pathname: "/entry/entry-123", state: { entry: mockEntry } }]}>
+                <Routes>
+                    <Route path="/entry/:id" element={<EntryDetail />} />
+                    <Route path="/search" element={<div>Search Page</div>} />
+                </Routes>
+            </MemoryRouter>
+        );
+
+        const deleteButton = screen.getByRole("button", { name: /delete/i });
+        await act(async () => { fireEvent.click(deleteButton); });
+
+        await waitFor(() => {
+            expect(screen.getByText("Search Page")).toBeInTheDocument();
+        });
+    });
+
+    it("stays on entry page when deletion fails", async () => {
+        deleteEntryById.mockResolvedValue(false);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        const deleteButton = screen.getByRole("button", { name: /delete/i });
+        await act(async () => { fireEvent.click(deleteButton); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+        });
     });
 });
