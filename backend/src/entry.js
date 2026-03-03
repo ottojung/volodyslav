@@ -192,7 +192,7 @@ async function getEntries(capabilities, pagination) {
     const results = sortedEntries.slice(start, end);
     const hasMore = end < total;
 
-    capabilities.logger.logInfo(
+    capabilities.logger.logDebug(
         {
             total,
             page,

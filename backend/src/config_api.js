@@ -40,7 +40,7 @@ async function getConfig(capabilities) {
         return await storage.getExistingConfig();
     });
 
-    capabilities.logger.logInfo(
+    capabilities.logger.logDebug(
         {
             configExists: config !== null,
             shortcutCount: config?.shortcuts?.length || 0,
