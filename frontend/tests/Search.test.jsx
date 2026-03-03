@@ -524,6 +524,49 @@ describe("Search page", () => {
         });
     });
 
+    it("keeps existing results visible while loading more", async () => {
+        let resolveLoadMore;
+        searchEntries
+            .mockResolvedValueOnce({
+                results: [mockEntry({ id: "1", description: "- First entry" })],
+                hasMore: true,
+            })
+            .mockImplementationOnce(() => new Promise(resolve => { resolveLoadMore = resolve; }));
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("- First entry")).toBeInTheDocument();
+        });
+
+        // Click load more - results should stay visible while fetching
+        act(() => {
+            fireEvent.click(screen.getByText("Load more"));
+        });
+
+        // Existing results must still be visible while the next page is loading
+        expect(screen.getByText("- First entry")).toBeInTheDocument();
+
+        // Resolve the pending load-more fetch
+        await act(async () => {
+            resolveLoadMore({ results: [mockEntry({ id: "2", description: "- Second entry" })], hasMore: false });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("- First entry")).toBeInTheDocument();
+            expect(screen.getByText("- Second entry")).toBeInTheDocument();
+        });
+    });
+
     it("hides 'Load more' button after loading all results", async () => {
         searchEntries
             .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })

@@ -44,6 +44,7 @@ export default function Search() {
     const [pattern, setPattern] = useState("");
     const [results, setResults] = useState(EMPTY_ENTRIES);
     const [isLoading, setIsLoading] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [error, setError] = useState(NO_ERROR);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(false);
@@ -86,7 +87,7 @@ export default function Search() {
 
     async function handleLoadMore() {
         const nextPage = page + 1;
-        setIsLoading(true);
+        setIsLoadingMore(true);
         const { results: found, hasMore: more, error: err } = await searchEntries(pattern, nextPage);
         if (err === undefined) {
             setResults(prev => [...prev, ...found]);
@@ -95,7 +96,7 @@ export default function Search() {
         } else {
             setError(err);
         }
-        setIsLoading(false);
+        setIsLoadingMore(false);
     }
 
     return (
@@ -157,7 +158,7 @@ export default function Search() {
                     </Card>
                 )}
 
-                {!isLoading && error === null && hasMore && (
+                {!isLoading && error === null && hasMore && !isLoadingMore && (
                     <Box textAlign="center">
                         <Button {...BUTTON_STYLES.primary} onClick={handleLoadMore}>
                             Load more
@@ -165,7 +166,13 @@ export default function Search() {
                     </Box>
                 )}
 
-                {!isLoading && error === null && results.length > 0 && !hasMore && (
+                {isLoadingMore && (
+                    <Box textAlign="center" py={SPACING.lg}>
+                        <Spinner size="md" color="blue.400" />
+                    </Box>
+                )}
+
+                {!isLoading && !isLoadingMore && error === null && results.length > 0 && !hasMore && (
                     <Card {...CARD_STYLES.secondary}>
                         <CardBody p={SPACING.lg}>
                             <Text {...TEXT_STYLES.helper} textAlign="center">
