@@ -9,7 +9,7 @@
  */
 
 const { compileNodeDef } = require("./compiled_node");
-const { stringToNodeKeyString, versionToString } = require("./database");
+const { stringToNodeKeyString } = require("./database");
 const { makeMigrationStorage } = require("./migration_storage");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -176,7 +176,7 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  */
 async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
 {
-    /** @type {string | undefined} */
+    /** @type {Version | undefined} */
     const prevVersion = await rootDatabase.getMetaVersion();
     if (prevVersion === undefined) {
         // No previous version recorded; fresh database: record current version, nothing to migrate.
@@ -185,7 +185,7 @@ async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
     }
 
     const currentVersion = rootDatabase.version;
-    if (prevVersion === versionToString(currentVersion)) {
+    if (prevVersion === currentVersion) {
         // Already on the current version.
         return;
     }

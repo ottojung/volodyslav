@@ -6,7 +6,7 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, versionToString } = require('./types');
+const { stringToVersion } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -23,7 +23,7 @@ const { stringToVersion, versionToString } = require('./types');
 /**
  * Sublevel for storing plain-string namespace metadata (e.g., version).
  * Uses string keys rather than NodeKeyString to clearly distinguish meta keys from node keys.
- * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, string, string>} MetaSublevelType
+ * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} MetaSublevelType
  */
 
 /**
@@ -167,7 +167,7 @@ class RootDatabaseClass {
                 if (existing === undefined) {
                     // New namespace, write version to meta to initialize.
                     await this.setMetaVersion(this.version);
-                } else if (existing !== versionToString(this.version)) {
+                } else if (existing !== this.version) {
                     // Version mismatch indicates a logic error in migration or usage of staging namespace.
                     throw new Error(`Version mismatch in batch operation: expected ${this.version}, found ${existing}`);
                 }
@@ -197,7 +197,7 @@ class RootDatabaseClass {
     /**
      * Get the app version string stored in this namespace's meta sublevel.
      * Returns undefined if no version has been recorded yet (fresh database).
-     * @returns {Promise<string | undefined>}
+     * @returns {Promise<Version | undefined>}
      */
     async getMetaVersion() {
         return await this.metaSublevel.get('version');
@@ -209,7 +209,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async setMetaVersion(version) {
-        await this.metaSublevel.put('version', versionToString(version));
+        await this.metaSublevel.put('version', version);
     }
 
     /**
