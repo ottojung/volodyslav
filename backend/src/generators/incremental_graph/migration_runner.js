@@ -30,6 +30,7 @@ const { makeMigrationStorage } = require("./migration_storage");
 /**
  * @typedef {object} Capabilities
  * @property {SleepCapability} sleeper - Sleeper capability for mutex operations.
+ * @property {(message: string) => Promise<void>} checkpointDatabase - Creates a git checkpoint of the database.
  */
 
 /**
@@ -158,7 +159,7 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
     return await capabilities.sleeper.withMutex("migration", async () => {
-        await runMigrationUnsafe(rootDatabase, nodeDefs, callback);
+        await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }
 
@@ -169,12 +170,13 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
 /**
  * The unlocked version of runMigration. Should not be called directly.
  *
+ * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database bound to the "x" namespace
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @returns {Promise<void>}
  */
-async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
+async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
     /** @type {Version | undefined} */
     const prevVersion = await rootDatabase.getMetaVersion();
@@ -189,6 +191,9 @@ async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
         // Already on the current version.
         return;
     }
+
+    // Snapshot the database state before migration starts.
+    await capabilities.checkpointDatabase(`pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`);
 
     // Create the staging namespace ("y") from the same underlying database.
     const nextDb = rootDatabase.withNamespace('y');
@@ -228,6 +233,9 @@ async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
 
     // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
     await rootDatabase.replaceContentsFrom(nextDb);
+
+    // Snapshot the database state after migration completes successfully.
+    await capabilities.checkpointDatabase(`post-migration: ${String(currentVersion)}`);
 }
 
 module.exports = {

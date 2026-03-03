@@ -8,6 +8,7 @@ const { DatabaseInitializationError } = require('./errors');
 const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, versionToString, stringToVersion } = require('./types');
 const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
+const { checkpointDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('./gitstore');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
@@ -21,11 +22,11 @@ const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
  */
 async function getRootDatabase(capabilities) {
     const dataDir = capabilities.environment.workingDirectory();
-    const databasePath = path.join(dataDir, 'generators-leveldb');
+    const databasePath = path.join(dataDir, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH);
 
-    // Ensure the data directory exists
+    // Ensure the parent directory (the git working tree) exists before LevelDB opens.
     try {
-        await capabilities.creator.createDirectory(dataDir);
+        await capabilities.creator.createDirectory(path.join(dataDir, CHECKPOINT_WORKING_PATH));
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
@@ -56,6 +57,9 @@ module.exports = {
     isRootDatabase,
     makeTypedDatabase,
     isTypedDatabase,
+    checkpointDatabase,
+    CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
     stringToNodeKeyString,
     nodeNameToString,
     stringToNodeName,

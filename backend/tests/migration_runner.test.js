@@ -96,9 +96,40 @@ function makeYDb(storage) {
 
 const capabilities = {
     sleeper: { withMutex: async (_name, procedure) => procedure() },
+    checkpointDatabase: jest.fn().mockResolvedValue(undefined),
 };
 
+/**
+ * Builds a minimal but representative migration scenario.
+ * The xStorage has one node ("A") that the migration callback can act upon.
+ */
+function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0.0" } = {}) {
+    const xStorage = makeSchemaStorage();
+    const yStorage = makeSchemaStorage();
+    const nodeKey = toJsonKey("A");
+    const { yDb } = makeYDb(yStorage);
+    const { rootDatabase } = makeRootDatabaseMock({
+        prevVersion,
+        currentVersion,
+        xStorage,
+        yDb,
+    });
+    const nodeDefs = [{
+        output: "A",
+        inputs: [],
+        computor: async () => ({ type: "all_events", events: [] }),
+        isDeterministic: true,
+        hasSideEffects: false,
+        migrations: {},
+    }];
+    return { rootDatabase, nodeDefs, nodeKey, xStorage, yStorage };
+}
+
 describe("runMigration", () => {
+    beforeEach(() => {
+        capabilities.checkpointDatabase.mockClear();
+    });
+
     test("invalidate preserves counters from previous storage", async () => {
         const previousStorage = makeSchemaStorage();
         const currentStorage = makeSchemaStorage();
@@ -167,6 +198,21 @@ describe("runMigration", () => {
 
             expect(mock.setMetaVersionCalledWith).toBe("1.0.0");
         });
+
+        test("does not call checkpointDatabase", async () => {
+            const xStorage = makeSchemaStorage();
+            const { yDb } = makeYDb(makeSchemaStorage());
+            const mock = makeRootDatabaseMock({
+                prevVersion: undefined,
+                currentVersion: "1.0.0",
+                xStorage,
+                yDb,
+            });
+
+            await runMigration(capabilities, mock.rootDatabase, [], async () => {});
+
+            expect(capabilities.checkpointDatabase).not.toHaveBeenCalled();
+        });
     });
 
     describe("no migration needed (version already matches)", () => {
@@ -185,6 +231,21 @@ describe("runMigration", () => {
             });
 
             expect(mock.replaceContentsFromCalled).toBe(false);
+        });
+
+        test("does not call checkpointDatabase", async () => {
+            const xStorage = makeSchemaStorage();
+            const { yDb } = makeYDb(makeSchemaStorage());
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "1.0.0",
+                xStorage,
+                yDb,
+            });
+
+            await runMigration(capabilities, mock.rootDatabase, [], async () => {});
+
+            expect(capabilities.checkpointDatabase).not.toHaveBeenCalled();
         });
     });
 
@@ -298,6 +359,127 @@ describe("runMigration", () => {
 
             expect(mock.replaceContentsFromCalled).toBe(true);
         });
+
+        test("calls checkpointDatabase exactly twice: once before and once after migration", async () => {
+            const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(2);
+        });
+
+        test("pre-migration checkpoint message contains both the old and new version", async () => {
+            const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+            });
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            const firstCall = capabilities.checkpointDatabase.mock.calls[0][0];
+            expect(firstCall).toContain("pre-migration:");
+            expect(firstCall).toContain("1.0.0");
+            expect(firstCall).toContain("2.0.0");
+        });
+
+        test("post-migration checkpoint message contains the new version", async () => {
+            const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+            });
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            const secondCall = capabilities.checkpointDatabase.mock.calls[1][0];
+            expect(secondCall).toContain("post-migration:");
+            expect(secondCall).toContain("2.0.0");
+        });
+
+        test("pre-migration checkpoint is called before replaceContentsFrom", async () => {
+            const callOrder = [];
+            capabilities.checkpointDatabase.mockImplementation(async (msg) => {
+                callOrder.push(`checkpoint:${msg}`);
+            });
+
+            const xStorage = makeSchemaStorage();
+            const nodeKey = toJsonKey("A");
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            const yStorage = makeSchemaStorage();
+            const { yDb } = makeYDb(yStorage);
+            const rootDatabase = {
+                version: "2.0.0",
+                async getMetaVersion() { return "1.0.0"; },
+                getSchemaStorage() { return xStorage; },
+                withNamespace(_ns) { return yDb; },
+                async replaceContentsFrom(_source) { callOrder.push("replaceContentsFrom"); },
+                async setMetaVersion(_v) {},
+            };
+            const nodeDefs = [{
+                output: "A",
+                inputs: [],
+                computor: async () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
+                migrations: {},
+            }];
+
+            await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            const preIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:pre-migration"));
+            const replaceIdx = callOrder.indexOf("replaceContentsFrom");
+            expect(preIdx).toBeGreaterThanOrEqual(0);
+            expect(replaceIdx).toBeGreaterThan(preIdx);
+        });
+
+        test("post-migration checkpoint is called after replaceContentsFrom", async () => {
+            const callOrder = [];
+            capabilities.checkpointDatabase.mockImplementation(async (msg) => {
+                callOrder.push(`checkpoint:${msg}`);
+            });
+
+            const xStorage = makeSchemaStorage();
+            const nodeKey = toJsonKey("A");
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            const yStorage = makeSchemaStorage();
+            const { yDb } = makeYDb(yStorage);
+            const rootDatabase = {
+                version: "2.0.0",
+                async getMetaVersion() { return "1.0.0"; },
+                getSchemaStorage() { return xStorage; },
+                withNamespace(_ns) { return yDb; },
+                async replaceContentsFrom(_source) { callOrder.push("replaceContentsFrom"); },
+                async setMetaVersion(_v) {},
+            };
+            const nodeDefs = [{
+                output: "A",
+                inputs: [],
+                computor: async () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
+                migrations: {},
+            }];
+
+            await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            const postIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:post-migration"));
+            const replaceIdx = callOrder.indexOf("replaceContentsFrom");
+            expect(postIdx).toBeGreaterThan(replaceIdx);
+        });
     });
 
     describe("failure cases", () => {
@@ -399,6 +581,37 @@ describe("runMigration", () => {
 
             // y was still cleared before the callback ran
             expect(yMock.clearStorageCalled).toBe(true);
+        });
+
+        test("callback throws: pre-migration checkpoint is called but post-migration is not", async () => {
+            const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            await expect(
+                runMigration(capabilities, rootDatabase, nodeDefs, async () => {
+                    throw new Error("intentional failure");
+                })
+            ).rejects.toThrow("intentional failure");
+
+            expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(1);
+            const firstCall = capabilities.checkpointDatabase.mock.calls[0][0];
+            expect(firstCall).toContain("pre-migration:");
+        });
+
+        test("finalize throws: pre-migration checkpoint is called but post-migration is not", async () => {
+            const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            // Callback runs but assigns no decision → finalize throws UndecidedNodesError
+            await expect(
+                runMigration(capabilities, rootDatabase, nodeDefs, async (_storage) => {
+                    // intentionally leave the node undecided
+                })
+            ).rejects.toThrow();
+
+            expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(1);
+            const firstCall = capabilities.checkpointDatabase.mock.calls[0][0];
+            expect(firstCall).toContain("pre-migration:");
         });
     });
 });

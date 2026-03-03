@@ -5,7 +5,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { getRootDatabase, isRootDatabase } = require('../src/generators/incremental_graph/database');
+const { getRootDatabase, isRootDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('../src/generators/incremental_graph/database');
 const { 
     isDatabaseError,
     isDatabaseInitializationError,
@@ -67,7 +67,7 @@ describe('generators/database', () => {
             try {
                 const db = await getRootDatabase(capabilities);
                 const dataDir = capabilities.environment.workingDirectory();
-                const expectedPath = path.join(dataDir, 'generators-leveldb');
+                const expectedPath = path.join(dataDir, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH);
                 
                 expect(fs.existsSync(expectedPath)).toBe(true);
                 
@@ -415,7 +415,7 @@ describe('generators/database', () => {
             try {
                 // Write some legacy data directly into the DB without a format marker.
                 const legacyDb = capabilities.levelDatabase.initialize(
-                    require('path').join(capabilities.environment.workingDirectory(), 'generators-leveldb')
+                    require('path').join(capabilities.environment.workingDirectory(), CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH)
                 );
                 await legacyDb.open();
                 await legacyDb.put('legacy-key', 'legacy-value');
