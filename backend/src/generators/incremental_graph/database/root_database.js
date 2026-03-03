@@ -163,7 +163,14 @@ class RootDatabaseClass {
                 return;
             }
             if (!touchedSchema) {
-                await this.setMetaVersion(this.version);
+                const existing = await this.getMetaVersion();
+                if (existing === undefined) {
+                    // New namespace, write version to meta to initialize.
+                    await this.setMetaVersion(this.version);
+                } else if (existing !== this.version) {
+                    // Version mismatch indicates a logic error in migration or usage of staging namespace.
+                    throw new Error(`Version mismatch in batch operation: expected ${this.version}, found ${existing}`);
+                }
                 touchedSchema = true;
             }
             await namespaceSublevel.batch(operations);
