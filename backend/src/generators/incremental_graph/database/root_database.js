@@ -6,7 +6,7 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, versionToString } = require('./types');
+const { stringToVersion } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -23,7 +23,7 @@ const { stringToVersion, versionToString } = require('./types');
 /**
  * Sublevel for storing plain-string namespace metadata (e.g., version).
  * Uses string keys rather than NodeKeyString to clearly distinguish meta keys from node keys.
- * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, string, string>} MetaSublevelType
+ * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} MetaSublevelType
  */
 
 /**
@@ -193,8 +193,7 @@ class RootDatabaseClass {
      * @returns {Promise<Version | undefined>}
      */
     async getMetaVersion() {
-        const existing = await this.metaSublevel.get('version');
-        return existing === undefined ? undefined : stringToVersion(existing);
+        return await this.metaSublevel.get('version');
     }
 
     /**
@@ -203,7 +202,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async setMetaVersion(version) {
-        await this.metaSublevel.put('version', versionToString(version));
+        await this.metaSublevel.put('version', version);
     }
 
     /**

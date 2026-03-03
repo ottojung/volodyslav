@@ -163,6 +163,10 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
 }
 
 /**
+ * @typedef {import('./types').Version} Version
+ */
+
+/**
  * The unlocked version of runMigration. Should not be called directly.
  *
  * @param {RootDatabase} rootDatabase - Opened root database bound to the "x" namespace
@@ -172,14 +176,14 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  */
 async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
 {
-    /** @type {string | undefined} */
+    /** @type {Version | undefined} */
     const prevVersion = await rootDatabase.getMetaVersion();
     if (prevVersion === undefined) {
         // No previous version recorded; fresh database, nothing to migrate.
         return;
     }
 
-    const currentVersion = versionToString(rootDatabase.version);
+    const currentVersion = rootDatabase.version;
     if (prevVersion === currentVersion) {
         // Already on the current version.
         return;
