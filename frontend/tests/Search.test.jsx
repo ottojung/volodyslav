@@ -72,10 +72,10 @@ describe("Search page", () => {
             expect(screen.getByText("- Recent entry")).toBeInTheDocument();
         });
 
-        expect(searchEntries).toHaveBeenCalledWith(".*", 1);
+        expect(searchEntries).toHaveBeenCalledWith("", 1);
     });
 
-    it("searches with .* pattern when input is empty to show recent entries", async () => {
+    it("searches with empty pattern to fetch all entries when input is empty", async () => {
         searchEntries.mockResolvedValue({ results: [] });
 
         render(
@@ -85,7 +85,7 @@ describe("Search page", () => {
         );
 
         await act(async () => { jest.runAllTimers(); });
-        expect(searchEntries).toHaveBeenCalledWith(".*", 1);
+        expect(searchEntries).toHaveBeenCalledWith("", 1);
     });
 
     it("does not show 'no results' message when input is empty", () => {
@@ -272,7 +272,7 @@ describe("Search page", () => {
         await act(async () => { jest.runAllTimers(); });
 
         await waitFor(() => {
-            expect(searchEntries).toHaveBeenLastCalledWith(".*", 1);
+            expect(searchEntries).toHaveBeenLastCalledWith("", 1);
         });
     });
 
