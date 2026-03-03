@@ -334,14 +334,6 @@ function nodeNameToString(nodeName) {
  */
 
 /**
- * @typedef {number} VersionIndex
- */
-
-/**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, Version, VersionIndex>} ListOfSchemasType
- */
-
-/**
  * @template T
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, DatabaseKey, T>} SimpleSublevel
  */

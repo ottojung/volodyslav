@@ -2,14 +2,14 @@
  * Migration runner for incremental-graph database version upgrades.
  *
  * Provides runMigration() which:
- * 1. Opens the previous + current version namespaces.
- * 2. Executes the user-supplied migration callback with a MigrationStorage instance.
- * 3. Performs strict validation (DELETE fan-in, completeness).
- * 4. Applies migration decisions atomically.
+ * 1. Reads x/meta.version to decide whether migration is needed.
+ * 2. Clears the staging namespace ("y") and runs the migration callback.
+ * 3. Applies migration decisions to "y".
+ * 4. Atomically swaps "y" into "x" (delete x/*, copy y/* → x/*, delete y/*, write version).
  */
 
 const { compileNodeDef } = require("./compiled_node");
-const { stringToNodeKeyString } = require("./database");
+const { stringToNodeKeyString, versionToString } = require("./database");
 const { makeMigrationStorage } = require("./migration_storage");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -151,7 +151,7 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * enforced automatically; any violation throws before the new version is written.
  *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
- * @param {RootDatabase} rootDatabase - Opened root database (current version is new)
+ * @param {RootDatabase} rootDatabase - Opened root database bound to the "x" namespace
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @returns {Promise<void>}
@@ -165,28 +165,34 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
 /**
  * The unlocked version of runMigration. Should not be called directly.
  *
- * @param {RootDatabase} rootDatabase - Opened root database (current version is new)
+ * @param {RootDatabase} rootDatabase - Opened root database bound to the "x" namespace
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @returns {Promise<void>}
  */
 async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
 {
-    /** @type {import('./database/types').Version | undefined} */
-    let prevVersion = await rootDatabase.lastSchema();
+    /** @type {string | undefined} */
+    const prevVersion = await rootDatabase.getMetaVersion();
     if (prevVersion === undefined) {
-        // No previous version; nothing to migrate.
+        // No previous version recorded; fresh database, nothing to migrate.
         return;
     }
 
-    const currentVersion = rootDatabase.version;
+    const currentVersion = versionToString(rootDatabase.version);
     if (prevVersion === currentVersion) {
-        // The same version is okay.
+        // Already on the current version.
         return;
     }
 
-    const prevStorage = rootDatabase.getSchemaStorageForVersion(prevVersion);
-    const newStorage = rootDatabase.getSchemaStorage();
+    // Create the staging namespace ("y") from the same underlying database.
+    const nextDb = rootDatabase.withNamespace('y');
+
+    // Clear "y" before migration so a crash-retry starts clean.
+    await nextDb.clearStorage();
+
+    const prevStorage = rootDatabase.getSchemaStorage();
+    const newStorage = nextDb.getSchemaStorage();
 
     // Compile new schema and build head index for compatibility checks.
     const compiledNodes = nodeDefs.map(compileNodeDef);
@@ -209,8 +215,14 @@ async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
     // Finalize: propagate deletes, check fan-in, check completeness.
     const decisions = await migrationStorage.finalize();
 
-    // Apply decisions atomically to the new version's storage.
+    // Apply decisions atomically to the staging namespace ("y").
     await applyDecisions(prevStorage, newStorage, decisions);
+
+    // Write the version into y's meta BEFORE the swap so it is included in the atomic copy.
+    await nextDb.setMetaVersion(rootDatabase.version);
+
+    // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
+    await rootDatabase.replaceContentsFrom(nextDb);
 }
 
 module.exports = {

@@ -373,23 +373,13 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns version after storage is touched', async () => {
+        test('getMetaVersion returns undefined on a fresh database', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const storage = db.getSchemaStorage();
-                
-                // Touch the schema by doing a batch operation
-                await storage.batch([storage.values.putOp('key', { value: {}, isDirty: false })]);
-                
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
-                
-                expect(schemas).toHaveLength(1);
-                expect(schemas[0]).toBe(db.version);
+                const version = await db.getMetaVersion();
+                expect(version).toBeUndefined();
                 
                 await db.close();
             } finally {
@@ -397,66 +387,51 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns empty array when no schemas are touched', async () => {
+        test('withNamespace creates an independent namespace', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
-                
-                expect(schemas).toEqual([]);
-                
+                const xStorage = db.getSchemaStorage();
+                const yDb = db.withNamespace('y');
+                const yStorage = yDb.getSchemaStorage();
+
+                await xStorage.values.put('key', { type: 'all_events', events: [] });
+                const fromX = await xStorage.values.get('key');
+                const fromY = await yStorage.values.get('key');
+
+                expect(fromX).toBeDefined();
+                expect(fromY).toBeUndefined();
+
                 await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
         });
+    });
 
-        test('listSchemas returns version after getSchemaStorage is called', async () => {
+    describe('Format marker', () => {
+        test('wipes database when format marker is missing on first open', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getRootDatabase(capabilities);
-                
-                // Calling getSchemaStorage and doing a batch should record the version
-                const storage = db.getSchemaStorage();
-                await storage.batch([storage.values.putOp('dummy', { value: {}, isDirty: false })]);
-                
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
-                
-                expect(schemas).toHaveLength(1);
-                expect(schemas[0]).toBe(db.version);
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
+                // Write some legacy data directly into the DB without a format marker.
+                const legacyDb = capabilities.levelDatabase.initialize(
+                    require('path').join(capabilities.environment.workingDirectory(), 'generators-leveldb')
+                );
+                await legacyDb.open();
+                await legacyDb.put('legacy-key', 'legacy-value');
+                await legacyDb.close();
 
-        test('listSchemas returns only one entry when storage is touched multiple times', async () => {
-            const capabilities = getTestCapabilities();
-            try {
+                // Open via makeRootDatabase — should detect missing marker and wipe.
                 const db = await getRootDatabase(capabilities);
-                
-                const storage = db.getSchemaStorage();
-                
-                await storage.batch([storage.values.putOp('dummy1', { value: {}, isDirty: false })]);
-                await storage.batch([storage.values.putOp('dummy2', { value: {}, isDirty: false })]);
-                await storage.batch([storage.values.putOp('dummy3', { value: {}, isDirty: false })]);
-                
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
+
+                const xStorage = db.getSchemaStorage();
+                // The legacy key should be gone.
+                const allKeys = [];
+                for await (const key of xStorage.values.keys()) {
+                    allKeys.push(key);
                 }
-                
-                expect(schemas).toHaveLength(1);
-                expect(schemas[0]).toBe(db.version);
-                
+                expect(allKeys).toHaveLength(0);
+
                 await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
