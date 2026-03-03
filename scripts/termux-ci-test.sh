@@ -12,6 +12,5 @@ apt-get install -q -y coreutils file nodejs git
 uname -a
 id -a
 
-npm ci
-npm run build
+npm ci --ignore-scripts
 npm run test-only
