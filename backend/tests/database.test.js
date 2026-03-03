@@ -118,7 +118,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 await storage.values.put('test-key', { 
                     value: {
@@ -145,7 +145,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 const result = await storage.values.get('non-existent');
                 expect(result).toBeUndefined();
@@ -160,7 +160,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 // Put a value
                 await storage.values.put('test-key', { value: { id: 'test-id', data: 'test' }, isDirty: false });
@@ -186,7 +186,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 // Put multiple values
                 await storage.values.put('id1', { value: { id: 'id1' }, isDirty: false });
@@ -211,7 +211,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 // Execute batch operations
                 await storage.batch([
@@ -236,7 +236,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 // Put initial values
                 await storage.values.put('id1', { value: { id: 'id1' }, isDirty: false });
@@ -269,7 +269,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 const complexObj = {
                     id: 'test-id',
@@ -297,7 +297,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 await storage.freshness.put('node1', 'up-to-date');
                 await storage.freshness.put('node2', 'potentially-outdated');
@@ -318,7 +318,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 await storage.inputs.put('node1', { inputs: ['dep1', 'dep2'] });
                 
@@ -336,7 +336,7 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage('test-schema');
+                const storage = db.getSchemaStorage();
                 
                 // Store dependents as arrays
                 await storage.revdeps.put('dep1', ['node1', 'node2']);
