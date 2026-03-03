@@ -58,7 +58,7 @@ describe("getConfig", () => {
 
         await getConfig(capabilities);
 
-        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
             {
                 configExists: false,
                 shortcutCount: 0,
