@@ -14,7 +14,6 @@ import {
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, SPACING } from "./styles.js";
 import { ShortcutsTab } from "./tabs/ShortcutsTab.jsx";
-import { RecentEntriesTab } from "./tabs/RecentEntriesTab.jsx";
 import { HelpTab } from "./tabs/HelpTab.jsx";
 
 /**
@@ -33,13 +32,10 @@ function getInitialConfig() {
  * Component that displays configuration help and shortcuts
  * @param {Object} props
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
- * @param {(id: string) => void} props.onDeleteEntry - Called when an entry delete is requested
  * @param {string} props.currentInput - Current input value to show preview
- * @param {Array<any>} [props.recentEntries] - Array of recent entries to display
- * @param {boolean} [props.isLoadingEntries] - Whether entries are loading
  * @returns {JSX.Element|null}
  */
-export const ConfigSection = ({ onShortcutClick, onDeleteEntry, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
+export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     /** @type {[Config|null, import("react").Dispatch<import("react").SetStateAction<Config|null>>]} */
     const configState = useState(getInitialConfig());
     const [config, setConfig] = configState;
@@ -83,21 +79,11 @@ export const ConfigSection = ({ onShortcutClick, onDeleteEntry, currentInput = "
                         defaultIndex={0}
                     >
                         <TabList>
-                            <Tab>Recent Entries</Tab>
                             {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
                             <Tab>Help</Tab>
                         </TabList>
 
                         <TabPanels>
-                            <TabPanel px={0}>
-                                <RecentEntriesTab
-                                    recentEntries={recentEntries}
-                                    isLoadingEntries={isLoadingEntries}
-                                    onShortcutClick={onShortcutClick}
-                                    onDeleteEntry={onDeleteEntry}
-                                />
-                            </TabPanel>
-
                             {config.shortcuts.length > 0 && (
                                 <TabPanel px={0}>
                                     <ShortcutsTab 

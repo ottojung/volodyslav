@@ -4,7 +4,6 @@ import "@testing-library/jest-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
@@ -32,7 +31,6 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
-    fetchRecentEntries,
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
@@ -72,7 +70,6 @@ describe("DescriptionEntry", () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
 
@@ -85,7 +82,6 @@ describe("DescriptionEntry", () => {
         retrievePhotos.mockReset();
 
         // Set default mock implementations that resolve immediately
-        fetchRecentEntries.mockResolvedValue([]);
         submitEntry.mockResolvedValue({
             success: true,
             entry: { input: "test" },
@@ -119,7 +115,6 @@ describe("DescriptionEntry", () => {
         // Wait for all async operations to complete
         await waitFor(() => {
             expect(fetchConfig).toHaveBeenCalled();
-            expect(fetchRecentEntries).toHaveBeenCalled();
         });
 
         // Should render the input field
@@ -132,10 +127,10 @@ describe("DescriptionEntry", () => {
             screen.getByRole("button", { name: /take photos/i })
         ).toBeInTheDocument();
 
-        // Should render configuration section tabs
+        // Should render configuration section tabs (no Recent Entries tab since it was removed)
         expect(screen.getByText("Help")).toBeInTheDocument();
         expect(screen.getByText("Shortcuts")).toBeInTheDocument();
-        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
+        expect(screen.queryByText("Recent Entries")).not.toBeInTheDocument();
     });
 
     it("updates input value when typing", async () => {
@@ -198,24 +193,6 @@ describe("DescriptionEntry", () => {
         expect(screen.queryByText("Shortcuts")).not.toBeInTheDocument();
         expect(screen.queryByText("Recent Entries")).not.toBeInTheDocument();
     });
-
-
-    it("loads recent entries on mount", async () => {
-        const mockEntries = [
-            { id: "1", original: "test entry 1", date: "2023-01-01" },
-            { id: "2", original: "test entry 2", date: "2023-01-02" },
-        ];
-        fetchRecentEntries.mockResolvedValue(mockEntries);
-
-        render(<DescriptionEntry />);
-
-        // Wait for entries to load
-        await waitFor(() => {
-            expect(fetchRecentEntries).toHaveBeenCalledWith(10);
-        });
-    });
-
-
 
     it("submits entry when Enter key is pressed", async () => {
         render(<DescriptionEntry />);

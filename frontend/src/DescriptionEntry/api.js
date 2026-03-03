@@ -4,7 +4,6 @@ import {
     makeEntrySubmissionError,
     isEntrySubmissionError,
 } from "./errors.js";
-import { makeEntry } from "./entry.js";
 
 /**
  * @typedef {Object} Entry
@@ -31,44 +30,6 @@ import { makeEntry } from "./entry.js";
  * @property {string} help - Help text for the configuration
  * @property {Shortcut[]} shortcuts - Array of shortcuts
  */
-
-
-/**
- * Safely parses an array of unknown values into Entry objects.
- * @param {unknown} results
- * @returns {Entry[]}
- */
-function parseEntries(results) {
-    if (!Array.isArray(results)) return [];
-    /** @type {Entry[]} */
-    const valid = [];
-    for (const item of results) {
-        try {
-            const entry = makeEntry(item);
-            valid.push(entry);
-        } catch (error) {
-            logger.warn("Invalid entry received:", error);
-        }
-    }
-    return valid;
-}
-
-/**
- * Fetches recent entries from the API.
- * @param {number} [limit=10] - The maximum number of entries to fetch.
- * @returns {Promise<Entry[]>} - Array of recent entries, or empty array if fetch fails.
- */
-export const fetchRecentEntries = async (limit = 10) => {
-    const response = await fetch(`${API_BASE_URL}/entries?limit=${limit}&order=dateDescending`);
-
-    if (response.ok) {
-        const data = await response.json();
-        return parseEntries(data.results);
-    } else {
-        logger.warn("Failed to fetch recent entries:", response.status);
-        return [];
-    }
-};
 
 /**
  * Submits a new entry to the API.
@@ -206,27 +167,5 @@ export const updateConfig = async (config) => {
     } catch (error) {
         logger.error("Error updating config:", error);
         return null;
-    }
-};
-
-/**
- * Deletes an entry by id via the API.
- * @param {string} id - Entry identifier to delete.
- * @returns {Promise<boolean>} - True on success, false otherwise.
- */
-export const deleteEntry = async (id) => {
-    try {
-        const response = await fetch(
-            `${API_BASE_URL}/entries?id=${encodeURIComponent(id)}`,
-            { method: "DELETE" }
-        );
-        if (response.ok) {
-            return true;
-        }
-        logger.warn("Failed to delete entry:", response.status);
-        return false;
-    } catch (error) {
-        logger.error("Error deleting entry:", error);
-        return false;
     }
 };

@@ -15,7 +15,6 @@ jest.mock('@chakra-ui/react', () => {
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
@@ -47,7 +46,6 @@ jest.mock("../src/DescriptionEntry/photoStorage", () => ({
 
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 import { 
-    fetchRecentEntries,
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
@@ -84,7 +82,6 @@ describe("Photo Count Display Bug Fix", () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
         mockToast.mockClear();
@@ -99,7 +96,6 @@ describe("Photo Count Display Bug Fix", () => {
         retrievePhotosFromIndexedDB.mockReset();
 
         // Set default returns
-        fetchRecentEntries.mockResolvedValue([]);
         fetchConfig.mockResolvedValue(mockConfig);
         submitEntry.mockResolvedValue({
             success: true,

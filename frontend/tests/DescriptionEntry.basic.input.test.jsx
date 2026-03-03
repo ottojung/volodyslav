@@ -4,7 +4,6 @@ import "@testing-library/jest-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
@@ -32,7 +31,6 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
-    fetchRecentEntries,
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
@@ -72,7 +70,6 @@ describe("DescriptionEntry", () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
 
@@ -85,7 +82,6 @@ describe("DescriptionEntry", () => {
         retrievePhotos.mockReset();
 
         // Set default mock implementations that resolve immediately
-        fetchRecentEntries.mockResolvedValue([]);
         submitEntry.mockResolvedValue({
             success: true,
             entry: { input: "test" },
@@ -113,7 +109,7 @@ describe("DescriptionEntry", () => {
         });
     });
 
-    it("clears input and refetches entries after successful submission", async () => {
+    it("clears input after successful submission", async () => {
         submitEntry.mockResolvedValue({
             success: true,
             entry: { input: "processed test event" },
@@ -138,11 +134,6 @@ describe("DescriptionEntry", () => {
 
         await waitFor(() => {
             expect(input.value).toBe("");
-        });
-
-        // Should refetch entries after submission
-        await waitFor(() => {
-            expect(fetchRecentEntries).toHaveBeenCalledTimes(2); // Once on mount, once after submit
         });
     });
 

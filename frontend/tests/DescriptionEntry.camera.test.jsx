@@ -4,7 +4,6 @@ import "@testing-library/jest-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
