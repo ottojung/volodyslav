@@ -173,20 +173,25 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
 async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
 {
     /** @type {import('./database/types').Version | undefined} */
-    let prevVersion = await rootDatabase.lastSchema();
-    if (prevVersion === undefined) {
-        // No previous version; nothing to migrate.
+    const storedVersion = await rootDatabase.getStoredVersion();
+    if (storedVersion === undefined) {
+        // No stored version means a new database; nothing to migrate.
         return;
     }
 
     const currentVersion = rootDatabase.version;
-    if (prevVersion === currentVersion) {
-        // The same version is okay.
+    if (storedVersion === currentVersion) {
+        // Same version; nothing to migrate.
         return;
     }
 
-    const prevStorage = rootDatabase.getSchemaStorageForVersion(prevVersion);
-    const newStorage = rootDatabase.getSchemaStorage();
+    // Clear the inactive (destination) slot to ensure a clean slate.
+    // This also handles retry-after-crash: if we crashed mid-migration,
+    // the destination may contain partial data that we discard here.
+    await rootDatabase.clearInactiveSlot();
+
+    const prevStorage = rootDatabase.getActiveSlotStorage();
+    const newStorage = rootDatabase.getInactiveSlotStorage();
 
     // Compile new schema and build head index for compatibility checks.
     const compiledNodes = nodeDefs.map(compileNodeDef);
@@ -211,6 +216,17 @@ async function runMigrationUnsafe(rootDatabase, nodeDefs, callback)
 
     // Apply decisions atomically to the new version's storage.
     await applyDecisions(prevStorage, newStorage, decisions);
+
+    // Atomically swap slots: the inactive slot (with migrated data) becomes active.
+    await rootDatabase.swapSlots();
+
+    // Best-effort cleanup: delete old slot data (now inactive after swap) to reclaim space.
+    // Correctness does not depend on this succeeding; the swap above is already committed.
+    try {
+        await rootDatabase.clearInactiveSlot();
+    } catch (_e) {
+        // Ignore cleanup errors.
+    }
 }
 
 module.exports = {

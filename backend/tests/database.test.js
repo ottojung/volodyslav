@@ -353,7 +353,7 @@ describe('generators/database', () => {
         });
     });
 
-    describe('Schema isolation', () => {
+    describe('Slot-based storage', () => {
         test('getSchemaStorage returns storage', async () => {
             const capabilities = getTestCapabilities();
             try {
@@ -373,23 +373,13 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns version after storage is touched', async () => {
+        test('getStoredVersion returns undefined for a new database', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const storage = db.getSchemaStorage();
-                
-                // Touch the schema by doing a batch operation
-                await storage.batch([storage.values.putOp('key', { value: {}, isDirty: false })]);
-                
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
-                
-                expect(schemas).toHaveLength(1);
-                expect(schemas[0]).toBe(db.version);
+                const storedVersion = await db.getStoredVersion();
+                expect(storedVersion).toBeUndefined();
                 
                 await db.close();
             } finally {
@@ -397,17 +387,21 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns empty array when no schemas are touched', async () => {
+        test('swapSlots changes activeSlot and records version in meta', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
+                const slotBefore = db.activeSlot;
+                await db.swapSlots();
+                const slotAfter = db.activeSlot;
                 
-                expect(schemas).toEqual([]);
+                // Active slot should have changed.
+                expect(slotAfter).not.toBe(slotBefore);
+                
+                // The new active slot should have the current version stored.
+                const storedVersion = await db.getStoredVersion();
+                expect(storedVersion).toBe(db.version);
                 
                 await db.close();
             } finally {
@@ -415,22 +409,17 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns version after getSchemaStorage is called', async () => {
+        test('swapSlots twice returns to the original slot', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                // Calling getSchemaStorage and doing a batch should record the version
-                const storage = db.getSchemaStorage();
-                await storage.batch([storage.values.putOp('dummy', { value: {}, isDirty: false })]);
+                const slotBefore = db.activeSlot;
+                await db.swapSlots();
+                await db.swapSlots();
+                const slotAfter = db.activeSlot;
                 
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
-                
-                expect(schemas).toHaveLength(1);
-                expect(schemas[0]).toBe(db.version);
+                expect(slotAfter).toBe(slotBefore);
                 
                 await db.close();
             } finally {
@@ -438,26 +427,126 @@ describe('generators/database', () => {
             }
         });
 
-        test('listSchemas returns only one entry when storage is touched multiple times', async () => {
+        test('clearInactiveSlot empties the inactive slot', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const storage = db.getSchemaStorage();
+                // Write data to the inactive slot.
+                const inactive = db.getInactiveSlotStorage();
+                await inactive.values.put('testkey', { type: 'all_events', events: [] });
                 
-                await storage.batch([storage.values.putOp('dummy1', { value: {}, isDirty: false })]);
-                await storage.batch([storage.values.putOp('dummy2', { value: {}, isDirty: false })]);
-                await storage.batch([storage.values.putOp('dummy3', { value: {}, isDirty: false })]);
+                // Verify data exists.
+                const before = await inactive.values.get('testkey');
+                expect(before).toBeDefined();
                 
-                const schemas = [];
-                for await (const schema of db.listSchemas()) {
-                    schemas.push(schema);
-                }
+                // Clear the inactive slot.
+                await db.clearInactiveSlot();
                 
-                expect(schemas).toHaveLength(1);
-                expect(schemas[0]).toBe(db.version);
+                // Verify data is gone.
+                const after = await db.getInactiveSlotStorage().values.get('testkey');
+                expect(after).toBeUndefined();
                 
                 await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('activeSlot and stored version survive a database close and reopen', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                // Open DB, swap slots (which writes version + activeSlot).
+                const db1 = await getRootDatabase(capabilities);
+                await db1.swapSlots();
+                const slot1 = db1.activeSlot;
+                await db1.close();
+                
+                // Reopen; the stored state should be preserved.
+                const db2 = await getRootDatabase(capabilities);
+                expect(db2.activeSlot).toBe(slot1);
+                const storedVersion = await db2.getStoredVersion();
+                expect(storedVersion).toBe(db2.version);
+                
+                await db2.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe('Legacy import', () => {
+        test('imports last legacy schema into slot x on first open', async () => {
+            const { Level } = require('level');
+            const capabilities = getTestCapabilities();
+            try {
+                const dataDir = capabilities.environment.workingDirectory();
+                const dbPath = path.join(dataDir, 'generators-leveldb');
+                fs.mkdirSync(dataDir, { recursive: true });
+
+                // Create legacy layout: schemas sublevel + versioned data namespace.
+                const legacyVersion = 'legacy-1.0';
+                const rawDb = new Level(dbPath, { valueEncoding: 'json' });
+                await rawDb.open();
+
+                // Write to the legacy "schemas" registry.
+                const schemasLevel = rawDb.sublevel('schemas', { valueEncoding: 'json' });
+                await schemasLevel.put(legacyVersion, 0);
+
+                // Write some data into the legacy version namespace.
+                const versionLevel = rawDb.sublevel(legacyVersion, { valueEncoding: 'json' });
+                const valuesLevel = versionLevel.sublevel('values', { valueEncoding: 'json' });
+                await valuesLevel.put('migrated-key', { type: 'all_events', events: [] });
+                const inputsLevel = versionLevel.sublevel('inputs', { valueEncoding: 'json' });
+                await inputsLevel.put('migrated-key', { inputs: [], inputCounters: [] });
+
+                await rawDb.close();
+
+                // Now open via getRootDatabase — the legacy import should run.
+                const db = await getRootDatabase(capabilities);
+
+                // The active slot should be "x" (legacy import target).
+                expect(db.activeSlot).toBe('x');
+
+                // The legacy data should be in slot x's values.
+                const activeStorage = db.getActiveSlotStorage();
+                const importedValue = await activeStorage.values.get('migrated-key');
+                expect(importedValue).toEqual({ type: 'all_events', events: [] });
+
+                // The stored version in slot x's meta should be the legacy version.
+                const storedVersion = await db.getStoredVersion();
+                expect(storedVersion).toBe(legacyVersion);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('skips legacy import if top-level meta already has activeSlot', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                // Open the database once (which will write activeSlot to meta on swapSlots).
+                const db1 = await getRootDatabase(capabilities);
+                await db1.swapSlots(); // writes activeSlot + version to meta
+                const slot1 = db1.activeSlot;
+                await db1.close();
+
+                // Now create a fake "legacy" schemas sublevel (should be ignored on reopen).
+                const { Level } = require('level');
+                const dataDir = capabilities.environment.workingDirectory();
+                const dbPath = path.join(dataDir, 'generators-leveldb');
+                const rawDb = new Level(dbPath, { valueEncoding: 'json' });
+                await rawDb.open();
+                const schemasLevel = rawDb.sublevel('schemas', { valueEncoding: 'json' });
+                await schemasLevel.put('should-be-ignored', 0);
+                await rawDb.close();
+
+                // Reopen: the activeSlot from meta should take precedence.
+                const db2 = await getRootDatabase(capabilities);
+                expect(db2.activeSlot).toBe(slot1);
+
+                await db2.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }

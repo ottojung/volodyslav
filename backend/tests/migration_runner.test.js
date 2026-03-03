@@ -53,9 +53,12 @@ describe("runMigration", () => {
         await previousStorage.counters.put(nodeKey, 5);
 
         const rootDatabase = {
-            async lastSchema() { return "previous"; },
-            getSchemaStorageForVersion() { return previousStorage; },
-            getSchemaStorage() { return currentStorage; },
+            version: "current",
+            async getStoredVersion() { return "previous"; },
+            getActiveSlotStorage() { return previousStorage; },
+            getInactiveSlotStorage() { return currentStorage; },
+            async clearInactiveSlot() {},
+            async swapSlots() {},
         };
 
         const nodeDefs = [{
@@ -79,5 +82,97 @@ describe("runMigration", () => {
 
         await expect(currentStorage.counters.get(nodeKey)).resolves.toBe(5);
         await expect(currentStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
+    });
+
+    test("skips migration when stored version matches current version", async () => {
+        const activeStorage = makeSchemaStorage();
+        const inactiveStorage = makeSchemaStorage();
+        let swapCalled = false;
+
+        const rootDatabase = {
+            version: "same-version",
+            async getStoredVersion() { return "same-version"; },
+            getActiveSlotStorage() { return activeStorage; },
+            getInactiveSlotStorage() { return inactiveStorage; },
+            async clearInactiveSlot() {},
+            async swapSlots() { swapCalled = true; },
+        };
+
+        const capabilities = {
+            sleeper: {
+                withMutex: async (_name, procedure) => procedure(),
+            },
+        };
+
+        await runMigration(capabilities, rootDatabase, [], async () => {});
+
+        expect(swapCalled).toBe(false);
+    });
+
+    test("skips migration when no stored version (new database)", async () => {
+        const activeStorage = makeSchemaStorage();
+        const inactiveStorage = makeSchemaStorage();
+        let swapCalled = false;
+
+        const rootDatabase = {
+            version: "1.0.0",
+            async getStoredVersion() { return undefined; },
+            getActiveSlotStorage() { return activeStorage; },
+            getInactiveSlotStorage() { return inactiveStorage; },
+            async clearInactiveSlot() {},
+            async swapSlots() { swapCalled = true; },
+        };
+
+        const capabilities = {
+            sleeper: {
+                withMutex: async (_name, procedure) => procedure(),
+            },
+        };
+
+        await runMigration(capabilities, rootDatabase, [], async () => {});
+
+        expect(swapCalled).toBe(false);
+    });
+
+    test("swapSlots is called after migration", async () => {
+        const previousStorage = makeSchemaStorage();
+        const currentStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+        let swapCalled = false;
+
+        await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await previousStorage.freshness.put(nodeKey, "up-to-date");
+        await previousStorage.counters.put(nodeKey, 3);
+
+        const rootDatabase = {
+            version: "2.0.0",
+            async getStoredVersion() { return "1.0.0"; },
+            getActiveSlotStorage() { return previousStorage; },
+            getInactiveSlotStorage() { return currentStorage; },
+            async clearInactiveSlot() {},
+            async swapSlots() { swapCalled = true; },
+        };
+
+        const nodeDefs = [{
+            output: "A",
+            inputs: [],
+            computor: async () => ({ type: "all_events", events: [] }),
+            isDeterministic: true,
+            hasSideEffects: false,
+            migrations: {},
+        }];
+
+        const capabilities = {
+            sleeper: {
+                withMutex: async (_name, procedure) => procedure(),
+            },
+        };
+
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(nodeKey);
+        });
+
+        expect(swapCalled).toBe(true);
     });
 });
