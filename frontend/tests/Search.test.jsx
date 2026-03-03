@@ -554,6 +554,43 @@ describe("Search page", () => {
         });
     });
 
+    it("ignores stale search responses when pattern changes during fetch", async () => {
+        let resolveInitial;
+        const initialPromise = new Promise(resolve => { resolveInitial = resolve; });
+
+        searchEntries
+            .mockImplementationOnce(() => initialPromise)
+            .mockResolvedValueOnce({ results: [mockEntry({ description: "- Food entry" })], hasMore: false });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        // Fire the initial debounced fetch (still in flight)
+        act(() => { jest.runAllTimers(); });
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        // Fire the "food" debounced fetch and let it resolve
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("- Food entry")).toBeInTheDocument();
+        });
+
+        // Resolve the stale initial fetch with different data
+        await act(async () => {
+            resolveInitial({ results: [mockEntry({ description: "- Stale entry" })], hasMore: false });
+        });
+
+        // Stale results must NOT replace the food results
+        expect(screen.queryByText("- Stale entry")).not.toBeInTheDocument();
+        expect(screen.getByText("- Food entry")).toBeInTheDocument();
+    });
+
     it("resets pagination when the search pattern changes", async () => {
         searchEntries
             .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })

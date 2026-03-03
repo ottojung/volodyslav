@@ -48,6 +48,7 @@ export default function Search() {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(false);
     const inputRef = useRef(null);
+    const searchSequenceRef = useRef(0);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -61,8 +62,11 @@ export default function Search() {
         setIsLoading(true);
         setError(null);
 
+        const sequence = ++searchSequenceRef.current;
+
         const timer = setTimeout(async () => {
             const { results: found, hasMore: more, error: err } = await searchEntries(pattern, 1);
+            if (sequence !== searchSequenceRef.current) return;
             setResults(found);
             setPage(1);
             setHasMore(more);
