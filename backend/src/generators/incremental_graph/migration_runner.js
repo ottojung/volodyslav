@@ -9,7 +9,7 @@
  */
 
 const { compileNodeDef } = require("./compiled_node");
-const { stringToNodeKeyString, versionToString } = require("./database");
+const { stringToNodeKeyString } = require("./database");
 const { makeMigrationStorage } = require("./migration_storage");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
