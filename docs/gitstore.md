@@ -1,6 +1,13 @@
 # Gitstore
 
-Gitstore is the persistence backbone of Volodyslav. It uses a local Git repository as an atomic, versioned data store. All writes to event logs and runtime state go through gitstore transactions, giving every mutation a commit, a history, and built-in conflict resolution.
+Gitstore is the persistence backbone of Volodyslav. It uses a local Git repository as an atomic, versioned data store. All writes to event logs and runtime state go through gitstore, giving every mutation a commit, a history, and built-in conflict resolution.
+
+Gitstore exposes two write primitives:
+
+| Primitive | One-liner |
+|---|---|
+| **`transaction`** | Clone → transform in temp dir → commit → push back. Retries on conflict. |
+| **`checkpoint`** | Stage all changes in the working copy and commit directly. No remote involved. |
 
 ---
 
@@ -49,6 +56,52 @@ The temp tree is always deleted in the `finally` block, whether the transaction 
 
 ---
 
+## Checkpoints
+
+A checkpoint is a lightweight alternative to a full transaction. It runs:
+
+```
+git add --all
+git commit --allow-empty -m "$MESSAGE"
+```
+
+directly on the persistent local working copy – no clone, no temp directory, no push to a remote. The `--allow-empty` flag means the call always creates a commit regardless of whether the working tree has changed.
+
+```javascript
+await checkpoint(capabilities, workingPath, initial_state, message);
+// always returns void; always produces a new commit
+```
+
+### When to use a checkpoint vs. a transaction
+
+| Situation | Use |
+|---|---|
+| You are the only writer (local-only `"empty"` repo) | `checkpoint` |
+| You need changes to survive a concurrent remote push | `transaction` |
+| You want a cheap point-in-time snapshot before later synchronisation | `checkpoint` |
+| You need to apply a read-modify-write against the latest remote state | `transaction` |
+
+### Important: work-tree scope
+
+A checkpoint commits the files that are physically present in the local working copy's work tree directory. It does **not** automatically include files committed by a preceding transaction.
+
+A `transaction` pushes new commits into the working copy's `.git` directory but does **not** update the work tree on disk. A checkpoint that follows will commit the current work tree state, which may be missing those files. For this reason, avoid mixing transactions and checkpoints on the same `workingPath` unless you fully control what is in the work tree.
+
+The typical safe pattern is:
+
+- Use `transaction` for remote-backed repositories (`event_log_storage`).
+- Use `checkpoint` for local-only "empty" repositories (`runtime_state_storage` pattern) where the work tree is the single source of truth.
+
+### No-op safety
+
+There is none needed. With `--allow-empty`, `git commit` always exits successfully, even if the working tree is clean. Every checkpoint call unconditionally advances the commit log.
+
+### Mutex
+
+Like `transaction`, `checkpoint` acquires the per-`workingPath` mutex before doing any work. It is therefore safe to interleave checkpoints and transactions on the same `workingPath` from the same process without risking a partial commit.
+
+---
+
 ## Transaction Lifecycle
 
 ```
@@ -93,18 +146,21 @@ A retry is a full restart: the temp tree is discarded, the working copy is re-ex
 
 ---
 
-## Synchronise vs. Transaction
+## Synchronise vs. Transaction vs. Checkpoint
 
-These are two separate, complementary operations.
+Three independent operations that work on the same local copy for different purposes.
 
-| | `workingRepository.synchronize` | `gitstore.transaction` |
-|---|---|---|
-| **Purpose** | Keep local working copy in sync with real remote | Atomically mutate files in the local working copy |
-| **Direction** | pull from remote, then push to remote | transformation → commit → push to local working copy |
-| **When called** | On startup, or periodically, by `event_log_storage/synchronize` | On every write operation |
-| **Retries** | Up to 100 attempts (internal, `withRetry`) | Up to `maxAttempts` (default 5) on push failure |
+| | `workingRepository.synchronize` | `gitstore.transaction` | `gitstore.checkpoint` |
+|---|---|---|---|
+| **Purpose** | Bi-directional sync with real remote | Atomically mutate files via temp work tree | Directly commit current working copy state |
+| **Direction** | pull from remote, then push to remote | clone → transform → push to working copy | `add --all` + `commit` on working copy |
+| **Temp dir** | No | Yes (cleaned up always) | No |
+| **Push to remote** | Yes | No (writes to local working copy only) | No |
+| **Retries** | Up to 100 attempts | Up to `maxAttempts` (default 5) on `PushError` | None |
+| **Nothing-to-commit** | N/A | N/A | Always commits (`--allow-empty`) |
+| **Mutex** | No | Yes | Yes |
 
-`synchronize` is never called inside `transaction`. They operate independently: transactions write to the local working copy; synchronisation propagates those writes to the real remote and pulls in changes made elsewhere.
+`synchronize` is never called inside `transaction` or `checkpoint`. They operate independently: transactions and checkpoints write to the local working copy; synchronisation propagates those writes to the real remote and pulls in changes made elsewhere.
 
 ---
 
@@ -124,10 +180,11 @@ Only the latest commit is fetched. The branch is always `master` (exported from 
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Public API: re-exports `transaction` and `workingRepository` |
+| `index.js` | Public API: re-exports `transaction`, `checkpoint`, and `workingRepository` |
 | `transaction.js` | Acquires per-`workingPath` mutex, then delegates to retry layer |
 | `transaction_retry.js` | Retry loop; distinguishes push vs. non-push errors |
 | `transaction_attempt.js` | Single attempt: temp tree lifecycle, clone, transform, push |
+| `checkpoint.js` | Checkpoint: `add --all` + `commit` directly on local working copy; no-op when clean |
 | `working_repository.js` | Persistent local copy: create, synchronize, expose `.git` path |
 | `wrappers.js` | Thin wrappers over raw `git` calls: `clone`, `pull`, `push`, `commit`, `init`, `makePushable` |
 | `transaction_logging.js` | Structured log messages for every stage of the retry lifecycle |

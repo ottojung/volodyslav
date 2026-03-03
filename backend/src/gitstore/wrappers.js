@@ -59,14 +59,23 @@ async function ensureGitAvailable() {
 }
 
 /**
+ * @typedef {object} CommitOptions
+ * @property {boolean} [allowEmpty] - Pass `--allow-empty` so the commit
+ *   succeeds even when the working tree has no changes.
+ */
+
+/**
  * Commit staged changes with a message
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} git_directory - The `.git` directory
  * @param {string} work_directory - The repository directory, where the actual files are
  * @param {string} message - The commit message
+ * @param {CommitOptions} [options]
  * @returns {Promise<void>}
  */
-async function commit(capabilities, git_directory, work_directory, message) {
+async function commit(capabilities, git_directory, work_directory, message, options = {}) {
+    const allowEmpty = options.allowEmpty === true;
+
     // First add all files (including new untracked files) to the staging area
     await capabilities.git.call(
         "-c",
@@ -84,21 +93,19 @@ async function commit(capabilities, git_directory, work_directory, message) {
     );
 
     // Then commit all staged changes
-    await capabilities.git.call(
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=volodyslav",
-        "-c",
-        "user.email=volodyslav",
-        "--git-dir",
-        git_directory,
-        "--work-tree",
-        work_directory,
+    const commitArgs = [
+        "-c", "safe.directory=*",
+        "-c", "user.name=volodyslav",
+        "-c", "user.email=volodyslav",
+        "--git-dir", git_directory,
+        "--work-tree", work_directory,
         "commit",
-        "--message",
-        message
-    );
+        "--message", message,
+    ];
+    if (allowEmpty) {
+        commitArgs.push("--allow-empty");
+    }
+    await capabilities.git.call(...commitArgs);
 }
 
 /**
