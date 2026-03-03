@@ -154,10 +154,17 @@ class RootDatabaseClass {
         this.metaSublevel = this.namespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
 
         const namespaceSublevel = this.namespaceSublevel;
+
+        let touchedSchema = false;
+
         /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
         const batch = async (operations) => {
             if (operations.length === 0) {
                 return;
+            }
+            if (!touchedSchema) {
+                await this.setMetaVersion(this.version);
+                touchedSchema = true;
             }
             await namespaceSublevel.batch(operations);
         };
