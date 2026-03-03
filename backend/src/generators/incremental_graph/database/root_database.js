@@ -190,10 +190,11 @@ class RootDatabaseClass {
     /**
      * Get the app version string stored in this namespace's meta sublevel.
      * Returns undefined if no version has been recorded yet (fresh database).
-     * @returns {Promise<string | undefined>}
+     * @returns {Promise<Version | undefined>}
      */
     async getMetaVersion() {
-        return await this.metaSublevel.get('version');
+        const existing = await this.metaSublevel.get('version');
+        return existing === undefined ? undefined : stringToVersion(existing);
     }
 
     /**
