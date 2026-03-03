@@ -28,6 +28,13 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
     retrievePhotos: jest.fn(),
 }));
 
+// Mock react-router-dom to intercept navigation
+const mockNavigate = jest.fn();
+jest.mock("react-router-dom", () => ({
+    ...jest.requireActual("react-router-dom"),
+    useNavigate: () => mockNavigate,
+}));
+
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {

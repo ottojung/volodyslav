@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "@chakra-ui/react";
 import {
     submitEntry,
@@ -173,6 +174,7 @@ export const useDescriptionEntry = () => {
     const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(null);
     const [photoCount, setPhotoCount] = useState(0);
     const toast = useToast();
+    const navigate = useNavigate();
 
     const handleSubmit = async () => {
         if (!isValidDescription(description)) {
@@ -202,6 +204,7 @@ export const useDescriptionEntry = () => {
 
             const result = await submitEntry(descriptionToSubmit, pendingRequestIdentifier || undefined, files);
             handleSubmissionSuccess(result, descriptionToSubmit, files, setPendingRequestIdentifier, setPhotoCount, toast);
+            navigate("/search");
         } catch (error) {
             handleSubmissionError(error, toast);
             // Restore description on submission error
