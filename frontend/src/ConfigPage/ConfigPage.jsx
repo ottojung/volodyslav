@@ -99,10 +99,37 @@ export default function ConfigPage() {
     function handleAddShortcut() {
         /** @type {Shortcut} */
         const empty = ["", ""];
-        setKeyedShortcuts((prev) => [...prev, wrapWithKey(empty)]);
+        const keyed = wrapWithKey(empty);
+        setKeyedShortcuts((prev) => [...prev, keyed]);
     }
 
     async function handleSave() {
+        for (const [index, { shortcut }] of keyedShortcuts.entries()) {
+            const [pattern] = shortcut;
+            if (pattern === "") {
+                toast({
+                    title: "Invalid shortcut.",
+                    description: `Shortcut #${index + 1} has an empty pattern. Please fill in the pattern or delete the shortcut.`,
+                    status: "error",
+                    duration: 5000,
+                    isClosable: true,
+                });
+                return;
+            }
+            try {
+                new RegExp(pattern);
+            } catch {
+                toast({
+                    title: "Invalid shortcut.",
+                    description: `Shortcut #${index + 1} has an invalid regex pattern "${pattern}".`,
+                    status: "error",
+                    duration: 5000,
+                    isClosable: true,
+                });
+                return;
+            }
+        }
+
         setIsSaving(true);
         const shortcuts = keyedShortcuts.map((ks) => ks.shortcut);
         const result = await updateConfig({ help, shortcuts });
