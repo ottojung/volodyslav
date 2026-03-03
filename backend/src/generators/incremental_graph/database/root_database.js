@@ -1,21 +1,35 @@
 /**
  * RootDatabase module.
- * Provides schema-namespaced storage using LevelDB sublevels.
+ * Provides namespace-bound storage using LevelDB sublevels.
+ * Each RootDatabase instance is bound to a single namespace ("x" or "y").
  */
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, versionToString } = require('./types');
+const { stringToVersion } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
-/** @typedef {import('./types').ListOfSchemasType} ListOfSchemasType */
+/** @typedef {import('./types').SublevelFormat} SublevelFormat */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('./types').DatabaseKey} DatabaseKey */
+/** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Version} Version */
+
+/**
+ * Sublevel for storing plain-string namespace metadata (e.g., version).
+ * Uses string keys rather than NodeKeyString to clearly distinguish meta keys from node keys.
+ * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} MetaSublevelType
+ */
+
+/**
+ * The format marker value that identifies a database using the x/y namespace layout.
+ */
+const FORMAT_MARKER = 'xy-v1';
 
 /**
  * @template T
@@ -65,8 +79,8 @@ const { stringToVersion, versionToString } = require('./types');
  */
 
 /**
- * Storage container for a single incremental graph schema.
- * All data (values, freshness, indices) is isolated per application version.
+ * Storage container for a single incremental graph namespace.
+ * All data (values, freshness, indices) is isolated per namespace.
  * @typedef {object} SchemaStorage
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
@@ -82,7 +96,7 @@ const { stringToVersion, versionToString } = require('./types');
  */
 
 /**
- * Root database class providing schema-namespaced storage.
+ * Root database class bound to a specific namespace (e.g., "x" or "y").
  */
 class RootDatabaseClass {
     /**
@@ -93,77 +107,76 @@ class RootDatabaseClass {
     db;
 
     /**
-     * Cache of schema storages.
+     * The namespace sublevel — all data lives under this prefix.
      * @private
-     * @type {Map<Version, SchemaStorage>}
+     * @type {SchemaSublevelType}
      */
-    schemaStorages;
+    namespaceSublevel;
 
     /**
-     * The sublevel for listing all schemas.
+     * The meta sublevel for storing namespace metadata (e.g., version).
+     * Uses plain string keys to distinguish it from node-data sublevels.
      * @private
-     * @type {ListOfSchemasType}
+     * @type {MetaSublevelType}
      */
-    listOfSchemas;
+    metaSublevel;
+
+    /**
+     * Cached schema storage for this namespace.
+     * @private
+     * @type {SchemaStorage}
+     */
+    _schemaStorage;
 
     /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
-     * @param {Version} version - The version of the database
+     * @param {string} namespace - The namespace ("x" or "y")
+     * @param {Version} version - The current application version
      */
-    constructor(db, version) {
+    constructor(db, namespace, version) {
         this.db = db;
         this.version = version;
-        this.schemaStorages = new Map();
-        this.listOfSchemas = this.db.sublevel('schemas', { valueEncoding: 'json' });
-    }
 
-    /**
-     * Get schema-specific storage for an arbitrary version (creates if needed).
-     * @param {Version} version
-     * @returns {SchemaStorage}
-     */
-    getSchemaStorageForVersion(version) {
-        // Check cache first
-        const cached = this.schemaStorages.get(version);
-        if (cached) {
-            return cached;
-        }
-
-        // Create new schema storage with sublevels
-        /** @type {SchemaSublevelType} */
-        const schemaSublevel = this.db.sublevel(versionToString(version), { valueEncoding: 'json' });
+        this.namespaceSublevel = db.sublevel(namespace, { valueEncoding: 'json' });
 
         /** @type {SimpleSublevel<ComputedValue>} */
-        const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
+        const valuesSublevel = this.namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Freshness>} */
-        const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
+        const freshnessSublevel = this.namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<InputsRecord>} */
-        const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
+        const inputsSublevel = this.namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<NodeKeyString[]>} */
-        const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+        const revdepsSublevel = this.namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Counter>} */
-        const countersSublevel = schemaSublevel.sublevel('counters', { valueEncoding: 'json' });
+        const countersSublevel = this.namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
+
+        this.metaSublevel = this.namespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
+
+        const namespaceSublevel = this.namespaceSublevel;
 
         let touchedSchema = false;
+
         /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
         const batch = async (operations) => {
             if (operations.length === 0) {
                 return;
             }
-
             if (!touchedSchema) {
-                const existing = await this.listOfSchemas.get(version);
+                const existing = await this.getMetaVersion();
                 if (existing === undefined) {
-                    const count = await this.numberOfSchemas();
-                    await this.listOfSchemas.put(version, count);
+                    // New namespace, write version to meta to initialize.
+                    await this.setMetaVersion(this.version);
+                } else if (existing !== this.version) {
+                    // Version mismatch indicates a logic error in migration or usage of staging namespace.
+                    throw new Error(`Version mismatch in batch operation: expected ${this.version}, found ${existing}`);
                 }
                 touchedSchema = true;
             }
-            await schemaSublevel.batch(operations);
+            await namespaceSublevel.batch(operations);
         };
 
-        const storage = {
+        this._schemaStorage = {
             batch,
             values: makeTypedDatabase(valuesSublevel),
             freshness: makeTypedDatabase(freshnessSublevel),
@@ -171,60 +184,82 @@ class RootDatabaseClass {
             revdeps: makeTypedDatabase(revdepsSublevel),
             counters: makeTypedDatabase(countersSublevel),
         };
-
-        // Cache for future use
-        this.schemaStorages.set(version, storage);
-
-        return storage;
     }
 
     /**
-     * Get schema-specific storage for the current version (creates if needed).
+     * Get storage scoped to this namespace.
      * @returns {SchemaStorage}
      */
     getSchemaStorage() {
-        return this.getSchemaStorageForVersion(this.version);
+        return this._schemaStorage;
     }
 
     /**
-     * List all stored version strings.
-     * @returns {AsyncIterable<Version>}
+     * Get the app version string stored in this namespace's meta sublevel.
+     * Returns undefined if no version has been recorded yet (fresh database).
+     * @returns {Promise<Version | undefined>}
      */
-    async *listSchemas() {
-        for await (const key of this.listOfSchemas.keys()) {
-            yield key;
-        }
+    async getMetaVersion() {
+        return await this.metaSublevel.get('version');
     }
 
     /**
-     * Get the number of stored schemas.
-     * @returns {Promise<number>}
+     * Write the app version string into this namespace's meta sublevel.
+     * @param {Version} version
+     * @returns {Promise<void>}
      */
-    async numberOfSchemas() {
-        let count = 0;
-        for await (const value of this.listOfSchemas.values()) {
-            if (value < 0) {
-                throw new Error(`Invalid schema index ${value} in listOfSchemas`);
-            }
-            count++;
-        }
-        return count;
+    async setMetaVersion(version) {
+        await this.metaSublevel.put('version', version);
     }
 
     /**
-     * Get the latest stored schema version, or undefined if no schemas are stored.
-     * @returns {Promise<Version|undefined>}
+     * Create a new RootDatabase bound to a different namespace using the same underlying DB.
+     * Used by migration to open the staging ("y") namespace alongside the live ("x") namespace.
+     * @param {string} namespace
+     * @returns {RootDatabaseClass}
      */
-    async lastSchema() {
-        let lastVersion = undefined;
-        let lastIndex = -1;
-        for await (const [key, value] of this.listOfSchemas.iterator()) {
-            if (value > lastIndex) {
-                lastVersion = key;
-                lastIndex = value;
-            }
+    withNamespace(namespace) {
+        return new RootDatabaseClass(this.db, namespace, this.version);
+    }
+
+    /**
+     * Clear all keys in this namespace (values, freshness, inputs, revdeps, counters, meta).
+     * @returns {Promise<void>}
+     */
+    async clearStorage() {
+        await this.namespaceSublevel.clear();
+    }
+
+    /**
+     * Atomically replace this namespace's data with all data from sourceDb's namespace,
+     * then clear sourceDb's namespace. The caller is responsible for writing any metadata
+     * (e.g., version) into sourceDb's namespace BEFORE calling this method so that it
+     * is included in the copy.
+     *
+     * Steps performed in a single LevelDB batch:
+     *   1. Delete all keys under this namespace.
+     *   2. Copy all key/value pairs from sourceDb's namespace into this namespace.
+     *   3. Delete all keys under sourceDb's namespace.
+     * @param {RootDatabaseClass} sourceDb - The source namespace database (e.g., "y")
+     * @returns {Promise<void>}
+     */
+    async replaceContentsFrom(sourceDb) {
+        /** @type {Array<{type: 'put', key: DatabaseKey, value: DatabaseStoredValue, sublevel: SchemaSublevelType} | {type: 'del', key: DatabaseKey, sublevel: SchemaSublevelType}>} */
+        const ops = [];
+
+        // 1. Delete all keys in this namespace
+        for await (const key of this.namespaceSublevel.keys()) {
+            ops.push({ type: 'del', key, sublevel: this.namespaceSublevel });
         }
-        return lastVersion;
+
+        // 2. Copy all entries from sourceDb namespace into this namespace,
+        //    and queue deletion of those entries from sourceDb namespace.
+        for await (const [key, value] of sourceDb.namespaceSublevel.iterator()) {
+            ops.push({ type: 'put', key, value, sublevel: this.namespaceSublevel });
+            ops.push({ type: 'del', key, sublevel: sourceDb.namespaceSublevel });
+        }
+
+        await this.db.batch(ops);
     }
 
     /**
@@ -267,7 +302,9 @@ class RootDatabaseClass {
  */
 
 /**
- * Factory function to create a RootDatabase instance.
+ * Factory function to create a RootDatabase instance bound to the live ("x") namespace.
+ * On first open (or when the format marker is missing/mismatched), wipes the database
+ * and writes the format marker to ensure a clean slate.
  * @param {RootDatabaseCapabilities} capabilities - The capabilities required to create the database
  * @param {string} databasePath - Path to the database directory
  * @returns {Promise<RootDatabaseClass>}
@@ -277,7 +314,17 @@ async function makeRootDatabase(capabilities, databasePath) {
     /** @type {RootLevelType} */
     const db = capabilities.levelDatabase.initialize(databasePath);
     await db.open();
-    return new RootDatabaseClass(db, version);
+
+    // Check the root-level format marker to ensure we are using the x/y namespace layout.
+    const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
+    const formatMarker = await rootMetaSublevel.get('format');
+    if (formatMarker !== FORMAT_MARKER) {
+        // Format is missing or from an old layout: wipe everything and reinitialize.
+        await db.clear();
+        await rootMetaSublevel.put('format', FORMAT_MARKER);
+    }
+
+    return new RootDatabaseClass(db, 'x', version);
 }
 
 /**
