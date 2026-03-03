@@ -35,7 +35,8 @@ function parseEntries(results) {
  */
 export async function searchEntries(pattern, page = 1, limit = 50) {
     try {
-        const url = `${API_BASE_URL}/entries?search=${encodeURIComponent(pattern)}&page=${page}&limit=${limit}&order=dateDescending`;
+        const searchParam = pattern.trim() !== "" ? `&search=${encodeURIComponent(pattern)}` : "";
+        const url = `${API_BASE_URL}/entries?page=${page}&limit=${limit}&order=dateDescending${searchParam}`;
         const response = await fetch(url);
 
         if (response.status === 400) {
