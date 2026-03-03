@@ -5,21 +5,16 @@ import { FormInputSection } from "./FormInputSection.jsx";
 import { ConfigSection } from "./ConfigSection.jsx";
 import { SPACING, SIZES } from "./styles.js";
 
-const NUMBER_OF_RECENT_ENTRIES = 10;
-
 export default function DescriptionEntry() {
     const {
         description,
         isSubmitting,
-        recentEntries,
-        isLoadingEntries,
         photoCount,
         setDescription,
         handleSubmit,
         handleTakePhotos,
         handleKeyUp,
-        handleDeleteEntry,
-    } = useDescriptionEntry(NUMBER_OF_RECENT_ENTRIES);
+    } = useDescriptionEntry();
 
     const inputRef = useRef(null);
 
@@ -62,10 +57,7 @@ export default function DescriptionEntry() {
                 {/* Configuration Section */}
                 <ConfigSection
                     onShortcutClick={handleShortcutClick}
-                    onDeleteEntry={handleDeleteEntry}
                     currentInput={description}
-                    recentEntries={recentEntries}
-                    isLoadingEntries={isLoadingEntries}
                 />
             </VStack>
         </Container>

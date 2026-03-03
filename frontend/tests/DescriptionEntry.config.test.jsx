@@ -4,7 +4,6 @@ import "@testing-library/jest-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
@@ -32,7 +31,6 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
-    fetchRecentEntries,
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
@@ -72,7 +70,6 @@ describe("DescriptionEntry", () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
 
@@ -85,7 +82,6 @@ describe("DescriptionEntry", () => {
         retrievePhotos.mockReset();
 
         // Set default mock implementations that resolve immediately
-        fetchRecentEntries.mockResolvedValue([]);
         submitEntry.mockResolvedValue({
             success: true,
             entry: { input: "test" },
@@ -174,108 +170,6 @@ describe("DescriptionEntry", () => {
         expect(input.value).toBe(
             "food [certainty 9] earl gray tea, unsweetened"
         );
-    });
-
-    it("displays recent entries when data is available", async () => {
-        const mockEntries = [
-            {
-                id: "1",
-                original: "test entry 1",
-                date: "2023-01-01T10:00:00Z",
-                description: "processed entry 1",
-            },
-            {
-                id: "2",
-                original: "test entry 2",
-                date: "2023-01-02T11:00:00Z",
-                description: "processed entry 2",
-            },
-        ];
-        fetchRecentEntries.mockResolvedValue(mockEntries);
-
-        render(<DescriptionEntry />);
-
-        // Wait for entries to load and Recent Entries tab to be displayed
-        await waitFor(() => {
-            expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-        });
-
-        // Click on the Recent Entries tab to make sure content is visible
-        fireEvent.click(screen.getByText("Recent Entries"));
-
-        await waitFor(() => {
-            expect(screen.getByText("processed entry 1")).toBeInTheDocument();
-            expect(screen.getByText("processed entry 2")).toBeInTheDocument();
-        });
-    });
-
-    it("does not display recent entries section when no entries are available", async () => {
-        fetchRecentEntries.mockResolvedValue([]);
-
-        render(<DescriptionEntry />);
-
-        // Wait for entries to finish loading
-        await waitFor(() => {
-            expect(fetchRecentEntries).toHaveBeenCalled();
-        });
-
-        // Recent Entries tab should still be visible but content should show "No recent entries"
-        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-        
-        // Click on the Recent Entries tab to check content
-        fireEvent.click(screen.getByText("Recent Entries"));
-        
-        await waitFor(() => {
-            expect(screen.getByText("No recent entries found")).toBeInTheDocument();
-        });
-    });
-
-    it("shows loading skeletons while recent entries are loading", async () => {
-        // Make fetchRecentEntries hang to keep loading state
-        fetchRecentEntries.mockImplementation(() => new Promise(() => {}));
-
-        render(<DescriptionEntry />);
-
-        // Should show Recent Entries tab
-        await waitFor(() => {
-            expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-        });
-
-        // Click on the Recent Entries tab to access loading content
-        fireEvent.click(screen.getByText("Recent Entries"));
-
-        // Should show loading text and skeleton elements
-        await waitFor(() => {
-            expect(screen.getByText("Loading recent entries...")).toBeInTheDocument();
-        });
-
-        // Should show multiple skeleton elements (from Chakra UI)
-        const skeletons = document.querySelectorAll(".chakra-skeleton");
-        expect(skeletons.length).toBeGreaterThan(0);
-    });
-
-    it("handles fetchRecentEntries error gracefully", async () => {
-        fetchRecentEntries.mockRejectedValue(new Error("Network error"));
-
-        render(<DescriptionEntry />);
-
-        // Should not crash and should eventually stop loading
-        await waitFor(() => {
-            // The component should still render normally
-            expect(
-                screen.getByPlaceholderText("Type your event description here...")
-            ).toBeInTheDocument();
-        });
-
-        // Recent Entries tab should still be visible but show no entries message
-        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-        
-        // Click on the Recent Entries tab to check content
-        fireEvent.click(screen.getByText("Recent Entries"));
-        
-        await waitFor(() => {
-            expect(screen.getByText("No recent entries found")).toBeInTheDocument();
-        });
     });
 
 });

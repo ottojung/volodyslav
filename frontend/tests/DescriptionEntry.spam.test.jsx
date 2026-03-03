@@ -4,7 +4,6 @@ import "@testing-library/jest-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
@@ -32,7 +31,6 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
-    fetchRecentEntries,
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
@@ -56,7 +54,6 @@ describe("DescriptionEntry spam prevention", () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
 
@@ -69,7 +66,6 @@ describe("DescriptionEntry spam prevention", () => {
         retrievePhotos.mockReset();
 
         // Set default mock implementations that resolve immediately
-        fetchRecentEntries.mockResolvedValue([]);
         submitEntry.mockResolvedValue({
             success: true,
             entry: { input: "test" },
@@ -223,7 +219,7 @@ describe("DescriptionEntry spam prevention", () => {
 
         // Wait for everything to settle
         await waitFor(() => {
-            expect(fetchRecentEntries).toHaveBeenCalled();
+            expect(submitEntry).toHaveBeenCalledTimes(1);
         }, { timeout: 3000 });
 
         // Should only have called submitEntry once

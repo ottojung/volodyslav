@@ -4,7 +4,6 @@ import "@testing-library/jest-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
 }));
@@ -32,7 +31,6 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
-    fetchRecentEntries,
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
@@ -72,7 +70,6 @@ describe("DescriptionEntry", () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
 
@@ -85,7 +82,6 @@ describe("DescriptionEntry", () => {
         retrievePhotos.mockReset();
 
         // Set default mock implementations that resolve immediately
-        fetchRecentEntries.mockResolvedValue([]);
         submitEntry.mockResolvedValue({
             success: true,
             entry: { input: "test" },
@@ -175,11 +171,6 @@ describe("DescriptionEntry", () => {
             expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
-        // Default tab is Recent Entries, so should show recent entries content
-        expect(
-            screen.getByText("No recent entries found")
-        ).toBeInTheDocument();
-
         // Click Help tab
         const helpTab = screen.getByText("Help");
         fireEvent.click(helpTab);
@@ -241,9 +232,6 @@ describe("DescriptionEntry", () => {
 
         // Should have called submitEntry twice
         expect(submitEntry).toHaveBeenCalledTimes(2);
-
-        // Should have fetched entries three times (initial + after each submission)
-        expect(fetchRecentEntries).toHaveBeenCalledTimes(3);
     });
 
 });

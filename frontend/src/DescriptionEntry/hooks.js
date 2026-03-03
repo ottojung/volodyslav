@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@chakra-ui/react";
 import {
-    fetchRecentEntries as apiFetchRecentEntries,
     submitEntry,
-    deleteEntry as apiDeleteEntry,
 } from "./api";
 import { isValidDescription, createToastConfig } from "./utils.js";
 import { logger } from "./logger.js";
@@ -61,14 +59,12 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
  * @param {File[]} files - Files to submit
  * @param {Function} setPendingRequestIdentifier - State setter
  * @param {Function} setPhotoCount - State setter for photo count
- * @param {Function} fetchRecentEntries - Function to refresh entries
  * @param {Function} toast - Toast notification function
  */
-const handleSubmissionSuccess = (result, description, files, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast) => {
+const handleSubmissionSuccess = (result, description, files, setPendingRequestIdentifier, setPhotoCount, toast) => {
     const savedInput = result.entry?.input ?? description.trim();
     setPendingRequestIdentifier(null);
     setPhotoCount(0);
-    fetchRecentEntries();
 
     const fileCountMessage = files.length > 0 ? ` with ${files.length} photo(s)` : '';
     toast({
@@ -158,45 +154,25 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
  * @typedef {object} DescriptionEntryHook
  * @property {string} description
  * @property {boolean} isSubmitting
- * @property {any[]} recentEntries
- * @property {boolean} isLoadingEntries
  * @property {string|null} pendingRequestIdentifier
  * @property {number} photoCount
  * @property {(value: string) => void} setDescription
  * @property {() => Promise<void>} handleSubmit
  * @property {() => void} handleTakePhotos
  * @property {(e: React.KeyboardEvent) => void} handleKeyUp
- * @property {(id: string) => Promise<void>} handleDeleteEntry
- * @property {() => Promise<void>} fetchRecentEntries
  */
 
 /**
  * Custom hook for managing description entry form state and actions
- * @param {number} numberOfEntries - Number of recent entries to fetch
  * @returns {DescriptionEntryHook}
  */
-export const useDescriptionEntry = (numberOfEntries = 10) => {
+export const useDescriptionEntry = () => {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    /** @type {[import('./api').Entry[], Function]} */
-    const [recentEntries, setRecentEntries] = useState([]);
-    const [isLoadingEntries, setIsLoadingEntries] = useState(true);
     /** @type {[string | null, Function]} */
     const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(null);
     const [photoCount, setPhotoCount] = useState(0);
     const toast = useToast();
-
-    const fetchRecentEntries = async () => {
-        try {
-            setIsLoadingEntries(true);
-            const entries = await apiFetchRecentEntries(numberOfEntries);
-            setRecentEntries(entries);
-        } catch (error) {
-            logger.error("Error fetching recent entries:", error);
-        } finally {
-            setIsLoadingEntries(false);
-        }
-    };
 
     const handleSubmit = async () => {
         if (!isValidDescription(description)) {
@@ -225,7 +201,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             }
 
             const result = await submitEntry(descriptionToSubmit, pendingRequestIdentifier || undefined, files);
-            handleSubmissionSuccess(result, descriptionToSubmit, files, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast);
+            handleSubmissionSuccess(result, descriptionToSubmit, files, setPendingRequestIdentifier, setPhotoCount, toast);
         } catch (error) {
             handleSubmissionError(error, toast);
             // Restore description on submission error
@@ -253,30 +229,6 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         }
     };
 
-    /**
-     * Deletes an entry and refreshes list.
-     * @param {string} id
-     * @returns {Promise<void>}
-     */
-    const handleDeleteEntry = async (id) => {
-        try {
-            const success = await apiDeleteEntry(id);
-            if (success) {
-                fetchRecentEntries();
-            } else {
-                toast(createToastConfig.error("Failed to delete entry"));
-            }
-        } catch (error) {
-            logger.error("Error deleting entry:", error);
-            toast(createToastConfig.error("Failed to delete entry"));
-        }
-    };
-
-    // Fetch entries on mount
-    useEffect(() => {
-        fetchRecentEntries();
-    }, []);
-
     // Handle return from camera
     useEffect(() => {
         const cameraReturn = checkCameraReturn();
@@ -289,8 +241,6 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         // State
         description,
         isSubmitting,
-        recentEntries,
-        isLoadingEntries,
         pendingRequestIdentifier,
         photoCount,
 
@@ -299,7 +249,5 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         handleSubmit,
         handleTakePhotos,
         handleKeyUp,
-        handleDeleteEntry,
-        fetchRecentEntries,
     };
 };

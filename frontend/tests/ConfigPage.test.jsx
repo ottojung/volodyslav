@@ -5,11 +5,9 @@ import { MemoryRouter } from "react-router-dom";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
-    fetchRecentEntries: jest.fn(),
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
     updateConfig: jest.fn(),
-    deleteEntry: jest.fn(),
 }));
 
 // Mock the logger module
