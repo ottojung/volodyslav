@@ -78,7 +78,7 @@ const EXISTING = new Map();
  */
 function makeUniqueFunctor(name) {
     if (EXISTING.has(name)) {
-        throw new Error(`Unique functor with name "${name}" already exists`);
+        throw new Error(`Unique functor with name ${JSON.stringify(name)} already exists`);
     }
 
     const functor = new UniqueFunctorClass(name);
