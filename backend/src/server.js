@@ -63,7 +63,7 @@ async function ensureStartupDependencies(capabilities, app) {
     await capabilities.state.ensureAccessible();
     await ensureDailyTasksAvailable(capabilities);
     await capabilities.wifiChecker.ensureAvailable();
-    await capabilities.interface.ensureInitialized(capabilities);
+    await capabilities.interface.ensureInitialized();
 }
 
 /**

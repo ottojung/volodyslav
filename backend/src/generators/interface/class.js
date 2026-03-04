@@ -2,7 +2,6 @@
  * Interface class for direct database operations.
  */
 
-/** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
@@ -29,31 +28,75 @@ const {
 
 /**
  * An interface for direct database operations.
- * Provides methods to update the database with events.
+ * Created synchronously; call ensureInitialized() before using update() or
+ * getEventBasicContext().  This mirrors the pattern used by other capabilities
+ * such as checker and logger which also capture `() => Capabilities`.
  */
 class InterfaceClass {
     /**
-     * The incremental graph for propagating changes.
-     * @type {IncrementalGraph}
+     * Getter for the capabilities object, captured at construction time.
+     * @private
+     * @type {() => GeneratorsCapabilities}
      */
-    incrementalGraph;
+    _getCapabilities;
 
     /**
-     * Mutable box holding the current events value.
+     * The live incremental graph and events box, set after ensureInitialized().
      * @private
-     * @type {EventsBox}
+     * @type {{ incrementalGraph: IncrementalGraph, eventsBox: EventsBox } | null}
      */
-    eventsBox;
+    _inner;
 
     /**
      * @constructor
-     * @param {RootDatabase} database - The root database instance
-     * @param {import('../incremental_graph/types').NodeDef[]} nodeDefs - Pre-built node definitions
-     * @param {EventsBox} eventsBox - Mutable events box shared with the node defs getter
+     * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
-    constructor(database, nodeDefs, eventsBox) {
-        this.eventsBox = eventsBox;
-        this.incrementalGraph = makeIncrementalGraph(database, nodeDefs);
+    constructor(getCapabilities) {
+        this._getCapabilities = getCapabilities;
+        this._inner = null;
+    }
+
+    /**
+     * Opens the database and runs any pending migration.
+     * Idempotent — subsequent calls are no-ops.
+     *
+     * Boot sequence:
+     * 1. Open the database via the gitstore-aware path.
+     * 2. Build the events box and node defs.  The node defs carry a live getter
+     *    over `eventsBox.current` so they are valid both during the migration
+     *    schema-compatibility check and at normal-operation pull time.
+     * 3. Run migration.  Fresh database → records version and returns
+     *    immediately.  Same version → returns immediately.  Version change →
+     *    pre-checkpoint, apply decisions, post-checkpoint.
+     * 4. Wire up IncrementalGraph against the now-current x-namespace data.
+     *
+     * @returns {Promise<void>}
+     */
+    async ensureInitialized() {
+        if (this._inner !== null) {
+            return;
+        }
+        const capabilities = this._getCapabilities();
+
+        // Step 1: open the database via the gitstore-aware path.
+        const database = await getRootDatabase(capabilities);
+
+        // Step 2: build events box and node defs before migration so the
+        // migration runner can inspect the new schema's head index.
+        /** @type {EventsBox} */
+        const eventsBox = { current: { events: [], type: "all_events" } };
+        const nodeDefs = createDefaultGraphDefinition(() => eventsBox.current);
+
+        // Step 3: run migration (no-op on fresh/same version).
+        const migrationCapabilities = {
+            sleeper: capabilities.sleeper,
+            checkpointDatabase: (/** @type {string} */ message) => checkpointDatabase(capabilities, message),
+        };
+        await runMigration(migrationCapabilities, database, nodeDefs, createDefaultMigrationCallback());
+
+        // Step 4: wire up the incremental graph.
+        const incrementalGraph = makeIncrementalGraph(database, nodeDefs);
+        this._inner = { incrementalGraph, eventsBox };
     }
 
     /**
@@ -63,8 +106,11 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async update(all_events) {
-        this.eventsBox.current = { events: all_events, type: "all_events" };
-        await this.incrementalGraph.invalidate("all_events");
+        if (this._inner === null) {
+            throw new Error("Interface: ensureInitialized() must be called before update()");
+        }
+        this._inner.eventsBox.current = { events: all_events, type: "all_events" };
+        await this._inner.incrementalGraph.invalidate("all_events");
     }
 
     /**
@@ -76,8 +122,11 @@ class InterfaceClass {
      * @returns {Promise<Array<Event>>} The context events
      */
     async getEventBasicContext(event) {
+        if (this._inner === null) {
+            throw new Error("Interface: ensureInitialized() must be called before getEventBasicContext()");
+        }
         // Pull the event_context node (lazy evaluation)
-        const eventContextEntry = await this.incrementalGraph.pull(
+        const eventContextEntry = await this._inner.incrementalGraph.pull(
             "event_context"
         );
 
@@ -100,41 +149,15 @@ class InterfaceClass {
 
 /**
  * Factory function to create an Interface instance.
+ * Synchronous — pass the lazy `() => GeneratorsCapabilities` getter captured
+ * from the capabilities object, the same pattern used by checker and logger.
+ * Call ensureInitialized() before using any other methods.
  *
- * Boot sequence:
- * 1. Open the database via the gitstore-aware path.
- * 2. Build the events box and node defs.  The node defs carry a live getter
- *    over `eventsBox.current` so they are valid both during the migration
- *    schema-compatibility check and at normal-operation pull time.
- * 3. Run migration.  Fresh database → records version and returns
- *    immediately.  Same version → returns immediately.  Version change →
- *    pre-checkpoint, apply decisions, post-checkpoint.
- * 4. Construct InterfaceClass, which builds IncrementalGraph against the
- *    now-current x-namespace data.
- *
- * @param {GeneratorsCapabilities} capabilities
- * @returns {Promise<InterfaceClass>}
+ * @param {() => GeneratorsCapabilities} getCapabilities
+ * @returns {InterfaceClass}
  */
-async function makeInterface(capabilities) {
-    // Step 1: open the database via the gitstore-aware path.
-    const database = await getRootDatabase(capabilities);
-
-    // Step 2: build events box and node defs before migration so the
-    // migration runner can inspect the new schema's head index.
-    /** @type {EventsBox} */
-    const eventsBox = { current: { events: [], type: "all_events" } };
-    const nodeDefs = createDefaultGraphDefinition(() => eventsBox.current);
-
-    // Step 3: run migration (no-op on fresh/same version).
-    const migrationCapabilities = {
-        sleeper: capabilities.sleeper,
-        checkpointDatabase: (/** @type {string} */ message) => checkpointDatabase(capabilities, message),
-    };
-    await runMigration(migrationCapabilities, database, nodeDefs, createDefaultMigrationCallback());
-
-    // Step 4: construct the interface now that x-namespace holds the
-    // correct version's data.
-    return new InterfaceClass(database, nodeDefs, eventsBox);
+function makeInterface(getCapabilities) {
+    return new InterfaceClass(getCapabilities);
 }
 
 /**
@@ -148,82 +171,7 @@ function isInterface(object) {
 
 /** @typedef {InterfaceClass} Interface */
 
-/**
- * Capability wrapper for the incremental graph interface.
- * Created synchronously alongside all other capabilities; async initialisation
- * is deferred until ensureInitialized() is called from ensureStartupDependencies.
- */
-class InterfaceCapabilityClass {
-    /**
-     * @private
-     * @type {InterfaceClass | null}
-     */
-    _inner;
-
-    constructor() {
-        this._inner = null;
-    }
-
-    /**
-     * Opens the database and runs any pending migration.
-     * Idempotent — subsequent calls are no-ops.
-     * @param {GeneratorsCapabilities} capabilities
-     * @returns {Promise<void>}
-     */
-    async ensureInitialized(capabilities) {
-        if (this._inner !== null) {
-            return;
-        }
-        this._inner = await makeInterface(capabilities);
-    }
-
-    /**
-     * Updates the all_events node and propagates staleness.
-     * @param {Array<Event>} all_events
-     * @returns {Promise<void>}
-     */
-    async update(all_events) {
-        if (this._inner === null) {
-            throw new Error("InterfaceCapability: ensureInitialized() must be called before update()");
-        }
-        return this._inner.update(all_events);
-    }
-
-    /**
-     * Returns the basic context for a given event.
-     * @param {Event} event
-     * @returns {Promise<Array<Event>>}
-     */
-    async getEventBasicContext(event) {
-        if (this._inner === null) {
-            throw new Error("InterfaceCapability: ensureInitialized() must be called before getEventBasicContext()");
-        }
-        return this._inner.getEventBasicContext(event);
-    }
-}
-
-/**
- * Creates an InterfaceCapability instance synchronously.
- * Call ensureInitialized() before any other method.
- * @returns {InterfaceCapabilityClass}
- */
-function makeInterfaceCapability() {
-    return new InterfaceCapabilityClass();
-}
-
-/**
- * @param {unknown} object
- * @returns {object is InterfaceCapabilityClass}
- */
-function isInterfaceCapability(object) {
-    return object instanceof InterfaceCapabilityClass;
-}
-
-/** @typedef {InterfaceCapabilityClass} InterfaceCapability */
-
 module.exports = {
     makeInterface,
     isInterface,
-    makeInterfaceCapability,
-    isInterfaceCapability,
 };
