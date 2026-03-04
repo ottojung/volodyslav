@@ -20,6 +20,7 @@
 const path = require("path");
 const { commit } = require("./wrappers");
 const workingRepository = require("./working_repository");
+const { gitStoreMutexKey } = require("./mutex");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -67,7 +68,7 @@ const workingRepository = require("./working_repository");
  *   repository cannot be initialised.
  */
 async function checkpoint(capabilities, workingPath, initial_state, message) {
-    await capabilities.sleeper.withMutex(workingPath, async () => {
+    await capabilities.sleeper.withMutex(gitStoreMutexKey(workingPath), async () => {
         const gitDir = await workingRepository.getRepository(
             capabilities,
             workingPath,

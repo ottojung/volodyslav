@@ -54,6 +54,7 @@ const { deserializeNodeKey } = require("./node_key");
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 const { make: makeSleeper } = require("../../sleeper");
+const { makeUniqueFunctor } = require("../../unique_functor");
 const { makeConcreteNodeCache } = require("./lru_cache");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
@@ -62,7 +63,7 @@ const { makeConcreteNodeCache } = require("./lru_cache");
 /**
  * Mutex key for serializing all invalidate() and pull() operations.
  */
-const MUTEX_KEY = "incremental-graph-operations";
+const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.

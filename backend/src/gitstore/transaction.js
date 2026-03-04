@@ -1,5 +1,6 @@
 
 const { transactionWithRetry } = require('./transaction_retry');
+const { gitStoreMutexKey } = require('./mutex');
 
 /**
  * This function performs a transaction on a Git repository.
@@ -21,7 +22,7 @@ const { transactionWithRetry } = require('./transaction_retry');
  * @returns {Promise<T>}
  */
 async function transaction(capabilities, workingPath, initial_state, transformation, retryOptions) {
-    return await capabilities.sleeper.withMutex(workingPath, async () => {
+    return await capabilities.sleeper.withMutex(gitStoreMutexKey(workingPath), async () => {
         return await transactionWithRetry(capabilities, workingPath, initial_state, transformation, retryOptions);
     });
 }
