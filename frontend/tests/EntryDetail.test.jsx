@@ -8,6 +8,7 @@ jest.mock("../src/Search/api", () => ({
     searchEntries: jest.fn(),
     fetchEntryById: jest.fn(),
     deleteEntryById: jest.fn(),
+    fetchAdditionalProperties: jest.fn(),
 }));
 
 // Mock the logger module
@@ -21,7 +22,7 @@ jest.mock("../src/DescriptionEntry/logger", () => ({
 }));
 
 import EntryDetail from "../src/EntryDetail/EntryDetail.jsx";
-import { fetchEntryById, deleteEntryById } from "../src/Search/api";
+import { fetchEntryById, deleteEntryById, fetchAdditionalProperties } from "../src/Search/api";
 
 const mockEntry = {
     id: "entry-123",
@@ -54,6 +55,8 @@ describe("EntryDetail page", () => {
     beforeEach(() => {
         fetchEntryById.mockClear();
         deleteEntryById.mockClear();
+        fetchAdditionalProperties.mockClear();
+        fetchAdditionalProperties.mockResolvedValue({});
     });
 
     // --- Rendering with state ---
@@ -298,6 +301,67 @@ describe("EntryDetail page", () => {
 
         await waitFor(() => {
             expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+        });
+    });
+
+    // --- Additional Properties section ---
+
+    it("shows the Additional Properties section header", () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        expect(screen.getByText("Additional Properties")).toBeInTheDocument();
+    });
+
+    it("does not show 'None' while additional properties are still loading", () => {
+        // Never resolves — simulates an in-flight request
+        fetchAdditionalProperties.mockReturnValue(new Promise(() => {}));
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        // While loading, the "None" placeholder must not appear yet
+        expect(screen.queryByText("None")).not.toBeInTheDocument();
+    });
+
+    it("shows 'None' when additional properties are empty", async () => {
+        fetchAdditionalProperties.mockResolvedValue({});
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("None")).toBeInTheDocument();
+        });
+    });
+
+    it("shows calories field when additional properties contain calories", async () => {
+        fetchAdditionalProperties.mockResolvedValue({ calories: 420 });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("calories")).toBeInTheDocument();
+            expect(screen.getByText("420")).toBeInTheDocument();
+        });
+    });
+
+    it("does not show calories field when calories is absent", async () => {
+        fetchAdditionalProperties.mockResolvedValue({});
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("None")).toBeInTheDocument();
+        });
+
+        expect(screen.queryByText("calories")).not.toBeInTheDocument();
+    });
+
+    it("calls fetchAdditionalProperties with the entry id", async () => {
+        fetchAdditionalProperties.mockResolvedValue({});
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(fetchAdditionalProperties).toHaveBeenCalledWith("entry-123");
         });
     });
 });

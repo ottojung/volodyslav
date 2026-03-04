@@ -76,7 +76,7 @@ export async function fetchAdditionalProperties(id) {
 
         if (response.ok) {
             const data = await response.json();
-            return /** @type {AdditionalProperties} */ (data);
+            return data;
         }
 
         logger.warn("Failed to fetch additional properties:", response.status);
