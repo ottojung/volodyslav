@@ -105,10 +105,11 @@ function versionToString(Version) {
  */
 
 /**
- * Raw input text of a single event.
- * @typedef {object} InputEntry
- * @property {'input'} type - The type of the entry
- * @property {string} value - The raw input text of the event
+ * Full structure of a single event, indexed by event ID.
+ * Value is null when no event with that ID exists in the current all_events set.
+ * @typedef {object} EventEntry
+ * @property {'event'} type - The type of the entry
+ * @property {Event | null} value - The full event object, or null if not found
  */
 
 /**
@@ -120,7 +121,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | InputEntry | CaloriesEntry} ComputedValue
+ * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry} ComputedValue
  */
 
 /**

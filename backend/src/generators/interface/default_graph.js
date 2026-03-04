@@ -1,6 +1,6 @@
 
 const { isUnchanged, isSchemaCompatibility } = require("../incremental_graph");
-const { metaEvents, eventContext } = require("../individual");
+const { metaEvents, eventContext, event: individualEvent, calories } = require("../individual");
 
 /**
  * @typedef {object} Capabilities
@@ -88,37 +88,21 @@ function createDefaultGraphDefinition(capabilities, getAllEvents) {
             hasSideEffects: false,
         },
         {
-            output: "input(e)",
+            output: "event(e)",
             inputs: ["all_events"],
             computor: async (inputs, _oldValue, bindings) => {
-                const eventId = String(bindings[0]);
-                const allEventsEntry = inputs[0];
-                if (!allEventsEntry || allEventsEntry.type !== "all_events") {
-                    return { type: "input", value: "" };
-                }
-                const event = allEventsEntry.events.find(
-                    (e) =>
-                        String(e.id && e.id.identifier !== undefined ? e.id.identifier : e.id) === eventId
-                );
-                if (!event) {
-                    return { type: "input", value: "" };
-                }
-                return { type: "input", value: event.input ?? "" };
+                const allEvents = inputs[0]?.type === "all_events" ? inputs[0].events : [];
+                return individualEvent.computeEventForId(String(bindings[0]), allEvents);
             },
             isDeterministic: true,
             hasSideEffects: false,
         },
         {
             output: "calories(e)",
-            inputs: ["input(e)"],
+            inputs: ["event(e)"],
             computor: async (inputs, _oldValue, _bindings) => {
-                const inputEntry = inputs[0];
-                if (!inputEntry || inputEntry.type !== "input") {
-                    return { type: "calories", value: 0 };
-                }
-                return capabilities.aiCalories.estimateCalories(
-                    inputEntry.value
-                );
+                const ev = inputs[0]?.type === "event" ? inputs[0].value : null;
+                return calories.computeCaloriesForEvent(ev, capabilities);
             },
             isDeterministic: false,
             hasSideEffects: true,

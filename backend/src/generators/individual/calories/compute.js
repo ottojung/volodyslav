@@ -3,29 +3,34 @@
  */
 
 /** @typedef {import('../../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
+/** @typedef {import('../../../event').Event} Event */
+/** @typedef {import('../../../ai/calories').AICalories} AICalories */
 
 /**
- * Estimates the calorie count for the given raw entry input text.
+ * @typedef {object} CaloriesCapabilities
+ * @property {AICalories} aiCalories - AI calories estimation capability.
+ */
+
+/**
+ * Estimates the calorie count for the given event.
  *
- * Delegates entirely to the provided AI estimator so this module contains no
- * business logic — it is a pure thin adapter that translates the raw string
- * into the typed CaloriesEntry database value.
+ * Extracts the raw input text from the event and delegates to the AI estimator
+ * via capabilities. Returns 0 calories when the event is null or its input
+ * text is empty.
  *
- * Returns 0 calories when the input text is empty (no meaningful content to
- * send to the AI).
- *
- * @param {string} inputText - The raw input text of the event
- * @param {(text: string) => Promise<number>} estimateCalories - AI calories estimator
+ * @param {Event | null} event - The full event object, or null if not found
+ * @param {CaloriesCapabilities} capabilities - Capabilities providing the AI estimator
  * @returns {Promise<CaloriesEntry>}
  */
-async function computeCaloriesForInput(inputText, estimateCalories) {
+async function computeCaloriesForEvent(event, capabilities) {
+    const inputText = event?.input ?? "";
     if (!inputText) {
         return { type: "calories", value: 0 };
     }
-    const value = await estimateCalories(inputText);
+    const value = await capabilities.aiCalories.estimateCalories(inputText);
     return { type: "calories", value };
 }
 
 module.exports = {
-    computeCaloriesForInput,
+    computeCaloriesForEvent,
 };
