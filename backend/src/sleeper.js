@@ -5,6 +5,7 @@
 const memconst = require('./memconst');
 
 /** @typedef {import('./datetime').Duration} Duration */
+/** @typedef {import('./unique_functor').UniqueTerm} UniqueTerm */
 
 /**
  * @typedef {object} Sleeper
@@ -16,7 +17,7 @@ const memconst = require('./memconst');
  * @typedef {object} SleepCapability
  * @property {(name: string, duration: Duration) => Promise<void>} sleep - Pause for the given duration.
  * @property {(name: string) => Sleeper} makeSleeper - Create a sleeper instance with its own wake method.
- * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
+ * @property {<T>(key: UniqueTerm, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
 
 function make() {
@@ -26,13 +27,14 @@ function make() {
 
     /**
      * @template T
-     * @param {string} name
+     * @param {UniqueTerm} key - The unique key for the mutex. This should be a UniqueTerm instance to ensure uniqueness across the application.
      * @param {() => Promise<T>} procedure
      * @returns {Promise<T>}
      */
-    async function withMutex(name, procedure) {
+    async function withMutex(key, procedure) {
+        const stringKey = key.serialize();
         for (;;) {
-            const existing = mutexes.get(name);
+            const existing = mutexes.get(stringKey);
             if (existing === undefined) {
                 break;    
             } else {
@@ -41,11 +43,11 @@ function make() {
         }
 
         const wrapped = memconst(async () => {
-            mutexes.set(name, wrapped);
+            mutexes.set(stringKey, wrapped);
             try {
                 return await procedure();
             } finally {
-                mutexes.delete(name);
+                mutexes.delete(stringKey);
             }
         });
         return await wrapped();

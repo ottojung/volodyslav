@@ -84,6 +84,11 @@ function makeUniqueFunctor(name) {
     return functor;
 }
 
+/**
+ * @typedef {UniqueFunctorClass} UniqueFunctor
+ * @typedef {UniqueTermClass} UniqueTerm
+ */
+
 module.exports = {
     makeUniqueFunctor,
 };
