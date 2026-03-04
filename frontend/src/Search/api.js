@@ -58,6 +58,36 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
 }
 
 /**
+ * @typedef {object} AdditionalProperties
+ * @property {number} [calories] - Estimated calorie count; absent when 0 or unknown.
+ */
+
+/**
+ * Fetches computed additional properties for an entry (e.g. calories).
+ * Triggers the incremental graph pull on the server side.
+ * @param {string} id - The entry id.
+ * @returns {Promise<AdditionalProperties>}
+ */
+export async function fetchAdditionalProperties(id) {
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/entries/${encodeURIComponent(id)}/additional-properties`,
+        );
+
+        if (response.ok) {
+            const data = await response.json();
+            return /** @type {AdditionalProperties} */ (data);
+        }
+
+        logger.warn("Failed to fetch additional properties:", response.status);
+        return {};
+    } catch (error) {
+        logger.error("Error fetching additional properties:", error);
+        return {};
+    }
+}
+
+/**
  * Fetches a single entry by its id.
  * @param {string} id - The entry id.
  * @returns {Promise<Entry|null>}

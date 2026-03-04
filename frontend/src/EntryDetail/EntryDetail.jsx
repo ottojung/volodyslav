@@ -14,7 +14,7 @@ import {
     Badge,
     Button,
 } from "@chakra-ui/react";
-import { fetchEntryById, deleteEntryById } from "../Search/api.js";
+import { fetchEntryById, deleteEntryById, fetchAdditionalProperties } from "../Search/api.js";
 import {
     SPACING,
     SIZES,
@@ -105,6 +105,9 @@ export default function EntryDetail() {
     const [notFound, setNotFound] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    /** @type {[import('../Search/api.js').AdditionalProperties | null, Function]} */
+    const [additionalProperties, setAdditionalProperties] = useState(null);
+
     useEffect(() => {
         if (stateEntry !== null || id === undefined) return;
 
@@ -118,6 +121,14 @@ export default function EntryDetail() {
             setIsLoading(false);
         });
     }, [id, stateEntry]);
+
+    useEffect(() => {
+        if (id === undefined) return;
+        setAdditionalProperties(null);
+        fetchAdditionalProperties(id).then((props) => {
+            setAdditionalProperties(props);
+        });
+    }, [id]);
 
     async function handleDelete() {
         if (entry === null) return;
@@ -154,6 +165,12 @@ export default function EntryDetail() {
 
     const fields = entryToFields(entry);
 
+    const additionalFields = additionalProperties === null
+        ? null
+        : Object.entries(additionalProperties).filter(
+            ([, v]) => v !== undefined && v !== null,
+        );
+
     return (
         <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
             <VStack spacing={SPACING.xxl} align="stretch" justify="flex-start">
@@ -177,6 +194,27 @@ export default function EntryDetail() {
                                 <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
                             ))}
                         </VStack>
+                    </CardBody>
+                </Card>
+
+                <Card {...CARD_STYLES.secondary}>
+                    <CardBody p={SPACING.lg}>
+                        <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
+                            Additional Properties
+                        </Text>
+                        {additionalFields === null ? (
+                            <Box textAlign="center" py={SPACING.md}>
+                                <Spinner size="sm" color="blue.400" />
+                            </Box>
+                        ) : additionalFields.length === 0 ? (
+                            <Text {...TEXT_STYLES.helper}>None</Text>
+                        ) : (
+                            <VStack spacing={SPACING.sm} align="stretch">
+                                {additionalFields.map(([key, value]) => (
+                                    <FieldRow key={key} fieldKey={key} value={String(value)} />
+                                ))}
+                            </VStack>
+                        )}
                     </CardBody>
                 </Card>
             </VStack>
