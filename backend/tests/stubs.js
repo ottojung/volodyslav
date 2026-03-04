@@ -79,6 +79,17 @@ function stubAiTranscriber(capabilities) {
 }
 
 /**
+ * Stubs the AI calories capabilities for testing.
+ * @param {object} capabilities
+ * @param {number} [defaultCalories=0] - The default calorie count to return for any input
+ */
+function stubAiCalories(capabilities, defaultCalories = 0) {
+    capabilities.aiCalories.estimateCalories = jest
+        .fn()
+        .mockResolvedValue(defaultCalories);
+}
+
+/**
  * Stubs the notifier capabilities for testing.
  * Silences all notification functions.
  */
@@ -447,6 +458,7 @@ module.exports = {
     stubEnvironment,
     stubLogger,
     stubAiTranscriber,
+    stubAiCalories,
     stubNotifier,
     stubDailyTasksExecutable,
     stubSleeper,

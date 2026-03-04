@@ -11,6 +11,7 @@
  * @typedef {import("../../subprocess/command").Command} Command
  * @typedef {import("../../sleeper").SleepCapability} SleepCapability
  * @typedef {import("../../datetime").Datetime} Datetime
+ * @typedef {import("../../ai/calories").AICalories} AICalories
  */
 
 /**
@@ -26,6 +27,7 @@
  * @property {Command} git - A command instance for Git operations.
  * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Datetime} datetime - Datetime utilities.
+ * @property {AICalories} aiCalories - AI calories estimation capability.
  */
 
 module.exports = {};

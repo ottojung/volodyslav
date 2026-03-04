@@ -103,7 +103,10 @@ class InterfaceClass {
         // migration runner can inspect the new schema's head index.
         /** @type {EventsBox} */
         const eventsBox = { current: { events: [], type: "all_events" } };
-        const nodeDefs = createDefaultGraphDefinition(() => eventsBox.current);
+        const nodeDefs = createDefaultGraphDefinition(
+            capabilities,
+            () => eventsBox.current
+        );
 
         // Step 3: run migration (no-op on fresh/same version).
         const migrationCapabilities = {

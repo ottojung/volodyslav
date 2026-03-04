@@ -5,6 +5,7 @@ const { handleEntryPost } = require("./post");
 const { handleEntriesGet } = require("./list");
 const { handleEntryDelete } = require("./delete");
 const { handleEntryGetById } = require("./get_by_id");
+const { handleAdditionalProperties } = require("./additional_properties");
 
 /**
 /**
@@ -20,6 +21,7 @@ const { handleEntryGetById } = require("./get_by_id");
  * @typedef {import('../../subprocess/command').Command} Command
  * @typedef {import('../../event/structure').SerializedEvent} SerializedEvent
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
+ * @typedef {import('../../generators').Interface} Interface
  */
 
 /**
@@ -37,6 +39,7 @@ const { handleEntryGetById } = require("./get_by_id");
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
+ * @property {Interface} interface - The incremental graph interface capability.
  */
 
 /**
@@ -146,6 +149,32 @@ function makeRouter(capabilities) {
                     query: req.query,
                 },
                 "Unhandled error during entry delete request",
+            );
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Internal server error" });
+            }
+        }
+    });
+
+    /**
+     * GET /entries/:id/additional-properties - Get computed additional properties for an entry
+     */
+    router.get("/entries/:id/additional-properties", async (req, res) => {
+        const reqId = randomRequestId(capabilities);
+
+        try {
+            await handleAdditionalProperties(req, res, capabilities, reqId);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    client_ip: req.ip,
+                    entry_id: req.params.id,
+                },
+                "Unhandled error during additional-properties request",
             );
             if (!res.headersSent) {
                 res.status(500).json({ error: "Internal server error" });

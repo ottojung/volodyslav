@@ -1,13 +1,19 @@
 
 const { isUnchanged, isSchemaCompatibility } = require("../incremental_graph");
-const { metaEvents, eventContext } = require("../individual");
+const { metaEvents, eventContext, event: individualEvent, calories } = require("../individual");
+
+/**
+ * @typedef {object} Capabilities
+ * @property {import('../../ai/calories').AICalories} aiCalories - A calories estimation capability.
+ */
 
 /**
  * Creates the default graph definition for the incremental graph.
+ * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @param {() => import('../incremental_graph/database/types').AllEventsEntry} getAllEvents - Function to get the current all events entry
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(getAllEvents) {
+function createDefaultGraphDefinition(capabilities, getAllEvents) {
     return [
         {
             output: "all_events",
@@ -80,6 +86,26 @@ function createDefaultGraphDefinition(getAllEvents) {
             },
             isDeterministic: true,
             hasSideEffects: false,
+        },
+        {
+            output: "event(e)",
+            inputs: ["all_events"],
+            computor: async (inputs, _oldValue, bindings) => {
+                const allEvents = inputs[0]?.type === "all_events" ? inputs[0].events : [];
+                return individualEvent.computeEventForId(String(bindings[0]), allEvents);
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "calories(e)",
+            inputs: ["event(e)"],
+            computor: async (inputs, _oldValue, _bindings) => {
+                const ev = inputs[0]?.type === "event" ? inputs[0].value : null;
+                return calories.computeCaloriesForEvent(ev, capabilities);
+            },
+            isDeterministic: false,
+            hasSideEffects: true,
         },
     ];
 }
