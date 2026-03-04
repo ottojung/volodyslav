@@ -8,9 +8,9 @@
  * 4. Atomically swaps "y" into "x" (delete x/*, copy y/* → x/*, delete y/*, write version).
  */
 
-const { makeUniqueFunctor } = require("../../unique_functor");
 const { compileNodeDef } = require("./compiled_node");
 const { stringToNodeKeyString } = require("./database");
+const { withMutex } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -144,8 +144,6 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
     await newStorage.batch(ops);
 }
 
-const migrationFunctor = makeUniqueFunctor("migration");
-
 /**
  * Run a database migration.
  *
@@ -161,8 +159,7 @@ const migrationFunctor = makeUniqueFunctor("migration");
  * @returns {Promise<void>}
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
-    const key = migrationFunctor.instantiate([]);
-    return await capabilities.sleeper.withMutex(key, async () => {
+    return await withMutex(capabilities.sleeper, async () => {
         await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }
