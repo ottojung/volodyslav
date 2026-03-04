@@ -334,7 +334,7 @@ function validateInputArities(compiledNodes) {
  */
 function validateNodeDef(nodeDef, index) {
     if (nodeDef === null || typeof nodeDef !== "object" || Array.isArray(nodeDef)) {
-        throw makeInvalidNodeDefError(index, "output", "nodeDef must be a non-null object");
+        throw makeInvalidNodeDefError(index, "nodeDef", "must be a non-null object");
     }
 
     if (!("output" in nodeDef) || typeof nodeDef.output !== "string") {
