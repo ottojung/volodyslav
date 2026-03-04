@@ -4,13 +4,37 @@
  */
 
 const path = require('path');
-const { DatabaseInitializationError } = require('./errors');
 const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, versionToString, stringToVersion } = require('./types');
 const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const { checkpointDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('./gitstore');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
+
+/**
+ * Thrown when the database cannot be opened or created.
+ */
+class DatabaseInitializationError extends Error {
+    /**
+     * @param {string} message
+     * @param {string} databasePath
+     * @param {Error} [cause]
+     */
+    constructor(message, databasePath, cause) {
+        super(message);
+        this.name = 'DatabaseInitializationError';
+        this.databasePath = databasePath;
+        this.cause = cause;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is DatabaseInitializationError}
+ */
+function isDatabaseInitializationError(object) {
+    return object instanceof DatabaseInitializationError;
+}
 
 /**
  * Gets or creates a RootDatabase instance for the generators module.
@@ -55,6 +79,7 @@ module.exports = {
     getRootDatabase,
     makeRootDatabase,
     isRootDatabase,
+    isDatabaseInitializationError,
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,

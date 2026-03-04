@@ -303,8 +303,10 @@ class RootDatabaseClass {
 
 /**
  * Factory function to create a RootDatabase instance bound to the live ("x") namespace.
- * On first open (or when the format marker is missing/mismatched), wipes the database
- * and writes the format marker to ensure a clean slate.
+ * On first open (no format marker present), writes the format marker to initialise a fresh
+ * database.  If a format marker exists but does not match, the database is from an
+ * incompatible layout and an Error is thrown — the caller should delete the database
+ * directory and start fresh.
  * @param {RootDatabaseCapabilities} capabilities - The capabilities required to create the database
  * @param {string} databasePath - Path to the database directory
  * @returns {Promise<RootDatabaseClass>}
@@ -318,8 +320,12 @@ async function makeRootDatabase(capabilities, databasePath) {
     // Check the root-level format marker to ensure we are using the x/y namespace layout.
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
     const formatMarker = await rootMetaSublevel.get('format');
-    if (formatMarker !== FORMAT_MARKER) {
-        // Format is missing or from an old layout.
+    if (formatMarker === undefined) {
+        // Fresh database: write the format marker to initialise.
+        await rootMetaSublevel.put('format', FORMAT_MARKER);
+    } else if (formatMarker !== FORMAT_MARKER) {
+        // Existing database with an incompatible format — refuse to open.
+        await db.close();
         throw new Error(`Database format marker mismatch: expected "${FORMAT_MARKER}", found "${formatMarker}". This may indicate an old database layout or a corrupted database. Please ensure the database is correct or delete it to start fresh.`);
     }
 

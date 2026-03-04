@@ -11,6 +11,7 @@ const configRouter = routes.config;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
+const { makeInterface } = require("./generators");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -63,6 +64,7 @@ async function ensureStartupDependencies(capabilities, app) {
     await capabilities.state.ensureAccessible();
     await ensureDailyTasksAvailable(capabilities);
     await capabilities.wifiChecker.ensureAvailable();
+    capabilities.interface = await makeInterface(capabilities);
 }
 
 /**

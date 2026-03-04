@@ -25,10 +25,12 @@
 /** @typedef {import('../threading').Threading} Threading */
 /** @typedef {import('../wifi').WifiConnectionChecker} WifiConnectionChecker */
 /** @typedef {import('../level_database').LevelDatabase} LevelDatabase */
+/** @typedef {import('../generators').Interface} Interface */
 
 
 /**
  * @typedef {object} Capabilities
+ * @property {Interface | null} interface - The incremental graph interface (null until initialised).
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {DirScanner} scanner - A directory scanner instance.
@@ -95,6 +97,7 @@ const make = () => {
 
     /** @type {Capabilities} */
     const ret = {
+        interface: null,
         seed: random.seed.make(),
         datetime,
         deleter: deleterCapability.make(),

@@ -5,15 +5,9 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { getRootDatabase, isRootDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('../src/generators/incremental_graph/database');
-const { 
-    isDatabaseError,
-    isDatabaseInitializationError,
-    isDatabaseQueryError 
-} = require('../src/generators/incremental_graph/database/errors');
+const { getRootDatabase, isRootDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH, isDatabaseInitializationError } = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
-const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/incremental_graph/database/errors');
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -410,29 +404,22 @@ describe('generators/database', () => {
     });
 
     describe('Format marker', () => {
-        test('wipes database when format marker is missing on first open', async () => {
+        test('throws DatabaseInitializationError when format marker has wrong value', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // Write some legacy data directly into the DB without a format marker.
-                const legacyDb = capabilities.levelDatabase.initialize(
+                // Write a wrong format marker directly into the DB to simulate an old/incompatible layout.
+                const rawDb = capabilities.levelDatabase.initialize(
                     require('path').join(capabilities.environment.workingDirectory(), CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH)
                 );
-                await legacyDb.open();
-                await legacyDb.put('legacy-key', 'legacy-value');
-                await legacyDb.close();
+                await rawDb.open();
+                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
+                await meta.put('format', 'old-incompatible-format');
+                await rawDb.close();
 
-                // Open via makeRootDatabase — should detect missing marker and wipe.
-                const db = await getRootDatabase(capabilities);
-
-                const xStorage = db.getSchemaStorage();
-                // The legacy key should be gone.
-                const allKeys = [];
-                for await (const key of xStorage.values.keys()) {
-                    allKeys.push(key);
-                }
-                expect(allKeys).toHaveLength(0);
-
-                await db.close();
+                // Open via getRootDatabase — should detect wrong marker and throw.
+                const error = await getRootDatabase(capabilities).catch(e => e);
+                expect(isDatabaseInitializationError(error)).toBe(true);
+                expect(error.message).toMatch(/format marker mismatch/);
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -456,18 +443,21 @@ describe('generators/database', () => {
             }
         });
 
-        test('error type guards work correctly', () => {
-            
-            const dbError = new DatabaseError('test', '/path/db');
-            const initError = new DatabaseInitializationError('test', '/path/db');
-            const queryError = new DatabaseQueryError('test', '/path/db', 'PUT key');
-            
-            expect(isDatabaseError(dbError)).toBe(true);
-            expect(isDatabaseInitializationError(initError)).toBe(true);
-            expect(isDatabaseQueryError(queryError)).toBe(true);
-            
-            expect(isDatabaseError({})).toBe(false);
-            expect(isDatabaseInitializationError(dbError)).toBe(false);
+        test('error type guards work correctly', async () => {
+            const capabilities = getTestCapabilities();
+
+            // Generate a DatabaseInitializationError by mocking creator to fail.
+            capabilities.creator.createDirectory = jest.fn().mockRejectedValue(
+                new Error('Permission denied')
+            );
+
+            const error = await getRootDatabase(capabilities).catch(e => e);
+            expect(isDatabaseInitializationError(error)).toBe(true);
+
+            expect(isDatabaseInitializationError({})).toBe(false);
+            expect(isDatabaseInitializationError(null)).toBe(false);
+
+            cleanup(capabilities.tmpDir);
         });
     });
 });
