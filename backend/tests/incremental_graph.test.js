@@ -173,6 +173,8 @@ describe("generators/incremental_graph", () => {
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) =>
                         oldValue || { data: "new_data" },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output1",
@@ -241,6 +243,8 @@ describe("generators/incremental_graph", () => {
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) =>
                         oldValue || { data: "test" },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output1",
@@ -801,6 +805,8 @@ describe("generators/incremental_graph", () => {
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) =>
                         oldValue || { data: "new_data" },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "output1",
@@ -1071,6 +1077,8 @@ describe("generators/incremental_graph", () => {
                         inputs: [],
                         computor: (inputs, oldValue, _bindings) =>
                             oldValue || { value: 0 },
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     });
                 } else {
                     graphDef.push({
@@ -1079,6 +1087,8 @@ describe("generators/incremental_graph", () => {
                         computor: (inputs, _oldValue, _bindings) => {
                             return { value: inputs[0].value + 1 };
                         },
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     });
                 }
             }

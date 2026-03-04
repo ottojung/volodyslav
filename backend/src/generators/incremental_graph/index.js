@@ -26,8 +26,10 @@ const {
     isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
+    makeInvalidNodeDefError,
+    isInvalidNodeDef,
 } = require('./errors');
-const { makeRootDatabase } = require('./database');
+const { makeRootDatabase, getRootDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration } = require('./migration_runner');
 const {
@@ -57,6 +59,7 @@ const {
 
 module.exports = {
     makeRootDatabase,
+    getRootDatabase,
     makeIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,
@@ -81,6 +84,8 @@ module.exports = {
     isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
+    makeInvalidNodeDefError,
+    isInvalidNodeDef,
     // Migration API
     makeMigrationStorage,
     isMigrationStorage,

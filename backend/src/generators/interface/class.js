@@ -7,8 +7,7 @@
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
-const path = require('path');
-const { makeIncrementalGraph, makeRootDatabase } = require("../incremental_graph");
+const { makeIncrementalGraph, getRootDatabase } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 
 /**
@@ -90,9 +89,7 @@ class InterfaceClass {
  * @returns {Promise<InterfaceClass>}
  */
 async function makeInterface(capabilities) {
-    const wd = capabilities.environment.workingDirectory();
-    const databasePath = path.join(wd, "generators-database");
-    const database = await makeRootDatabase(capabilities, databasePath);
+    const database = await getRootDatabase(capabilities);
     return new InterfaceClass(database);
 }
 

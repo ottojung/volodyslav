@@ -346,6 +346,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: `l1_${i}(${inputs[0].value + i}, ${bindings[0]})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 })),
                 // Layer 2
                 ...[1, 2, 3].map(i => ({
@@ -355,6 +357,8 @@ describe("Bound variables in computors", () => {
                         const sum = stringJoin(inputs.map(input => input.value));
                         return { value: `l2_${i}(${sum}, ${bindings[0]})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 })),
                 // Layer 3
                 ...[1, 2, 3].map(i => ({
@@ -364,6 +368,8 @@ describe("Bound variables in computors", () => {
                         const sum = stringJoin(inputs.map(input => input.value));
                         return { value: `l3_${i}(${sum}, ${bindings[0]})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 })),
             ];
 

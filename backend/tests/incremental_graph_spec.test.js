@@ -499,8 +499,8 @@ describe("Schema validation (construction-time errors)", () => {
 
         // Should throw because b(x) expects one argument but a(x) provides none.
         expect(() => buildGraph(db, [
-            { output: "a(x)", inputs: [], computor: aC.computor },
-            { output: "b(x)", inputs: ["a"], computor: bC.computor },
+            { output: "a(x)", inputs: [], computor: aC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b(x)", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
         ])).toThrow(/arguments/);
     });
 });
@@ -704,8 +704,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["b"], computor: cC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 10 };
@@ -732,7 +732,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 1 };
@@ -762,7 +762,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 1 };
@@ -820,8 +820,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["b"], computor: cC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { s: "a()" };
@@ -853,8 +853,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["b"], computor: cC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         await expect(g.debugGetFreshness("a")).resolves.toBe("missing");
@@ -929,8 +929,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["b"], computor: cC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         await expect(g.debugGetFreshness("a")).resolves.toBe("missing");
@@ -1015,11 +1015,11 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         const aCell = { value: { s: "a()" } };
 
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: async () => aCell.value },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["b"], computor: cC.computor },
-            { output: "d", inputs: ["c"], computor: dC.computor },
-            { output: "e", inputs: ["d"], computor: eC.computor },
+            { output: "a", inputs: [], computor: async () => aCell.value, isDeterministic: true, hasSideEffects: false },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "d", inputs: ["c"], computor: dC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "e", inputs: ["d"], computor: eC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         expect(nc(aC)).toBe(0);
@@ -1122,11 +1122,11 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         const aCell = { value: { s: "a()" } };
 
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: async () => aCell.value },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["b"], computor: cC.computor },
-            { output: "d", inputs: ["c"], computor: dC.computor },
-            { output: "e", inputs: ["d"], computor: eC.computor },
+            { output: "a", inputs: [], computor: async () => aCell.value, isDeterministic: true, hasSideEffects: false },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "d", inputs: ["c"], computor: dC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "e", inputs: ["d"], computor: eC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         expect(nc(aC)).toBe(0);
@@ -1251,9 +1251,9 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
-            { output: "c", inputs: ["a"], computor: cC.computor },
-            { output: "d", inputs: ["b", "c"], computor: dC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c", inputs: ["a"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "d", inputs: ["b", "c"], computor: dC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 10 };
@@ -1284,9 +1284,9 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
             // duplicate dependency path: inputs list literally repeats "b"
-            { output: "d", inputs: ["b", "b"], computor: dC.computor },
+            { output: "d", inputs: ["b", "b"], computor: dC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 10 };
@@ -1320,7 +1320,7 @@ describe("Unchanged semantics (observable storage behavior)", () => {
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "b", inputs: ["a"], computor: bC.computor },
+            { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 0 };
@@ -1352,6 +1352,8 @@ describe("Unchanged semantics (observable storage behavior)", () => {
                 inputs: [],
                 computor: async (_i, old) =>
                     old ? makeUnchanged() : { ok: true },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ]);
 
@@ -1533,6 +1535,8 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
                     output: nodeName,
                     inputs: [prevNode],
                     computor,
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 });
             }
 
@@ -1607,13 +1611,13 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
         }));
 
         const g = buildGraph(db, [
-            { output: "shared", inputs: [], computor: sharedC.computor },
-            { output: "b1", inputs: ["shared"], computor: b1C.computor },
-            { output: "b2", inputs: ["shared"], computor: b2C.computor },
-            { output: "b3", inputs: ["shared"], computor: b3C.computor },
-            { output: "c1", inputs: ["b1", "b2"], computor: c1C.computor },
-            { output: "c2", inputs: ["b2", "b3"], computor: c2C.computor },
-            { output: "top", inputs: ["c1", "c2"], computor: topC.computor },
+            { output: "shared", inputs: [], computor: sharedC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b1", inputs: ["shared"], computor: b1C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b2", inputs: ["shared"], computor: b2C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b3", inputs: ["shared"], computor: b3C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c1", inputs: ["b1", "b2"], computor: c1C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c2", inputs: ["b2", "b3"], computor: c2C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "top", inputs: ["c1", "c2"], computor: topC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         sharedCell.value = { n: 1 };
@@ -1667,13 +1671,13 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
         }));
 
         const g = buildGraph(db, [
-            { output: "a", inputs: [], computor: aC.computor },
-            { output: "b1", inputs: ["a"], computor: b1C.computor },
-            { output: "b2", inputs: ["a"], computor: b2C.computor },
-            { output: "b3", inputs: ["a"], computor: b3C.computor },
-            { output: "c1", inputs: ["b1", "b2"], computor: c1C.computor },
-            { output: "c2", inputs: ["b2", "b3"], computor: c2C.computor },
-            { output: "d", inputs: ["c1", "c2"], computor: dC.computor },
+            { output: "a", inputs: [], computor: aC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b1", inputs: ["a"], computor: b1C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b2", inputs: ["a"], computor: b2C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "b3", inputs: ["a"], computor: b3C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c1", inputs: ["b1", "b2"], computor: c1C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "c2", inputs: ["b2", "b3"], computor: c2C.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "d", inputs: ["c1", "c2"], computor: dC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         aCell.value = { n: 10 };
@@ -1704,11 +1708,11 @@ describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
         const dC = countedComputor("d", async ([x, y]) => ({ n: x.n + y.n }));
 
         const g = buildGraph(db, [
-            { output: "w", inputs: [], computor: wC.computor },
-            { output: "z", inputs: ["w"], computor: zC.computor },
-            { output: "x", inputs: ["z"], computor: xC.computor },
-            { output: "y", inputs: ["z"], computor: yC.computor },
-            { output: "d", inputs: ["x", "y"], computor: dC.computor },
+            { output: "w", inputs: [], computor: wC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "z", inputs: ["w"], computor: zC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "x", inputs: ["z"], computor: xC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "y", inputs: ["z"], computor: yC.computor, isDeterministic: true, hasSideEffects: false },
+            { output: "d", inputs: ["x", "y"], computor: dC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         wCell.value = { n: 1 };
@@ -1749,7 +1753,7 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "node", inputs: ["source"], computor },
+            { output: "node", inputs: ["source"], computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         sourceCell.value = { n: 0 };
@@ -1782,7 +1786,7 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "node", inputs: ["source"], computor },
+            { output: "node", inputs: ["source"], computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         sourceCell.value = { n: 10 };
@@ -1824,7 +1828,7 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
                 isDeterministic: true,
                 hasSideEffects: false,
             },
-            { output: "node", inputs: ["source"], computor },
+            { output: "node", inputs: ["source"], computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
         sourceCell.value = { flag: "init" };
@@ -1873,7 +1877,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
                 async ([s]) => ({ n: s.n + i })
             );
             counters[`d${i}`] = counter;
-            nodeDefs.push({ output: `d${i}`, inputs: ["source"], computor });
+            nodeDefs.push({ output: `d${i}`, inputs: ["source"], computor, isDeterministic: true, hasSideEffects: false });
         }
 
         // Add transitive dependents
@@ -1883,7 +1887,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
                 async ([d]) => ({ n: d.n * 2 })
             );
             counters[`t${i}`] = counter;
-            nodeDefs.push({ output: `t${i}`, inputs: [`d${i}`], computor });
+            nodeDefs.push({ output: `t${i}`, inputs: [`d${i}`], computor, isDeterministic: true, hasSideEffects: false });
         }
 
         const g = buildGraph(db, nodeDefs);
@@ -1936,7 +1940,7 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
-                { output: "node", inputs: ["source"], computor },
+                { output: "node", inputs: ["source"], computor, isDeterministic: true, hasSideEffects: false },
             ]);
 
             sourceCell.value = { n: 10 };

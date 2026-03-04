@@ -17,6 +17,18 @@
  * CHECKPOINT_WORKING_PATH and DATABASE_SUBPATH are exported so that
  * `database/index.js` can construct the correct absolute database path
  * without duplicating the path constants.
+ *
+ * ## Checkpoint policy
+ *
+ * Checkpoints are taken only at migration boundaries — once before and once
+ * after every `runMigration` call (see `migration_runner.js`).  Normal
+ * incremental-graph writes (i.e. `invalidate` + `pull` cycles) do NOT
+ * produce checkpoints.  This is intentional: LevelDB writes many small
+ * internal files at high frequency during normal operation, and snapshotting
+ * every write would create an unbounded stream of near-identical commits with
+ * little historical value.  Migration boundaries, by contrast, represent
+ * discrete, application-level schema transitions that are worth preserving as
+ * durable snapshots.
  */
 
 const { checkpoint } = require('../../../gitstore');
