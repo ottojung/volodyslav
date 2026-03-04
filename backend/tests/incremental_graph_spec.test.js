@@ -1445,7 +1445,7 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
-        const storage = g..storage;
+        const storage = g.storage;
         let inputsRecord;
         await storage.withBatch(async (batch) => {
             inputsRecord = await storage.getInputs(toJsonKey("source"), batch);
@@ -1484,7 +1484,7 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
-        const storage = g..storage;
+        const storage = g.storage;
         let inputsRecord;
         await storage.withBatch(async (batch) => {
             inputsRecord = await storage.getInputs(toJsonKey("leaf"), batch);

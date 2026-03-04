@@ -262,7 +262,7 @@ describe("generators/incremental_graph counters", () => {
             await graph.pull("derived");
 
             // Manually corrupt the database by deleting the counter for src
-            const storage = graph..storage;
+            const storage = graph.storage;
             await storage.counters.del(toJsonKey("src", []));
             
             // Invalidate derived by marking it potentially-outdated
@@ -307,7 +307,7 @@ describe("generators/incremental_graph counters", () => {
             await graph.pull("derived");
 
             // Manually corrupt the database by removing inputCounters from derived's InputsRecord
-            const storage = graph..storage;
+            const storage = graph.storage;
             const derivedKey = toJsonKey("derived", []);
             const inputsRecord = await storage.inputs.get(derivedKey);
             if (inputsRecord) {
@@ -376,7 +376,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Now manually corrupt the InputsRecord to point to sourceB instead
             // This simulates a database corruption scenario
-            const storage = graph..storage;
+            const storage = graph.storage;
             const derivedKey = toJsonKey("derived", []);
             const sourceBKey = toJsonKey("sourceB", []);
             
@@ -445,7 +445,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Manually corrupt the InputsRecord to have wrong inputs
             // This simulates a database corruption or bug scenario
-            const storage = graph..storage;
+            const storage = graph.storage;
             const derivedKey = toJsonKey("derived", []);
             
             // Corrupt the InputsRecord to point to sourceB instead of sourceA
