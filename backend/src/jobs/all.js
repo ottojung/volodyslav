@@ -1,6 +1,7 @@
 const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
+const { computeAllCalories } = require("./calories");
 const { fromObject: Duration } = require("../datetime");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
@@ -36,6 +37,10 @@ async function everyHour(capabilities) {
             { error },
             "Error during event log repository synchronization"
         );
+    });
+
+    await computeAllCalories(capabilities).catch((error) => {
+        capabilities.logger.logError({ error }, "Error in computeAllCalories");
     });
 }
 
