@@ -1,5 +1,5 @@
 /**
- * Tests for input(e) and calories(e) nodes in the default incremental graph.
+ * Tests for event(e) and calories(e) nodes in the default incremental graph.
  */
 
 const path = require("path");
@@ -50,10 +50,10 @@ function makeEvent(id, input) {
 }
 
 // ---------------------------------------------------------------------------
-// input(e)
+// event(e)
 // ---------------------------------------------------------------------------
 
-describe("input(e) node", () => {
+describe("event(e) node", () => {
     test("returns the input text of the identified event", async () => {
         const capabilities = getTestCapabilities();
         try {
@@ -63,8 +63,8 @@ describe("input(e) node", () => {
             const events = [makeEvent("1", "food: a slice of bread")];
             await iface.update(events);
 
-            const result = await iface.incrementalGraph.pull("input", ["1"]);
-            expect(result).toEqual({ type: "input", value: "food: a slice of bread" });
+            const result = await iface.incrementalGraph.pull("event", ["1"]);
+            expect(result).toEqual({ type: "event", value: events[0] });
         } finally {
             cleanup(capabilities.tmpDir);
         }
@@ -79,8 +79,8 @@ describe("input(e) node", () => {
             const events = [makeEvent("1", "food: a slice of bread")];
             await iface.update(events);
 
-            const result = await iface.incrementalGraph.pull("input", ["999"]);
-            expect(result).toEqual({ type: "input", value: "" });
+            const result = await iface.incrementalGraph.pull("event", ["999"]);
+            expect(result).toEqual({ type: "event", value: null });
         } finally {
             cleanup(capabilities.tmpDir);
         }
@@ -93,12 +93,12 @@ describe("input(e) node", () => {
             await iface.ensureInitialized();
 
             await iface.update([makeEvent("1", "sleep 8 hours")]);
-            const first = await iface.incrementalGraph.pull("input", ["1"]);
-            expect(first).toEqual({ type: "input", value: "sleep 8 hours" });
+            const first = await iface.incrementalGraph.pull("event", ["1"]);
+            expect(first).toEqual({ type: "event", value: makeEvent("1", "sleep 8 hours") });
 
             await iface.update([makeEvent("1", "food: two eggs")]);
-            const second = await iface.incrementalGraph.pull("input", ["1"]);
-            expect(second).toEqual({ type: "input", value: "food: two eggs" });
+            const second = await iface.incrementalGraph.pull("event", ["1"]);
+            expect(second).toEqual({ type: "event", value: makeEvent("1", "food: two eggs") });
         } finally {
             cleanup(capabilities.tmpDir);
         }
@@ -113,8 +113,8 @@ describe("input(e) node", () => {
             const event = makeEvent("1", "");
             await iface.update([event]);
 
-            const result = await iface.incrementalGraph.pull("input", ["1"]);
-            expect(result).toEqual({ type: "input", value: "" });
+            const result = await iface.incrementalGraph.pull("event", ["1"]);
+            expect(result).toEqual({ type: "event", value: event });
         } finally {
             cleanup(capabilities.tmpDir);
         }
@@ -132,14 +132,14 @@ describe("input(e) node", () => {
                 makeEvent("3", "food: apple"),
             ]);
 
-            expect(await iface.incrementalGraph.pull("input", ["1"])).toEqual(
-                { type: "input", value: "food: pasta" }
+            expect(await iface.incrementalGraph.pull("event", ["1"])).toEqual(
+                { type: "event", value: makeEvent("1", "food: pasta") }
             );
-            expect(await iface.incrementalGraph.pull("input", ["2"])).toEqual(
-                { type: "input", value: "sleep 7 hours" }
+            expect(await iface.incrementalGraph.pull("event", ["2"])).toEqual(
+                { type: "event", value: makeEvent("2", "sleep 7 hours") }
             );
-            expect(await iface.incrementalGraph.pull("input", ["3"])).toEqual(
-                { type: "input", value: "food: apple" }
+            expect(await iface.incrementalGraph.pull("event", ["3"])).toEqual(
+                { type: "event", value: makeEvent("3", "food: apple") }
             );
         } finally {
             cleanup(capabilities.tmpDir);
