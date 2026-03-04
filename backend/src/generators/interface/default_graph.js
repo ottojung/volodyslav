@@ -1,14 +1,19 @@
 
 const { isUnchanged, isSchemaCompatibility } = require("../incremental_graph");
-const { metaEvents, eventContext, calories } = require("../individual");
+const { metaEvents, eventContext } = require("../individual");
+
+/**
+ * @typedef {object} Capabilities
+ * @property {import('../../ai/calories').AICalories} aiCalories - A calories estimation capability.
+ */
 
 /**
  * Creates the default graph definition for the incremental graph.
+ * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @param {() => import('../incremental_graph/database/types').AllEventsEntry} getAllEvents - Function to get the current all events entry
- * @param {(text: string) => Promise<number>} estimateCalories - AI calories estimator function
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(getAllEvents, estimateCalories) {
+function createDefaultGraphDefinition(capabilities, getAllEvents) {
     return [
         {
             output: "all_events",
@@ -111,9 +116,8 @@ function createDefaultGraphDefinition(getAllEvents, estimateCalories) {
                 if (!inputEntry || inputEntry.type !== "input") {
                     return { type: "calories", value: 0 };
                 }
-                return calories.computeCaloriesForInput(
-                    inputEntry.value,
-                    estimateCalories
+                return capabilities.aiCalories.estimateCalories(
+                    inputEntry.value
                 );
             },
             isDeterministic: false,

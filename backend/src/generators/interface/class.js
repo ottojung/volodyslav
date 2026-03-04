@@ -104,8 +104,8 @@ class InterfaceClass {
         /** @type {EventsBox} */
         const eventsBox = { current: { events: [], type: "all_events" } };
         const nodeDefs = createDefaultGraphDefinition(
-            () => eventsBox.current,
-            capabilities.aiCalories.estimateCalories
+            capabilities,
+            () => eventsBox.current
         );
 
         // Step 3: run migration (no-op on fresh/same version).
