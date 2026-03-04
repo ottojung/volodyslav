@@ -319,9 +319,8 @@ async function makeRootDatabase(capabilities, databasePath) {
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
     const formatMarker = await rootMetaSublevel.get('format');
     if (formatMarker !== FORMAT_MARKER) {
-        // Format is missing or from an old layout: wipe everything and reinitialize.
-        await db.clear();
-        await rootMetaSublevel.put('format', FORMAT_MARKER);
+        // Format is missing or from an old layout.
+        throw new Error(`Database format marker mismatch: expected "${FORMAT_MARKER}", found "${formatMarker}". This may indicate an old database layout or a corrupted database. Please ensure the database is correct or delete it to start fresh.`);
     }
 
     return new RootDatabaseClass(db, 'x', version);
