@@ -54,16 +54,11 @@ const { deserializeNodeKey } = require("./node_key");
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 const { make: makeSleeper } = require("../../sleeper");
-const { makeUniqueFunctor } = require("../../unique_functor");
 const { makeConcreteNodeCache } = require("./lru_cache");
+const { withMutex } = require("./lock");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
-
-/**
- * Mutex key for serializing all invalidate() and pull() operations.
- */
-const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.
@@ -343,7 +338,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async invalidate(nodeName, bindings = [], externalBatch = undefined) {
-        return this.sleeper.withMutex(MUTEX_KEY, () =>
+        return withMutex(this.sleeper, () =>
             this.unsafeInvalidate(nodeName, bindings, externalBatch)
         );
     }
@@ -670,7 +665,7 @@ class IncrementalGraphClass {
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
-     * Thread-safe: uses sleeper's withMutex to serialize access with other set/pull operations.
+     * Thread-safe: uses withMutex to serialize access with other set/pull operations.
      *
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
@@ -678,7 +673,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue>} The node's value
      */
     async pull(nodeName, bindings = [], externalBatch = undefined) {
-        return this.sleeper.withMutex(MUTEX_KEY, () =>
+        return withMutex(this.sleeper, () =>
             this.unsafePull(nodeName, bindings, externalBatch)
         );
     }

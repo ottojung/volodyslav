@@ -32,10 +32,12 @@ class UniqueTermClass {
 
 // A nominal class for unique functors.
 class UniqueFunctorClass {
+    /** @type {string} */
     name;
+
     /**
      * @private
-     * @type {undefined} __brand - A branding property to enforce nominal typing. This property is never set and serves only to prevent structural typing from treating this class as interchangeable with others.
+     * @type {undefined}
      */
     __brand;
 
