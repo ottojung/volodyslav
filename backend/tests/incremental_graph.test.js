@@ -111,7 +111,7 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["level1", "level2"]);
 
             // level3 should not have been computed
-            const storage = graph.getStorage();
+            const storage = graph..storage;
             const level3 = await storage.values.get("level3");
             expect(level3).toBeUndefined();
 
@@ -146,7 +146,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(db, graphDef);
 
-            const storage = graph.getStorage();
+            const storage = graph..storage;
 
             // Seed data using storage after graph creation
             await storage.values.put(toJsonKey("input1"), { type: 'all_events', events: [] });
@@ -1017,7 +1017,7 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["outputA"]);
 
             // OutputB should not exist in the database yet
-            const storage = graph.getStorage();
+            const storage = graph..storage;
             const outputB = await storage.values.get("outputB");
             expect(outputB).toBeUndefined();
 
@@ -1268,7 +1268,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Manually mark output as potentially-outdated (simulating inconsistent state)
-            const storage = graph.getStorage();
+            const storage = graph..storage;
             await storage.freshness.put(toJsonKey("output", []), "potentially-outdated");
             
             // This represents an inconsistent state where inputs are clean but output is dirty

@@ -59,7 +59,7 @@ async function makeSourceGraph(computor = undefined) {
             hasSideEffects: false,
         },
     ]);
-    return { db, graph, storage: graph.getStorage() };
+    return { db, graph, storage: graph..storage };
 }
 
 async function makeChainGraph({ sourceComputor, derivedComputor } = {}) {
@@ -80,7 +80,7 @@ async function makeChainGraph({ sourceComputor, derivedComputor } = {}) {
             hasSideEffects: false,
         },
     ]);
-    return { db, graph, storage: graph.getStorage() };
+    return { db, graph, storage: graph..storage };
 }
 
 // ===========================================================================
@@ -245,7 +245,7 @@ describe("incremental_graph — pull() with external batch: feature contract", (
             { output: "source",  inputs: [],         computor: async () => { computeCalls.push("source");  return A_SOURCE_VALUE;  }, isDeterministic: true, hasSideEffects: false },
             { output: "derived", inputs: ["source"], computor: async () => { computeCalls.push("derived"); return A_DERIVED_VALUE; }, isDeterministic: true, hasSideEffects: false },
         ]);
-        const storage = graph.getStorage();
+        const storage = graph..storage;
 
         await storage.withBatch(async (batch) => {
             await graph.pull("source", [], batch);   // materialises source in overlay
@@ -266,7 +266,7 @@ describe("incremental_graph — pull() with external batch: feature contract", (
             { output: "a",      inputs: ["source"], computor: async () => { computeCalls.push("a");      return A_DERIVED_VALUE; }, isDeterministic: true, hasSideEffects: false },
             { output: "b",      inputs: ["source"], computor: async () => { computeCalls.push("b");      return A_DERIVED_VALUE; }, isDeterministic: true, hasSideEffects: false },
         ]);
-        const storage = graph.getStorage();
+        const storage = graph..storage;
 
         await storage.withBatch(async (batch) => {
             await graph.pull("a", [], batch);

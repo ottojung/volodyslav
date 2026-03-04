@@ -167,7 +167,7 @@ describe("Incremental graph persistence and restart", () => {
             await graph2.pull("B");
 
             // Verify that schema2 can list dependents properly
-            const storage2 = graph2.getStorage();
+            const storage2 = graph2..storage;
             let dependents2;
             await storage2.withBatch(async (batch) => {
                 dependents2 = await storage2.listDependents(toJsonKey("A"), batch);

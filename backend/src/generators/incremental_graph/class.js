@@ -795,15 +795,6 @@ class IncrementalGraphClass {
     }
 
     /**
-     * Get the GraphStorage instance for testing purposes.
-     * This allows tests to directly access and manipulate the storage.
-     * @returns {GraphStorage}
-     */
-    getStorage() {
-        return this.storage;
-    }
-
-    /**
      * Get the database version used for storage namespacing.
      * @returns {string}
      */

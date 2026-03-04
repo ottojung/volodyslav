@@ -42,7 +42,7 @@ function toJsonKey(key) {
  * @returns {{put: (key: string, value: any) => Promise<void>, del: (key: string) => Promise<void>}}
  */
 function makeTestDatabase(graph) {
-    const storage = graph.getStorage();
+    const storage = graph..storage;
 
     return {
         /**
