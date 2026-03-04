@@ -68,6 +68,8 @@ describe("IncrementalGraph integration with meta_events", () => {
                     type: "all_events",
                     events: testEvents,
                 }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             {
                 output: "meta_events",

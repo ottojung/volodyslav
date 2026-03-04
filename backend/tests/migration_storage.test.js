@@ -67,7 +67,6 @@ function makeHeadIndex(nodeNames) {
             computor: async () => DUMMY_VALUE,
             isDeterministic: true,
             hasSideEffects: false,
-            migrations: {},
         });
         headIndex.set(compiled.head, compiled);
     }

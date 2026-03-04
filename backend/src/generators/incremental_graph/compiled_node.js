@@ -9,6 +9,7 @@ const {
     makeSchemaOverlapError,
     makeSchemaCycleError,
     makeSchemaArityConflictError,
+    makeInvalidNodeDefError,
 } = require("./errors");
 
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -326,11 +327,48 @@ function validateInputArities(compiledNodes) {
 }
 
 /**
+ * Validates the structural shape of a single NodeDef entry.
+ * Throws InvalidNodeDefError if any required field is missing or has the wrong type.
+ * @param {unknown} nodeDef - The candidate node definition
+ * @param {number} index - Zero-based index of this entry in the nodeDefs array
+ */
+function validateNodeDef(nodeDef, index) {
+    if (nodeDef === null || typeof nodeDef !== "object" || Array.isArray(nodeDef)) {
+        throw makeInvalidNodeDefError(index, "output", "nodeDef must be a non-null object");
+    }
+
+    if (!("output" in nodeDef) || typeof nodeDef.output !== "string") {
+        throw makeInvalidNodeDefError(index, "output", "must be a string");
+    }
+
+    if (!("inputs" in nodeDef) || !Array.isArray(nodeDef.inputs) || nodeDef.inputs.some((v) => typeof v !== "string")) {
+        throw makeInvalidNodeDefError(index, "inputs", "must be an array of strings");
+    }
+
+    if (!("computor" in nodeDef) || typeof nodeDef.computor !== "function") {
+        throw makeInvalidNodeDefError(index, "computor", "must be a function");
+    }
+
+    if (!("isDeterministic" in nodeDef) || typeof nodeDef.isDeterministic !== "boolean") {
+        throw makeInvalidNodeDefError(index, "isDeterministic", "must be a boolean");
+    }
+
+    if (!("hasSideEffects" in nodeDef) || typeof nodeDef.hasSideEffects !== "boolean") {
+        throw makeInvalidNodeDefError(index, "hasSideEffects", "must be a boolean");
+    }
+}
+
+/**
  * Compiles a node definition into a CompiledNode with all metadata cached.
+ * Accepts an optional index (compatible with Array.prototype.map callback signature)
+ * so that structural validation errors can report the entry's position.
  * @param {NodeDef} nodeDef
+ * @param {number} [index]
  * @returns {CompiledNode}
  */
-function compileNodeDef(nodeDef) {
+function compileNodeDef(nodeDef, index = 0) {
+    validateNodeDef(nodeDef, index);
+
     // Parse output
     const outputExpr = parseExpr(stringToSchemaPattern(nodeDef.output));
     const canonicalOutput = renderExpr(outputExpr);

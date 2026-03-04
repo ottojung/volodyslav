@@ -28,15 +28,7 @@
  */
 
 /**
- * @typedef {(oldValue: unknown) => Promise<ComputedValue | Unchanged>} NodeDefMigration
- */
-
-/**
  * @typedef {import('./database/types').Version} Version
- */
-
-/**
- * @typedef {Partial<Record<string, NodeDefMigration>>} NodeDefMigrations
  */
 
 /**
@@ -99,7 +91,6 @@
  * @property {string} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
  * @property {Array<string>} inputs - Pattern dependencies
  * @property {NodeDefComputor} computor - Function that computes the output from inputs, old value, and typed bindings
- * @property {NodeDefMigrations} migrations - Migrations for this node definition, keyed by version string
  * @property {boolean} isDeterministic - Whether the computor is deterministic (same inputs always produce same output)
  * @property {boolean} hasSideEffects - Whether the computor has side effects (performs actions beyond computing the return value)
  */

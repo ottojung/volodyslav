@@ -354,6 +354,49 @@ function isInvalidUnchanged(object) {
 }
 
 /**
+ * Error for a nodeDefs entry that fails structural validation.
+ * Thrown during schema construction (e.g. in compileNodeDef) when a NodeDef
+ * entry has an invalid shape or type.
+ *
+ * Required fields (REQ-ERR-00):
+ *   index {number} – zero-based position of the offending entry in nodeDefs
+ *   field {string} – name of the invalid or missing field
+ */
+class InvalidNodeDef extends Error {
+    /**
+     * @param {number} index - Zero-based index of the offending nodeDefs entry
+     * @param {string} field - Name of the invalid or missing field
+     * @param {string} reason - Human-readable explanation
+     */
+    constructor(index, field, reason) {
+        super(`nodeDefs[${index}].${field} is invalid: ${reason}`);
+        this.name = "InvalidNodeDefError";
+        this.index = index;
+        this.field = field;
+    }
+}
+
+/**
+ * Constructs an InvalidNodeDef error.
+ * @param {number} index
+ * @param {string} field
+ * @param {string} reason
+ * @returns {InvalidNodeDef}
+ */
+function makeInvalidNodeDefError(index, field, reason) {
+    return new InvalidNodeDef(index, field, reason);
+}
+
+/**
+ * Type guard for InvalidNodeDef.
+ * @param {unknown} object
+ * @returns {object is InvalidNodeDef}
+ */
+function isInvalidNodeDef(object) {
+    return object instanceof InvalidNodeDef;
+}
+
+/**
  * Error for schema arity conflict (same head with different arities).
  */
 class SchemaArityConflict extends Error {
@@ -414,4 +457,6 @@ module.exports = {
     isInvalidUnchanged,
     makeSchemaArityConflictError,
     isSchemaArityConflict,
+    makeInvalidNodeDefError,
+    isInvalidNodeDef,
 };

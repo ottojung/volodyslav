@@ -122,7 +122,6 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
         computor: async () => ({ type: "all_events", events: [] }),
         isDeterministic: true,
         hasSideEffects: false,
-        migrations: {},
     }];
     return { rootDatabase, nodeDefs, nodeKey, xStorage, yStorage };
 }
@@ -156,7 +155,6 @@ describe("runMigration", () => {
             computor: async () => ({ type: "all_events", events: [] }),
             isDeterministic: true,
             hasSideEffects: false,
-            migrations: {},
         }];
 
         await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
@@ -272,7 +270,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
@@ -317,7 +314,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
@@ -352,7 +348,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
@@ -432,7 +427,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
@@ -471,7 +465,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
@@ -504,7 +497,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             const callbackError = new Error("callback failure");
@@ -536,7 +528,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             // Callback runs but assigns no decision to node A
@@ -572,7 +563,6 @@ describe("runMigration", () => {
                 computor: async () => ({ type: "all_events", events: [] }),
                 isDeterministic: true,
                 hasSideEffects: false,
-                migrations: {},
             }];
 
             await expect(
@@ -681,7 +671,6 @@ function makeTwoNodeDefs() {
         computor: async () => ({ type: "all_events", events: [] }),
         isDeterministic: true,
         hasSideEffects: false,
-        migrations: {},
     }));
 }
 
@@ -701,9 +690,9 @@ async function buildFanInGraph(storage, nkA, nkB, nkC) {
 /** NodeDefs for a fan-in schema A→C, B→C. */
 function makeFanInNodeDefs() {
     return [
-        { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} },
-        { output: "B", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} },
-        { output: "C", inputs: ["A", "B"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} },
+        { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+        { output: "B", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+        { output: "C", inputs: ["A", "B"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
     ];
 }
 
@@ -726,7 +715,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         await expect(
-            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async () => { throw new Error("boom"); })
         ).rejects.toThrow("boom");
 
@@ -744,7 +733,7 @@ describe("x-namespace state preserved on migration failure", () => {
 
         const rejection = new Error("async rejection");
         await expect(
-            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 () => Promise.reject(rejection))
         ).rejects.toBe(rejection);
 
@@ -810,7 +799,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // keep then invalidate on the same node → DecisionConflictError
         let caughtConflict;
         try {
-            await runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            await runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => {
                     await storage.keep(nodeKey);
                     await storage.invalidate(nodeKey); // conflicts with keep
@@ -836,7 +825,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(batchError);
 
@@ -860,7 +849,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(metaError);
 
@@ -892,7 +881,7 @@ describe("x-namespace state preserved on migration failure", () => {
         };
 
         await expect(
-            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(swapError);
 
@@ -985,7 +974,7 @@ describe("x.setMetaVersion not called on migration failure", () => {
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async () => { throw new Error("oops"); })
         ).rejects.toThrow();
 
@@ -1002,7 +991,7 @@ describe("x.setMetaVersion not called on migration failure", () => {
 
         let caughtUndecided3;
         try {
-            await runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            await runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (_storage) => { /* no decision */ });
         } catch (e) { caughtUndecided3 = e; }
         expect(isUndecidedNodes(caughtUndecided3)).toBe(true);
@@ -1131,7 +1120,7 @@ describe("error identity: exact thrown object propagates", () => {
 
         let caught;
         try {
-            await runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            await runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => {
                     await storage.keep(nodeKey);
                     await storage.invalidate(nodeKey);
@@ -1193,7 +1182,7 @@ describe("infrastructure failures", () => {
 
         let callbackRan = false;
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async () => { callbackRan = true; })
         ).rejects.toBe(clearError);
 
@@ -1239,7 +1228,7 @@ describe("infrastructure failures", () => {
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
         await expect(
-            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(checkpointError);
 
@@ -1297,14 +1286,14 @@ describe("retry after failure", () => {
 
         // First attempt fails
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async () => { throw new Error("first attempt failure"); })
         ).rejects.toThrow("first attempt failure");
 
         expect(mock.replaceContentsFromCalled).toBe(false);
 
         // Second attempt succeeds
-        await runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} }],
+        await runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
             async (storage) => { await storage.keep(nodeKey); });
 
         expect(mock.replaceContentsFromCalled).toBe(true);
@@ -1318,7 +1307,7 @@ describe("retry after failure", () => {
         const { yDb } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
-        const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false, migrations: {} };
+        const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false };
 
         // First attempt: only pre-checkpoint fires
         await expect(
