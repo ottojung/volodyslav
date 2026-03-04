@@ -148,7 +148,82 @@ function isInterface(object) {
 
 /** @typedef {InterfaceClass} Interface */
 
+/**
+ * Capability wrapper for the incremental graph interface.
+ * Created synchronously alongside all other capabilities; async initialisation
+ * is deferred until ensureInitialized() is called from ensureStartupDependencies.
+ */
+class InterfaceCapabilityClass {
+    /**
+     * @private
+     * @type {InterfaceClass | null}
+     */
+    _inner;
+
+    constructor() {
+        this._inner = null;
+    }
+
+    /**
+     * Opens the database and runs any pending migration.
+     * Idempotent — subsequent calls are no-ops.
+     * @param {GeneratorsCapabilities} capabilities
+     * @returns {Promise<void>}
+     */
+    async ensureInitialized(capabilities) {
+        if (this._inner !== null) {
+            return;
+        }
+        this._inner = await makeInterface(capabilities);
+    }
+
+    /**
+     * Updates the all_events node and propagates staleness.
+     * @param {Array<Event>} all_events
+     * @returns {Promise<void>}
+     */
+    async update(all_events) {
+        if (this._inner === null) {
+            throw new Error("InterfaceCapability: ensureInitialized() must be called before update()");
+        }
+        return this._inner.update(all_events);
+    }
+
+    /**
+     * Returns the basic context for a given event.
+     * @param {Event} event
+     * @returns {Promise<Array<Event>>}
+     */
+    async getEventBasicContext(event) {
+        if (this._inner === null) {
+            throw new Error("InterfaceCapability: ensureInitialized() must be called before getEventBasicContext()");
+        }
+        return this._inner.getEventBasicContext(event);
+    }
+}
+
+/**
+ * Creates an InterfaceCapability instance synchronously.
+ * Call ensureInitialized() before any other method.
+ * @returns {InterfaceCapabilityClass}
+ */
+function makeInterfaceCapability() {
+    return new InterfaceCapabilityClass();
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InterfaceCapabilityClass}
+ */
+function isInterfaceCapability(object) {
+    return object instanceof InterfaceCapabilityClass;
+}
+
+/** @typedef {InterfaceCapabilityClass} InterfaceCapability */
+
 module.exports = {
     makeInterface,
     isInterface,
+    makeInterfaceCapability,
+    isInterfaceCapability,
 };

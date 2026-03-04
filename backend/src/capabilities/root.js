@@ -25,12 +25,12 @@
 /** @typedef {import('../threading').Threading} Threading */
 /** @typedef {import('../wifi').WifiConnectionChecker} WifiConnectionChecker */
 /** @typedef {import('../level_database').LevelDatabase} LevelDatabase */
-/** @typedef {import('../generators').Interface} Interface */
+/** @typedef {import('../generators').InterfaceCapability} InterfaceCapability */
 
 
 /**
  * @typedef {object} Capabilities
- * @property {Interface | null} interface - The incremental graph interface (null until initialised).
+ * @property {InterfaceCapability} interface - The incremental graph interface capability.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {DirScanner} scanner - A directory scanner instance.
@@ -81,6 +81,7 @@ const schedule = require('../scheduler');
 const runtimeStateStorage = require('../runtime_state_storage');
 const threadingCapability = require('../threading');
 const levelDatabaseCapability = require('../level_database');
+const { makeInterfaceCapability } = require('../generators');
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -97,7 +98,7 @@ const make = () => {
 
     /** @type {Capabilities} */
     const ret = {
-        interface: null,
+        interface: makeInterfaceCapability(),
         seed: random.seed.make(),
         datetime,
         deleter: deleterCapability.make(),
