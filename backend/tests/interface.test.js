@@ -46,7 +46,8 @@ describe("generators/interface", () => {
         test("creates and returns an interface instance", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
                 expect(isInterface(iface)).toBe(true);
             } finally {
                 cleanup(capabilities.tmpDir);
@@ -58,7 +59,8 @@ describe("generators/interface", () => {
         test("stores events in database under all_events key", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 const events = [
                     {
@@ -96,7 +98,8 @@ describe("generators/interface", () => {
         test("overwrites previous events on subsequent updates", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 const firstEvents = [
                     {
@@ -140,7 +143,8 @@ describe("generators/interface", () => {
         test("handles empty events array", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 await iface.update([]);
 
@@ -160,7 +164,8 @@ describe("generators/interface", () => {
         test("returns context for event with shared hashtags", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 const events = [
                     {
@@ -214,7 +219,8 @@ describe("generators/interface", () => {
         test("returns only the event itself when no shared hashtags", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 const events = [
                     {
@@ -243,7 +249,8 @@ describe("generators/interface", () => {
         test("propagates through incremental graph before returning context", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 // Add events
                 const events = [
@@ -282,7 +289,8 @@ describe("generators/interface", () => {
         test("isInterface correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const iface = await makeInterface(capabilities);
+                const iface = makeInterface(() => capabilities);
+                await iface.ensureInitialized();
 
                 expect(isInterface(iface)).toBe(true);
                 expect(isInterface({})).toBe(false);

@@ -28,24 +28,32 @@ const {
 
 /**
  * An interface for direct database operations.
- * Created synchronously; call ensureInitialized() before using update() or
- * getEventBasicContext().  This mirrors the pattern used by other capabilities
- * such as checker and logger which also capture `() => Capabilities`.
+ *
+ * Created synchronously via `makeInterface(() => capabilities)` — the same lazy
+ * getter pattern used by `checker`, `logger`, and other capabilities.  Call
+ * `ensureInitialized()` once before invoking any other method.
  */
 class InterfaceClass {
     /**
-     * Getter for the capabilities object, captured at construction time.
+     * Lazy getter for the capabilities object, captured at construction time.
      * @private
      * @type {() => GeneratorsCapabilities}
      */
     _getCapabilities;
 
     /**
-     * The live incremental graph and events box, set after ensureInitialized().
+     * The live incremental graph, available after ensureInitialized().
      * @private
-     * @type {{ incrementalGraph: IncrementalGraph, eventsBox: EventsBox } | null}
+     * @type {IncrementalGraph | null}
      */
-    _inner;
+    _incrementalGraph;
+
+    /**
+     * Mutable box holding the current events value, available after ensureInitialized().
+     * @private
+     * @type {EventsBox | null}
+     */
+    _eventsBox;
 
     /**
      * @constructor
@@ -53,12 +61,21 @@ class InterfaceClass {
      */
     constructor(getCapabilities) {
         this._getCapabilities = getCapabilities;
-        this._inner = null;
+        this._incrementalGraph = null;
+        this._eventsBox = null;
     }
 
     /**
-     * Opens the database and runs any pending migration.
-     * Idempotent — subsequent calls are no-ops.
+     * The live incremental graph.  Available after ensureInitialized().
+     * @returns {IncrementalGraph | null}
+     */
+    get incrementalGraph() {
+        return this._incrementalGraph;
+    }
+
+    /**
+     * Opens the database and runs any pending migration.  Idempotent —
+     * subsequent calls are no-ops.
      *
      * Boot sequence:
      * 1. Open the database via the gitstore-aware path.
@@ -73,9 +90,10 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async ensureInitialized() {
-        if (this._inner !== null) {
+        if (this._incrementalGraph !== null) {
             return;
         }
+
         const capabilities = this._getCapabilities();
 
         // Step 1: open the database via the gitstore-aware path.
@@ -90,13 +108,19 @@ class InterfaceClass {
         // Step 3: run migration (no-op on fresh/same version).
         const migrationCapabilities = {
             sleeper: capabilities.sleeper,
-            checkpointDatabase: (/** @type {string} */ message) => checkpointDatabase(capabilities, message),
+            checkpointDatabase: (/** @type {string} */ message) =>
+                checkpointDatabase(capabilities, message),
         };
-        await runMigration(migrationCapabilities, database, nodeDefs, createDefaultMigrationCallback());
+        await runMigration(
+            migrationCapabilities,
+            database,
+            nodeDefs,
+            createDefaultMigrationCallback()
+        );
 
         // Step 4: wire up the incremental graph.
-        const incrementalGraph = makeIncrementalGraph(database, nodeDefs);
-        this._inner = { incrementalGraph, eventsBox };
+        this._eventsBox = eventsBox;
+        this._incrementalGraph = makeIncrementalGraph(database, nodeDefs);
     }
 
     /**
@@ -106,27 +130,29 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async update(all_events) {
-        if (this._inner === null) {
-            throw new Error("Interface: ensureInitialized() must be called before update()");
+        const incrementalGraph = this._incrementalGraph;
+        const eventsBox = this._eventsBox;
+        if (incrementalGraph === null || eventsBox === null) {
+            throw new Error("Interface.update(): ensureInitialized() must be called first");
         }
-        this._inner.eventsBox.current = { events: all_events, type: "all_events" };
-        await this._inner.incrementalGraph.invalidate("all_events");
+        eventsBox.current = { events: all_events, type: "all_events" };
+        await incrementalGraph.invalidate("all_events");
     }
 
     /**
      * Gets the basic context for a given event.
-     * This method uses pull semantics to lazily evaluate only the necessary
-     * parts of the incremental graph to get the event context.
+     * Uses pull semantics to lazily evaluate only the necessary parts of the
+     * incremental graph.
      *
      * @param {Event} event - The event to get context for
      * @returns {Promise<Array<Event>>} The context events
      */
     async getEventBasicContext(event) {
-        if (this._inner === null) {
-            throw new Error("Interface: ensureInitialized() must be called before getEventBasicContext()");
+        const incrementalGraph = this._incrementalGraph;
+        if (incrementalGraph === null) {
+            throw new Error("Interface.getEventBasicContext(): ensureInitialized() must be called first");
         }
-        // Pull the event_context node (lazy evaluation)
-        const eventContextEntry = await this._inner.incrementalGraph.pull(
+        const eventContextEntry = await incrementalGraph.pull(
             "event_context"
         );
 
@@ -134,10 +160,10 @@ class InterfaceClass {
             return [event];
         }
 
-        // Find the context for this specific event
-        const contexts = eventContextEntry.contexts;
         const eventIdStr = event.id.identifier;
-        const contextEntry = contexts.find((ctx) => ctx.eventId === eventIdStr);
+        const contextEntry = eventContextEntry.contexts.find(
+            (ctx) => ctx.eventId === eventIdStr
+        );
 
         if (!contextEntry) {
             return [event];
@@ -149,9 +175,10 @@ class InterfaceClass {
 
 /**
  * Factory function to create an Interface instance.
- * Synchronous — pass the lazy `() => GeneratorsCapabilities` getter captured
- * from the capabilities object, the same pattern used by checker and logger.
- * Call ensureInitialized() before using any other methods.
+ *
+ * Synchronous — call `ensureInitialized()` before using `update()` or
+ * `getEventBasicContext()`.  Follows the same lazy-getter pattern as
+ * `checker.make(() => ret)` and `logger.make(() => ret)`.
  *
  * @param {() => GeneratorsCapabilities} getCapabilities
  * @returns {InterfaceClass}

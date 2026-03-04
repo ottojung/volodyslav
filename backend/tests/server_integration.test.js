@@ -57,7 +57,7 @@ describe("Server Integration with Declarative Scheduler", () => {
         await expect(initialize(capabilities, app)).resolves.toBeUndefined();
 
         // Second initialization should throw error (not idempotent anymore)
-        await expect(initialize(capabilities, app)).rejects.toThrow("Failed to open root database");
+        await expect(initialize(capabilities, app)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
         // Should have configured app at least once
         expect(app.use).toHaveBeenCalled();
         capabilities.scheduler.stop();
