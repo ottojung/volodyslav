@@ -29,7 +29,7 @@ const {
     makeInvalidNodeDefError,
     isInvalidNodeDef,
 } = require('./errors');
-const { makeRootDatabase, getRootDatabase } = require('./database');
+const { makeRootDatabase, getRootDatabase, checkpointDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration } = require('./migration_runner');
 const {
@@ -60,6 +60,7 @@ const {
 module.exports = {
     makeRootDatabase,
     getRootDatabase,
+    checkpointDatabase,
     makeIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,

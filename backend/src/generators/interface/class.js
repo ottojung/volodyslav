@@ -6,9 +6,26 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
+/** @typedef {import('../incremental_graph/database/types').AllEventsEntry} AllEventsEntry */
 
-const { makeIncrementalGraph, getRootDatabase } = require("../incremental_graph");
-const { createDefaultGraphDefinition } = require("./default_graph");
+const {
+    makeIncrementalGraph,
+    getRootDatabase,
+    runMigration,
+    checkpointDatabase,
+} = require("../incremental_graph");
+const {
+    createDefaultGraphDefinition,
+    createDefaultMigrationCallback,
+} = require("./default_graph");
+
+/**
+ * Mutable box that holds the current events value.
+ * Created before node defs so the getter closure is valid both during
+ * migration (node defs are only inspected for schema shape, not evaluated)
+ * and at runtime (called by the all_events computor on each pull).
+ * @typedef {{ current: AllEventsEntry }} EventsBox
+ */
 
 /**
  * An interface for direct database operations.
@@ -17,28 +34,26 @@ const { createDefaultGraphDefinition } = require("./default_graph");
 class InterfaceClass {
     /**
      * The incremental graph for propagating changes.
-     * @private
      * @type {IncrementalGraph}
      */
     incrementalGraph;
 
     /**
-     * The stored events in the database.
+     * Mutable box holding the current events value.
      * @private
-     * @type {import('../incremental_graph/database/types').AllEventsEntry}
+     * @type {EventsBox}
      */
-    events;
+    eventsBox;
 
     /**
      * @constructor
      * @param {RootDatabase} database - The root database instance
+     * @param {import('../incremental_graph/types').NodeDef[]} nodeDefs - Pre-built node definitions
+     * @param {EventsBox} eventsBox - Mutable events box shared with the node defs getter
      */
-    constructor(database) {
-        this.events = { events: [], type: "all_events" };
-        this.incrementalGraph = makeIncrementalGraph(
-            database,
-            createDefaultGraphDefinition(() => this.events)
-        );
+    constructor(database, nodeDefs, eventsBox) {
+        this.eventsBox = eventsBox;
+        this.incrementalGraph = makeIncrementalGraph(database, nodeDefs);
     }
 
     /**
@@ -48,7 +63,7 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async update(all_events) {
-        this.events = { events: all_events, type: "all_events" };
+        this.eventsBox.current = { events: all_events, type: "all_events" };
         await this.incrementalGraph.invalidate("all_events");
     }
 
@@ -85,12 +100,41 @@ class InterfaceClass {
 
 /**
  * Factory function to create an Interface instance.
+ *
+ * Boot sequence:
+ * 1. Open the database via the gitstore-aware path.
+ * 2. Build the events box and node defs.  The node defs carry a live getter
+ *    over `eventsBox.current` so they are valid both during the migration
+ *    schema-compatibility check and at normal-operation pull time.
+ * 3. Run migration.  Fresh database → records version and returns
+ *    immediately.  Same version → returns immediately.  Version change →
+ *    pre-checkpoint, apply decisions, post-checkpoint.
+ * 4. Construct InterfaceClass, which builds IncrementalGraph against the
+ *    now-current x-namespace data.
+ *
  * @param {GeneratorsCapabilities} capabilities
  * @returns {Promise<InterfaceClass>}
  */
 async function makeInterface(capabilities) {
+    // Step 1: open the database via the gitstore-aware path.
     const database = await getRootDatabase(capabilities);
-    return new InterfaceClass(database);
+
+    // Step 2: build events box and node defs before migration so the
+    // migration runner can inspect the new schema's head index.
+    /** @type {EventsBox} */
+    const eventsBox = { current: { events: [], type: "all_events" } };
+    const nodeDefs = createDefaultGraphDefinition(() => eventsBox.current);
+
+    // Step 3: run migration (no-op on fresh/same version).
+    const migrationCapabilities = {
+        sleeper: capabilities.sleeper,
+        checkpointDatabase: (/** @type {string} */ message) => checkpointDatabase(capabilities, message),
+    };
+    await runMigration(migrationCapabilities, database, nodeDefs, createDefaultMigrationCallback());
+
+    // Step 4: construct the interface now that x-namespace holds the
+    // correct version's data.
+    return new InterfaceClass(database, nodeDefs, eventsBox);
 }
 
 /**
