@@ -18,6 +18,7 @@
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../notifications').Notifier} Notifier */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('../ai/calories').AICalories} AICalories */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../scheduler').Scheduler} Scheduler */
@@ -46,6 +47,7 @@
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
+ * @property {AICalories} aiCalories - An AI calories estimation instance.
  * @property {Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
@@ -73,6 +75,7 @@ const exiterCapability = require("../exiter");
 const notifierCapability = require("../notifications");
 const ai = require("../ai");
 const aiTranscriptionCapability = ai.transcription;
+const aiCaloriesCapability = ai.calories;
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
 const wifiCapability = require("../wifi");
@@ -115,6 +118,7 @@ const make = () => {
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
         aiTranscription: aiTranscriptionCapability.make(() => ret),
+        aiCalories: aiCaloriesCapability.make(() => ret),
         sleeper,
         wifiChecker,
         volodyslavDailyTasks,

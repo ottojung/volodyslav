@@ -1,13 +1,14 @@
 
 const { isUnchanged, isSchemaCompatibility } = require("../incremental_graph");
-const { metaEvents, eventContext } = require("../individual");
+const { metaEvents, eventContext, calories } = require("../individual");
 
 /**
  * Creates the default graph definition for the incremental graph.
  * @param {() => import('../incremental_graph/database/types').AllEventsEntry} getAllEvents - Function to get the current all events entry
+ * @param {(text: string) => Promise<number>} estimateCalories - AI calories estimator function
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(getAllEvents) {
+function createDefaultGraphDefinition(getAllEvents, estimateCalories) {
     return [
         {
             output: "all_events",
@@ -80,6 +81,43 @@ function createDefaultGraphDefinition(getAllEvents) {
             },
             isDeterministic: true,
             hasSideEffects: false,
+        },
+        {
+            output: "input(e)",
+            inputs: ["all_events"],
+            computor: async (inputs, _oldValue, bindings) => {
+                const eventId = String(bindings[0]);
+                const allEventsEntry = inputs[0];
+                if (!allEventsEntry || allEventsEntry.type !== "all_events") {
+                    return { type: "input", value: "" };
+                }
+                const event = allEventsEntry.events.find(
+                    (e) =>
+                        String(e.id && e.id.identifier !== undefined ? e.id.identifier : e.id) === eventId
+                );
+                if (!event) {
+                    return { type: "input", value: "" };
+                }
+                return { type: "input", value: event.input ?? "" };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "calories(e)",
+            inputs: ["input(e)"],
+            computor: async (inputs, _oldValue, _bindings) => {
+                const inputEntry = inputs[0];
+                if (!inputEntry || inputEntry.type !== "input") {
+                    return { type: "calories", value: 0 };
+                }
+                return calories.computeCaloriesForInput(
+                    inputEntry.value,
+                    estimateCalories
+                );
+            },
+            isDeterministic: false,
+            hasSideEffects: true,
         },
     ];
 }

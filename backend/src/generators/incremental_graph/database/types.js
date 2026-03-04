@@ -105,8 +105,22 @@ function versionToString(Version) {
  */
 
 /**
+ * Raw input text of a single event.
+ * @typedef {object} InputEntry
+ * @property {'input'} type - The type of the entry
+ * @property {string} value - The raw input text of the event
+ */
+
+/**
+ * Estimated calorie count for a single event.
+ * @typedef {object} CaloriesEntry
+ * @property {'calories'} type - The type of the entry
+ * @property {number} value - The estimated number of calories
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry} ComputedValue
+ * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | InputEntry | CaloriesEntry} ComputedValue
  */
 
 /**
