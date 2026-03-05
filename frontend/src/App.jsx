@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Box, VStack, Heading, Text } from '@chakra-ui/react';
+import { Button, Box, VStack, Heading, Text, HStack, Select, Spinner } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
+import { postSync } from './Sync/api.js';
 
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [syncForce, setSyncForce] = useState('');
+  const [syncState, setSyncState] = useState('idle');
+  const [syncError, setSyncError] = useState('');
 
   useEffect(() => {
     // @ts-expect-error - beforeinstallprompt is a browser API not in TS types
@@ -59,6 +63,22 @@ function App() {
     setIsInstallable(false);
   };
 
+  const handleSyncClick = async () => {
+    setSyncState('loading');
+    setSyncError('');
+
+    const force = syncForce === 'theirs' ? 'theirs' : syncForce === 'ours' ? 'ours' : undefined;
+    const result = await postSync(force);
+
+    if (result.success) {
+      setSyncState('success');
+      setTimeout(() => setSyncState('idle'), 2000);
+    } else {
+      setSyncState('error');
+      setSyncError(result.error || 'Sync failed');
+    }
+  };
+
   return (
     <Box p={6}>
       <VStack spacing={4} align="stretch">
@@ -93,6 +113,36 @@ function App() {
             <Button colorScheme="gray" variant="outline" w="200px">Manage Config</Button>
           </Link>
         </VStack>
+
+        <Box pt={2}>
+          <VStack spacing={2} align="stretch">
+            <HStack spacing={2}>
+              <Select
+                size="sm"
+                value={syncForce}
+                onChange={(e) => { setSyncForce(e.target.value); setSyncState('idle'); setSyncError(''); }}
+                w="140px"
+              >
+                <option value="">Normal sync</option>
+                <option value="theirs">Force: Theirs</option>
+                <option value="ours">Force: Ours</option>
+              </Select>
+              <Button
+                colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
+                variant="outline"
+                w="200px"
+                onClick={handleSyncClick}
+                isDisabled={syncState === 'loading'}
+                leftIcon={syncState === 'loading' ? <Spinner size="sm" /> : undefined}
+              >
+                {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
+              </Button>
+            </HStack>
+            {syncState === 'error' && syncError !== '' && (
+              <Text fontSize="sm" color="red.600">{syncError}</Text>
+            )}
+          </VStack>
+        </Box>
       </VStack>
     </Box>
   );

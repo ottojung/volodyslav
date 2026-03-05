@@ -2,6 +2,7 @@ const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
 const { fromObject: Duration } = require("../datetime");
+const { synchronizeDatabase } = require("../generators");
 
 /** @typedef {import('../scheduler').Registration} Registration */
 
@@ -24,6 +25,15 @@ async function everyHour(capabilities) {
         capabilities.logger.logError(
             { error },
             "Error during event log repository synchronization"
+        );
+    });
+
+    await capabilities.interface.withDatabaseLocked(() =>
+        synchronizeDatabase(capabilities)
+    ).catch((error) => {
+        capabilities.logger.logError(
+            { error },
+            "Error during generators database synchronization"
         );
     });
 

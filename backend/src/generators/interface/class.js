@@ -11,6 +11,7 @@ const {
     getRootDatabase,
     runMigration,
     checkpointDatabase,
+    withMutex,
 } = require("../incremental_graph");
 const {
     createDefaultGraphDefinition,
@@ -115,6 +116,22 @@ class InterfaceClass {
             return;
         }
         await this._incrementalGraph.invalidate("all_events");
+    }
+
+    /**
+     * Executes `fn` while holding the incremental-graph database mutex.
+     *
+     * This serialises the callback against all `invalidate()` and `pull()`
+     * operations so that the database files are not written to by LevelDB
+     * while git is reading or writing them.
+     *
+     * @template T
+     * @param {() => Promise<T>} fn - The function to execute while holding the lock.
+     * @returns {Promise<T>}
+     */
+    withDatabaseLocked(fn) {
+        const capabilities = this._getCapabilities();
+        return withMutex(capabilities.sleeper, fn);
     }
 
     /**

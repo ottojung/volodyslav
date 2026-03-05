@@ -31,6 +31,12 @@ function stubEnvironment(capabilities) {
             const dir = output;
             return path.join(dir, "eventlog");
         });
+    capabilities.environment.generatorsRepository = jest
+        .fn()
+        .mockImplementation(() => {
+            const dir = output;
+            return path.join(dir, "generators-remote");
+        });
     capabilities.environment.eventLogAssetsDirectory = jest
         .fn()
         .mockImplementation(() => {
