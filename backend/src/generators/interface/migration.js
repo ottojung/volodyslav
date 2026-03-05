@@ -15,7 +15,10 @@
  */
 function migrationCallback(capabilities) {
     return async (storage) => {
-        throw new Error("No migration defined for this version" + String({ capabilities, storage }));
+        capabilities.logger.logInfo({}, "Migration: deleting all node values");
+        for await (const nodeKey of storage.listMaterializedNodes()) {
+            await storage.delete(nodeKey);
+        }
     };
 }
 
