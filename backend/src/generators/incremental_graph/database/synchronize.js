@@ -10,6 +10,7 @@
  */
 
 const gitstore = require('../../../gitstore');
+const { withMutex } = require('../lock');
 const workingRepository = gitstore.workingRepository;
 const { checkpointDatabase, CHECKPOINT_WORKING_PATH } = require('./gitstore');
 
@@ -32,6 +33,18 @@ const { checkpointDatabase, CHECKPOINT_WORKING_PATH } = require('./gitstore');
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */
 async function synchronize(capabilities, options) {
+    withMutex(capabilities.sleeper, () => synchronizeUnsafe(capabilities, options));
+}
+
+/**
+ * The unlocked version of synchronize().  Should only be called by synchronize() after acquiring the lock.
+ *
+ * @param {Capabilities} capabilities 
+ * @param {{ force?: SyncForce }} [options] 
+ * @return {Promise<void>}
+ * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
+ */
+async function synchronizeUnsafe(capabilities, options) {
     // Step 1: checkpoint — capture current LevelDB state as a git commit.
     await checkpointDatabase(capabilities, "sync checkpoint");
 

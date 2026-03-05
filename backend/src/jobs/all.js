@@ -28,7 +28,7 @@ async function everyHour(capabilities) {
         );
     });
 
-    await capabilities.interface.withDatabaseLocked(() =>
+    await (
         synchronizeDatabase(capabilities)
     ).catch((error) => {
         capabilities.logger.logError(

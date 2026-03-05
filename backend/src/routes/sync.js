@@ -47,9 +47,7 @@ async function handleSyncRequest(capabilities, req, res) {
     }
 
     try {
-        await capabilities.interface.withDatabaseLocked(() =>
-            synchronizeDatabase(capabilities, options)
-        );
+        await synchronizeDatabase(capabilities, options);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         capabilities.logger.logError({ error: message }, "Error during generators database synchronization");
