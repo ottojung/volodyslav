@@ -1,5 +1,5 @@
 
-const { isUnchanged, isSchemaCompatibility } = require("../incremental_graph");
+const { isUnchanged } = require("../incremental_graph");
 const { metaEvents, eventContext, event: individualEvent, calories } = require("../individual");
 const { transaction } = require("../../event_log_storage");
 
@@ -142,38 +142,6 @@ function createDefaultGraphDefinition(capabilities) {
     ];
 }
 
-/**
- * Creates the default migration callback for the incremental graph.
- *
- * For every node materialized in the previous version:
- * - If the node's functor still exists in the new schema at the same arity,
- *   it is invalidated so it will be recomputed on the next pull.
- * - If the node's functor is absent from the new schema (or has a different
- *   arity), it is deleted.
- *
- * This is the conservative-safe strategy for any application-version bump:
- * no cached data is silently kept stale, and no incompatible nodes survive
- * into the new schema.
- *
- * @returns {(storage: import('../incremental_graph/migration_storage').MigrationStorage) => Promise<void>}
- */
-function createDefaultMigrationCallback() {
-    return async function defaultMigrationCallback(storage) {
-        for await (const nodeKey of storage.listMaterializedNodes()) {
-            try {
-                await storage.invalidate(nodeKey);
-            } catch (e) {
-                if (isSchemaCompatibility(e)) {
-                    await storage.delete(nodeKey);
-                } else {
-                    throw e;
-                }
-            }
-        }
-    };
-}
-
 module.exports = {
     createDefaultGraphDefinition,
-    createDefaultMigrationCallback,
 };

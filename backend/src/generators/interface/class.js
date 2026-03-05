@@ -14,8 +14,10 @@ const {
 } = require("../incremental_graph");
 const {
     createDefaultGraphDefinition,
-    createDefaultMigrationCallback,
 } = require("./default_graph");
+const {
+    migrationCallback,
+} = require("./migration");
 
 /**
  * An interface for direct database operations.
@@ -92,7 +94,7 @@ class InterfaceClass {
             migrationCapabilities,
             database,
             nodeDefs,
-            createDefaultMigrationCallback()
+            migrationCallback(capabilities),
         );
 
         // Step 4: wire up the incremental graph.
