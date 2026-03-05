@@ -212,11 +212,13 @@ async function cleanupAssets(capabilities, eventLogStorage) {
 async function transaction(capabilities, transformation) {
     const eventLogStorage = makeEventLogStorage(capabilities);
     try {
-        return await performGitTransaction(
+        const result = await performGitTransaction(
             capabilities,
             eventLogStorage,
             transformation
         );
+        await capabilities.interface.update();
+        return result;
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
         await cleanupAssets(capabilities, eventLogStorage);

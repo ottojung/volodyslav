@@ -76,6 +76,7 @@
  * @property {Logger} logger - A logger instance
  * @property {import('../datetime').Datetime} datetime - Datetime utilities
  * @property {import('../sleeper').SleepCapability} sleeper - A sleeper instance for delays
+ * @property {import('../generators').Interface} interface - The incremental graph interface capability
  */
 
 module.exports = {};
