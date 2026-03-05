@@ -49,6 +49,15 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
     try {
         const caloriesEntry = await graph.pull("calories", [id]);
 
+        capabilities.logger.logDebug(
+            {
+                request_identifier: reqId.identifier,
+                entry_id: id,
+                calories_entry: caloriesEntry,
+            },
+            "Pulled calories entry for additional properties",
+        );
+
         /** @type {AdditionalProperties} */
         const properties = {};
 
