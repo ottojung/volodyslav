@@ -6,12 +6,19 @@ const { synchronizeDatabase } = require("../generators");
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 /**
- * Validates the `force` field from the request body.
+ * Casts the `force` field to a SyncForce type if valid, or returns null if invalid.
+ *
  * @param {unknown} value
- * @returns {value is SyncForce | undefined}
+ * @returns {SyncForce | undefined | null} - Returns the valid SyncForce value, or null if invalid.
  */
-function isValidForce(value) {
-    return value === undefined || value === "theirs" || value === "ours";
+function castToForce(value) {
+    if (value === "theirs" || value === "ours") {
+        return value;
+    } else if (value === undefined) {
+        return undefined;
+    } else {
+        return null;
+    }
 }
 
 /**
@@ -22,11 +29,11 @@ function isValidForce(value) {
  */
 async function handleSyncRequest(capabilities, req, res) {
     const body = req.body || {};
-    const force = body.force;
+    const force = castToForce(body.force);
 
-    if (!isValidForce(force)) {
+    if (force === null) {
         return res.status(400).json({
-            error: `Invalid force value: ${JSON.stringify(force)}. Must be "theirs", "ours", or absent.`,
+            error: `Invalid force value: ${JSON.stringify(body.force)}. Must be "theirs", "ours", or absent.`,
         });
     }
 
