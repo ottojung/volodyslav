@@ -24,11 +24,16 @@
  * @returns {Promise<CaloriesEntry>}
  */
 async function computeCaloriesForEvent(event, capabilities) {
-    const inputText = event?.input ?? "";
+    if (event === null) {
+        capabilities.logger.logDebug({}, "computeCaloriesForEvent: event is null, returning 0 calories");
+        return { type: "calories", value: 0 };
+    }
+
+    const inputText = event.input ?? "";
     const value = await capabilities.aiCalories.estimateCalories(inputText);
     capabilities.logger.logDebug(
         {
-            event_id: event?.id,
+            event_id: event.id,
             input_text_length: inputText.length,
             estimated_calories: value,
         },
