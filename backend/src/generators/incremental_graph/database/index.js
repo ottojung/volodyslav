@@ -50,7 +50,7 @@ async function getRootDatabase(capabilities) {
     const databasePath = path.join(databaseParent, DATABASE_SUBPATH);
 
     if (await capabilities.checker.directoryExists(databaseParent)) {
-        capabilities.logger.logDebug({ databaseParent }, 'Database directory exists');
+        capabilities.logger.logInfo({ databaseParent }, 'Database directory exists');
     } else {
         capabilities.logger.logInfo({ databaseParent }, 'Database directory does not exist, will be created');
     }
