@@ -61,6 +61,7 @@ async function ensureStartupDependencies(capabilities, app) {
     );
     await capabilities.notifier.ensureNotificationsAvailable();
     await capabilities.git.ensureAvailable();
+    await capabilities.rsync.ensureAvailable();
     await eventLogStorage.ensureAccessible(capabilities);
     await capabilities.state.ensureAccessible();
     await ensureDailyTasksAvailable(capabilities);

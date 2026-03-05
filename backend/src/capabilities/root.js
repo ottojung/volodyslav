@@ -42,6 +42,7 @@
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Command} rsync - A command instance for rsync operations.
  * @property {Environment} environment - An environment instance.
  * @property {Exiter} exiter - A process exit instance.
  * @property {Logger} logger - A logger instance.
@@ -69,6 +70,7 @@ const readerCapability = filesystem.reader;
 const appendCapability = filesystem.appender;
 const checkerCapability = filesystem.checker;
 const gitCapability = require("../executables").git;
+const rsyncCapability = require("../executables").rsync;
 const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
 const exiterCapability = require("../exiter");
@@ -113,6 +115,7 @@ const make = () => {
         appender: appendCapability.make(),
         checker: checkerCapability.make(() => ret),
         git: gitCapability,
+        rsync: rsyncCapability,
         environment,
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),

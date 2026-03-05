@@ -3,6 +3,7 @@ const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
 const { fromObject: Duration } = require("../datetime");
 const { synchronizeDatabase } = require("../generators");
+const assets = require("../assets");
 
 /** @typedef {import('../scheduler').Registration} Registration */
 
@@ -25,6 +26,13 @@ async function everyHour(capabilities) {
         capabilities.logger.logError(
             { error },
             "Error during event log repository synchronization"
+        );
+    });
+
+    await assets.synchronize(capabilities).catch((error) => {
+        capabilities.logger.logError(
+            { error },
+            "Error during assets directory synchronization"
         );
     });
 
