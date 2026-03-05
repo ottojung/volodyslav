@@ -7,6 +7,7 @@ const transcribeAll = require("./transcribe_all");
 const periodic = require("./periodic");
 const entries = require("./entries");
 const config = require("./config");
+const sync = require("./sync");
 
 module.exports = {
     root,
@@ -18,4 +19,5 @@ module.exports = {
     periodic,
     entries,
     config,
+    sync,
 };

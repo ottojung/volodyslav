@@ -8,6 +8,7 @@ const transcribeAllRouter = routes.transcribeAll;
 const periodicRouter = routes.periodic;
 const entriesRouter = routes.entries;
 const configRouter = routes.config;
+const syncRouter = routes.sync;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
@@ -43,6 +44,7 @@ function addRoutes(capabilities, app) {
     app.use("/api", periodicRouter.makeRouter(capabilities));
     app.use("/api", entriesRouter.makeRouter(capabilities));
     app.use("/api", configRouter.makeRouter(capabilities));
+    app.use("/api", syncRouter.makeRouter(capabilities));
     app.use("/", staticRouter.makeRouter(capabilities));
 }
 

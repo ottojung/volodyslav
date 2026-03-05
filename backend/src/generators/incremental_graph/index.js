@@ -29,9 +29,10 @@ const {
     makeInvalidNodeDefError,
     isInvalidNodeDef,
 } = require('./errors');
-const { makeRootDatabase, getRootDatabase, checkpointDatabase } = require('./database');
+const { makeRootDatabase, getRootDatabase, checkpointDatabase, synchronize: synchronizeDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration } = require('./migration_runner');
+const { withMutex } = require('./lock');
 const {
     makeDecisionConflictError,
     isDecisionConflict,
@@ -109,4 +110,6 @@ module.exports = {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    withMutex,
+    synchronizeDatabase,
 };

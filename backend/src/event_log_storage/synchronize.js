@@ -2,19 +2,21 @@ const gitstore = require("../gitstore");
 const workingRepository = gitstore.workingRepository;
 
 /** @typedef {import('../gitstore/working_repository').Capabilities} Capabilities */
+/** @typedef {import('../gitstore/working_repository').SyncForce} SyncForce */
 
 /**
  * Synchronizes the event log repository with the remote.
  * This is a specialized wrapper around workingRepository.synchronize
  * with the standard event log repository parameters.
  * @param {Capabilities} capabilities
+ * @param {{ force?: SyncForce }} [options]
  * @returns {Promise<void>}
  */
-async function synchronize(capabilities) {
+async function synchronize(capabilities, options) {
     const workingPath = "working-git-repository";
     const remotePath = capabilities.environment.eventLogRepository();
     const remoteLocation = { url: remotePath };
-    return await workingRepository.synchronize(capabilities, workingPath, remoteLocation);
+    return await workingRepository.synchronize(capabilities, workingPath, remoteLocation, options);
 }
 
 /**
