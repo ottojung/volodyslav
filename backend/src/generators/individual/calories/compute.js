@@ -9,6 +9,7 @@
 /**
  * @typedef {object} CaloriesCapabilities
  * @property {AICalories} aiCalories - AI calories estimation capability.
+ * @property {import('../../../logger').Logger} logger - Logger for debugging and informational messages.
  */
 
 /**
@@ -24,10 +25,15 @@
  */
 async function computeCaloriesForEvent(event, capabilities) {
     const inputText = event?.input ?? "";
-    if (!inputText) {
-        return { type: "calories", value: 0 };
-    }
     const value = await capabilities.aiCalories.estimateCalories(inputText);
+    capabilities.logger.logDebug(
+        {
+            event_id: event?.id,
+            input_text_length: inputText.length,
+            estimated_calories: value,
+        },
+        "Estimated calories for event",
+    );
     return { type: "calories", value };
 }
 

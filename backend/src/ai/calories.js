@@ -71,6 +71,10 @@ Rules:
  * @returns {Promise<number>} - The estimated calorie count.
  */
 async function estimateCalories(openai, capabilities, entry) {
+    if (entry.trim() === "") {
+        return 0;
+    }
+
     try {
         const apiKey = capabilities.environment.openaiAPIKey();
         const response = await openai(apiKey).chat.completions.create({
