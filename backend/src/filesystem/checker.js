@@ -115,6 +115,33 @@ async function fileExists(filePath) {
 }
 
 /**
+ * Checks if a directory exists and is a regular directory.
+ * @param {string} dirPath - The path to the directory to check.
+ * @returns {Promise<Explicit?>} - A promise that resolves with the proof object if the directory exists, null otherwise.
+ */
+async function directoryExists(dirPath) {
+    try {
+        const stats = await fs.stat(dirPath);
+        const exists = stats.isDirectory();
+        return exists ? new ExplicitClass(dirPath) : null;
+    } catch (err) {
+        if (
+            err !== null &&
+            typeof err === "object" &&
+            "code" in err &&
+            err.code === "ENOENT"
+        ) {
+            return null;
+        }
+
+        throw new FileCheckerError(
+            `Failed to check directory existence: ${dirPath}`,
+            dirPath
+        );
+    }
+}
+
+/**
  * Creates an ExistingFile instance from a file path.
  * @param {string} path - The path to the file.
  * @returns {Promise<ExistingFile>} - A promise that resolves to an ExistingFile instance.
@@ -202,6 +229,7 @@ function make(getCapabilities) {
 
     return {
         fileExists,
+        directoryExists,
         instantiate,
         /** @type {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} */
         isFileStable: (file, options = {}) =>
