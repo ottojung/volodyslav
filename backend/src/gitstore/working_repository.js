@@ -133,7 +133,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 }
             }
         } catch (err) {
-            capabilities.logger.logInfo({ repository: remotePath }, "Failed to synchronize repository");
+            capabilities.logger.logInfo({ repository: remotePath, err }, "Failed to synchronize repository");
             if (attempt < 100) {
                 await new Promise(resolve => setTimeout(resolve, 0));
                 return retry();
