@@ -15,6 +15,9 @@ function isUnchanged(value) {
     return value instanceof UnchangedClass;
 }
 
+/**
+ * @returns {Unchanged}
+ */
 function makeUnchanged() {
     return instance;
 }

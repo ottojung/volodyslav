@@ -110,7 +110,7 @@ function createDefaultGraphDefinition(capabilities) {
         {
             output: "event(e)",
             inputs: ["all_events"],
-            computor: async (inputs, _oldValue, bindings) => {
+            computor: async (inputs, oldValue, bindings) => {
                 const firstInput = inputs[0];
                 if (!firstInput || firstInput.type !== "all_events") {
                     throw new Error("Expected input of type all_events for event(e) computor");
@@ -120,7 +120,10 @@ function createDefaultGraphDefinition(capabilities) {
                 if (firstBinding === undefined || typeof firstBinding !== "string") {
                     throw new Error("Expected first binding to be a string for event(e) computor, got " + JSON.stringify(firstBinding));
                 }
-                return individualEvent.computeEventForId(firstBinding, allEvents);
+                if (oldValue !== undefined && oldValue.type !== "event") {
+                    throw new Error("Expected oldValue to be of type event or undefined for event(e) computor, got " + JSON.stringify(oldValue));
+                }
+                return individualEvent.computeEventForId(firstBinding, oldValue, allEvents);
             },
             isDeterministic: true,
             hasSideEffects: false,
