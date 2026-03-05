@@ -109,7 +109,7 @@ function versionToString(Version) {
  * Value is null when no event with that ID exists in the current all_events set.
  * @typedef {object} EventEntry
  * @property {'event'} type - The type of the entry
- * @property {Event | null} value - The full event object, or null if not found
+ * @property {Event} value - The full event object
  */
 
 /**
