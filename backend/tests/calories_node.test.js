@@ -70,7 +70,7 @@ describe("event(e) node", () => {
         }
     });
 
-    test("returns empty string for an unknown event ID", async () => {
+    test("throws EventNotFoundError for an unknown event ID", async () => {
         const capabilities = getTestCapabilities();
         try {
             const iface = makeInterface(() => capabilities);
@@ -79,8 +79,9 @@ describe("event(e) node", () => {
             const events = [makeEvent("1", "food: a slice of bread")];
             await iface.update(events);
 
-            const result = await iface.incrementalGraph.pull("event", ["999"]);
-            expect(result).toEqual({ type: "event", value: null });
+            await expect(
+                iface.incrementalGraph.pull("event", ["999"])
+            ).rejects.toThrow("Event with ID 999 not found in all_events");
         } finally {
             cleanup(capabilities.tmpDir);
         }
@@ -170,17 +171,17 @@ describe("calories(e) node", () => {
         }
     });
 
-    test("returns 0 calories for an unknown event ID", async () => {
+    test("throws EventNotFoundError for an unknown event ID", async () => {
         const capabilities = getTestCapabilities(999);
         try {
             const iface = makeInterface(() => capabilities);
             await iface.ensureInitialized();
 
             await iface.update([makeEvent("1", "food: burger")]);
-            const result = await iface.incrementalGraph.pull("calories", ["999"]);
 
-            expect(result).toEqual({ type: "calories", value: 0 });
-            // AI should not be queried when there is no input text
+            await expect(
+                iface.incrementalGraph.pull("calories", ["999"])
+            ).rejects.toThrow("Event with ID 999 not found in all_events");
             expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
         } finally {
             cleanup(capabilities.tmpDir);

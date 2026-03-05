@@ -9,6 +9,8 @@
 /** @typedef {import('../../logger').Logger} Logger */
 /** @typedef {import('../../generators').Interface} Interface */
 
+const { isEventNotFoundError } = require('../../generators/individual/event');
+
 /**
  * @typedef {object} Capabilities
  * @property {Logger} logger - A logger instance.
@@ -71,6 +73,12 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
 
         res.json(properties);
     } catch (error) {
+        // An unknown entry ID simply has no additional properties.
+        if (isEventNotFoundError(error)) {
+            res.json({});
+            return;
+        }
+
         const message = error instanceof Error ? error.message : String(error);
 
         capabilities.logger.logError(
