@@ -50,7 +50,7 @@ async function getRootDatabase(capabilities) {
 
     // Ensure the parent directory (the git working tree) exists before LevelDB opens.
     try {
-        await capabilities.creator.createDirectory(path.join(dataDir, CHECKPOINT_WORKING_PATH));
+        await capabilities.creator.createDirectory(databasePath);
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
