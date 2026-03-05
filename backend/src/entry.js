@@ -109,8 +109,6 @@ async function createEntry(capabilities, entryData, files = []) {
         eventLogStorage.addEntry(event, assets);
     });
 
-    await capabilities.interface.update();
-
     capabilities.logger.logInfo(
         {
             eventId: eventId.toString(event.id),
@@ -229,8 +227,6 @@ async function deleteEntry(capabilities, id) {
     await transaction(capabilities, async (storage) => {
         storage.deleteEntry(id);
     });
-
-    await capabilities.interface.update();
 
     capabilities.logger.logInfo(
         { eventId: id },
