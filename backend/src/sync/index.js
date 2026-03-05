@@ -125,10 +125,6 @@ async function synchronizeAll(capabilities, options) {
         errors.push(new GeneratorsSyncError(cause));
     });
 
-    await capabilities.interface.update().catch((cause) => {
-        errors.push(new InterfaceUpdateError(cause));
-    });
-
     if (errors.length > 0) {
         throw new SynchronizeAllError(errors);
     }
