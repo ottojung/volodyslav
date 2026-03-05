@@ -37,6 +37,7 @@ const creatorMake = require("./creator");
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
+ * @property {import('./generators').Interface} interface - The incremental graph interface capability.
  */
 
 /**
