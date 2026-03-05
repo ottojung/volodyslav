@@ -3,17 +3,6 @@ const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
 const { fromObject: Duration } = require("../datetime");
 
-/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
-/** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
-/** @typedef {import('../filesystem/dirscanner').DirScanner} DirScanner */
-/** @typedef {import('../filesystem/copier').FileCopier} FileCopier */
-/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
-/** @typedef {import('../filesystem/appender').FileAppender} FileAppender */
-/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../subprocess/command').Command} Command */
-/** @typedef {import('../environment').Environment} Environment */
-/** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../scheduler').Registration} Registration */
 
 /**
