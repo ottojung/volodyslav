@@ -48,7 +48,7 @@ async function getRootDatabase(capabilities) {
     const dataDir = capabilities.environment.workingDirectory();
     const databasePath = path.join(dataDir, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH);
 
-    if (await capabilities.checker.fileExists(databasePath)) {
+    if (await capabilities.checker.directoryExists(databasePath)) {
         capabilities.logger.logDebug({ databasePath }, 'Database directory exists');
     } else {
         capabilities.logger.logInfo({ databasePath }, 'Database directory does not exist, will be created');

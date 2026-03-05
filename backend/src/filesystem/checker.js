@@ -53,6 +53,7 @@ function isFileCheckerError(object) {
 /**
  * @typedef {object} FileChecker
  * @property {typeof fileExists} fileExists
+ * @property {typeof directoryExists} directoryExists
  * @property {typeof instantiate} instantiate
  * @property {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} isFileStable
  */
