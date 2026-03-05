@@ -32,6 +32,7 @@
  * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Datetime} datetime - Datetime utilities.
  * @property {AICalories} aiCalories - AI calories estimation capability.
+ * @property {import('../../generators').Interface} interface - The incremental graph interface capability.
  */
 
 module.exports = {};
