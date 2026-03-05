@@ -83,6 +83,10 @@ function generatorsRepository() {
     return getEnv("VOLODYSLAV_GENERATORS_REPOSITORY");
 }
 
+function eventLogAssetsRepository() {
+    return getEnv("VOLODYSLAV_EVENT_LOG_ASSETS_REPOSITORY");
+}
+
 /**
  * Ensures that the environment is initialized by checking all required variables.
  * @param {Environment} environment - The environment object to check.
@@ -98,6 +102,7 @@ function ensureEnvironmentIsInitialized(environment) {
     environment.eventLogAssetsDirectory();
     environment.eventLogRepository();
     environment.generatorsRepository();
+    environment.eventLogAssetsRepository();
 }
 
 /**
@@ -115,6 +120,7 @@ function make() {
         eventLogAssetsDirectory,
         eventLogRepository,
         generatorsRepository,
+        eventLogAssetsRepository,
     };
 }
 

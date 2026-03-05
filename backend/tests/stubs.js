@@ -43,6 +43,12 @@ function stubEnvironment(capabilities) {
             const dir = output;
             return path.join(dir, "assets");
         });
+    capabilities.environment.eventLogAssetsRepository = jest
+        .fn()
+        .mockImplementation(() => {
+            const dir = output;
+            return path.join(dir, "assets-remote");
+        });
     capabilities.environment.diaryAudiosDirectory = jest
         .fn()
         .mockImplementation(() => {
