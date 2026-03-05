@@ -132,14 +132,14 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     await gitmethod.makePushable(capabilities, workDir);
                 }
             }
-        } catch (err) {
-            capabilities.logger.logInfo({ repository: remotePath, err }, "Failed to synchronize repository");
+        } catch (error) {
+            capabilities.logger.logInfo({ repository: remotePath, error }, "Failed to synchronize repository");
             if (attempt < 100) {
                 await new Promise(resolve => setTimeout(resolve, 0));
                 return retry();
             }
 
-            throw err;
+            throw error;
         }
     }
 
