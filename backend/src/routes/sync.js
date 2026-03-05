@@ -1,6 +1,5 @@
 const express = require("express");
-const eventLogStorage = require("../event_log_storage");
-const { synchronizeDatabase } = require("../generators");
+const { synchronizeAll, isSynchronizeAllError } = require("../sync");
 
 /** @typedef {import('../gitstore/working_repository').SyncForce} SyncForce */
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
@@ -46,27 +45,16 @@ async function handleSyncRequest(capabilities, req, res) {
     );
 
     try {
-        await eventLogStorage.synchronize(capabilities, options);
+        await synchronizeAll(capabilities, options);
     } catch (error) {
+        if (isSynchronizeAllError(error)) {
+            const message = error.errors.map((e) => e.message).join("; ");
+            capabilities.logger.logError({ error: message }, "Errors during synchronization");
+            return res.status(500).json({ error: `Sync failed: ${message}` });
+        }
         const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ error: message }, "Error during event log synchronization");
-        return res.status(500).json({ error: `Event log sync failed: ${message}` });
-    }
-
-    try {
-        await synchronizeDatabase(capabilities, options);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ error: message }, "Error during generators database synchronization");
-        return res.status(500).json({ error: `Generators database sync failed: ${message}` });
-    }
-
-    try {
-        await capabilities.interface.update();
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ error: message }, "Error invalidating interface after sync");
-        return res.status(500).json({ error: `Interface update failed: ${message}` });
+        capabilities.logger.logError({ error: message }, "Unexpected error during synchronization");
+        return res.status(500).json({ error: `Sync failed: ${message}` });
     }
 
     return res.status(204).end();

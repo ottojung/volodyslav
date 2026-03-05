@@ -1,9 +1,7 @@
-const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
 const { fromObject: Duration } = require("../datetime");
-const { synchronizeDatabase } = require("../generators");
-const assets = require("../assets");
+const { synchronizeAll, isSynchronizeAllError, isEventLogSyncError, isAssetsSyncError, isGeneratorsSyncError, isInterfaceUpdateError } = require("../sync");
 
 /** @typedef {import('../scheduler').Registration} Registration */
 
@@ -22,34 +20,24 @@ async function everyHour(capabilities) {
         capabilities.logger.logError({ error }, "Error in processDiaryAudios");
     });
 
-    await eventLogStorage.synchronize(capabilities).catch((error) => {
-        capabilities.logger.logError(
-            { error },
-            "Error during event log repository synchronization"
-        );
-    });
-
-    await assets.synchronize(capabilities).catch((error) => {
-        capabilities.logger.logError(
-            { error },
-            "Error during assets directory synchronization"
-        );
-    });
-
-    await (
-        synchronizeDatabase(capabilities)
-    ).catch((error) => {
-        capabilities.logger.logError(
-            { error },
-            "Error during generators database synchronization"
-        );
-    });
-
-    await capabilities.interface.update().catch((error) => {
-        capabilities.logger.logError(
-            { error },
-            "Error invalidating interface after synchronization"
-        );
+    await synchronizeAll(capabilities).catch((error) => {
+        if (!isSynchronizeAllError(error)) {
+            capabilities.logger.logError({ error }, "Unexpected error during synchronization");
+            return;
+        }
+        for (const e of error.errors) {
+            if (isEventLogSyncError(e)) {
+                capabilities.logger.logError({ error: e }, "Error during event log repository synchronization");
+            } else if (isAssetsSyncError(e)) {
+                capabilities.logger.logError({ error: e }, "Error during assets directory synchronization");
+            } else if (isGeneratorsSyncError(e)) {
+                capabilities.logger.logError({ error: e }, "Error during generators database synchronization");
+            } else if (isInterfaceUpdateError(e)) {
+                capabilities.logger.logError({ error: e }, "Error invalidating interface after synchronization");
+            } else {
+                capabilities.logger.logError({ error: e }, "Error during synchronization");
+            }
+        }
     });
 }
 
