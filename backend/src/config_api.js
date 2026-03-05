@@ -27,6 +27,7 @@ const { transaction } = require("./event_log_storage");
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance.
+ * @property {import('./generators').Interface} interface - The incremental graph interface capability.
  */
 
 /**
