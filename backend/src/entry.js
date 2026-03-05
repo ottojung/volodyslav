@@ -49,6 +49,7 @@ function isEntryValidationError(object) {
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('./generators').Interface} Interface */
 
 /**
  * @typedef {object} Capabilities
@@ -65,6 +66,7 @@ function isEntryValidationError(object) {
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
+ * @property {Interface} interface - The incremental graph interface capability.
  */
 
 /**
@@ -106,6 +108,8 @@ async function createEntry(capabilities, entryData, files = []) {
     await transaction(capabilities, async (eventLogStorage) => {
         eventLogStorage.addEntry(event, assets);
     });
+
+    await capabilities.interface.update();
 
     capabilities.logger.logInfo(
         {
@@ -225,6 +229,8 @@ async function deleteEntry(capabilities, id) {
     await transaction(capabilities, async (storage) => {
         storage.deleteEntry(id);
     });
+
+    await capabilities.interface.update();
 
     capabilities.logger.logInfo(
         { eventId: id },

@@ -1,28 +1,47 @@
 
 const { isUnchanged, isSchemaCompatibility } = require("../incremental_graph");
 const { metaEvents, eventContext, event: individualEvent, calories } = require("../individual");
+const { transaction } = require("../../event_log_storage");
 
 /**
  * @typedef {object} Capabilities
  * @property {import('../../ai/calories').AICalories} aiCalories - A calories estimation capability.
  * @property {import('../../logger').Logger} logger - A logger instance.
+ * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../../filesystem/writer').FileWriter} writer - A file writer instance.
+ * @property {import('../../filesystem/creator').FileCreator} creator - A file creator instance.
+ * @property {import('../../filesystem/checker').FileChecker} checker - A file checker instance.
+ * @property {import('../../filesystem/deleter').FileDeleter} deleter - A file deleter instance.
+ * @property {import('../../filesystem/copier').FileCopier} copier - A file copier instance.
+ * @property {import('../../filesystem/appender').FileAppender} appender - A file appender instance.
+ * @property {import('../../subprocess/command').Command} git - A command instance for Git operations.
+ * @property {import('../../environment').Environment} environment - An environment instance.
+ * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
+ * @property {import('../../sleeper').SleepCapability} sleeper - A sleeper instance.
  */
 
 /**
  * Creates the default graph definition for the incremental graph.
+ *
+ * The `all_events` node reads events directly from the git-backed event log
+ * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
+ * causes the next pull to re-read from disk.
+ *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
- * @param {() => import('../incremental_graph/database/types').AllEventsEntry} getAllEvents - Function to get the current all events entry
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(capabilities, getAllEvents) {
+function createDefaultGraphDefinition(capabilities) {
     return [
         {
             output: "all_events",
             inputs: [],
             computor: async (_inputs, _oldValue, _bindings) => {
-                return getAllEvents();
+                const events = await transaction(capabilities, async (storage) => {
+                    return await storage.getExistingEntries();
+                });
+                return { type: "all_events", events };
             },
-            isDeterministic: true,
+            isDeterministic: false,
             hasSideEffects: false,
         },
         {

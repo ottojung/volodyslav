@@ -5,7 +5,6 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
-/** @typedef {import('../incremental_graph/database/types').AllEventsEntry} AllEventsEntry */
 
 const {
     makeIncrementalGraph,
@@ -17,14 +16,6 @@ const {
     createDefaultGraphDefinition,
     createDefaultMigrationCallback,
 } = require("./default_graph");
-
-/**
- * Mutable box that holds the current events value.
- * Created before node defs so the getter closure is valid both during
- * migration (node defs are only inspected for schema shape, not evaluated)
- * and at runtime (called by the all_events computor on each pull).
- * @typedef {{ current: AllEventsEntry }} EventsBox
- */
 
 /**
  * An interface for direct database operations.
@@ -49,20 +40,12 @@ class InterfaceClass {
     _incrementalGraph;
 
     /**
-     * Mutable box holding the current events value, available after ensureInitialized().
-     * @private
-     * @type {EventsBox | null}
-     */
-    _eventsBox;
-
-    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
     constructor(getCapabilities) {
         this._getCapabilities = getCapabilities;
         this._incrementalGraph = null;
-        this._eventsBox = null;
     }
 
     /**
@@ -79,12 +62,9 @@ class InterfaceClass {
      *
      * Boot sequence:
      * 1. Open the database via the gitstore-aware path.
-     * 2. Build the events box and node defs.  The node defs carry a live getter
-     *    over `eventsBox.current` so they are valid both during the migration
-     *    schema-compatibility check and at normal-operation pull time.
-     * 3. Run migration.  Fresh database → records version and returns
-     *    immediately.  Same version → returns immediately.  Version change →
-     *    pre-checkpoint, apply decisions, post-checkpoint.
+     * 2. Build node defs.  The `all_events` computor reads directly from the
+     *    event-log gitstore on each recompute.
+     * 3. Run migration (no-op on fresh/same version).
      * 4. Wire up IncrementalGraph against the now-current x-namespace data.
      *
      * @returns {Promise<void>}
@@ -99,14 +79,8 @@ class InterfaceClass {
         // Step 1: open the database via the gitstore-aware path.
         const database = await getRootDatabase(capabilities);
 
-        // Step 2: build events box and node defs before migration so the
-        // migration runner can inspect the new schema's head index.
-        /** @type {EventsBox} */
-        const eventsBox = { current: { events: [], type: "all_events" } };
-        const nodeDefs = createDefaultGraphDefinition(
-            capabilities,
-            () => eventsBox.current
-        );
+        // Step 2: build node defs.  The all_events computor reads from disk.
+        const nodeDefs = createDefaultGraphDefinition(capabilities);
 
         // Step 3: run migration (no-op on fresh/same version).
         const migrationCapabilities = {
@@ -122,24 +96,23 @@ class InterfaceClass {
         );
 
         // Step 4: wire up the incremental graph.
-        this._eventsBox = eventsBox;
         this._incrementalGraph = makeIncrementalGraph(database, nodeDefs);
     }
 
     /**
-     * Updates the all_events field in the database with the provided events.
-     * Sets freshness to "dirty" and marks all dependents as "potentially-dirty".
-     * @param {Array<Event>} all_events - Array of events to store
+     * Invalidates the `all_events` node so the next pull re-reads events from
+     * the event-log gitstore.  Must be called after any mutation of the event
+     * log (create, delete, sync).
+     *
+     * Safe to call before `ensureInitialized()` — becomes a no-op in that case.
+     *
      * @returns {Promise<void>}
      */
-    async update(all_events) {
-        const incrementalGraph = this._incrementalGraph;
-        const eventsBox = this._eventsBox;
-        if (incrementalGraph === null || eventsBox === null) {
-            throw new Error("Interface.update(): ensureInitialized() must be called first");
+    async update() {
+        if (this._incrementalGraph === null) {
+            return;
         }
-        eventsBox.current = { events: all_events, type: "all_events" };
-        await incrementalGraph.invalidate("all_events");
+        await this._incrementalGraph.invalidate("all_events");
     }
 
     /**

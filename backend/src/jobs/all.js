@@ -39,6 +39,13 @@ async function everyHour(capabilities) {
         );
     });
 
+    await capabilities.interface.update().catch((error) => {
+        capabilities.logger.logError(
+            { error },
+            "Error invalidating interface after synchronization"
+        );
+    });
+
     await computeAllCalories(capabilities).catch((error) => {
         capabilities.logger.logError({ error }, "Error in computeAllCalories");
     });

@@ -2,303 +2,236 @@
  * Tests for generators/interface module.
  */
 
-const path = require("path");
-const fs = require("fs");
-const os = require("os");
 const {
     makeInterface,
     isInterface,
 } = require("../src/generators/interface");
 const eventId = require("../src/event/id");
+const { fromISOString } = require("../src/datetime");
+const { transaction } = require("../src/event_log_storage");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger, stubEnvironment } = require("./stubs");
+const { stubLogger, stubEnvironment, stubDatetime, stubEventLogRepository } = require("./stubs");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**
- * Creates test capabilities with a temporary data directory.
- * @returns {DatabaseCapabilities & { tmpDir: string }}
+ * Creates test capabilities.
+ * @returns {Promise<object>}
  */
-function getTestCapabilities() {
+async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
-    const tmpDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "interface-test-")
-    );
-    stubLogger(capabilities);
     stubEnvironment(capabilities);
-    return { ...capabilities, tmpDir };
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    await stubEventLogRepository(capabilities);
+    return capabilities;
 }
 
 /**
- * Cleanup function to remove temporary directories.
- * @param {string} tmpDir
+ * Builds a minimal well-formed event for testing.
+ * @param {string} id
+ * @param {string} input
  */
-function cleanup(tmpDir) {
-    if (fs.existsSync(tmpDir)) {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+function makeEvent(id, input) {
+    return {
+        id: eventId.fromString(id),
+        type: "text",
+        description: input,
+        date: fromISOString("2024-01-01T00:00:00.000Z"),
+        original: input,
+        input,
+        modifiers: {},
+        creator: { type: "user", name: "test" },
+    };
+}
+
+/**
+ * Writes events to the event log gitstore via a transaction.
+ * @param {object} capabilities
+ * @param {Array<object>} events
+ */
+async function writeEventsToStore(capabilities, events) {
+    await transaction(capabilities, async (storage) => {
+        for (const event of events) {
+            storage.addEntry(event, []);
+        }
+    });
+}
+
+/**
+ * Replaces an event in the event store by deleting the old one and adding the new one.
+ * @param {object} capabilities
+ * @param {object} event
+ */
+async function replaceEventInStore(capabilities, event) {
+    await transaction(capabilities, async (storage) => {
+        storage.deleteEntry(event.id);
+        storage.addEntry(event, []);
+    });
 }
 
 describe("generators/interface", () => {
     describe("makeInterface()", () => {
         test("creates and returns an interface instance", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
-                expect(isInterface(iface)).toBe(true);
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+            expect(isInterface(iface)).toBe(true);
         });
     });
 
     describe("update()", () => {
         test("stores events in database under all_events key", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                const events = [
-                    {
-                        id: "event-1",
-                        type: "test",
-                        description: "First event",
-                        date: "2024-01-01",
-                        modifiers: {},
-                    },
-                    {
-                        id: "event-2",
-                        type: "test",
-                        description: "Second event",
-                        date: "2024-01-02",
-                        modifiers: {},
-                    },
-                ];
+            await writeEventsToStore(capabilities, [
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+            await iface.update();
 
-                await iface.update(events);
+            const result = await iface.incrementalGraph.pull("all_events");
+            expect(result).toBeDefined();
+            expect(result.events).toHaveLength(2);
+            expect(result.events[0].id.identifier).toBe("event-1");
+            expect(result.events[1].id.identifier).toBe("event-2");
 
-                // Verify the data was stored correctly by pulling from the incremental graph
-                const result = await iface.incrementalGraph.pull("all_events");
-                expect(result).toBeDefined();
-                expect(result.events).toHaveLength(2);
-                expect(result.events[0].id).toBe("event-1");
-                expect(result.events[1].id).toBe("event-2");
-                
-                const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
-                expect(freshness).toBe("up-to-date");
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
+            expect(freshness).toBe("up-to-date");
         });
 
-        test("overwrites previous events on subsequent updates", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+        test("reflects the updated state after an event is replaced", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                const firstEvents = [
-                    {
-                        id: "event-1",
-                        type: "test",
-                        description: "First event",
-                        date: "2024-01-01",
-                        modifiers: {},
-                    },
-                ];
+            await writeEventsToStore(capabilities, [
+                makeEvent("event-1", "original text"),
+            ]);
+            await iface.update();
 
-                const secondEvents = [
-                    {
-                        id: "event-2",
-                        type: "test",
-                        description: "Second event",
-                        date: "2024-01-02",
-                        modifiers: {},
-                    },
-                    {
-                        id: "event-3",
-                        type: "test",
-                        description: "Third event",
-                        date: "2024-01-03",
-                        modifiers: {},
-                    },
-                ];
+            let result = await iface.incrementalGraph.pull("all_events");
+            expect(result.events).toHaveLength(1);
+            expect(result.events[0].id.identifier).toBe("event-1");
 
-                await iface.update(firstEvents);
-                await iface.update(secondEvents);
+            // Replace event-1 with new content and add event-2
+            await replaceEventInStore(capabilities, makeEvent("event-1", "updated text"));
+            await writeEventsToStore(capabilities, [makeEvent("event-2", "new event")]);
+            await iface.update();
 
-                const result = await iface.incrementalGraph.pull("all_events");
-                expect(result.events).toHaveLength(2);
-                expect(result.events[0].id).toBe("event-2");
-                expect(result.events[1].id).toBe("event-3");
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            result = await iface.incrementalGraph.pull("all_events");
+            expect(result.events).toHaveLength(2);
+            const ids = result.events.map((e) => e.id.identifier);
+            expect(ids).toContain("event-1");
+            expect(ids).toContain("event-2");
+            const e1 = result.events.find((e) => e.id.identifier === "event-1");
+            expect(e1).toBeDefined();
+            expect(e1.input).toBe("updated text");
         });
 
-        test("handles empty events array", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+        test("handles empty store (returns no events)", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                await iface.update([]);
+            await iface.update();
 
-                const result = await iface.incrementalGraph.pull("all_events");
-                expect(result).toBeDefined();
-                expect(result.events).toHaveLength(0);
-                
-                const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
-                expect(freshness).toBe("up-to-date");
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            const result = await iface.incrementalGraph.pull("all_events");
+            expect(result).toBeDefined();
+            expect(result.events).toHaveLength(0);
+
+            const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
+            expect(freshness).toBe("up-to-date");
+        });
+
+        test("is a no-op before ensureInitialized()", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            // Should not throw before initialization
+            await expect(iface.update()).resolves.toBeUndefined();
         });
     });
 
     describe("getEventBasicContext()", () => {
         test("returns context for event with shared hashtags", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                const events = [
-                    {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "First #project event",
-                        date: "2024-01-01",
-                        original: "First #project event",
-                        input: "First #project event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                    {
-                        id: eventId.fromString("2"),
-                        type: "text",
-                        description: "Second #project event",
-                        date: "2024-01-02",
-                        original: "Second #project event",
-                        input: "Second #project event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                    {
-                        id: eventId.fromString("3"),
-                        type: "text",
-                        description: "Unrelated #other event",
-                        date: "2024-01-03",
-                        original: "Unrelated #other event",
-                        input: "Unrelated #other event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                ];
+            const events = [
+                makeEvent("1", "First #project event"),
+                makeEvent("2", "Second #project event"),
+                makeEvent("3", "Unrelated #other event"),
+            ];
 
-                await iface.update(events);
+            await writeEventsToStore(capabilities, events);
+            await iface.update();
 
-                // Get context for first event
-                const context = await iface.getEventBasicContext(events[0]);
+            // Get context for first event
+            const context = await iface.getEventBasicContext(events[0]);
 
-                // Should include both events with #project
-                expect(context).toHaveLength(2);
-                const contextIds = context.map(e => e.id.identifier);
-                expect(contextIds).toContain("1");
-                expect(contextIds).toContain("2");
-                expect(contextIds).not.toContain("3");
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            // Should include both events with #project
+            expect(context).toHaveLength(2);
+            const contextIds = context.map((e) => e.id.identifier);
+            expect(contextIds).toContain("1");
+            expect(contextIds).toContain("2");
+            expect(contextIds).not.toContain("3");
         });
 
         test("returns only the event itself when no shared hashtags", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                const events = [
-                    {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "Event without hashtags",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                ];
+            const events = [makeEvent("1", "Event without hashtags")];
 
-                await iface.update(events);
+            await writeEventsToStore(capabilities, events);
+            await iface.update();
 
-                const context = await iface.getEventBasicContext(events[0]);
+            const context = await iface.getEventBasicContext(events[0]);
 
-                expect(context).toHaveLength(1);
-                expect(context[0].id.identifier).toBe("1");
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            expect(context).toHaveLength(1);
+            expect(context[0].id.identifier).toBe("1");
         });
 
         test("propagates through incremental graph before returning context", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                // Add events
-                const events = [
-                    {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "Test #tag event",
-                        date: "2024-01-01",
-                        original: "Test #tag event",
-                        input: "Test #tag event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                ];
+            const events = [makeEvent("1", "Test #tag event")];
 
-                await iface.update(events);
+            await writeEventsToStore(capabilities, events);
+            await iface.update();
 
-                // Get context - this should trigger propagation
-                const context = await iface.getEventBasicContext(events[0]);
+            // Get context - this should trigger propagation
+            const context = await iface.getEventBasicContext(events[0]);
 
-                expect(context).toBeDefined();
-                expect(context).toHaveLength(1);
+            expect(context).toBeDefined();
+            expect(context).toHaveLength(1);
 
-                // Verify that event_context was computed in the incremental graph
-                const eventContextEntry = await iface.incrementalGraph.pull("event_context");
-                expect(eventContextEntry).toBeDefined();
-                expect(eventContextEntry.type).toBe("event_context");
-                expect(eventContextEntry.contexts).toHaveLength(1);
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            // Verify that event_context was computed in the incremental graph
+            const eventContextEntry = await iface.incrementalGraph.pull("event_context");
+            expect(eventContextEntry).toBeDefined();
+            expect(eventContextEntry.type).toBe("event_context");
+            expect(eventContextEntry.contexts).toHaveLength(1);
         });
     });
 
     describe("Type guards", () => {
         test("isInterface correctly identifies instances", async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const iface = makeInterface(() => capabilities);
-                await iface.ensureInitialized();
+            const capabilities = await getTestCapabilities();
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
 
-                expect(isInterface(iface)).toBe(true);
-                expect(isInterface({})).toBe(false);
-                expect(isInterface(null)).toBe(false);
-                expect(isInterface(undefined)).toBe(false);
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
+            expect(isInterface(iface)).toBe(true);
+            expect(isInterface({})).toBe(false);
+            expect(isInterface(null)).toBe(false);
+            expect(isInterface(undefined)).toBe(false);
         });
     });
 });

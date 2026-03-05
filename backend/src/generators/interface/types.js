@@ -8,6 +8,8 @@
  * @typedef {import("../../filesystem/creator").FileCreator} FileCreator
  * @typedef {import("../../filesystem/deleter").FileDeleter} FileDeleter
  * @typedef {import("../../filesystem/writer").FileWriter} FileWriter
+ * @typedef {import("../../filesystem/copier").FileCopier} FileCopier
+ * @typedef {import("../../filesystem/appender").FileAppender} FileAppender
  * @typedef {import("../../subprocess/command").Command} Command
  * @typedef {import("../../sleeper").SleepCapability} SleepCapability
  * @typedef {import("../../datetime").Datetime} Datetime
@@ -24,6 +26,8 @@
  * @property {FileCreator} creator - A file creator instance
  * @property {FileDeleter} deleter - A file deleter instance
  * @property {FileWriter} writer - A file writer instance
+ * @property {FileCopier} copier - A file copier instance
+ * @property {FileAppender} appender - A file appender instance
  * @property {Command} git - A command instance for Git operations.
  * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Datetime} datetime - Datetime utilities.
