@@ -17,6 +17,7 @@ const { processUserInput, isInputParseError } = fromInput;
  * @typedef {import('../../subprocess/command').Command} Command
  * @typedef {import('../../event/structure').SerializedEvent} SerializedEvent
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
+ * @typedef {import('../../generators').Interface} Interface
  */
 
 /**
@@ -34,6 +35,7 @@ const { processUserInput, isInputParseError } = fromInput;
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
+ * @property {Interface} interface - The incremental graph interface capability.
  */
 
 /**

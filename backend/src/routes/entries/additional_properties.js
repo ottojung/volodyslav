@@ -9,7 +9,7 @@
 /** @typedef {import('../../logger').Logger} Logger */
 /** @typedef {import('../../generators').Interface} Interface */
 
-const { isEventNotFoundError } = require('../../generators/individual/event');
+const { isEventNotFoundError } = require('../../generators');
 
 /**
  * @typedef {object} Capabilities
