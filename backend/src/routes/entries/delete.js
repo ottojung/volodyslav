@@ -14,6 +14,7 @@ const { deleteEntry } = require("../../entry");
  * @typedef {import('../../filesystem/checker').FileChecker} FileChecker
  * @typedef {import('../../subprocess/command').Command} Command
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
+ * @typedef {import('../../generators').Interface} Interface
  */
 
 /**
@@ -31,6 +32,7 @@ const { deleteEntry } = require("../../entry");
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
+ * @property {Interface} interface - The incremental graph interface capability.
  */
 
 /**

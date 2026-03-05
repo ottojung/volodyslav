@@ -70,13 +70,13 @@ function createDefaultGraphDefinition(capabilities) {
                     currentMetaEvents
                 );
 
-                if (isUnchanged(result)) {
+                if (isUnchanged(result) && oldValue !== undefined) {
                     return result;
                 }
 
                 return {
                     type: "meta_events",
-                    meta_events: result,
+                    meta_events: isUnchanged(result) ? currentMetaEvents : result,
                 };
             },
             isDeterministic: true,

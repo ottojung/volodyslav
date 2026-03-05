@@ -43,7 +43,7 @@ function makeEvent(id, input) {
         original: input,
         input,
         modifiers: {},
-        creator: { type: "user", name: "test" },
+        creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
     };
 }
 
