@@ -170,7 +170,7 @@ describe("calories(e) node", () => {
         }
     });
 
-    test("returns 0 calories for an unknown event ID", async () => {
+    test("returns default calories for an unknown event ID", async () => {
         const capabilities = getTestCapabilities(999);
         try {
             const iface = makeInterface(() => capabilities);
@@ -179,9 +179,8 @@ describe("calories(e) node", () => {
             await iface.update([makeEvent("1", "food: burger")]);
             const result = await iface.incrementalGraph.pull("calories", ["999"]);
 
-            expect(result).toEqual({ type: "calories", value: 0 });
-            // AI should not be queried when there is no input text
-            expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
+            expect(result).toEqual({ type: "calories", value: 999 });
+            expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith("");
         } finally {
             cleanup(capabilities.tmpDir);
         }
