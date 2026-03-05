@@ -98,8 +98,8 @@ function createDefaultGraphDefinition(capabilities, getAllEvents) {
                 }
                 const allEvents = firstInput.events;
                 const firstBinding = bindings[0];
-                if (typeof firstBinding !== "string") {
-                    throw new Error("Expected first binding to be a string for event(e) computor");
+                if (firstBinding === undefined || typeof firstBinding !== "string") {
+                    throw new Error("Expected first binding to be a string for event(e) computor, got " + JSON.stringify(firstBinding));
                 }
                 return individualEvent.computeEventForId(firstBinding, allEvents);
             },
