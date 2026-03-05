@@ -18,6 +18,7 @@ const { transaction } = require("../../event_log_storage");
  * @property {import('../../environment').Environment} environment - An environment instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {import('../../sleeper').SleepCapability} sleeper - A sleeper instance.
+ * @property {import('../../generators').Interface} interface - The incremental graph interface capability.
  */
 
 /**
