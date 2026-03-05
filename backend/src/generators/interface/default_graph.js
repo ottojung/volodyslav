@@ -92,8 +92,16 @@ function createDefaultGraphDefinition(capabilities, getAllEvents) {
             output: "event(e)",
             inputs: ["all_events"],
             computor: async (inputs, _oldValue, bindings) => {
-                const allEvents = inputs[0]?.type === "all_events" ? inputs[0].events : [];
-                return individualEvent.computeEventForId(String(bindings[0]), allEvents);
+                const firstInput = inputs[0];
+                if (!firstInput || firstInput.type !== "all_events") {
+                    throw new Error("Expected input of type all_events for event(e) computor");
+                }
+                const allEvents = firstInput.events;
+                const firstBinding = bindings[0];
+                if (typeof firstBinding !== "string") {
+                    throw new Error("Expected first binding to be a string for event(e) computor");
+                }
+                return individualEvent.computeEventForId(firstBinding, allEvents);
             },
             isDeterministic: true,
             hasSideEffects: false,
@@ -102,7 +110,11 @@ function createDefaultGraphDefinition(capabilities, getAllEvents) {
             output: "calories(e)",
             inputs: ["event(e)"],
             computor: async (inputs, _oldValue, _bindings) => {
-                const ev = inputs[0]?.type === "event" ? inputs[0].value : null;
+                const firstInput = inputs[0];
+                if (!firstInput || firstInput.type !== "event") {
+                    throw new Error("Expected input of type event for calories(e) computor");
+                }
+                const ev = firstInput.value;
                 return calories.computeCaloriesForEvent(ev, capabilities);
             },
             isDeterministic: false,
