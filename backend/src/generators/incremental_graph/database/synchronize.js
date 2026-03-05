@@ -33,7 +33,7 @@ const { checkpointDatabase, CHECKPOINT_WORKING_PATH } = require('./gitstore');
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */
 async function synchronize(capabilities, options) {
-    withMutex(capabilities.sleeper, () => synchronizeUnsafe(capabilities, options));
+    await withMutex(capabilities.sleeper, async () => synchronizeUnsafe(capabilities, options));
 }
 
 /**
