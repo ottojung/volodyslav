@@ -5,6 +5,7 @@ const { metaEvents, eventContext, event: individualEvent, calories } = require("
 /**
  * @typedef {object} Capabilities
  * @property {import('../../ai/calories').AICalories} aiCalories - A calories estimation capability.
+ * @property {import('../../logger').Logger} logger - A logger instance.
  */
 
 /**
