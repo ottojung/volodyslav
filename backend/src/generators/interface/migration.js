@@ -15,6 +15,9 @@
  */
 function migrationCallback(capabilities) {
     return async (storage) => {
+        // A temporary conservative approach.
+        // The effect is that all computed values will be invalidated.
+        // This code will be replaced by more targeted migrations in the future.
         capabilities.logger.logInfo({}, "Migration: deleting all node values");
         for await (const nodeKey of storage.listMaterializedNodes()) {
             await storage.delete(nodeKey);
