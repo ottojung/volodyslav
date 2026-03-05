@@ -46,22 +46,23 @@ function isDatabaseInitializationError(object) {
  */
 async function getRootDatabase(capabilities) {
     const dataDir = capabilities.environment.workingDirectory();
-    const databasePath = path.join(dataDir, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH);
+    const databaseParent = path.join(dataDir, CHECKPOINT_WORKING_PATH);
+    const databasePath = path.join(databaseParent, DATABASE_SUBPATH);
 
-    if (await capabilities.checker.directoryExists(databasePath)) {
-        capabilities.logger.logDebug({ databasePath }, 'Database directory exists');
+    if (await capabilities.checker.directoryExists(databaseParent)) {
+        capabilities.logger.logDebug({ databaseParent }, 'Database directory exists');
     } else {
-        capabilities.logger.logInfo({ databasePath }, 'Database directory does not exist, will be created');
+        capabilities.logger.logInfo({ databaseParent }, 'Database directory does not exist, will be created');
     }
 
     // Ensure the parent directory (the git working tree) exists before LevelDB opens.
     try {
-        await capabilities.creator.createDirectory(databasePath);
+        await capabilities.creator.createDirectory(databaseParent);
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
             `Failed to create data directory: ${err.message}`,
-            databasePath,
+            databaseParent,
             err
         );
     }
