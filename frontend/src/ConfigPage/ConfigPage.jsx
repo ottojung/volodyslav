@@ -193,16 +193,7 @@ export default function ConfigPage() {
                 <Card shadow="md" borderRadius="xl">
                     <CardBody>
                         <VStack spacing={4} align="stretch">
-                            <HStack justify="space-between">
-                                <Heading size="sm">Shortcuts</Heading>
-                                <Button
-                                    size="sm"
-                                    colorScheme="blue"
-                                    onClick={handleAddShortcut}
-                                >
-                                    + Add Shortcut
-                                </Button>
-                            </HStack>
+                            <Heading size="sm">Shortcuts</Heading>
 
                             {keyedShortcuts.length === 0 && (
                                 <Text fontSize="sm" color="gray.500" textAlign="center" py={4}>
@@ -219,6 +210,15 @@ export default function ConfigPage() {
                                     onDelete={handleShortcutDelete}
                                 />
                             ))}
+
+                            <Button
+                                size="sm"
+                                colorScheme="blue"
+                                onClick={handleAddShortcut}
+                                alignSelf="flex-start"
+                            >
+                                + Add Shortcut
+                            </Button>
                         </VStack>
                     </CardBody>
                 </Card>
