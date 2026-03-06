@@ -81,6 +81,19 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
 }
 
 /**
+ * Check whether the git repository at workDir has an "origin" remote configured.
+ * @param {Capabilities} capabilities
+ * @param {string} workDir - The repository working directory.
+ * @returns {Promise<boolean>}
+ */
+async function hasOriginRemote(capabilities, workDir) {
+    return capabilities.git.call(
+        "-C", workDir, "-c", "safe.directory=*",
+        "remote", "get-url", "origin"
+    ).then(() => true).catch(() => false);
+}
+
+/**
  * Synchronize the local repository with remote: pull if exists, else clone.
  * Then push the changes as well.
  * @param {Capabilities} capabilities
@@ -97,11 +110,14 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const remotePath = origin.url;
     const resetToTheirs = options && options.resetToTheirs;
 
-    // Determined on the first attempt and reused across retries so that
-    // the choice between force-push (first-time setup) and pull+push
-    // (normal sync) stays consistent even if an individual step fails.
-    /** @type {boolean|null} */
-    let initialHasOrigin = null;
+    // Determine once, before any retry, whether the local repo exists without
+    // a remote configured.  Repos initialised via initializeEmptyRepository
+    // have no remote; we must add origin and accept the remote state via
+    // fetchAndResetHard to reconcile the otherwise unrelated local history.
+    // Computing this flag here (rather than lazily inside the retry loop)
+    // keeps the retry logic simple and free of nullable state.
+    const localExists = (await capabilities.checker.fileExists(headFile)) !== null;
+    const needsRemoteSetup = localExists && !(await hasOriginRemote(capabilities, workDir));
 
     /**
      * @param {{ attempt: number, retry: () => void }} args
@@ -109,26 +125,11 @@ async function synchronize(capabilities, workingPath, origin, options) {
     async function synchronizeRetry({ attempt, retry }) {
         const exists = await capabilities.checker.fileExists(headFile);
 
-        // On the first attempt, record whether origin was already configured.
-        // Repos created via initializeEmptyRepository have no remote; we detect
-        // that here so we can force-push instead of pulling (which would fail
-        // with "refusing to merge unrelated histories").
-        if (initialHasOrigin === null && exists) {
-            initialHasOrigin = await capabilities.git.call(
-                "-C", workDir, "-c", "safe.directory=*",
-                "remote", "get-url", "origin"
-            ).then(() => true).catch(() => false);
-        }
-
-        // If origin was absent on first attempt and the repo already exists,
-        // ensure origin is configured before attempting any push or fetch.
-        // The alreadyAdded guard handles the case where a previous retry
-        // already added the remote but a subsequent operation failed.
-        if (exists && initialHasOrigin === false) {
-            const alreadyAdded = await capabilities.git.call(
-                "-C", workDir, "-c", "safe.directory=*",
-                "remote", "get-url", "origin"
-            ).then(() => true).catch(() => false);
+        // When connecting a local-only repo to a remote for the first time,
+        // ensure origin is configured before any git network operation.
+        // The alreadyAdded guard makes this idempotent across retries.
+        if (needsRemoteSetup && exists) {
+            const alreadyAdded = await hasOriginRemote(capabilities, workDir);
             if (!alreadyAdded) {
                 await capabilities.git.call(
                     "-C", workDir, "-c", "safe.directory=*",
@@ -138,8 +139,10 @@ async function synchronize(capabilities, workingPath, origin, options) {
         }
 
         try {
-            if (resetToTheirs) {
+            if (resetToTheirs || (exists && needsRemoteSetup)) {
                 if (exists) {
+                    // fetchAndResetHard reconciles the local repo with the remote,
+                    // including the case where they have unrelated histories.
                     await gitmethod.fetchAndResetHard(capabilities, workDir);
                 } else {
                     await gitmethod.clone(capabilities, remotePath, workDir);
@@ -147,14 +150,8 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 }
             } else {
                 if (exists) {
-                    if (initialHasOrigin === false) {
-                        // Origin was absent initially: push local state to the
-                        // remote so both sides share the same history going forward.
-                        await gitmethod.push(capabilities, workDir);
-                    } else {
-                        await gitmethod.pull(capabilities, workDir);
-                        await gitmethod.push(capabilities, workDir);
-                    }
+                    await gitmethod.pull(capabilities, workDir);
+                    await gitmethod.push(capabilities, workDir);
                 } else {
                     await gitmethod.clone(capabilities, remotePath, workDir);
                     await gitmethod.makePushable(capabilities, workDir);
