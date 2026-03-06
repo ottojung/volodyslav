@@ -1,0 +1,4 @@
+#! /bin/sh
+
+echo "This is a stub. Should no need rsync in development" 1>&2
+exit 1
