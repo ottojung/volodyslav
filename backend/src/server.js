@@ -30,22 +30,46 @@ const eventLogStorage = require("./event_log_storage");
 /** @typedef {import('./exiter').Exiter} Exiter */
 
 /**
+ * Extracts the pathname prefix from the base URL for use in Express routes.
+ * Returns an empty string when no base URL is configured.
+ * @param {Capabilities} capabilities
+ * @returns {string}
+ */
+function getBasePathPrefix(capabilities) {
+    const baseUrlValue = capabilities.environment.baseUrl();
+    if (!baseUrlValue) {
+        return "";
+    }
+    try {
+        const pathname = new URL(baseUrlValue).pathname;
+        return pathname.replace(/\/$/, "");
+    } catch {
+        capabilities.logger.logWarning(
+            { baseUrl: baseUrlValue },
+            `VOLODYSLAV_BASEURL is set to an invalid URL: "${baseUrlValue}". Falling back to root path.`
+        );
+        return "";
+    }
+}
+
+/**
  * @param {Capabilities} capabilities
  * @param {import("express").Express} app
  * @returns {void}
  * @description Adds routes to the Express application.
  */
 function addRoutes(capabilities, app) {
-    app.use("/api", uploadRouter.makeRouter(capabilities));
-    app.use("/api", rootRouter.makeRouter(capabilities));
-    app.use("/api", pingRouter.makeRouter(capabilities));
-    app.use("/api", transcribeRouter.makeRouter(capabilities));
-    app.use("/api", transcribeAllRouter.makeRouter(capabilities));
-    app.use("/api", periodicRouter.makeRouter(capabilities));
-    app.use("/api", entriesRouter.makeRouter(capabilities));
-    app.use("/api", configRouter.makeRouter(capabilities));
-    app.use("/api", syncRouter.makeRouter(capabilities));
-    app.use("/", staticRouter.makeRouter(capabilities));
+    const prefix = getBasePathPrefix(capabilities);
+    app.use(`${prefix}/api`, uploadRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, rootRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, pingRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, transcribeRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, transcribeAllRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, periodicRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, entriesRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, configRouter.makeRouter(capabilities));
+    app.use(`${prefix}/api`, syncRouter.makeRouter(capabilities));
+    app.use(`${prefix}/`, staticRouter.makeRouter(capabilities));
 }
 
 /**

@@ -5,7 +5,28 @@ import { VitePWA } from "vite-plugin-pwa";
 // Default to 3000 if the env variable is unset
 const port = parseInt(process.env.VOLODYSLAV_SERVER_PORT || "3000", 10);
 
+// Compute base path from VOLODYSLAV_BASEURL if set
+const baseUrlEnv = process.env.VOLODYSLAV_BASEURL || "";
+let basePath = "/";
+if (baseUrlEnv) {
+    try {
+        const pathname = new URL(baseUrlEnv).pathname;
+        basePath = pathname.endsWith("/") ? pathname : pathname + "/";
+    } catch {
+        // ignore invalid URL
+    }
+}
+
+// Strip trailing slash for use in proxy key and PWA manifest
+const basePathNoTrailingSlash = basePath.endsWith("/") && basePath !== "/"
+    ? basePath.slice(0, -1)
+    : basePath;
+
 export default defineConfig({
+    base: basePath,
+    define: {
+        __BASE_PATH__: JSON.stringify(basePath),
+    },
     plugins: [
         react(),
         VitePWA({
@@ -20,13 +41,13 @@ export default defineConfig({
             manifest: {
                 name: "Volodyslav",
                 short_name: "Volodyslav",
-                start_url: "/",
+                start_url: basePath,
                 display: "standalone",
                 background_color: "#ffffff",
                 theme_color: "#000000",
                 description: "Volodyslav PWA Application",
                 orientation: "portrait-primary",
-                scope: "/",
+                scope: basePath,
                 icons: [
                     {
                         src: "/icon-192.png",
@@ -54,7 +75,7 @@ export default defineConfig({
     server: {
         proxy: {
             // Proxy upload API calls to backend.
-            "/api": {
+            [`${basePathNoTrailingSlash}/api`]: {
                 target: `http://localhost:${port}`,
                 changeOrigin: true,
             },

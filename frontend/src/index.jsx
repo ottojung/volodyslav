@@ -31,7 +31,7 @@ const updateSW = registerSW({
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ChakraProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={__BASE_PATH__}>
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/camera" element={<Camera />} />
