@@ -8,5 +8,6 @@ COPY scripts/development/volodyslav-daily-tasks /usr/local/bin/volodyslav-daily-
 COPY package* frontend/package* backend/package* ./
 RUN npm install
 COPY . .
+ARG VOLODYSLAV_BASEURL=''
 RUN sh scripts/install /usr/local
 ENTRYPOINT [ "volodyslav" ]
