@@ -150,7 +150,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     if (initialHasOrigin === false) {
                         // Origin was absent initially: push local state to the
                         // remote so both sides share the same history going forward.
-                        await gitmethod.forcePush(capabilities, workDir);
+                        await gitmethod.push(capabilities, workDir);
                     } else {
                         await gitmethod.pull(capabilities, workDir);
                         await gitmethod.push(capabilities, workDir);
