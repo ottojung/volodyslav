@@ -7,7 +7,7 @@ import { postSync } from './Sync/api.js';
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
-  const [syncForce, setSyncForce] = useState('');
+  const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState('');
 
@@ -67,8 +67,7 @@ function App() {
     setSyncState('loading');
     setSyncError('');
 
-    const force = syncForce === 'theirs' ? 'theirs' : syncForce === 'ours' ? 'ours' : undefined;
-    const result = await postSync(force);
+    const result = await postSync(syncResetToTheirs || undefined);
 
     if (result.success) {
       setSyncState('success');
@@ -119,13 +118,12 @@ function App() {
             <HStack spacing={2}>
               <Select
                 size="sm"
-                value={syncForce}
-                onChange={(e) => { setSyncForce(e.target.value); setSyncState('idle'); setSyncError(''); }}
+                value={syncResetToTheirs ? 'reset-to-theirs' : ''}
+                onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(''); }}
                 w="140px"
               >
                 <option value="">Normal sync</option>
-                <option value="theirs">Force: Theirs</option>
-                <option value="ours">Force: Ours</option>
+                <option value="reset-to-theirs">Reset to Theirs</option>
               </Select>
               <Button
                 colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}

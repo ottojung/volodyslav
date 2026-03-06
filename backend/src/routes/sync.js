@@ -1,24 +1,7 @@
 const express = require("express");
 const { synchronizeAll, isSynchronizeAllError } = require("../sync");
 
-/** @typedef {import('../gitstore/working_repository').SyncForce} SyncForce */
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
-
-/**
- * Casts the `force` field to a SyncForce type if valid, or returns null if invalid.
- *
- * @param {unknown} value
- * @returns {SyncForce | undefined | null} - Returns the valid SyncForce value, or null if invalid.
- */
-function castToForce(value) {
-    if (value === "theirs" || value === "ours") {
-        return value;
-    } else if (value === undefined) {
-        return undefined;
-    } else {
-        return null;
-    }
-}
 
 /**
  * Handles POST /sync requests.
@@ -28,19 +11,19 @@ function castToForce(value) {
  */
 async function handleSyncRequest(capabilities, req, res) {
     const body = req.body || {};
-    const force = castToForce(body.force);
+    const resetToTheirs = body.reset_to_theirs;
 
-    if (force === null) {
+    if (resetToTheirs !== undefined && resetToTheirs !== true) {
         return res.status(400).json({
-            error: `Invalid force value: ${JSON.stringify(body.force)}. Must be "theirs", "ours", or absent.`,
+            error: `Invalid reset_to_theirs value: ${JSON.stringify(resetToTheirs)}. Must be true or absent.`,
         });
     }
 
-    /** @type {{ force?: SyncForce }} */
-    const options = force !== undefined ? { force } : {};
+    /** @type {{ resetToTheirs?: boolean }} */
+    const options = resetToTheirs === true ? { resetToTheirs: true } : {};
 
     capabilities.logger.logDebug(
-        { method: req.method, url: req.originalUrl, force, client_ip: req.ip },
+        { method: req.method, url: req.originalUrl, resetToTheirs, client_ip: req.ip },
         "Sync endpoint called"
     );
 

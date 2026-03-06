@@ -2,20 +2,16 @@ const API_BASE_URL = "/api";
 import { logger } from "../DescriptionEntry/logger.js";
 
 /**
- * @typedef {'theirs' | 'ours'} SyncForce
- */
-
-/**
  * Calls POST /api/sync to synchronize event log and generators database.
- * @param {SyncForce} [force] - Optional force mode: "theirs" or "ours".
+ * @param {boolean} [resetToTheirs] - When true, resets local state to the remote (theirs) version.
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-export async function postSync(force) {
+export async function postSync(resetToTheirs) {
     try {
-        /** @type {{ force?: string }} */
+        /** @type {{ reset_to_theirs?: boolean }} */
         const body = {};
-        if (force !== undefined) {
-            body.force = force;
+        if (resetToTheirs === true) {
+            body.reset_to_theirs = true;
         }
 
         const response = await fetch(`${API_BASE_URL}/sync`, {
