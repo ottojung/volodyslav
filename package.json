@@ -12,7 +12,7 @@
     "build": "node scripts/generate-base-path.js && npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
     "static-analysis": "tsc && eslint . --max-warnings 0 --report-unused-disable-directives",
-    "test": "tsc && eslint . --max-warnings 0 --report-unused-disable-directives && jest",
+    "test": "jest",
     "test-only": "jest",
     "lint": "eslint . --ext .js,.jsx --max-warnings 0 --report-unused-disable-directives",
     "lint:fix": "eslint . --ext .js,.jsx --fix --max-warnings 0 --report-unused-disable-directives",
