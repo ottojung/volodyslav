@@ -13,7 +13,10 @@ if (baseUrlEnv) {
         const pathname = new URL(baseUrlEnv).pathname;
         basePath = pathname.endsWith("/") ? pathname : pathname + "/";
     } catch {
-        // ignore invalid URL
+        // Not a full URL – treat the value as a path directly
+        let p = baseUrlEnv;
+        if (!p.startsWith("/")) { p = "/" + p; }
+        basePath = p.endsWith("/") ? p : p + "/";
     }
 }
 
