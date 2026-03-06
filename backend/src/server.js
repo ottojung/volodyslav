@@ -12,6 +12,7 @@ const syncRouter = routes.sync;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
+const { BASE_PATH_PREFIX } = require("./base_path");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -36,16 +37,16 @@ const eventLogStorage = require("./event_log_storage");
  * @description Adds routes to the Express application.
  */
 function addRoutes(capabilities, app) {
-    app.use("/api", uploadRouter.makeRouter(capabilities));
-    app.use("/api", rootRouter.makeRouter(capabilities));
-    app.use("/api", pingRouter.makeRouter(capabilities));
-    app.use("/api", transcribeRouter.makeRouter(capabilities));
-    app.use("/api", transcribeAllRouter.makeRouter(capabilities));
-    app.use("/api", periodicRouter.makeRouter(capabilities));
-    app.use("/api", entriesRouter.makeRouter(capabilities));
-    app.use("/api", configRouter.makeRouter(capabilities));
-    app.use("/api", syncRouter.makeRouter(capabilities));
-    app.use("/", staticRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, uploadRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, rootRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, pingRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, transcribeRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, transcribeAllRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, periodicRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, entriesRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, configRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/api`, syncRouter.makeRouter(capabilities));
+    app.use(`${BASE_PATH_PREFIX}/`, staticRouter.makeRouter(capabilities));
 }
 
 /**

@@ -3,3 +3,5 @@ declare module 'virtual:pwa-register' {
   export type { RegisterSWOptions };
   export function registerSW(_options?: RegisterSWOptions): (_reloadPage?: boolean) => Promise<void>;
 }
+
+declare const __BASE_PATH__: string;

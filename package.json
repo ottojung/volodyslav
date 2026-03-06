@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "sh scripts/run-development-server",
-    "build": "npm run build -w frontend",
+    "build": "node scripts/generate-base-path.js && npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
     "static-analysis": "tsc && eslint . --max-warnings 0 --report-unused-disable-directives",
     "test": "tsc && eslint . --max-warnings 0 --report-unused-disable-directives && jest",

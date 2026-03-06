@@ -98,7 +98,10 @@ module.exports = {
                 ecmaFeatures: { jsx: true },
                 project: "./tsconfig.json",
             },
+            globals: {
+                __BASE_PATH__: "readonly",
+            },
         },
     ],
-    ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav"],
+    ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav", "**/*.d.ts"],
 };
