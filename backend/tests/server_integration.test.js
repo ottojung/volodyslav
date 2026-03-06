@@ -15,6 +15,7 @@ const {
     stubEventLogRepository,
     stubDailyTasksExecutable,
     stubWifiChecker,
+    stubRsync,
 } = require("./stubs");
 
 function getTestCapabilities() {
@@ -27,6 +28,7 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     stubDatetime(capabilities);
     stubWifiChecker(capabilities);
+    stubRsync(capabilities);
     return capabilities;
 }
 

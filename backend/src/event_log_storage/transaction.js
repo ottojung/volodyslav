@@ -89,7 +89,7 @@ async function copyAssets(capabilities, assets) {
  * @param {EventLogStorageCapabilities} capabilities - An object containing the capabilities.
  * @param {EventLogStorage} eventLogStorage - The event log storage instance.
  * @param {Transformation<T>} transformation - Async callback to apply to the storage.
- * @returns {Promise<T>}
+ * @returns {Promise<{ result: T, committed: boolean }>}
  */
 async function performGitTransaction(
     capabilities,
@@ -171,7 +171,7 @@ async function performGitTransaction(
         const assets = eventLogStorage.getNewAssets();
         await copyAssets(capabilities, assets);
 
-        return result;
+        return { result, committed: needsCommit };
     });
 }
 
@@ -212,12 +212,14 @@ async function cleanupAssets(capabilities, eventLogStorage) {
 async function transaction(capabilities, transformation) {
     const eventLogStorage = makeEventLogStorage(capabilities);
     try {
-        const result = await performGitTransaction(
+        const { result, committed } = await performGitTransaction(
             capabilities,
             eventLogStorage,
             transformation
         );
-        await capabilities.interface.update();
+        if (committed) {
+            await capabilities.interface.update();
+        }
         return result;
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.

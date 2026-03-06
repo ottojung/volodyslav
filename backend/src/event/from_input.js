@@ -53,6 +53,7 @@
  * @property {import('../datetime').Datetime} datetime - Datetime utilities (required by config API)
  * @property {import('../logger').Logger} logger - Logger for error reporting
  * @property {import('../sleeper').SleepCapability} sleeper - A sleeper instance for delays
+ * @property {import('../generators').Interface} interface - The incremental graph interface capability
  */
 
 /** @typedef {import('./parsers').ParsedInput} ParsedInput */

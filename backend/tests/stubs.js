@@ -466,6 +466,10 @@ function stubWifiChecker(capabilities) {
         });
 }
 
+function stubRsync(capabilities) {
+    capabilities.rsync.ensureAvailable = jest.fn().mockResolvedValue(undefined);
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -486,4 +490,5 @@ module.exports = {
     mockRuntimeStateTransaction,
     isMockRuntimeStateStorage,
     stubWifiChecker,
+    stubRsync,
 };
