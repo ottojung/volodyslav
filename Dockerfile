@@ -8,7 +8,7 @@ COPY scripts/development/volodyslav-daily-tasks /usr/local/bin/volodyslav-daily-
 COPY package.json package-lock.json ./
 COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
-RUN npm install
+RUN npm ci
 COPY . .
 ARG VOLODYSLAV_BASEURL=''
 RUN sh scripts/install /usr/local
