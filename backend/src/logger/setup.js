@@ -126,6 +126,13 @@ async function createFileTarget(state, filePath, todos) {
     }
 }
 
+const validLogLevels = [
+    "debug",
+    "info",
+    "warning",
+    "error",
+];
+
 /**
  * Safely gets the log level, with fallback to "debug"
  * @param {LoggerState} state - The logger state.
@@ -137,7 +144,17 @@ function safeGetLogLevel(state, todos) {
         if (!state.capabilities) {
             throw new Error('Capabilities not initialized');
         }
-        return state.capabilities.environment.logLevel();
+        const provided = state.capabilities.environment.logLevel();
+        const lowered = provided.toLowerCase();
+
+        if (!validLogLevels.includes(lowered)) {
+            const qprovided = JSON.stringify(provided);
+            const options = validLogLevels.map(level => JSON.stringify(level)).join(', ');
+            todos.push(() => logError(state, { provided }, `Invalid log level provided: ${qprovided}. Valid options are: ${options}. Falling back to "debug".`));
+            return 'debug';
+        }
+
+        return lowered;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         todos.push(() => logError(state, {}, `Unable to get log level: ${message}`));
