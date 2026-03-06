@@ -1,4 +1,4 @@
-FROM node:23.11
+FROM node:25.3
 WORKDIR /workspace
 COPY package* frontend/package* backend/package* ./
 RUN npm install
