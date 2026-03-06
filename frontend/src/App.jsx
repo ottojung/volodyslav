@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Box, VStack, Heading, Text, HStack, Select, Spinner } from '@chakra-ui/react';
+import { Button, Box, VStack, Heading, Text, Select, Spinner, Divider } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { postSync } from './Sync/api.js';
 
@@ -113,34 +113,32 @@ function App() {
           </Link>
         </VStack>
 
-        <Box pt={2}>
-          <VStack spacing={2} align="stretch">
-            <HStack spacing={2}>
-              <Select
-                size="sm"
-                value={syncResetToTheirs ? 'reset-to-theirs' : ''}
-                onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(''); }}
-                w="140px"
-              >
-                <option value="">Normal sync</option>
-                <option value="reset-to-theirs">Reset to Theirs</option>
-              </Select>
-              <Button
-                colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
-                variant="outline"
-                w="200px"
-                onClick={handleSyncClick}
-                isDisabled={syncState === 'loading'}
-                leftIcon={syncState === 'loading' ? <Spinner size="sm" /> : undefined}
-              >
-                {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
-              </Button>
-            </HStack>
-            {syncState === 'error' && syncError !== '' && (
-              <Text fontSize="sm" color="red.600">{syncError}</Text>
-            )}
-          </VStack>
-        </Box>
+        <Divider />
+
+        <VStack spacing={2}>
+          <Select
+            size="sm"
+            value={syncResetToTheirs ? 'reset-to-theirs' : ''}
+            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(''); }}
+            w="200px"
+          >
+            <option value="">Normal sync</option>
+            <option value="reset-to-theirs">Reset to Theirs</option>
+          </Select>
+          <Button
+            colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
+            variant="outline"
+            w="200px"
+            onClick={handleSyncClick}
+            isDisabled={syncState === 'loading'}
+            leftIcon={syncState === 'loading' ? <Spinner size="sm" /> : undefined}
+          >
+            {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
+          </Button>
+          {syncState === 'error' && syncError !== '' && (
+            <Text fontSize="sm" color="red.600" textAlign="center">{syncError}</Text>
+          )}
+        </VStack>
       </VStack>
     </Box>
   );
