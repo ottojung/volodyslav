@@ -12,7 +12,7 @@ const syncRouter = routes.sync;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
-const { BASE_PATH_PREFIX } = require("./base_path");
+const { getBasePath } = require("./base_path");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -33,20 +33,21 @@ const { BASE_PATH_PREFIX } = require("./base_path");
 /**
  * @param {Capabilities} capabilities
  * @param {import("express").Express} app
- * @returns {void}
+ * @returns {Promise<void>}
  * @description Adds routes to the Express application.
  */
-function addRoutes(capabilities, app) {
-    app.use(`${BASE_PATH_PREFIX}/api`, uploadRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, rootRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, pingRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, transcribeRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, transcribeAllRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, periodicRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, entriesRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, configRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/api`, syncRouter.makeRouter(capabilities));
-    app.use(`${BASE_PATH_PREFIX}/`, staticRouter.makeRouter(capabilities));
+async function addRoutes(capabilities, app) {
+    const basePath = await getBasePath(capabilities);
+    app.use(`${basePath}/api`, uploadRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, rootRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, pingRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, transcribeRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, transcribeAllRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, periodicRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, entriesRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, configRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, syncRouter.makeRouter(capabilities));
+    app.use(`${basePath}/`, staticRouter.makeRouter(capabilities));
 }
 
 /**
