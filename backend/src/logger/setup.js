@@ -189,9 +189,7 @@ async function setup(state) {
         }
     }
 
-    const transport = pino.transport({
-        targets: targets,
-    });
+    const transport = pino.transport({ targets });
 
     state.logger = pino({ level: logLevelValue }, transport);
     state.logLevel = logLevelValue;
