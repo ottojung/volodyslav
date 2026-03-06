@@ -6,6 +6,7 @@ cd -- "${0%/*}"/..
 
 set -xe
 
+export VOLODYSLAV_LOG_LEVEL="info"
 export VOLODYSLAV_OPENAI_API_KEY="$OPENAI_API_KEY"
 export VOLODYSLAV_WORKING_DIRECTORY="dist/test/wd"
 export VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY="dist/test/recordings"
