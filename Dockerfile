@@ -1,5 +1,6 @@
 FROM node:25.3
 WORKDIR /workspace
+RUN apt-get update -y
 RUN apt-get install -y rsync
 COPY package* frontend/package* backend/package* ./
 RUN npm install
