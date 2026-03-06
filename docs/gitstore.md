@@ -62,14 +62,14 @@ A checkpoint is a lightweight alternative to a full transaction. It runs:
 
 ```
 git add --all
-git commit --allow-empty -m "$MESSAGE"
+git commit -m "$MESSAGE"
 ```
 
-directly on the persistent local working copy – no clone, no temp directory, no push to a remote. The `--allow-empty` flag means the call always creates a commit regardless of whether the working tree has changed.
+directly on the persistent local working copy – no clone, no temp directory, no push to a remote. If the working tree is already clean (no changes since the last commit), the checkpoint is a no-op: no new commit is created.
 
 ```javascript
 await checkpoint(capabilities, workingPath, initial_state, message);
-// always returns void; always produces a new commit
+// returns void; creates a new commit only when there are changes to commit
 ```
 
 ### When to use a checkpoint vs. a transaction
@@ -94,7 +94,7 @@ The typical safe pattern is:
 
 ### No-op safety
 
-There is none needed. With `--allow-empty`, `git commit` always exits successfully, even if the working tree is clean. Every checkpoint call unconditionally advances the commit log.
+When the working tree is clean (no changes since the last commit), `checkpoint` is a no-op: it runs `git add --all` and detects that there is nothing staged, so it skips the `git commit` call entirely. The function returns `void` without creating a commit.
 
 ### Mutex
 
@@ -157,7 +157,7 @@ Three independent operations that work on the same local copy for different purp
 | **Temp dir** | No | Yes (cleaned up always) | No |
 | **Push to remote** | Yes | No (writes to local working copy only) | No |
 | **Retries** | Up to 100 attempts | Up to `maxAttempts` (default 5) on `PushError` | None |
-| **Nothing-to-commit** | N/A | N/A | Always commits (`--allow-empty`) |
+| **Nothing-to-commit** | N/A | N/A | No-op (skips commit) |
 | **Mutex** | No | Yes | Yes |
 
 `synchronize` is never called inside `transaction` or `checkpoint`. They operate independently: transactions and checkpoints write to the local working copy; synchronisation propagates those writes to the real remote and pulls in changes made elsewhere.
@@ -184,7 +184,7 @@ Only the latest commit is fetched. The branch is always `master` (exported from 
 | `transaction.js` | Acquires per-`workingPath` mutex, then delegates to retry layer |
 | `transaction_retry.js` | Retry loop; distinguishes push vs. non-push errors |
 | `transaction_attempt.js` | Single attempt: temp tree lifecycle, clone, transform, push |
-| `checkpoint.js` | Checkpoint: `add --all` + `commit` directly on local working copy; no-op when clean |
+| `checkpoint.js` | Checkpoint: `add --all` + `commit` directly on local working copy; no-op when clean (nothing to commit) |
 | `working_repository.js` | Persistent local copy: create, synchronize, expose `.git` path |
 | `wrappers.js` | Thin wrappers over raw `git` calls: `clone`, `pull`, `push`, `commit`, `init`, `makePushable` |
 | `transaction_logging.js` | Structured log messages for every stage of the retry lifecycle |

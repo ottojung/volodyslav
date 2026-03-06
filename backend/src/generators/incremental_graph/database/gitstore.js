@@ -11,8 +11,7 @@
  *       leveldb/                    ← LevelDB database files (only top-level entry)
  *
  * Callers create snapshots by calling `checkpointDatabase(capabilities, message)`.
- * The commit is forced with `--allow-empty` so it is always safe to call even
- * when the database files have not changed.
+ * If nothing has changed since the last commit, the call is a no-op.
  *
  * CHECKPOINT_WORKING_PATH and DATABASE_SUBPATH are exported so that
  * `database/index.js` can construct the correct absolute database path
@@ -56,8 +55,8 @@ const DATABASE_SUBPATH = "leveldb";
  * Record the current state of the database as a git commit.
  *
  * Stages all files in the git working tree (`generators-database/`) with
- * `git add --all` and commits them.  `--allow-empty` guarantees a commit
- * is always created even when no files changed.
+ * `git add --all` and commits them.  If no files have changed since the last
+ * commit, the call is a no-op (no empty commit is created).
  *
  * The git repository is created automatically on the first call.
  *

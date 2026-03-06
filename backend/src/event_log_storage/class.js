@@ -35,6 +35,14 @@ class EventLogStorageClass {
     deletedIds;
 
     /**
+     * Identifiers of entries that were queued in this transaction and then
+     * deleted via deleteEntry() — i.e. absorbed before they were ever committed.
+     * @private
+     * @type {Set<string>}
+     */
+    absorbedDeletionIds;
+
+    /**
      * Path to the data.json file, set during transaction
      * @type {ExistingFile|null}
      */
@@ -83,6 +91,7 @@ class EventLogStorageClass {
         this.newEntries = [];
         this.newAssets = [];
         this.deletedIds = new Set();
+        this.absorbedDeletionIds = new Set();
     }
 
     /**
@@ -113,15 +122,20 @@ class EventLogStorageClass {
 
     /**
      * Marks an entry for deletion by its ID.
-     * If the entry was queued in the same transaction, it will be removed.
+     * If the entry was queued in the same transaction, it will be removed
+     * immediately (absorbed) and not committed.
      *
      * @param {import('../event/id').EventId} id - The identifier of the entry to delete.
      */
     deleteEntry(id) {
         this.deletedIds.add(id);
+        const before = this.newEntries.length;
         this.newEntries = this.newEntries.filter(
             (e) => e.id.identifier !== id.identifier
         );
+        if (this.newEntries.length < before) {
+            this.absorbedDeletionIds.add(id.identifier);
+        }
     }
 
     /**
@@ -130,6 +144,15 @@ class EventLogStorageClass {
      */
     getDeletedIds() {
         return this.deletedIds.values();
+    }
+
+    /**
+     * Retrieves the set of entry identifier strings that were absorbed
+     * (i.e. the entry was added and deleted within the same transaction).
+     * @returns {Set<string>}
+     */
+    getAbsorbedDeletionIds() {
+        return this.absorbedDeletionIds;
     }
 
     /**

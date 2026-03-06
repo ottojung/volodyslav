@@ -183,17 +183,19 @@ describe("checkpointDatabase", () => {
 
     // ── allow-empty ───────────────────────────────────────────────────────────
 
-    test("commits even when no files have changed (--allow-empty)", async () => {
+    test("does not commit when no files have changed", async () => {
         const capabilities = getTestCapabilities();
 
         await writeDatabaseFile(capabilities, "MANIFEST-000001", "static");
         await checkpointDatabase(capabilities, "first");
-        // No file changes
+        const gitDir = checkpointGitDir(capabilities);
+        const countAfterFirst = commitCount(gitDir);
+
+        // No file changes – second checkpoint should be a no-op
         await checkpointDatabase(capabilities, "second – no change");
 
-        const gitDir = checkpointGitDir(capabilities);
-        // +1 for the "Initial empty commit" created by getRepository on first use
-        expect(commitCount(gitDir)).toBe(3);
+        // No new commit should have been created
+        expect(commitCount(gitDir)).toBe(countAfterFirst);
     });
 
     test("can be called before any database files have been written", async () => {
@@ -202,9 +204,9 @@ describe("checkpointDatabase", () => {
         await checkpointDatabase(capabilities, "empty repo checkpoint");
 
         const gitDir = checkpointGitDir(capabilities);
-        // +1 for the "Initial empty commit" created by getRepository on first use
-        expect(commitCount(gitDir)).toBe(2);
-        expect(latestCommitMessage(gitDir)).toBe("empty repo checkpoint");
+        // Only the "Initial empty commit" created by getRepository on first use;
+        // checkpointDatabase is a no-op when there is nothing to commit.
+        expect(commitCount(gitDir)).toBe(1);
     });
 
     // ── Repository layout ─────────────────────────────────────────────────────
@@ -285,7 +287,7 @@ describe("checkpointDatabase", () => {
 
     // ── Concurrency ───────────────────────────────────────────────────────────
 
-    test("concurrent calls are serialized: both create separate commits", async () => {
+    test("concurrent calls are serialized: all changes are committed", async () => {
         const capabilities = getTestCapabilities();
         // Write an initial file so the repo exists before the race
         await writeDatabaseFile(capabilities, "base.ldb", "base");
@@ -296,7 +298,11 @@ describe("checkpointDatabase", () => {
         ]);
 
         const gitDir = checkpointGitDir(capabilities);
+        // The file must be committed; both concurrent calls must settle without error.
         // +1 for the "Initial empty commit" created by getRepository on first use
-        expect(commitCount(gitDir)).toBe(3);
+        // +1 for the actual commit (one or both concurrent calls may produce a commit)
+        expect(commitCount(gitDir)).toBeGreaterThanOrEqual(2);
+        // The file written before the race must be present at HEAD
+        expect(fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/base.ldb`)).toBe("base");
     });
 });

@@ -59,23 +59,15 @@ async function ensureGitAvailable() {
 }
 
 /**
- * @typedef {object} CommitOptions
- * @property {boolean} [allowEmpty] - Pass `--allow-empty` so the commit
- *   succeeds even when the working tree has no changes.
- */
-
-/**
- * Commit staged changes with a message
+ * Commit staged changes with a message.
+ * Does nothing if the working tree is clean (no changes to commit).
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} git_directory - The `.git` directory
  * @param {string} work_directory - The repository directory, where the actual files are
  * @param {string} message - The commit message
- * @param {CommitOptions} [options]
  * @returns {Promise<void>}
  */
-async function commit(capabilities, git_directory, work_directory, message, options = {}) {
-    const allowEmpty = options.allowEmpty === true;
-
+async function commit(capabilities, git_directory, work_directory, message) {
     // First add all files (including new untracked files) to the staging area
     await capabilities.git.call(
         "-c",
@@ -92,8 +84,20 @@ async function commit(capabilities, git_directory, work_directory, message, opti
         "--all"
     );
 
-    // Then commit all staged changes
-    const commitArgs = [
+    // Check if there is anything staged to commit
+    const statusResult = await capabilities.git.call(
+        "-c", "safe.directory=*",
+        "--git-dir", git_directory,
+        "--work-tree", work_directory,
+        "status",
+        "--porcelain"
+    );
+    if (statusResult.stdout.trim() === "") {
+        return;
+    }
+
+    // Commit all staged changes
+    await capabilities.git.call(
         "-c", "safe.directory=*",
         "-c", "user.name=volodyslav",
         "-c", "user.email=volodyslav",
@@ -101,11 +105,7 @@ async function commit(capabilities, git_directory, work_directory, message, opti
         "--work-tree", work_directory,
         "commit",
         "--message", message,
-    ];
-    if (allowEmpty) {
-        commitArgs.push("--allow-empty");
-    }
-    await capabilities.git.call(...commitArgs);
+    );
 }
 
 /**
