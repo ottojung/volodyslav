@@ -35,7 +35,7 @@ then
     if ! test -d "$VOLODYSLAV_GENERATORS_REPOSITORY"
     then
         mkdir -p -- "$VOLODYSLAV_GENERATORS_REPOSITORY"
-        git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" init --initial-branch=main
+        git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" init --initial-branch=master
         git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" -c user.name=volodyslav -c user.email=volodyslav commit --allow-empty -m "Initial empty commit"
         git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" config receive.denyCurrentBranch ignore
     fi
