@@ -81,16 +81,12 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
 }
 
 /**
- * @typedef {'theirs' | 'ours'} SyncForce
- */
-
-/**
  * Synchronize the local repository with remote: pull if exists, else clone.
  * Then push the changes as well.
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation} origin - Remote location or local location to sync with.
- * @param {{ force?: SyncForce }} [options] - Optional sync options.
+ * @param {{ resetToTheirs?: boolean }} [options] - Optional sync options.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
  */
@@ -99,7 +95,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const headFile = path.join(gitDir, "HEAD");
     const remotePath = origin.url;
-    const force = options && options.force;
+    const resetToTheirs = options && options.resetToTheirs;
 
     /**
      * @param {{ attempt: number, retry: () => void }} args
@@ -108,20 +104,12 @@ async function synchronize(capabilities, workingPath, origin, options) {
         const exists = await capabilities.checker.fileExists(headFile);
 
         try {
-            if (force === "theirs") {
+            if (resetToTheirs) {
                 if (exists) {
                     await gitmethod.fetchAndResetHard(capabilities, workDir);
                 } else {
                     await gitmethod.clone(capabilities, remotePath, workDir);
                     await gitmethod.makePushable(capabilities, workDir);
-                }
-            } else if (force === "ours") {
-                if (exists) {
-                    await gitmethod.forcePush(capabilities, workDir);
-                } else {
-                    await gitmethod.clone(capabilities, remotePath, workDir);
-                    await gitmethod.makePushable(capabilities, workDir);
-                    await gitmethod.forcePush(capabilities, workDir);
                 }
             } else {
                 if (exists) {

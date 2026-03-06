@@ -15,20 +15,19 @@ const workingRepository = gitstore.workingRepository;
 const { checkpointDatabase, CHECKPOINT_WORKING_PATH } = require('./gitstore');
 
 /** @typedef {import('../../../gitstore/checkpoint').Capabilities} Capabilities */
-/** @typedef {import('../../../gitstore/working_repository').SyncForce} SyncForce */
 
 /**
  * Checkpoint the database and synchronize it with the remote generators repository.
  *
  * Steps:
  * 1. `git add --all && git commit` — capture the latest in-memory state on disk.
- * 2. `git pull && git push` (or force variant) — sync with the remote.
+ * 2. `git pull && git push` (or reset-to-theirs variant) — sync with the remote.
  *
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
  *
  * @param {Capabilities} capabilities
- * @param {{ force?: SyncForce }} [options]
+ * @param {{ resetToTheirs?: boolean }} [options]
  * @returns {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */
@@ -40,7 +39,7 @@ async function synchronize(capabilities, options) {
  * The unlocked version of synchronize().  Should only be called by synchronize() after acquiring the lock.
  *
  * @param {Capabilities} capabilities 
- * @param {{ force?: SyncForce }} [options] 
+ * @param {{ resetToTheirs?: boolean }} [options] 
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */

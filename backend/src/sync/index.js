@@ -2,7 +2,6 @@ const eventLogStorage = require("../event_log_storage");
 const assets = require("../assets");
 const { synchronizeDatabase } = require("../generators");
 
-/** @typedef {import('../gitstore/working_repository').SyncForce} SyncForce */
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 // ---------------------------------------------------------------------------
@@ -105,7 +104,7 @@ function isSynchronizeAllError(object) {
  * dispatch on each type to produce per-destination log messages or responses.
  *
  * @param {Capabilities} capabilities
- * @param {{ force?: SyncForce }} [options]
+ * @param {{ resetToTheirs?: boolean }} [options]
  * @returns {Promise<void>}
  * @throws {SynchronizeAllError}
  */
