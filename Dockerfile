@@ -7,5 +7,6 @@ RUN npm install
 COPY . .
 COPY scripts/development/termux-notification /usr/local/bin/termux-notification
 COPY scripts/development/termux-wifi-connectioninfo /usr/local/bin/termux-wifi-connectioninfo
+COPY scripts/development/volodyslav-daily-tasks /usr/local/bin/volodyslav-daily-tasks
 RUN sh scripts/install /usr/local
 ENTRYPOINT [ "volodyslav" ]
