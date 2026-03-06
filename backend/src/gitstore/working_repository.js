@@ -97,11 +97,45 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const remotePath = origin.url;
     const resetToTheirs = options && options.resetToTheirs;
 
+    // Determined on the first attempt and reused across retries so that
+    // the choice between force-push (first-time setup) and pull+push
+    // (normal sync) stays consistent even if an individual step fails.
+    /** @type {boolean|null} */
+    let initialHasOrigin = null;
+
     /**
      * @param {{ attempt: number, retry: () => void }} args
      */
     async function synchronizeRetry({ attempt, retry }) {
         const exists = await capabilities.checker.fileExists(headFile);
+
+        // On the first attempt, record whether origin was already configured.
+        // Repos created via initializeEmptyRepository have no remote; we detect
+        // that here so we can force-push instead of pulling (which would fail
+        // with "refusing to merge unrelated histories").
+        if (initialHasOrigin === null && exists) {
+            initialHasOrigin = await capabilities.git.call(
+                "-C", workDir, "-c", "safe.directory=*",
+                "remote", "get-url", "origin"
+            ).then(() => true).catch(() => false);
+        }
+
+        // If origin was absent on first attempt and the repo already exists,
+        // ensure origin is configured before attempting any push or fetch.
+        // The alreadyAdded guard handles the case where a previous retry
+        // already added the remote but a subsequent operation failed.
+        if (exists && initialHasOrigin === false) {
+            const alreadyAdded = await capabilities.git.call(
+                "-C", workDir, "-c", "safe.directory=*",
+                "remote", "get-url", "origin"
+            ).then(() => true).catch(() => false);
+            if (!alreadyAdded) {
+                await capabilities.git.call(
+                    "-C", workDir, "-c", "safe.directory=*",
+                    "remote", "add", "origin", remotePath
+                );
+            }
+        }
 
         try {
             if (resetToTheirs) {
@@ -113,8 +147,14 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 }
             } else {
                 if (exists) {
-                    await gitmethod.pull(capabilities, workDir);
-                    await gitmethod.push(capabilities, workDir);
+                    if (initialHasOrigin === false) {
+                        // Origin was absent initially: push local state to the
+                        // remote so both sides share the same history going forward.
+                        await gitmethod.forcePush(capabilities, workDir);
+                    } else {
+                        await gitmethod.pull(capabilities, workDir);
+                        await gitmethod.push(capabilities, workDir);
+                    }
                 } else {
                     await gitmethod.clone(capabilities, remotePath, workDir);
                     await gitmethod.makePushable(capabilities, workDir);

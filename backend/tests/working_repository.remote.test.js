@@ -208,5 +208,46 @@ describe("working_repository", () => {
         );
         expect(clonedFileContent).toBe("pushed content");
     });
+
+    test("synchronize succeeds when local repo exists but has no origin configured", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+
+        // Set up a remote repository (bare repo, accepts pushes without configuration)
+        await stubEventLogRepository(capabilities);
+        const remoteRepoPath = capabilities.environment.eventLogRepository();
+
+        // Create a local repository WITHOUT origin by using the "empty" initial state
+        // path (this is what initializeEmptyRepository does — no remote is configured)
+        await workingRepository.getRepository(capabilities, "working-git-repository", "empty");
+
+        const localWorkDir = path.join(
+            capabilities.environment.workingDirectory(),
+            "working-git-repository"
+        );
+
+        // Confirm origin is NOT configured before synchronize
+        const hasOriginBefore = await capabilities.git.call(
+            "-C", localWorkDir, "-c", "safe.directory=*",
+            "remote", "get-url", "origin"
+        ).then(() => true).catch(() => false);
+        expect(hasOriginBefore).toBe(false);
+
+        // synchronize should not throw even though origin is absent
+        await expect(
+            workingRepository.synchronize(
+                capabilities,
+                "working-git-repository",
+                { url: remoteRepoPath }
+            )
+        ).resolves.not.toThrow();
+
+        // After synchronize, origin must be configured in the local repo
+        const hasOriginAfter = await capabilities.git.call(
+            "-C", localWorkDir, "-c", "safe.directory=*",
+            "remote", "get-url", "origin"
+        ).then(() => true).catch(() => false);
+        expect(hasOriginAfter).toBe(true);
+    });
 });
 
