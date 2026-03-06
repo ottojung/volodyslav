@@ -175,7 +175,7 @@ describe("gitstore checkpoint", () => {
 
     // ── Clean working tree ──────────────────────────────────────────────────
 
-    test("checkpoint creates a commit even when the working tree is already clean", async () => {
+    test("checkpoint does not create a commit when the working tree is already clean", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
 
@@ -192,9 +192,8 @@ describe("gitstore checkpoint", () => {
             "empty checkpoint"
         );
 
-        // --allow-empty always produces a new commit
-        expect(commitCount(gitDir)).toBe(before + 1);
-        expect(latestCommitMessage(gitDir)).toBe("empty checkpoint");
+        // No new commit should be created when there is nothing to commit
+        expect(commitCount(gitDir)).toBe(before);
     });
 
     // ── "empty" initial_state ───────────────────────────────────────────────
@@ -227,7 +226,7 @@ describe("gitstore checkpoint", () => {
         expect(content).toBe("local snapshot");
     });
 
-    test("checkpoint creates a commit even on a clean 'empty' repo", async () => {
+    test("checkpoint does not create a commit on a clean 'empty' repo", async () => {
         const capabilities = getTestCapabilities();
 
         // Initialise the empty repo but add no extra files
@@ -238,11 +237,10 @@ describe("gitstore checkpoint", () => {
         await workingRepository.getRepository(capabilities, "local-only-repo2", "empty");
         const before = commitCount(gitDir);
 
-        // No new files – working tree is clean, but --allow-empty still commits
+        // No new files – working tree is clean, no commit should be created
         await checkpoint(capabilities, "local-only-repo2", "empty", "empty repo checkpoint");
 
-        expect(commitCount(gitDir)).toBe(before + 1);
-        expect(latestCommitMessage(gitDir)).toBe("empty repo checkpoint");
+        expect(commitCount(gitDir)).toBe(before);
     });
 
     // ── Mutex (serialisation) ───────────────────────────────────────────────
@@ -258,11 +256,8 @@ describe("gitstore checkpoint", () => {
         const workDir = path.dirname(gitDir);
 
         const order = [];
-        const initialCount = commitCount(gitDir);
 
-        // Fire two checkpoints in parallel.
-        // Because --allow-empty is used, both calls always create a commit,
-        // even if the first one already staged all the pending file changes.
+        // Fire two checkpoints in parallel, each writing a different file.
         const p1 = (async () => {
             await fs.writeFile(path.join(workDir, "concurrent-a.txt"), "from a");
             await checkpoint(
@@ -290,8 +285,11 @@ describe("gitstore checkpoint", () => {
         expect(order).toContain("A");
         expect(order).toContain("B");
 
-        // Two checkpoints → two new commits (--allow-empty guarantees this).
-        expect(commitCount(gitDir)).toBe(initialCount + 2);
+        // Both files must be committed (in one or two commits, depending on timing).
+        const content_a = fileContentAtHead(gitDir, "concurrent-a.txt");
+        const content_b = fileContentAtHead(gitDir, "concurrent-b.txt");
+        expect(content_a).toBe("from a");
+        expect(content_b).toBe("from b");
     });
 
     // ── No temporary work tree ──────────────────────────────────────────────

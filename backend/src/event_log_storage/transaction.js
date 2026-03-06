@@ -26,6 +26,29 @@ const { make: makeEventLogStorage } = require("./class");
 /** @typedef {import("./class").EventLogStorage} EventLogStorage */
 
 /**
+ * Error thrown when a requested entry deletion targets IDs that do not exist
+ * in the event log.
+ */
+class EntryNotFoundError extends Error {
+    /**
+     * @param {string} message
+     */
+    constructor(message) {
+        super(message);
+        this.name = "EntryNotFoundError";
+    }
+}
+
+/**
+ * Type guard for EntryNotFoundError.
+ * @param {unknown} object
+ * @returns {object is EntryNotFoundError}
+ */
+function isEntryNotFoundError(object) {
+    return object instanceof EntryNotFoundError;
+}
+
+/**
  * Appends an array of entries to a specified file.
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
@@ -136,6 +159,15 @@ async function performGitTransaction(
                 const remaining = existing.filter(
                     (e) => !deletedIdStrings.has(e.id.identifier)
                 );
+                const absorbedIds = eventLogStorage.getAbsorbedDeletionIds();
+                const hasExistingDeletion = remaining.length < existing.length;
+                const hasAbsorbedDeletion = Array.from(deletedIdStrings).some(
+                    (id) => absorbedIds.has(id)
+                );
+                if (!hasExistingDeletion && !hasAbsorbedDeletion) {
+                    const ids = Array.from(deletedIdStrings).join(", ");
+                    throw new EntryNotFoundError(`Entry not found: ${ids}`);
+                }
                 remaining.push(...newEntries);
                 await writeEntriesToFile(
                     capabilities,
@@ -228,4 +260,4 @@ async function transaction(capabilities, transformation) {
     }
 }
 
-module.exports = { transaction };
+module.exports = { transaction, isEntryNotFoundError };

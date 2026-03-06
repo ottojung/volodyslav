@@ -5,11 +5,14 @@
 // A checkpoint is simply:
 //
 //   git add --all
-//   git commit --allow-empty -m "$MESSAGE"
+//   git commit -m "$MESSAGE"
 //
 // run against the persistent local working copy.  It is cheaper than a full
 // transaction because there is no clone / push cycle, but it provides no
 // conflict-resolution against a remote – it is purely local.
+//
+// If the working tree is clean (no changes since the last commit), the
+// checkpoint is a no-op: no new commit is created.
 //
 // Use checkpoints when you control the working copy exclusively (e.g.
 // "empty" initial_state repositories such as runtime-state-repository),
@@ -50,8 +53,7 @@ const { gitStoreMutexKey } = require("./mutex");
  * Record the current state of the local working copy as a Git commit.
  *
  * Stages every change (`git add --all`) and commits with the given message.
- * Always creates a commit, even when the working tree is clean, thanks to
- * `--allow-empty`.
+ * If the working tree is already clean, no commit is created (no-op).
  *
  * The call acquires the per-`workingPath` in-process mutex so it is safe to
  * interleave with concurrent `transaction()` calls on the same path.
@@ -79,7 +81,7 @@ async function checkpoint(capabilities, workingPath, initial_state, message) {
         // so the work directory is its parent.
         const workDir = path.dirname(gitDir);
 
-        await commit(capabilities, gitDir, workDir, message, { allowEmpty: true });
+        await commit(capabilities, gitDir, workDir, message);
     });
 }
 
