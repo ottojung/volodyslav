@@ -60,7 +60,6 @@ function stubEnvironment(capabilities) {
         .mockReturnValue("mocked-openai-key");
     capabilities.environment.myServerPort = jest.fn().mockReturnValue(1234);
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn();
-    capabilities.environment.baseUrl = jest.fn().mockReturnValue(undefined);
 }
 
 /**

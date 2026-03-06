@@ -45,26 +45,3 @@ describe('logFile', () => {
     expect(env.logFile()).toBe('');
   });
 });
-
-describe('baseUrl', () => {
-  const original = process.env.VOLODYSLAV_BASEURL;
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env.VOLODYSLAV_BASEURL;
-    } else {
-      process.env.VOLODYSLAV_BASEURL = original;
-    }
-  });
-
-  it('returns undefined when not set', () => {
-    delete process.env.VOLODYSLAV_BASEURL;
-    const env = make();
-    expect(env.baseUrl()).toBeUndefined();
-  });
-
-  it('returns the value when set', () => {
-    process.env.VOLODYSLAV_BASEURL = 'http://localhost:3000/myapp';
-    const env = make();
-    expect(env.baseUrl()).toBe('http://localhost:3000/myapp');
-  });
-});

@@ -88,15 +88,6 @@ function eventLogAssetsRepository() {
 }
 
 /**
- * Returns the base URL for the application, or undefined if not set.
- * When set, both the backend routes and the frontend are served under this URL's pathname.
- * @returns {string | undefined}
- */
-function baseUrl() {
-    return process.env['VOLODYSLAV_BASEURL'];
-}
-
-/**
  * Ensures that the environment is initialized by checking all required variables.
  * @param {Environment} environment - The environment object to check.
  * @throws {EnvironmentError} If any required environment variable is not set.
@@ -130,7 +121,6 @@ function make() {
         eventLogRepository,
         generatorsRepository,
         eventLogAssetsRepository,
-        baseUrl,
     };
 }
 
