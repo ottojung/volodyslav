@@ -212,39 +212,6 @@ async function push(capabilities, workDirectory) {
 }
 
 /**
- * Force-push changes to the remote repository (overwrite remote with local state).
- * @param {Capabilities} capabilities - The capabilities object containing the git command.
- * @param {string} workDirectory - The repository directory to push from
- * @returns {Promise<void>}
- * @throws {PushError} When push operation fails
- */
-async function forcePush(capabilities, workDirectory) {
-    try {
-        await capabilities.git.call(
-            "-C",
-            workDirectory,
-            "-c",
-            "safe.directory=*",
-            "-c",
-            "user.name=volodyslav",
-            "-c",
-            "user.email=volodyslav",
-            "push",
-            "--force",
-            "origin",
-            defaultBranch
-        );
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new PushError(
-            `Failed to force-push to remote repository: ${errorMessage}`,
-            workDirectory,
-            error instanceof Error ? error : null
-        );
-    }
-}
-
-/**
  * Fetch from the remote and hard-reset the local branch to the remote state (discard all local changes).
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to reset
@@ -310,7 +277,6 @@ module.exports = {
     clone,
     pull,
     push,
-    forcePush,
     fetchAndResetHard,
     init,
     PushError,
