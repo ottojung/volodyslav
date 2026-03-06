@@ -1,4 +1,4 @@
-FROM node:25.3
+FROM node:25.8
 WORKDIR /workspace
 RUN apt-get update -y
 RUN apt-get install -y rsync git
