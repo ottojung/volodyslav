@@ -6,6 +6,7 @@ const {
     stringToNodeName,
     stringToSchemaPattern,
     nodeKeyStringToString,
+    nodeNameToString,
     versionToString,
 } = require("./database");
 
@@ -782,11 +783,12 @@ class IncrementalGraphClass {
      * Query conceptual freshness state of a node (debug interface).
      * Note: This is a debug/inspection method that reads directly from storage
      * outside a batch context. This is acceptable for non-critical debug paths.
-     * @param {NodeName} nodeName - The node name (functor only)
+     * @param {string} head - The node head name (functor only)
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
-    async debugGetFreshness(nodeName, bindings = []) {
+    async debugGetFreshness(head, bindings = []) {
+        const nodeName = stringToNodeName(head);
         // Lookup schema to validate nodeName and get arity
         const compiledNode = this.headIndex.get(nodeName);
         if (!compiledNode) {
@@ -810,14 +812,60 @@ class IncrementalGraphClass {
     }
 
     /**
+     * Returns the cached value of a node without triggering recomputation.
+     * Returns undefined if the node has not been materialized.
+     * Note: This is a debug/inspection method that reads directly from storage
+     * outside a batch context. This is acceptable for non-critical debug paths.
+     * @param {string} head - The node head name (functor only)
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @returns {Promise<ComputedValue | undefined>}
+     */
+    async debugGetValue(head, bindings = []) {
+        const nodeName = stringToNodeName(head);
+        // Lookup schema to validate nodeName and get arity
+        const compiledNode = this.headIndex.get(nodeName);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeName);
+        }
+
+        checkArity(compiledNode, bindings);
+
+        // Convert to JSON format key
+        const nodeKey = { head: nodeName, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+
+        // Debug read: directly from storage (acceptable for non-critical inspection)
+        return await this.storage.values.get(concreteKey);
+    }
+
+    /**
+     * Returns all compiled node definitions for inspection (debug interface).
+     * @returns {Array<CompiledNode>}
+     */
+    debugGetSchemas() {
+        return Array.from(this.headIndex.values());
+    }
+
+    /**
+     * Returns the compiled node definition for a single node head, or null if not found.
+     * Accepts a plain string head name; handles NodeName conversion internally.
+     * @param {string} head - The node head name
+     * @returns {CompiledNode | null}
+     */
+    debugGetSchemaByHead(head) {
+        const nodeName = stringToNodeName(head);
+        return this.headIndex.get(nodeName) ?? null;
+    }
+
+    /**
      * List all materialized nodes (canonical names).
-     * @returns {Promise<Array<[NodeName, Array<ConstValue>]>>}
+     * @returns {Promise<Array<[string, Array<ConstValue>]>>}
      */
     async debugListMaterializedNodes() {
         const materializedNodes = await this.storage.listMaterializedNodes();
         return materializedNodes.map((nodeKey) => {
             const parsed = deserializeNodeKey(nodeKey);
-            return [parsed.head, parsed.args];
+            return [nodeNameToString(parsed.head), parsed.args];
         });
     }
 
