@@ -1,12 +1,13 @@
 const express = require("express");
 const { isMissingTimestamp } = require('../generators/incremental_graph');
 
-/** @typedef {import('../generators').Interface} Interface */
+/** @typedef {import('../generators/incremental_graph').IncrementalGraph} IncrementalGraph */
+/** @typedef {import('../generators/incremental_graph/types').ConstValue} ConstValue */
 /** @typedef {import('../generators/incremental_graph/types').CompiledNode} CompiledNode */
 
 /**
  * @typedef {object} Capabilities
- * @property {Interface} interface - The incremental graph interface capability.
+ * @property {import('../generators').Interface} interface - The incremental graph interface capability.
  */
 
 /**
@@ -85,9 +86,9 @@ async function handleGetSchemaByHead(capabilities, req, res) {
 /**
  * Fetches createdAt and modifiedAt for a node using the existing timestamp accessors.
  * Returns null values if no timestamps are recorded for the node.
- * @param {object} graph - The incremental graph instance.
+ * @param {IncrementalGraph} graph - The incremental graph instance.
  * @param {string} head - The node head name.
- * @param {Array<string>} args - The node arguments.
+ * @param {Array<ConstValue>} args - The node arguments.
  * @returns {Promise<{createdAt: string | null, modifiedAt: string | null}>}
  */
 async function fetchTimestamps(graph, head, args) {
