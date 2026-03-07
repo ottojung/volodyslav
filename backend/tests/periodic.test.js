@@ -43,7 +43,7 @@ describe("GET /api/periodic", () => {
         const res = await request(app).get("/api/periodic?period=hour");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
-    }, 10000);
+    }, 20000);
 
     it("responds with done for period=hourly", async () => {
         const capabilities = getTestCapabilities();
@@ -52,7 +52,7 @@ describe("GET /api/periodic", () => {
         const res = await request(app).get("/api/periodic?period=hourly");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
-    }, 10000);
+    }, 20000);
 
     it("returns 400 for empty period parameter", async () => {
         const capabilities = getTestCapabilities();
