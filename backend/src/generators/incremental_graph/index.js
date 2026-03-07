@@ -28,6 +28,8 @@ const {
     isSchemaArityConflict,
     makeInvalidNodeDefError,
     isInvalidNodeDef,
+    makeMissingTimestampError,
+    isMissingTimestamp,
 } = require('./errors');
 const { makeRootDatabase, getRootDatabase, checkpointDatabase, synchronize: synchronizeDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
@@ -88,6 +90,8 @@ module.exports = {
     isSchemaArityConflict,
     makeInvalidNodeDefError,
     isInvalidNodeDef,
+    makeMissingTimestampError,
+    isMissingTimestamp,
     // Migration API
     makeMigrationStorage,
     isMigrationStorage,

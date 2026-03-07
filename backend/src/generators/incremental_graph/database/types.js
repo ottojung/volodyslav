@@ -136,7 +136,15 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter} DatabaseStoredValue
+ * Record storing the creation and last-modification timestamps of a node.
+ * Both timestamps are ISO 8601 strings (e.g. "2026-03-07T10:18:20.735Z").
+ * @typedef {object} TimestampRecord
+ * @property {string} createdAt - ISO string of when the node was first given a value
+ * @property {string} modifiedAt - ISO string of when the node's value last changed
+ */
+
+/**
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord} DatabaseStoredValue
  */
 
 /**
@@ -163,7 +171,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord>} DatabaseBatchOperation
  */
 
 /**

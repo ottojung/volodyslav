@@ -88,6 +88,7 @@ class InMemoryDatabase {
         const inputs = createSublevel("inputs");
         const revdeps = createSublevel("revdeps");
         const counters = createSublevel("counters");
+        const timestamps = createSublevel("timestamps");
 
         return {
             values,
@@ -95,6 +96,7 @@ class InMemoryDatabase {
             inputs,
             revdeps,
             counters,
+            timestamps,
             batch: async (operations) => {
                 for (const op of operations) {
                     if (op.type === "put") {

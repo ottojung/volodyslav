@@ -36,6 +36,7 @@ const {
     makeInvalidUnchangedError,
     makeArityMismatchError,
     makeSchemaPatternNotAllowedError,
+    makeMissingTimestampError,
 } = require("./errors");
 const {
     compileNodeDef,
@@ -56,9 +57,11 @@ const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 const { make: makeSleeper } = require("../../sleeper");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const { withMutex } = require("./lock");
+const { fromISOString } = require("../../datetime");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
+/** @typedef {import('../../datetime').DateTime} DateTime */
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.
@@ -624,6 +627,20 @@ class IncrementalGraphClass {
             const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
             batch.counters.put(nodeKey, newCounter);
             
+            // Record timestamps: creation time on first materialization, modification time on every change
+            const nowIso = new Date().toISOString();
+            if (oldCounter === undefined) {
+                // First time this node gets a value: record both creation and modification times
+                batch.timestamps.put(nodeKey, { createdAt: nowIso, modifiedAt: nowIso });
+            } else {
+                // Re-computation with a new value: update modification time, preserve creation time.
+                // existingTimestamp may be undefined for nodes materialized before timestamp recording
+                // was introduced; in that case nowIso is used as a best-effort creation time.
+                const existingTimestamp = await batch.timestamps.get(nodeKey);
+                const createdAt = existingTimestamp !== undefined ? existingTimestamp.createdAt : nowIso;
+                batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso });
+            }
+
             // Store value
             batch.values.put(nodeKey, computedValue);
             
@@ -800,6 +817,62 @@ class IncrementalGraphClass {
      */
     debugGetDbVersion() {
         return versionToString(this.dbVersion);
+    }
+
+    /**
+     * Get the creation time of a node (when it was first given a value).
+     * Throws MissingTimestampError if the node does not exist or has no recorded timestamps.
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @returns {Promise<DateTime>}
+     */
+    async getCreationTime(nodeName, bindings = []) {
+        ensureNodeNameIsHead(nodeName);
+        const nodeNameTyped = stringToNodeName(nodeName);
+
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeNameTyped);
+        }
+
+        checkArity(compiledNode, bindings);
+
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+
+        const record = await this.storage.timestamps.get(concreteKey);
+        if (record === undefined) {
+            throw makeMissingTimestampError(concreteKey);
+        }
+        return fromISOString(record.createdAt);
+    }
+
+    /**
+     * Get the modification time of a node (when its value last changed).
+     * Throws MissingTimestampError if the node does not exist or has no recorded timestamps.
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @returns {Promise<DateTime>}
+     */
+    async getModificationTime(nodeName, bindings = []) {
+        ensureNodeNameIsHead(nodeName);
+        const nodeNameTyped = stringToNodeName(nodeName);
+
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeNameTyped);
+        }
+
+        checkArity(compiledNode, bindings);
+
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+
+        const record = await this.storage.timestamps.get(concreteKey);
+        if (record === undefined) {
+            throw makeMissingTimestampError(concreteKey);
+        }
+        return fromISOString(record.modifiedAt);
     }
 }
 
