@@ -5,6 +5,8 @@ const {
     isDecisionConflict,
 } = require("../src/generators/incremental_graph");
 const { toJsonKey } = require("./test_json_key_helper");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 
 function makeInMemoryDb(table) {
     const store = new Map();
@@ -99,10 +101,17 @@ function makeYDb(storage) {
     };
 }
 
-const capabilities = {
-    sleeper: { withMutex: async (_name, procedure) => procedure() },
-    checkpointDatabase: jest.fn().mockResolvedValue(undefined),
-};
+/**
+ * Creates test capabilities.
+ * @returns {Promise<object>}
+ */
+async function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    return capabilities;
+}
 
 /**
  * Builds a minimal but representative migration scenario.
@@ -130,11 +139,8 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
 }
 
 describe("runMigration", () => {
-    beforeEach(() => {
-        capabilities.checkpointDatabase.mockClear();
-    });
-
     test("invalidate preserves counters from previous storage", async () => {
+        const capabilities = await getTestCapabilities();
         const previousStorage = makeSchemaStorage();
         const currentStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -170,6 +176,7 @@ describe("runMigration", () => {
 
     describe("fresh database (getMetaVersion returns undefined)", () => {
         test("skips migration and does not call replaceContentsFrom", async () => {
+            const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const currentStorage = makeSchemaStorage();
             const { yDb } = makeYDb(currentStorage);
@@ -188,6 +195,7 @@ describe("runMigration", () => {
         });
 
         test("records current version via setMetaVersion so future upgrades are detected", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yDb } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -203,6 +211,7 @@ describe("runMigration", () => {
         });
 
         test("does not call checkpointDatabase", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yDb } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -220,6 +229,7 @@ describe("runMigration", () => {
 
     describe("no migration needed (version already matches)", () => {
         test("skips migration and does not call replaceContentsFrom", async () => {
+          const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yDb } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -237,6 +247,7 @@ describe("runMigration", () => {
         });
 
         test("does not call checkpointDatabase", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yDb } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -254,6 +265,7 @@ describe("runMigration", () => {
 
     describe("successful migration", () => {
         test("clears y namespace before running the callback", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -283,6 +295,7 @@ describe("runMigration", () => {
         });
 
         test("writes version to y before calling replaceContentsFrom", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -329,6 +342,7 @@ describe("runMigration", () => {
         });
 
         test("calls replaceContentsFrom with the y database", async () => {
+            const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -361,6 +375,7 @@ describe("runMigration", () => {
         });
 
         test("calls checkpointDatabase exactly twice: once before and once after migration", async () => {
+            const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
@@ -372,6 +387,7 @@ describe("runMigration", () => {
         });
 
         test("pre-migration checkpoint message contains both the old and new version", async () => {
+            const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
@@ -389,6 +405,7 @@ describe("runMigration", () => {
         });
 
         test("post-migration checkpoint message contains the new version", async () => {
+            const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
@@ -405,6 +422,7 @@ describe("runMigration", () => {
         });
 
         test("pre-migration checkpoint is called before replaceContentsFrom", async () => {
+            const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.checkpointDatabase.mockImplementation(async (msg) => {
                 callOrder.push(`checkpoint:${msg}`);
