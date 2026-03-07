@@ -141,13 +141,12 @@ class DateTimeClass {
     }
 
     /**
-     * Check if this DateTime equals another DateTime (same instant in time).
-     * Compares by epoch milliseconds only, ignoring zone and locale differences.
+     * Check if this DateTime equals another DateTime.
      * @param {DateTime} other - DateTime to compare with
      * @returns {boolean} True if this DateTime equals the other
      */
     equals(other) {
-        return this._luxonDateTime.valueOf() === other._luxonDateTime.valueOf();
+        return this._luxonDateTime.equals(other._luxonDateTime);
     }
 
     /**
