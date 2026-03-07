@@ -48,7 +48,7 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
     }
 
     try {
-        const caloriesEntry = await capabilities.interface.pull("calories", [id]);
+        const caloriesEntry = await capabilities.interface.getCaloriesForEventId(id);
 
         capabilities.logger.logDebug(
             {

@@ -5,6 +5,7 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
 /** @typedef {import('../incremental_graph/types').ComputedValue} ComputedValue */
 /** @typedef {import('../incremental_graph/types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
@@ -167,15 +168,6 @@ class InterfaceClass {
     }
 
     /**
-     * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<ComputedValue>}
-     */
-    async pull(head, args = []) {
-        return await this._requireInitializedGraph().pull(head, args);
-    }
-
-    /**
      * @returns {Array<import('../incremental_graph/types').CompiledNode>}
      */
     debugGetSchemas() {
@@ -231,6 +223,18 @@ class InterfaceClass {
      */
     async getModificationTime(head, args = []) {
         return await this._requireInitializedGraph().getModificationTime(head, args);
+    }
+
+    /**
+     * @param {string} eventId
+     * @returns {Promise<CaloriesEntry>}
+     */
+    async getCaloriesForEventId(eventId) {
+        const result = await this._requireInitializedGraph().pull("calories", [eventId]);
+        if (result.type !== "calories") {
+            throw new Error("Impossible: expected calories entry");
+        }
+        return result;
     }
 
     /**

@@ -96,7 +96,7 @@ describe("generators/interface", () => {
             ]);
             await iface.update();
 
-            const result = await iface.pull("all_events");
+            const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
             expect(result.events).toHaveLength(2);
             expect(result.events[0].id.identifier).toBe("event-1");
@@ -116,7 +116,7 @@ describe("generators/interface", () => {
             ]);
             await iface.update();
 
-            let result = await iface.pull("all_events");
+            let result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(1);
             expect(result.events[0].id.identifier).toBe("event-1");
 
@@ -125,7 +125,7 @@ describe("generators/interface", () => {
             await writeEventsToStore(capabilities, [makeEvent("event-2", "new event")]);
             await iface.update();
 
-            result = await iface.pull("all_events");
+            result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(2);
             const ids = result.events.map((e) => e.id.identifier);
             expect(ids).toContain("event-1");
@@ -142,7 +142,7 @@ describe("generators/interface", () => {
 
             await iface.update();
 
-            const result = await iface.pull("all_events");
+            const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
             expect(result.events).toHaveLength(0);
 
@@ -184,7 +184,7 @@ describe("generators/interface", () => {
             expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
             expect(rawDatabases[1].open).toHaveBeenCalled();
             expect(iface.isInitialized()).toBe(true);
-            await expect(iface.pull("all_events")).resolves.toMatchObject({
+            await expect(iface._incrementalGraph.pull("all_events")).resolves.toMatchObject({
                 type: "all_events",
                 events: [],
             });
@@ -250,7 +250,7 @@ describe("generators/interface", () => {
             expect(context).toHaveLength(1);
 
             // Verify that event_context was computed in the incremental graph
-            const eventContextEntry = await iface.pull("event_context");
+            const eventContextEntry = await iface._incrementalGraph.pull("event_context");
             expect(eventContextEntry).toBeDefined();
             expect(eventContextEntry.type).toBe("event_context");
             expect(eventContextEntry.contexts).toHaveLength(1);
