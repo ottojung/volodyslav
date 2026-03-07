@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Box, VStack, Heading, Text, Select, Spinner, Divider } from '@chakra-ui/react';
+import { Button, Box, VStack, Text, Select, Spinner, Divider } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { postSync } from './Sync/api.js';
 import { fetchVersion } from './version_api.js';
