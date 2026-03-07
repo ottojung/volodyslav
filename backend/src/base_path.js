@@ -10,6 +10,27 @@ const path = require("path");
 let cachedBasePath;
 
 /**
+ * Extracts the path prefix from a raw VOLODYSLAV_BASEURL value.
+ * Accepts a full URL (https://example.com/app) or a plain path (/app).
+ * Returns empty string for root or invalid values.
+ * @param {string} raw
+ * @returns {string}
+ */
+function extractBasePath(raw) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        return "";
+    }
+    try {
+        const url = new URL(trimmed);
+        return url.pathname.replace(/\/+$/, "");
+    } catch {
+        const p = trimmed.startsWith("/") ? trimmed : "/" + trimmed;
+        return p.replace(/\/+$/, "");
+    }
+}
+
+/**
  * Reads the base path prefix from the BASE_PATH file located alongside the
  * VERSION file. Returns an empty string if the file does not exist (development).
  * @param {Capabilities} capabilities
@@ -20,7 +41,7 @@ async function readBasePathFromFile(capabilities) {
     try {
         const file = await capabilities.checker.instantiate(basePathFilePath);
         const content = await capabilities.reader.readFileAsText(file.path);
-        return content.trim();
+        return extractBasePath(content);
     } catch {
         return "";
     }

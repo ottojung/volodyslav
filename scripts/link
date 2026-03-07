@@ -34,25 +34,8 @@ else
 fi
 echo "$VERSION" > "$PREFIX"/share/volodyslav/source/VERSION
 
-# Capture the base path from VOLODYSLAV_BASEURL and store it for the installed version
-BASE_URL="${VOLODYSLAV_BASEURL:-}"
-if [ -n "$BASE_URL" ]
-then
-    BASE_PATH=$(node -e "
-        const u = process.env['VOLODYSLAV_BASEURL'] || '';
-        try {
-            const url = new URL(u);
-            process.stdout.write(url.pathname.replace(/\/+\$/, ''));
-        } catch (_) {
-            let p = u;
-            if (!p.startsWith('/')) { p = '/' + p; }
-            process.stdout.write(p.replace(/\/+\$/, ''));
-        }
-    ")
-else
-    BASE_PATH=""
-fi
-printf '%s' "$BASE_PATH" > "$PREFIX"/share/volodyslav/source/BASE_PATH
+# Store the full VOLODYSLAV_BASEURL for the installed version
+printf '%s' "${VOLODYSLAV_BASEURL:-}" > "$PREFIX"/share/volodyslav/source/BASE_PATH
 
 # Remove .git to avoid broken references in submodule setups
 rm -rf -- "$PREFIX"/share/volodyslav/source/.git
