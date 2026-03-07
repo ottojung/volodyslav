@@ -20,6 +20,7 @@ const { makeMigrationStorage } = require("./migration_storage");
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
+/** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').NodeName} NodeName */
@@ -99,8 +100,14 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;
 
-        // Write inputs record (all non-deleted nodes keep their graph structure).
+        // Copy inputs record (all non-deleted nodes keep their graph structure).
         ops.push(newStorage.inputs.putOp(nodeKey, inputsRecord));
+
+        // Copy timestamps — preserve creation and modification history across migration.
+        const timestamp = await prevStorage.timestamps.get(nodeKey);
+        if (timestamp !== undefined) {
+            ops.push(newStorage.timestamps.putOp(nodeKey, timestamp));
+        }
 
         if (decision.kind === "keep") {
             const value = await prevStorage.values.get(nodeKey);

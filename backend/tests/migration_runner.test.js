@@ -27,6 +27,7 @@ function makeSchemaStorage() {
     const inputs = makeInMemoryDb("inputs");
     const revdeps = makeInMemoryDb("revdeps");
     const counters = makeInMemoryDb("counters");
+    const timestamps = makeInMemoryDb("timestamps");
 
     return {
         values,
@@ -34,6 +35,7 @@ function makeSchemaStorage() {
         inputs,
         revdeps,
         counters,
+        timestamps,
         async batch(operations) {
             for (const operation of operations) {
                 values.apply(operation);
@@ -41,6 +43,7 @@ function makeSchemaStorage() {
                 inputs.apply(operation);
                 revdeps.apply(operation);
                 counters.apply(operation);
+                timestamps.apply(operation);
             }
         },
     };
@@ -634,6 +637,9 @@ async function captureStorageSnapshot(storage) {
     for await (const key of storage.revdeps.keys()) {
         snapshot[`revdeps:${key}`] = await storage.revdeps.get(key);
     }
+    for await (const key of storage.timestamps.keys()) {
+        snapshot[`timestamps:${key}`] = await storage.timestamps.get(key);
+    }
     return snapshot;
 }
 
@@ -644,21 +650,29 @@ async function populateNode(storage, nodeKey, {
     inputs = [],
     inputCounters = [],
     counter = 1,
+    timestamps = undefined,
 } = {}) {
     await storage.values.put(nodeKey, value);
     await storage.freshness.put(nodeKey, freshness);
     await storage.inputs.put(nodeKey, { inputs, inputCounters });
     await storage.counters.put(nodeKey, counter);
+    if (timestamps !== undefined) {
+        await storage.timestamps.put(nodeKey, timestamps);
+    }
 }
 
 /** Build a two-node graph where B depends on A (A → B). */
-async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB) {
-    await populateNode(storage, nodeKeyA, { counter: 3 });
+async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
+    timestampA = undefined,
+    timestampB = undefined,
+} = {}) {
+    await populateNode(storage, nodeKeyA, { counter: 3, timestamps: timestampA });
     await populateNode(storage, nodeKeyB, {
         inputs: [nodeKeyA],
         inputCounters: [3],
         counter: 7,
         freshness: "potentially-outdated",
+        timestamps: timestampB,
     });
     await storage.revdeps.put(nodeKeyA, [nodeKeyB]);
 }
