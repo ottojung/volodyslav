@@ -12,6 +12,7 @@ const {
     getRootDatabase,
     runMigration,
     synchronizeDatabase: synchronizeIncrementalGraphDatabase,
+    withMutex,
 } = require("../incremental_graph");
 const {
     createDefaultGraphDefinition,
@@ -131,6 +132,20 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async synchronizeDatabase(options) {
+        withMutex(this._getCapabilities().sleeper, async () => {
+            await this._synchronizeDatabaseNoLock(options);
+        });
+    }
+
+    /**
+     * Internal method to synchronize the database without acquiring the mutex.
+     * Callers should use `synchronizeDatabase()` which wraps this in a mutex to prevent concurrent access to LevelDB files while git is synchronizing.
+     *
+     * @private
+     * @param {{ resetToTheirs?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async _synchronizeDatabaseNoLock(options) {
         const capabilities = this._getCapabilities();
         const database = this._database;
         if (database === null) {
