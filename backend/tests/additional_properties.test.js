@@ -60,7 +60,7 @@ async function makeUninitializedApp(defaultCalories = 0) {
     await stubEventLogRepository(capabilities);
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
-    addRoutes(capabilities, app);
+    await addRoutes(capabilities, app);
     return { app, capabilities };
 }
 
