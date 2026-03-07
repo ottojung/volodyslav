@@ -31,7 +31,7 @@ const {
     makeMissingTimestampError,
     isMissingTimestamp,
 } = require('./errors');
-const { makeRootDatabase, getRootDatabase, checkpointDatabase, synchronize: synchronizeDatabase } = require('./database');
+const { makeRootDatabase, getRootDatabase, synchronize: synchronizeDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration } = require('./migration_runner');
 const { withMutex } = require('./lock');
@@ -64,7 +64,6 @@ const { migrationCallback } = require('./migration');
 module.exports = {
     makeRootDatabase,
     getRootDatabase,
-    checkpointDatabase,
     makeIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,

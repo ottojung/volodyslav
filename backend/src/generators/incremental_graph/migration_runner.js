@@ -12,6 +12,7 @@ const { compileNodeDef } = require("./compiled_node");
 const { stringToNodeKeyString } = require("./database");
 const { withMutex } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
+const { checkpointDatabase } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -27,12 +28,35 @@ const { makeMigrationStorage } = require("./migration_storage");
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./migration_storage').Decision} Decision */
-/** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+
+/**
+ * @typedef {import("../../logger").Logger} Logger
+ * @typedef {import("../../level_database").LevelDatabase} LevelDatabase
+ * @typedef {import("../../environment").Environment} Environment
+ * @typedef {import("../../filesystem/reader").FileReader} FileReader
+ * @typedef {import("../../filesystem/checker").FileChecker} FileChecker
+ * @typedef {import("../../filesystem/creator").FileCreator} FileCreator
+ * @typedef {import("../../filesystem/deleter").FileDeleter} FileDeleter
+ * @typedef {import("../../filesystem/writer").FileWriter} FileWriter
+ * @typedef {import("../../filesystem/copier").FileCopier} FileCopier
+ * @typedef {import("../../filesystem/appender").FileAppender} FileAppender
+ * @typedef {import("../../subprocess/command").Command} Command
+ * @typedef {import("../../sleeper").SleepCapability} SleepCapability
+ * @typedef {import("../../datetime").Datetime} Datetime
+ * @typedef {import("../../ai/calories").AICalories} AICalories
+ */
 
 /**
  * @typedef {object} Capabilities
+ * @property {Logger} logger - Logger for informational messages during migration.
  * @property {SleepCapability} sleeper - Sleeper capability for mutex operations.
- * @property {(message: string) => Promise<void>} checkpointDatabase - Creates a git checkpoint of the database.
+ * @property {FileChecker} checker - A file checker instance
+ * @property {FileCreator} creator - A file creator instance
+ * @property {FileDeleter} deleter - A file deleter instance
+ * @property {Command} git - A command instance for Git operations.
+ * @property {FileWriter} writer - A file writer instance
+ * @property {Environment} environment - An environment instance
+ * @property {Datetime} datetime - Datetime utilities.
  */
 
 /**
@@ -200,8 +224,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         return;
     }
 
+    capabilities.logger.logInfo({
+        prevVersion, currentVersion
+    }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
+
     // Snapshot the database state before migration starts.
-    await capabilities.checkpointDatabase(`pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`);
+    await checkpointDatabase(capabilities, `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`);
 
     // Create the staging namespace ("y") from the same underlying database.
     const nextDb = rootDatabase.withNamespace('y');
@@ -243,7 +271,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
     await rootDatabase.replaceContentsFrom(nextDb);
 
     // Snapshot the database state after migration completes successfully.
-    await capabilities.checkpointDatabase(`post-migration: ${String(currentVersion)}`);
+    await checkpointDatabase(capabilities, `post-migration: ${String(currentVersion)}`);
+
+    capabilities.logger.logInfo({
+        prevVersion, currentVersion
+    }, `Migration from ${String(prevVersion)} to ${String(currentVersion)} completed successfully.`);
 }
 
 module.exports = {

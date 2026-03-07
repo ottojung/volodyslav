@@ -10,7 +10,6 @@ const {
     makeIncrementalGraph,
     getRootDatabase,
     runMigration,
-    checkpointDatabase,
 } = require("../incremental_graph");
 const {
     createDefaultGraphDefinition,
@@ -85,13 +84,8 @@ class InterfaceClass {
         const nodeDefs = createDefaultGraphDefinition(capabilities);
 
         // Step 3: run migration (no-op on fresh/same version).
-        const migrationCapabilities = {
-            sleeper: capabilities.sleeper,
-            checkpointDatabase: (/** @type {string} */ message) =>
-                checkpointDatabase(capabilities, message),
-        };
         await runMigration(
-            migrationCapabilities,
+            capabilities,
             database,
             nodeDefs,
             migrationCallback(capabilities),
