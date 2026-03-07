@@ -11,7 +11,7 @@ const { DateTime: LuxonDateTime } = require("luxon");
  */
 
 function now() {
-    return fromLuxon(LuxonDateTime.now().toUTC());
+    return fromLuxon(LuxonDateTime.now());
 }
 
 function timeZone() {

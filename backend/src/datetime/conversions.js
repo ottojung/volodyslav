@@ -10,7 +10,7 @@ const { DateTime: LuxonDateTime } = require("luxon");
  * @returns {DateTime}
  */
 function fromISOString(iso) {
-    return fromLuxon(LuxonDateTime.fromISO(iso, { setZone: true }));
+    return fromLuxon(LuxonDateTime.fromISO(iso));
 }
 
 /**
