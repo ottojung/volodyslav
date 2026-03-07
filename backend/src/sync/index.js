@@ -116,12 +116,12 @@ async function synchronizeAll(capabilities, options) {
         errors.push(new EventLogSyncError(cause));
     });
 
-    await assets.synchronize(capabilities).catch((cause) => {
-        errors.push(new AssetsSyncError(cause));
-    });
-
     await synchronizeDatabase(capabilities, options).catch((cause) => {
         errors.push(new GeneratorsSyncError(cause));
+    });
+
+    await assets.synchronize(capabilities).catch((cause) => {
+        errors.push(new AssetsSyncError(cause));
     });
 
     if (errors.length > 0) {
