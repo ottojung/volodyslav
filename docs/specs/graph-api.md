@@ -110,24 +110,29 @@ Returns the schema entry for a single node family.
 
 ### 3.3 `GET /api/graph/nodes`
 
-Lists all currently materialized node instances with their freshness status.
-**Does not trigger recomputation.**
+Lists all currently materialized node instances with their freshness status and
+timestamps. **Does not trigger recomputation.**
 
 **Response `200 OK`:**
 
 ```json
 [
-  { "head": "all_events", "args": [],              "freshness": "up-to-date" },
-  { "head": "meta_events", "args": [],             "freshness": "up-to-date" },
-  { "head": "event_context", "args": [],           "freshness": "potentially-outdated" },
-  { "head": "event",   "args": ["evt-abc123"],     "freshness": "up-to-date" },
-  { "head": "event",   "args": ["evt-def456"],     "freshness": "up-to-date" },
-  { "head": "calories","args": ["evt-abc123"],     "freshness": "up-to-date" },
-  { "head": "calories","args": ["evt-def456"],     "freshness": "potentially-outdated" }
+  { "head": "all_events", "args": [],              "freshness": "up-to-date",           "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-02T00:00:00.000Z" },
+  { "head": "meta_events", "args": [],             "freshness": "up-to-date",           "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" },
+  { "head": "event_context", "args": [],           "freshness": "potentially-outdated", "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" },
+  { "head": "event",   "args": ["evt-abc123"],     "freshness": "up-to-date",           "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" },
+  { "head": "event",   "args": ["evt-def456"],     "freshness": "up-to-date",           "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" },
+  { "head": "calories","args": ["evt-abc123"],     "freshness": "up-to-date",           "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" },
+  { "head": "calories","args": ["evt-def456"],     "freshness": "potentially-outdated", "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" }
 ]
 ```
 
 `freshness` is one of `"up-to-date"` | `"potentially-outdated"`.
+
+`createdAt` and `modifiedAt` are ISO 8601 timestamp strings recording when the
+node instance was first computed and when its value last changed, respectively.
+Both fields are `null` for nodes that were materialized before timestamp
+recording was introduced.
 
 Values are not included in this listing.  Node values can be large (e.g.
 `all_events` contains the full event log) and fetching them in bulk would be
@@ -148,7 +153,9 @@ single materialized instance including its cached value.
   "head": "all_events",
   "args": [],
   "freshness": "up-to-date",
-  "value": { "type": "all_events", "events": [ { "..." } ] }
+  "value": { "type": "all_events", "events": [ { "..." } ] },
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "modifiedAt": "2024-01-02T00:00:00.000Z"
 }
 ```
 
@@ -160,8 +167,8 @@ filtered result of §3.3 (no values).
 
 ```json
 [
-  { "head": "calories", "args": ["evt-abc123"], "freshness": "up-to-date" },
-  { "head": "calories", "args": ["evt-def456"], "freshness": "potentially-outdated" }
+  { "head": "calories", "args": ["evt-abc123"], "freshness": "up-to-date",           "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" },
+  { "head": "calories", "args": ["evt-def456"], "freshness": "potentially-outdated", "createdAt": "2024-01-01T00:00:00.000Z", "modifiedAt": "2024-01-01T00:00:00.000Z" }
 ]
 ```
 
@@ -193,7 +200,9 @@ an argument value.
   "head": "calories",
   "args": ["evt-abc123"],
   "freshness": "up-to-date",
-  "value": { "type": "calories", "calories": 412 }
+  "value": { "type": "calories", "calories": 412 },
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "modifiedAt": "2024-01-02T00:00:00.000Z"
 }
 ```
 
@@ -219,8 +228,8 @@ any method that may trigger recomputation.  They may only call:
 - `graph.headIndex` — to resolve schema info
 - `graph.debugListMaterializedNodes()` — to enumerate instances
 - `graph.debugGetFreshness(head, args)` — to get freshness of one node
-- A new `graph.debugGetValue(head, args)` method (see §5) — to read a cached
-  value without triggering recomputation
+- `graph.debugGetValue(head, args)` — to read a cached value without triggering recomputation
+- `graph.debugGetTimestamps(head, args)` — to read timestamps without triggering recomputation
 
 This protects against accidentally triggering expensive computors (e.g. OpenAI
 API calls for `calories`) merely by browsing the inspection endpoint.
