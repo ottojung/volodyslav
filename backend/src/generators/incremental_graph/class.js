@@ -57,11 +57,12 @@ const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 const { make: makeSleeper } = require("../../sleeper");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const { withMutex } = require("./lock");
-const { fromISOString } = require("../../datetime");
+const { make: makeDatetime, fromISOString } = require("../../datetime");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 /** @typedef {import('../../datetime').DateTime} DateTime */
+/** @typedef {import('../../datetime').Datetime} Datetime */
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.
@@ -174,6 +175,13 @@ class IncrementalGraphClass {
     sleeper;
 
     /**
+     * Datetime capability for getting current time.
+     * @private
+     * @type {Datetime}
+     */
+    datetime;
+
+    /**
      * @constructor
      * @param {RootDatabase} rootDatabase - The root database instance
      * @param {Array<NodeDef>} nodeDefs - Unified node definitions
@@ -209,6 +217,9 @@ class IncrementalGraphClass {
 
         // Initialize sleeper for thread-safe operations
         this.sleeper = makeSleeper();
+
+        // Initialize datetime capability for timestamp recording
+        this.datetime = makeDatetime();
     }
 
     /**
@@ -628,7 +639,7 @@ class IncrementalGraphClass {
             batch.counters.put(nodeKey, newCounter);
             
             // Record timestamps: creation time on first materialization, modification time on every change
-            const nowIso = new Date().toISOString();
+            const nowIso = this.datetime.now().toISOString();
             if (oldCounter === undefined) {
                 // First time this node gets a value: record both creation and modification times
                 batch.timestamps.put(nodeKey, { createdAt: nowIso, modifiedAt: nowIso });
