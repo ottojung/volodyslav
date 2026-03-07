@@ -1,7 +1,7 @@
 const path = require("path");
 const defaultBranch = require("../src/gitstore/default_branch");
-const os = require("os");
-const fs = require("fs").promises;
+
+/** @typedef {import("../src/capabilities/root").Capabilities} Capabilities */
 
 /**
  * Creates a test repository for use as the generators database remote.
@@ -10,7 +10,7 @@ const fs = require("fs").promises;
  * `capabilities.environment.generatorsRepository()`, so tests that exercise
  * generator synchronization need to initialize one explicitly.
  *
- * @param {object} capabilities
+ * @param {Capabilities} capabilities
  * @returns {Promise<void>}
  */
 async function stubGeneratorsRepository(capabilities) {
@@ -18,7 +18,13 @@ async function stubGeneratorsRepository(capabilities) {
 
     await capabilities.git.call("init", "--bare", "--", gitDir);
 
-    const workTree = await fs.mkdtemp(path.join(os.tmpdir(), "jest-generators-worktree-"));
+    const workTree = path.join(
+        capabilities.environment.workingDirectory(),
+        "generators-remote-bootstrap"
+    );
+    if (await capabilities.checker.directoryExists(workTree)) {
+        await capabilities.deleter.deleteDirectory(workTree);
+    }
     await capabilities.creator.createDirectory(workTree);
     await capabilities.git.call(
         "init",
