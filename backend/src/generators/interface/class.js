@@ -11,7 +11,7 @@ const {
     makeIncrementalGraph,
     getRootDatabase,
     runMigration,
-    synchronizeDatabase: synchronizeIncrementalGraphDatabase,
+    synchronizeNoLock,
     withMutex,
 } = require("../incremental_graph");
 const {
@@ -149,7 +149,7 @@ class InterfaceClass {
         const capabilities = this._getCapabilities();
         const database = this._database;
         if (database === null) {
-            await synchronizeIncrementalGraphDatabase(capabilities, options);
+            await synchronizeNoLock(capabilities, options);
             return;
         }
 
@@ -157,7 +157,7 @@ class InterfaceClass {
 
         try {
             await database.close();
-            await synchronizeIncrementalGraphDatabase(capabilities, options);
+            await synchronizeNoLock(capabilities, options);
         } catch (error) {
             synchronizeFailure = error;
         }

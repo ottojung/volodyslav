@@ -8,6 +8,7 @@ const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nod
 const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const { checkpointDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('./gitstore');
+const { synchronizeNoLock } = require('./synchronize');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
@@ -100,4 +101,5 @@ module.exports = {
     stringToSchemaPattern,
     versionToString,
     stringToVersion,
+    synchronizeNoLock,
 };
