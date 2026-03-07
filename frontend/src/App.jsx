@@ -110,8 +110,6 @@ function App() {
   return (
     <Box p={6}>
       <VStack spacing={4} align="stretch">
-        <Heading>Hello, world!</Heading>
-        
         {isInstallable && (
           <Box p={4} bg="blue.50" borderRadius="md" border="1px" borderColor="blue.200">
             <Text mb={2} fontSize="sm" color="blue.800">
