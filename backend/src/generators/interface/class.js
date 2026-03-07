@@ -20,6 +20,21 @@ const {
     migrationCallback,
 } = require("../incremental_graph");
 
+class SynchronizeDatabaseError extends Error {
+    /**
+     * @param {unknown} synchronizeCause
+     * @param {unknown} reopenCause
+     */
+    constructor(synchronizeCause, reopenCause) {
+        super(
+            `Interface database sync failed: ${synchronizeCause}; reopening database failed: ${reopenCause}`
+        );
+        this.name = "SynchronizeDatabaseError";
+        this.synchronizeCause = synchronizeCause;
+        this.reopenCause = reopenCause;
+    }
+}
+
 /**
  * An interface for direct database operations.
  *
@@ -123,14 +138,33 @@ class InterfaceClass {
             return;
         }
 
-        this._database = null;
-        this._incrementalGraph = null;
+        let synchronizeFailure = null;
 
         try {
             await database.close();
             await synchronizeIncrementalGraphDatabase(capabilities, options);
-        } finally {
+        } catch (error) {
+            synchronizeFailure = error;
+        }
+
+        this._database = null;
+        this._incrementalGraph = null;
+
+        let reopenFailure = null;
+        try {
             await this.ensureInitialized();
+        } catch (error) {
+            reopenFailure = error;
+        }
+
+        if (reopenFailure !== null) {
+            if (synchronizeFailure !== null) {
+                throw new SynchronizeDatabaseError(synchronizeFailure, reopenFailure);
+            }
+            throw reopenFailure;
+        }
+        if (synchronizeFailure !== null) {
+            throw synchronizeFailure;
         }
     }
 

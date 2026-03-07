@@ -2,8 +2,6 @@
  * Tests for generators/interface module.
  */
 
-const fs = require("fs");
-const { execFileSync } = require("child_process");
 const {
     makeInterface,
     isInterface,
@@ -28,7 +26,7 @@ async function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     await stubEventLogRepository(capabilities);
-    initializeGeneratorsRemote(capabilities);
+    await initializeGeneratorsRemote(capabilities);
     return capabilities;
 }
 
@@ -36,14 +34,23 @@ async function getTestCapabilities() {
  * Initializes a local git repository to act as the generators sync remote.
  * @param {object} capabilities
  */
-function initializeGeneratorsRemote(capabilities) {
+async function initializeGeneratorsRemote(capabilities) {
     const remotePath = capabilities.environment.generatorsRepository();
-    fs.mkdirSync(remotePath, { recursive: true });
-    execFileSync("git", ["init", "-b", "master"], { cwd: remotePath });
-    execFileSync(
-        "git",
-        ["-c", "user.name=volodyslav", "-c", "user.email=volodyslav", "commit", "--allow-empty", "-m", "Initial empty commit"],
-        { cwd: remotePath }
+    await capabilities.creator.createDirectory(remotePath);
+    await capabilities.git.call("-C", remotePath, "-c", "safe.directory=*", "init", "-b", "master");
+    await capabilities.git.call(
+        "-C",
+        remotePath,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=test-user",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "Initial empty commit",
     );
 }
 
@@ -184,8 +191,8 @@ describe("generators/interface", () => {
                 const db = originalInitialize(databasePath);
                 const originalOpen = db.open.bind(db);
                 const originalClose = db.close.bind(db);
-                db.open = jest.fn(async () => await originalOpen());
-                db.close = jest.fn(async () => await originalClose());
+                db.open = jest.fn(() => originalOpen());
+                db.close = jest.fn(() => originalClose());
                 rawDatabases.push(db);
                 return db;
             });
