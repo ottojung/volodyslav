@@ -28,6 +28,17 @@ function makeMockCompiledNode(head, arity, overrides = {}) {
     };
 }
 
+const { makeMissingTimestampError } = require("../src/generators/incremental_graph");
+
+/**
+ * Creates a mock DateTime-like object with a toISOString() method.
+ * @param {string} iso
+ * @returns {object}
+ */
+function makeMockDateTime(iso) {
+    return { toISOString: () => iso };
+}
+
 /**
  * Builds a minimal mock IncrementalGraph for testing.
  * @param {object} [opts]
@@ -58,9 +69,21 @@ function makeMockIncrementalGraph({
             const key = JSON.stringify({ head, args });
             return values.get(key);
         }),
-        debugGetTimestamps: jest.fn().mockImplementation(async (head, args) => {
+        getCreationTime: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
-            return timestamps.get(key) ?? null;
+            const record = timestamps.get(key);
+            if (record === undefined) {
+                throw makeMissingTimestampError(key);
+            }
+            return makeMockDateTime(record.createdAt);
+        }),
+        getModificationTime: jest.fn().mockImplementation(async (head, args) => {
+            const key = JSON.stringify({ head, args });
+            const record = timestamps.get(key);
+            if (record === undefined) {
+                throw makeMissingTimestampError(key);
+            }
+            return makeMockDateTime(record.modifiedAt);
         }),
     };
 }
