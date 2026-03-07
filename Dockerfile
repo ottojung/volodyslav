@@ -11,5 +11,6 @@ COPY backend/package.json ./backend/
 RUN npm ci
 COPY . .
 ARG VOLODYSLAV_BASEURL='/volodyslav'
-RUN sh scripts/install /usr/local
+RUN npm run build
+RUN sh scripts/link /usr/local
 ENTRYPOINT [ "volodyslav" ]
