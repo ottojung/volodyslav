@@ -54,15 +54,15 @@ const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
-const { make: makeSleeper } = require("../../sleeper");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const { withMutex } = require("./lock");
-const { make: makeDatetime, fromISOString } = require("../../datetime");
+const { fromISOString } = require("../../datetime");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 /** @typedef {import('../../datetime').DateTime} DateTime */
 /** @typedef {import('../../datetime').Datetime} Datetime */
+/** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 
 /**
  * Ensures the public API receives a node name (head) rather than a schema pattern.
@@ -183,10 +183,11 @@ class IncrementalGraphClass {
 
     /**
      * @constructor
+     * @param {IncrementalGraphCapabilities} capabilities - Capabilities for the incremental graph
      * @param {RootDatabase} rootDatabase - The root database instance
      * @param {Array<NodeDef>} nodeDefs - Unified node definitions
      */
-    constructor(rootDatabase, nodeDefs) {
+    constructor(capabilities, rootDatabase, nodeDefs) {
         // Compile all node definitions
         const compiledNodes = nodeDefs.map(compileNodeDef);
 
@@ -215,11 +216,9 @@ class IncrementalGraphClass {
         // Initialize instantiation cache with LRU eviction
         this.concreteInstantiations = makeConcreteNodeCache();
 
-        // Initialize sleeper for thread-safe operations
-        this.sleeper = makeSleeper();
-
-        // Initialize datetime capability for timestamp recording
-        this.datetime = makeDatetime();
+        // Use provided capabilities for sleeper and datetime
+        this.sleeper = capabilities.sleeper;
+        this.datetime = capabilities.datetime;
     }
 
     /**
@@ -890,12 +889,13 @@ class IncrementalGraphClass {
 /**
  * Factory function to create an IncrementalGraph instance.
  *
+ * @param {IncrementalGraphCapabilities} capabilities - Capabilities for the incremental graph
  * @param {RootDatabase} rootDatabase - The root database instance
  * @param {Array<NodeDef>} nodeDefs - Unified node definitions
  * @returns {IncrementalGraphClass}
  */
-function makeIncrementalGraph(rootDatabase, nodeDefs) {
-    return new IncrementalGraphClass(rootDatabase, nodeDefs);
+function makeIncrementalGraph(capabilities, rootDatabase, nodeDefs) {
+    return new IncrementalGraphClass(capabilities, rootDatabase, nodeDefs);
 }
 
 /**
