@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button, Box, VStack, Heading, Text, Select, Spinner, Divider } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { postSync } from './Sync/api.js';
+import { fetchVersion } from './version_api.js';
 
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -10,6 +11,8 @@ function App() {
   const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState('');
+  const [version, setVersion] = useState('');
+  const [versionState, setVersionState] = useState('loading');
 
   useEffect(() => {
     // @ts-expect-error - beforeinstallprompt is a browser API not in TS types
@@ -33,6 +36,28 @@ function App() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchVersion().then((nextVersion) => {
+      if (!isMounted) {
+        return;
+      }
+
+      if (nextVersion === null) {
+        setVersionState('error');
+        return;
+      }
+
+      setVersion(nextVersion);
+      setVersionState('ready');
+    });
+
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -139,6 +164,27 @@ function App() {
             <Text fontSize="sm" color="red.600" textAlign="center">{syncError}</Text>
           )}
         </VStack>
+
+        <Box pt={4}>
+          <Divider mb={4} />
+          <Box
+            alignSelf="center"
+            bg="gray.50"
+            border="1px solid"
+            borderColor="gray.200"
+            borderRadius="full"
+            px={4}
+            py={2}
+          >
+            <Text fontSize="xs" color="gray.600" textAlign="center">
+              {versionState === 'ready'
+                ? `Volodyslav ${version}`
+                : versionState === 'error'
+                  ? 'Volodyslav version unavailable'
+                  : 'Loading Volodyslav version…'}
+            </Text>
+          </Box>
+        </Box>
       </VStack>
     </Box>
   );
