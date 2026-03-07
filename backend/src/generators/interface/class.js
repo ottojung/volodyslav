@@ -23,7 +23,7 @@ const { createDefaultGraphDefinition } = require("./default_graph");
 const { migrationCallback } = require("../incremental_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 
-/** Interface for direct incremental-graph operations. */
+/** Interface that encapsulates incremental-graph operations. */
 class InterfaceClass {
     /**
      * Lazy getter for the capabilities object, captured at construction time.

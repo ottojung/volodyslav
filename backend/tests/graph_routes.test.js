@@ -40,7 +40,7 @@ function makeMockDateTime(iso) {
 }
 
 /**
- * Builds a minimal mock interface-backed graph accessor for testing.
+ * Builds a minimal mock interface implementation for graph route testing.
  * @param {object} [opts]
  * @param {Map<string, object>} [opts.headIndex] - schema map
  * @param {Array<[string, Array<string>]>} [opts.materialized] - list of materialized nodes
