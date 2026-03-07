@@ -21,13 +21,7 @@ const { createDefaultGraphDefinition } = require("./default_graph");
 const { migrationCallback } = require("../incremental_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 
-/**
- * An interface for direct database operations.
- *
- * Created synchronously via `makeInterface(() => capabilities)` — the same lazy
- * getter pattern used by `checker`, `logger`, and other capabilities.  Call
- * `ensureInitialized()` once before invoking any other method.
- */
+/** Interface for direct incremental-graph operations. */
 class InterfaceClass {
     /**
      * Lazy getter for the capabilities object, captured at construction time.
@@ -61,34 +55,29 @@ class InterfaceClass {
     }
 
     /**
-     * The live incremental graph.  Available after ensureInitialized().
-     * @returns {IncrementalGraph | null}
+     * @returns {boolean}
      */
-    get incrementalGraph() {
-        return this._incrementalGraph;
+    isInitialized() {
+        return this._incrementalGraph !== null;
     }
 
     /**
-     * Opens the database and runs any pending migration.  Idempotent —
-     * subsequent calls are no-ops.
-     *
-     * Boot sequence:
-     * 1. Open the database via the gitstore-aware path.
-     * 2. Build node defs.  The `all_events` computor reads directly from the
-     *    event-log gitstore on each recompute.
-     * 3. Run migration (no-op on fresh/same version).
-     * 4. Wire up IncrementalGraph against the now-current x-namespace data.
-     *
-     * @returns {Promise<void>}
+     * @private
+     * @returns {IncrementalGraph}
      */
+    _requireInitializedGraph() {
+        if (this._incrementalGraph === null) {
+            throw new Error("Impossible: expected non-null");
+        }
+        return this._incrementalGraph;
+    }
+
+    /** @returns {Promise<void>} */
     async ensureInitialized() {
         await this._ensureInitialized(runMigration);
     }
 
     /**
-     * Opens the database and runs any pending migration using the provided
-     * migration procedure.
-     *
      * @private
      * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<void>} runMigrationProcedure
      * @returns {Promise<void>}
@@ -99,35 +88,19 @@ class InterfaceClass {
         }
 
         const capabilities = this._getCapabilities();
-
-        // Step 1: open the database via the gitstore-aware path.
         const database = await getRootDatabase(capabilities);
-
-        // Step 2: build node defs.  The all_events computor reads from disk.
         const nodeDefs = createDefaultGraphDefinition(capabilities);
-
-        // Step 3: run migration (no-op on fresh/same version).
         await runMigrationProcedure(
             capabilities,
             database,
             nodeDefs,
             migrationCallback(capabilities),
         );
-
-        // Step 4: wire up the incremental graph.
         this._database = database;
         this._incrementalGraph = makeIncrementalGraph(capabilities, database, nodeDefs);
     }
 
-    /**
-     * Synchronizes the incremental-graph database with its git remote.
-     * If the interface is initialized, closes the live database first and
-     * reopens it afterwards so git does not touch LevelDB files while they are
-     * held open.
-     *
-     * @param {{ resetToTheirs?: boolean }} [options]
-     * @returns {Promise<void>}
-     */
+    /** @param {{ resetToTheirs?: boolean }} [options] */
     async synchronizeDatabase(options) {
         await withMutex(this._getCapabilities().sleeper, async () => {
             await this._synchronizeDatabaseNoLock(options);
@@ -135,9 +108,6 @@ class InterfaceClass {
     }
 
     /**
-     * Internal method to synchronize the database without acquiring the mutex.
-     * Callers should use `synchronizeDatabase()` which wraps this in a mutex to prevent concurrent access to LevelDB files while git is synchronizing.
-     *
      * @private
      * @param {{ resetToTheirs?: boolean }} [options]
      * @returns {Promise<void>}
@@ -188,37 +158,86 @@ class InterfaceClass {
         }
     }
 
-    /**
-     * Invalidates the `all_events` node so the next pull re-reads events from
-     * the event-log gitstore.  Must be called after any mutation of the event
-     * log (create, delete, sync).
-     *
-     * Safe to call before `ensureInitialized()` — becomes a no-op in that case.
-     *
-     * @returns {Promise<void>}
-     */
+    /** @returns {Promise<void>} */
     async update() {
         await this.ensureInitialized();
-        if (this._incrementalGraph === null) {
-            throw new Error("Impossible: expected non-null");
-        }
-        await this._incrementalGraph.invalidate("all_events");
+        await this._requireInitializedGraph().invalidate("all_events");
     }
 
     /**
-     * Gets the basic context for a given event.
-     * Uses pull semantics to lazily evaluate only the necessary parts of the
-     * incremental graph.
-     *
-     * @param {Event} event - The event to get context for
-     * @returns {Promise<Array<Event>>} The context events
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<unknown>}
+     */
+    async pull(head, args = []) {
+        return await this._requireInitializedGraph().pull(head, args);
+    }
+
+    /**
+     * @returns {Array<import('../incremental_graph/types').CompiledNode>}
+     */
+    debugGetSchemas() {
+        return this._requireInitializedGraph().debugGetSchemas();
+    }
+
+    /**
+     * @param {string} head
+     * @returns {import('../incremental_graph/types').CompiledNode | null}
+     */
+    debugGetSchemaByHead(head) {
+        return this._requireInitializedGraph().debugGetSchemaByHead(head);
+    }
+
+    /**
+     * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
+     */
+    async debugListMaterializedNodes() {
+        return await this._requireInitializedGraph().debugListMaterializedNodes();
+    }
+
+    /**
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<import('../incremental_graph/types').Freshness>}
+     */
+    async debugGetFreshness(head, args = []) {
+        return await this._requireInitializedGraph().debugGetFreshness(head, args);
+    }
+
+    /**
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<unknown>}
+     */
+    async debugGetValue(head, args = []) {
+        return await this._requireInitializedGraph().debugGetValue(head, args);
+    }
+
+    /**
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<import('../../datetime').DateTime>}
+     */
+    async getCreationTime(head, args = []) {
+        return await this._requireInitializedGraph().getCreationTime(head, args);
+    }
+
+    /**
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<import('../../datetime').DateTime>}
+     */
+    async getModificationTime(head, args = []) {
+        return await this._requireInitializedGraph().getModificationTime(head, args);
+    }
+
+    /**
+     * @param {Event} event
+     * @returns {Promise<Array<Event>>}
      */
     async getEventBasicContext(event) {
         await this.ensureInitialized();
-        if (this._incrementalGraph === null) {
-            throw new Error("Impossible: expected non-null");
-        }
-        const eventContextEntry = await this._incrementalGraph.pull(
+        const eventContextEntry = await this._requireInitializedGraph().pull(
             "event_context"
         );
 
@@ -239,22 +258,12 @@ class InterfaceClass {
     }
 }
 
-/**
- * Factory function to create an Interface instance.
- *
- * Synchronous — call `ensureInitialized()` before using `update()` or
- * `getEventBasicContext()`.  Follows the same lazy-getter pattern as
- * `checker.make(() => ret)` and `logger.make(() => ret)`.
- *
- * @param {() => GeneratorsCapabilities} getCapabilities
- * @returns {InterfaceClass}
- */
+/** @param {() => GeneratorsCapabilities} getCapabilities */
 function makeInterface(getCapabilities) {
     return new InterfaceClass(getCapabilities);
 }
 
 /**
- * Type guard for Interface.
  * @param {unknown} object
  * @returns {object is InterfaceClass}
  */

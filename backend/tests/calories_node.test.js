@@ -2,7 +2,6 @@
  * Tests for event(e) and calories(e) nodes in the default incremental graph.
  */
 
-const { makeInterface } = require("../src/generators/interface");
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
@@ -75,13 +74,13 @@ async function replaceEventInStore(capabilities, event) {
 describe("event(e) node", () => {
     test("returns the input text of the identified event", async () => {
         const capabilities = await getTestCapabilities();
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
         await iface.update();
 
-        const result = await iface.incrementalGraph.pull("event", ["1"]);
+        const result = await iface.pull("event", ["1"]);
         expect(result).toMatchObject({
             type: "event",
             value: { id: { identifier: "1" }, input: "food: a slice of bread" },
@@ -90,48 +89,48 @@ describe("event(e) node", () => {
 
     test("throws EventNotFoundError for an unknown event ID", async () => {
         const capabilities = await getTestCapabilities();
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
         await iface.update();
 
         await expect(
-            iface.incrementalGraph.pull("event", ["999"])
+            iface.pull("event", ["999"])
         ).rejects.toThrow("Event with ID 999 not found in all_events");
     });
 
     test("reflects updated input text after events change", async () => {
         const capabilities = await getTestCapabilities();
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "sleep 8 hours")]);
         await iface.update();
-        const first = await iface.incrementalGraph.pull("event", ["1"]);
+        const first = await iface.pull("event", ["1"]);
         expect(first).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "sleep 8 hours" } });
 
         await replaceEventInStore(capabilities, makeEvent("1", "food: two eggs"));
         await iface.update();
-        const second = await iface.incrementalGraph.pull("event", ["1"]);
+        const second = await iface.pull("event", ["1"]);
         expect(second).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "food: two eggs" } });
     });
 
     test("handles event whose input field is empty string", async () => {
         const capabilities = await getTestCapabilities();
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "")]);
         await iface.update();
 
-        const result = await iface.incrementalGraph.pull("event", ["1"]);
+        const result = await iface.pull("event", ["1"]);
         expect(result).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "" } });
     });
 
     test("handles multiple events and returns the correct one", async () => {
         const capabilities = await getTestCapabilities();
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [
@@ -141,9 +140,9 @@ describe("event(e) node", () => {
         ]);
         await iface.update();
 
-        const r1 = await iface.incrementalGraph.pull("event", ["1"]);
-        const r2 = await iface.incrementalGraph.pull("event", ["2"]);
-        const r3 = await iface.incrementalGraph.pull("event", ["3"]);
+        const r1 = await iface.pull("event", ["1"]);
+        const r2 = await iface.pull("event", ["2"]);
+        const r3 = await iface.pull("event", ["3"]);
 
         expect(r1).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "food: pasta" } });
         expect(r2).toMatchObject({ type: "event", value: { id: { identifier: "2" }, input: "sleep 7 hours" } });
@@ -158,12 +157,12 @@ describe("event(e) node", () => {
 describe("calories(e) node", () => {
     test("calls estimateCalories with the event input text and returns result", async () => {
         const capabilities = await getTestCapabilities(250);
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a bowl of pasta")]);
         await iface.update();
-        const result = await iface.incrementalGraph.pull("calories", ["1"]);
+        const result = await iface.pull("calories", ["1"]);
 
         expect(result).toEqual({ type: "calories", value: 250 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
@@ -173,26 +172,26 @@ describe("calories(e) node", () => {
 
     test("throws EventNotFoundError for an unknown event ID", async () => {
         const capabilities = await getTestCapabilities(999);
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: burger")]);
         await iface.update();
 
         await expect(
-            iface.incrementalGraph.pull("calories", ["999"])
+            iface.pull("calories", ["999"])
         ).rejects.toThrow("Event with ID 999 not found in all_events");
         expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
     });
 
     test("returns 0 calories for a non-food entry", async () => {
         const capabilities = await getTestCapabilities(0);
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "sleep 8 hours")]);
         await iface.update();
-        const result = await iface.incrementalGraph.pull("calories", ["1"]);
+        const result = await iface.pull("calories", ["1"]);
 
         expect(result).toEqual({ type: "calories", value: 0 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
@@ -202,17 +201,17 @@ describe("calories(e) node", () => {
 
     test("does not recompute when input is unchanged (returns cached value)", async () => {
         const capabilities = await getTestCapabilities(100);
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
         await iface.update();
 
-        const first = await iface.incrementalGraph.pull("calories", ["1"]);
+        const first = await iface.pull("calories", ["1"]);
         expect(first).toEqual({ type: "calories", value: 100 });
 
         // Pull again without any update — should serve from cache
-        const second = await iface.incrementalGraph.pull("calories", ["1"]);
+        const second = await iface.pull("calories", ["1"]);
         expect(second).toEqual({ type: "calories", value: 100 });
 
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(1);
@@ -224,18 +223,18 @@ describe("calories(e) node", () => {
             .fn()
             .mockResolvedValueOnce(100)
             .mockResolvedValueOnce(300);
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
         await iface.update();
-        const first = await iface.incrementalGraph.pull("calories", ["1"]);
+        const first = await iface.pull("calories", ["1"]);
         expect(first).toEqual({ type: "calories", value: 100 });
 
         // Replace the event with new content
         await replaceEventInStore(capabilities, makeEvent("1", "food: a large pizza"));
         await iface.update();
-        const second = await iface.incrementalGraph.pull("calories", ["1"]);
+        const second = await iface.pull("calories", ["1"]);
         expect(second).toEqual({ type: "calories", value: 300 });
 
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(2);
@@ -254,7 +253,7 @@ describe("calories(e) node", () => {
             .mockResolvedValueOnce(150)
             .mockResolvedValueOnce(0)
             .mockResolvedValueOnce(400);
-        const iface = makeInterface(() => capabilities);
+        const iface = capabilities.interface;
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [
@@ -264,9 +263,9 @@ describe("calories(e) node", () => {
         ]);
         await iface.update();
 
-        const c1 = await iface.incrementalGraph.pull("calories", ["1"]);
-        const c2 = await iface.incrementalGraph.pull("calories", ["2"]);
-        const c3 = await iface.incrementalGraph.pull("calories", ["3"]);
+        const c1 = await iface.pull("calories", ["1"]);
+        const c2 = await iface.pull("calories", ["2"]);
+        const c3 = await iface.pull("calories", ["3"]);
 
         expect(c1).toEqual({ type: "calories", value: 150 });
         expect(c2).toEqual({ type: "calories", value: 0 });
