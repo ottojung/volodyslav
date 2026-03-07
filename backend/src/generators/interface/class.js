@@ -232,7 +232,7 @@ class InterfaceClass {
     async getCaloriesForEventId(eventId) {
         const result = await this._requireInitializedGraph().pull("calories", [eventId]);
         if (result.type !== "calories") {
-            throw new Error("Impossible: expected calories entry");
+            throw new Error(`Expected calories entry but got type: ${result.type}`);
         }
         return result;
     }
