@@ -26,7 +26,7 @@ describe("GET /api/version", () => {
         capabilities.checker.instantiate = jest
             .fn()
             .mockImplementation(async (filePath) => {
-                if (String(filePath).endsWith("VERSION")) {
+                if (typeof filePath === "string" && filePath.endsWith("VERSION")) {
                     return { path: "/tmp/VERSION" };
                 }
 
@@ -51,5 +51,41 @@ describe("GET /api/version", () => {
             "/tmp/VERSION"
         );
         expect(capabilities.git.call).not.toHaveBeenCalled();
+    });
+
+    it("falls back to package.json when VERSION and git describe are unavailable", async () => {
+        const capabilities = getTestCapabilities();
+        capabilities.git.ensureAvailable = jest.fn();
+        capabilities.git.call = jest
+            .fn()
+            .mockRejectedValue(new Error("git describe failed"));
+        capabilities.checker.instantiate = jest
+            .fn()
+            .mockImplementation(async (filePath) => {
+                if (
+                    typeof filePath === "string" &&
+                    filePath.endsWith("package.json")
+                ) {
+                    return { path: "/tmp/package.json" };
+                }
+
+                throw new Error("file not found");
+            });
+        capabilities.reader.readFileAsText = jest
+            .fn()
+            .mockImplementation(async (filePath) => {
+                if (filePath === "/tmp/package.json") {
+                    return JSON.stringify({ version: "0.1.0" });
+                }
+
+                throw new Error("unexpected read");
+            });
+
+        const app = await makeApp(capabilities);
+        const res = await request(app).get("/api/version");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toEqual({ version: "0.1.0" });
+        expect(capabilities.git.call).toHaveBeenCalled();
     });
 });

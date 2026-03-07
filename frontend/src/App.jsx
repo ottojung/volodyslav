@@ -42,7 +42,9 @@ function App() {
   useEffect(() => {
     let isMounted = true;
 
-    fetchVersion().then((nextVersion) => {
+    async function loadVersion() {
+      const nextVersion = await fetchVersion();
+
       if (!isMounted) {
         return;
       }
@@ -54,7 +56,9 @@ function App() {
 
       setVersion(nextVersion);
       setVersionState('ready');
-    });
+    }
+
+    void loadVersion();
 
     return () => {
       isMounted = false;
