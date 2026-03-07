@@ -4,12 +4,14 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
+/** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
 const {
     makeIncrementalGraph,
     getRootDatabase,
     runMigration,
+    synchronizeDatabase: synchronizeIncrementalGraphDatabase,
 } = require("../incremental_graph");
 const {
     createDefaultGraphDefinition,
@@ -41,12 +43,20 @@ class InterfaceClass {
     _incrementalGraph;
 
     /**
+     * The currently open root database, available after ensureInitialized().
+     * @private
+     * @type {RootDatabase | null}
+     */
+    _database;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
     constructor(getCapabilities) {
         this._getCapabilities = getCapabilities;
         this._incrementalGraph = null;
+        this._database = null;
     }
 
     /**
@@ -92,7 +102,36 @@ class InterfaceClass {
         );
 
         // Step 4: wire up the incremental graph.
+        this._database = database;
         this._incrementalGraph = makeIncrementalGraph(capabilities, database, nodeDefs);
+    }
+
+    /**
+     * Synchronizes the incremental-graph database with its git remote.
+     * If the interface is initialized, closes the live database first and
+     * reopens it afterwards so git does not touch LevelDB files while they are
+     * held open.
+     *
+     * @param {{ resetToTheirs?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async synchronizeDatabase(options) {
+        const capabilities = this._getCapabilities();
+        const database = this._database;
+        if (database === null) {
+            await synchronizeIncrementalGraphDatabase(capabilities, options);
+            return;
+        }
+
+        this._database = null;
+        this._incrementalGraph = null;
+
+        try {
+            await database.close();
+            await synchronizeIncrementalGraphDatabase(capabilities, options);
+        } finally {
+            await this.ensureInitialized();
+        }
     }
 
     /**

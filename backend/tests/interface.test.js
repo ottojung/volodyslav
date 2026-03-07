@@ -2,6 +2,8 @@
  * Tests for generators/interface module.
  */
 
+const fs = require("fs");
+const { execFileSync } = require("child_process");
 const {
     makeInterface,
     isInterface,
@@ -26,7 +28,23 @@ async function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     await stubEventLogRepository(capabilities);
+    initializeGeneratorsRemote(capabilities);
     return capabilities;
+}
+
+/**
+ * Initializes a local git repository to act as the generators sync remote.
+ * @param {object} capabilities
+ */
+function initializeGeneratorsRemote(capabilities) {
+    const remotePath = capabilities.environment.generatorsRepository();
+    fs.mkdirSync(remotePath, { recursive: true });
+    execFileSync("git", ["init", "-b", "master"], { cwd: remotePath });
+    execFileSync(
+        "git",
+        ["-c", "user.name=volodyslav", "-c", "user.email=volodyslav", "commit", "--allow-empty", "-m", "Initial empty commit"],
+        { cwd: remotePath }
+    );
 }
 
 /**
@@ -153,6 +171,37 @@ describe("generators/interface", () => {
             const iface = makeInterface(() => capabilities);
             // Should not throw before initialization
             await expect(iface.update()).resolves.toBeUndefined();
+        });
+    });
+
+    describe("synchronizeDatabase()", () => {
+        test("closes and reopens the database when the interface is initialized", async () => {
+            const capabilities = await getTestCapabilities();
+            const originalInitialize = capabilities.levelDatabase.initialize;
+            /** @type {Array<{ open: jest.Mock, close: jest.Mock }>} */
+            const rawDatabases = [];
+            capabilities.levelDatabase.initialize = jest.fn((databasePath) => {
+                const db = originalInitialize(databasePath);
+                const originalOpen = db.open.bind(db);
+                const originalClose = db.close.bind(db);
+                db.open = jest.fn(async () => await originalOpen());
+                db.close = jest.fn(async () => await originalClose());
+                rawDatabases.push(db);
+                return db;
+            });
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+            const initialGraph = iface.incrementalGraph;
+
+            await iface.synchronizeDatabase();
+
+            expect(rawDatabases).toHaveLength(2);
+            expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(2);
+            expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
+            expect(rawDatabases[1].open).toHaveBeenCalled();
+            expect(iface.incrementalGraph).not.toBeNull();
+            expect(iface.incrementalGraph).not.toBe(initialGraph);
         });
     });
 

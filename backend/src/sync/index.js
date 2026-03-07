@@ -1,7 +1,5 @@
 const eventLogStorage = require("../event_log_storage");
 const assets = require("../assets");
-const { synchronizeDatabase } = require("../generators");
-
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 // ---------------------------------------------------------------------------
@@ -116,7 +114,7 @@ async function synchronizeAll(capabilities, options) {
         errors.push(new EventLogSyncError(cause));
     });
 
-    await synchronizeDatabase(capabilities, options).catch((cause) => {
+    await capabilities.interface.synchronizeDatabase(options).catch((cause) => {
         errors.push(new GeneratorsSyncError(cause));
     });
 
