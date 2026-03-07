@@ -31,9 +31,9 @@ const {
     makeMissingTimestampError,
     isMissingTimestamp,
 } = require('./errors');
-const { makeRootDatabase, getRootDatabase, synchronize: synchronizeDatabase } = require('./database');
+const { makeRootDatabase, getRootDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
-const { runMigration } = require('./migration_runner');
+const { runMigration, runMigrationUnsafe } = require('./migration_runner');
 const { withMutex } = require('./lock');
 const {
     makeDecisionConflictError,
@@ -56,6 +56,7 @@ const {
     isCreateExistingNode,
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
+const { synchronizeNoLock } = require('./database');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -96,6 +97,7 @@ module.exports = {
     makeMigrationStorage,
     isMigrationStorage,
     runMigration,
+    runMigrationUnsafe,
     makeDecisionConflictError,
     isDecisionConflict,
     makeOverrideConflictError,
@@ -115,6 +117,6 @@ module.exports = {
     makeCreateExistingNodeError,
     isCreateExistingNode,
     withMutex,
-    synchronizeDatabase,
     migrationCallback,
+    synchronizeNoLock,
 };

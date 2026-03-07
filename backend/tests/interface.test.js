@@ -9,6 +9,7 @@ const {
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
+const { stubGeneratorsRepository } = require("./stub_generators_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment, stubDatetime, stubEventLogRepository } = require("./stubs");
 
@@ -26,6 +27,7 @@ async function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     await stubEventLogRepository(capabilities);
+    await stubGeneratorsRepository(capabilities);
     return capabilities;
 }
 
@@ -153,6 +155,37 @@ describe("generators/interface", () => {
             const iface = makeInterface(() => capabilities);
             // Should not throw before initialization
             await expect(iface.update()).resolves.toBeUndefined();
+        });
+    });
+
+    describe("synchronizeDatabase()", () => {
+        test("closes and reopens the database when the interface is initialized", async () => {
+            const capabilities = await getTestCapabilities();
+            const originalInitialize = capabilities.levelDatabase.initialize;
+            /** @type {Array<{ open: jest.Mock, close: jest.Mock }>} */
+            const rawDatabases = [];
+            capabilities.levelDatabase.initialize = jest.fn((databasePath) => {
+                const db = originalInitialize(databasePath);
+                const originalOpen = db.open.bind(db);
+                const originalClose = db.close.bind(db);
+                db.open = jest.fn(() => originalOpen());
+                db.close = jest.fn(() => originalClose());
+                rawDatabases.push(db);
+                return db;
+            });
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+            const initialGraph = iface.incrementalGraph;
+
+            await iface.synchronizeDatabase();
+
+            expect(rawDatabases).toHaveLength(2);
+            expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(2);
+            expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
+            expect(rawDatabases[1].open).toHaveBeenCalled();
+            expect(iface.incrementalGraph).not.toBeNull();
+            expect(iface.incrementalGraph).not.toBe(initialGraph);
         });
     });
 

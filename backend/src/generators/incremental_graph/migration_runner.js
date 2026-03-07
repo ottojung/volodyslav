@@ -280,4 +280,5 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
 module.exports = {
     runMigration,
+    runMigrationUnsafe,
 };

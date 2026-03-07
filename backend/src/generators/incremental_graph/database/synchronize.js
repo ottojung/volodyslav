@@ -10,7 +10,6 @@
  */
 
 const gitstore = require('../../../gitstore');
-const { withMutex } = require('../lock');
 const workingRepository = gitstore.workingRepository;
 const { checkpointDatabase, CHECKPOINT_WORKING_PATH } = require('./gitstore');
 
@@ -26,24 +25,12 @@ const { checkpointDatabase, CHECKPOINT_WORKING_PATH } = require('./gitstore');
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
  *
- * @param {Capabilities} capabilities
- * @param {{ resetToTheirs?: boolean }} [options]
- * @returns {Promise<void>}
- * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
- */
-async function synchronize(capabilities, options) {
-    await withMutex(capabilities.sleeper, async () => synchronizeUnsafe(capabilities, options));
-}
-
-/**
- * The unlocked version of synchronize().  Should only be called by synchronize() after acquiring the lock.
- *
  * @param {Capabilities} capabilities 
  * @param {{ resetToTheirs?: boolean }} [options] 
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */
-async function synchronizeUnsafe(capabilities, options) {
+async function synchronizeNoLock(capabilities, options) {
     // Step 1: checkpoint — capture current LevelDB state as a git commit.
     await checkpointDatabase(capabilities, "sync checkpoint");
 
@@ -60,4 +47,4 @@ async function synchronizeUnsafe(capabilities, options) {
     capabilities.logger.logInfo({ remotePath, options }, "Synchronized generators database with remote");
 }
 
-module.exports = { synchronize };
+module.exports = { synchronizeNoLock };

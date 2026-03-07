@@ -4,12 +4,18 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
+/** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
+/** @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
 const {
     makeIncrementalGraph,
     getRootDatabase,
     runMigration,
+    runMigrationUnsafe,
+    synchronizeNoLock,
+    withMutex,
 } = require("../incremental_graph");
 const {
     createDefaultGraphDefinition,
@@ -17,6 +23,30 @@ const {
 const {
     migrationCallback,
 } = require("../incremental_graph");
+
+class SynchronizeDatabaseError extends Error {
+    /**
+     * @param {unknown} synchronizeCause
+     * @param {unknown} reopenCause
+     */
+    constructor(synchronizeCause, reopenCause) {
+        super(
+            `Interface database sync failed: ${synchronizeCause}; reopening database failed: ${reopenCause}`
+        );
+        this.name = "SynchronizeDatabaseError";
+        this.synchronizeCause = synchronizeCause;
+        this.reopenCause = reopenCause;
+    }
+}
+
+/**
+ * Type guard for SynchronizeDatabaseError.
+ * @param {unknown} object
+ * @returns {object is SynchronizeDatabaseError}
+ */
+function isSynchronizeDatabaseError(object) {
+    return object instanceof SynchronizeDatabaseError;
+}
 
 /**
  * An interface for direct database operations.
@@ -41,12 +71,20 @@ class InterfaceClass {
     _incrementalGraph;
 
     /**
+     * The currently open root database, available after ensureInitialized().
+     * @private
+     * @type {RootDatabase | null}
+     */
+    _database;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
     constructor(getCapabilities) {
         this._getCapabilities = getCapabilities;
         this._incrementalGraph = null;
+        this._database = null;
     }
 
     /**
@@ -71,6 +109,18 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async ensureInitialized() {
+        await this._ensureInitialized(runMigration);
+    }
+
+    /**
+     * Opens the database and runs any pending migration using the provided
+     * migration procedure.
+     *
+     * @private
+     * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<void>} runMigrationProcedure
+     * @returns {Promise<void>}
+     */
+    async _ensureInitialized(runMigrationProcedure) {
         if (this._incrementalGraph !== null) {
             return;
         }
@@ -84,7 +134,7 @@ class InterfaceClass {
         const nodeDefs = createDefaultGraphDefinition(capabilities);
 
         // Step 3: run migration (no-op on fresh/same version).
-        await runMigration(
+        await runMigrationProcedure(
             capabilities,
             database,
             nodeDefs,
@@ -92,7 +142,77 @@ class InterfaceClass {
         );
 
         // Step 4: wire up the incremental graph.
+        this._database = database;
         this._incrementalGraph = makeIncrementalGraph(capabilities, database, nodeDefs);
+    }
+
+    /**
+     * Synchronizes the incremental-graph database with its git remote.
+     * If the interface is initialized, closes the live database first and
+     * reopens it afterwards so git does not touch LevelDB files while they are
+     * held open.
+     *
+     * @param {{ resetToTheirs?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async synchronizeDatabase(options) {
+        await withMutex(this._getCapabilities().sleeper, async () => {
+            await this._synchronizeDatabaseNoLock(options);
+        });
+    }
+
+    /**
+     * Internal method to synchronize the database without acquiring the mutex.
+     * Callers should use `synchronizeDatabase()` which wraps this in a mutex to prevent concurrent access to LevelDB files while git is synchronizing.
+     *
+     * @private
+     * @param {{ resetToTheirs?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async _synchronizeDatabaseNoLock(options) {
+        const capabilities = this._getCapabilities();
+        const database = this._database;
+        const incrementalGraph = this._incrementalGraph;
+        if (database === null) {
+            await synchronizeNoLock(capabilities, options);
+            return;
+        }
+
+        this._database = null;
+        this._incrementalGraph = null;
+
+        try {
+            await database.close();
+        } catch (error) {
+            this._database = database;
+            this._incrementalGraph = incrementalGraph;
+            throw error;
+        }
+
+        let synchronizeFailure = null;
+
+        try {
+            await synchronizeNoLock(capabilities, options);
+        } catch (error) {
+            synchronizeFailure = error;
+        }
+
+        let reopenFailure = null;
+        try {
+            await this._ensureInitialized(runMigrationUnsafe);
+        } catch (error) {
+            reopenFailure = error;
+        }
+
+        if (reopenFailure !== null) {
+            if (synchronizeFailure !== null) {
+                throw new SynchronizeDatabaseError(synchronizeFailure, reopenFailure);
+            }
+            throw reopenFailure;
+        }
+        if (synchronizeFailure !== null) {
+            throw synchronizeFailure;
+        }
     }
 
     /**
@@ -173,4 +293,5 @@ function isInterface(object) {
 module.exports = {
     makeInterface,
     isInterface,
+    isSynchronizeDatabaseError,
 };
