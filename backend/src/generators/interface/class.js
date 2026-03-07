@@ -5,6 +5,8 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../incremental_graph/types').ComputedValue} ComputedValue */
+/** @typedef {import('../incremental_graph/types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
 /** @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
@@ -167,7 +169,7 @@ class InterfaceClass {
     /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<unknown>}
+     * @returns {Promise<ComputedValue>}
      */
     async pull(head, args = []) {
         return await this._requireInitializedGraph().pull(head, args);
@@ -198,7 +200,7 @@ class InterfaceClass {
     /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<import('../incremental_graph/types').Freshness>}
+     * @returns {Promise<FreshnessStatus>}
      */
     async debugGetFreshness(head, args = []) {
         return await this._requireInitializedGraph().debugGetFreshness(head, args);
@@ -207,7 +209,7 @@ class InterfaceClass {
     /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<unknown>}
+     * @returns {Promise<ComputedValue | undefined>}
      */
     async debugGetValue(head, args = []) {
         return await this._requireInitializedGraph().debugGetValue(head, args);
