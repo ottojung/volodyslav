@@ -38,8 +38,7 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
         return;
     }
 
-    const graph = capabilities.interface.incrementalGraph;
-    if (graph === null) {
+    if (!capabilities.interface.isInitialized()) {
         capabilities.logger.logError(
             { request_identifier: reqId.identifier, entry_id: id },
             "additional-properties: incremental graph is not initialized",
@@ -49,7 +48,7 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
     }
 
     try {
-        const caloriesEntry = await graph.pull("calories", [id]);
+        const caloriesEntry = await capabilities.interface.getCaloriesForEventId(id);
 
         capabilities.logger.logDebug(
             {

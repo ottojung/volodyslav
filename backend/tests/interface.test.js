@@ -87,7 +87,7 @@ describe("generators/interface", () => {
     describe("update()", () => {
         test("stores events in database under all_events key", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             await iface.ensureInitialized();
 
             await writeEventsToStore(capabilities, [
@@ -96,19 +96,19 @@ describe("generators/interface", () => {
             ]);
             await iface.update();
 
-            const result = await iface.incrementalGraph.pull("all_events");
+            const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
             expect(result.events).toHaveLength(2);
             expect(result.events[0].id.identifier).toBe("event-1");
             expect(result.events[1].id.identifier).toBe("event-2");
 
-            const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
+            const freshness = await iface.debugGetFreshness("all_events");
             expect(freshness).toBe("up-to-date");
         });
 
         test("reflects the updated state after an event is replaced", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             await iface.ensureInitialized();
 
             await writeEventsToStore(capabilities, [
@@ -116,7 +116,7 @@ describe("generators/interface", () => {
             ]);
             await iface.update();
 
-            let result = await iface.incrementalGraph.pull("all_events");
+            let result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(1);
             expect(result.events[0].id.identifier).toBe("event-1");
 
@@ -125,7 +125,7 @@ describe("generators/interface", () => {
             await writeEventsToStore(capabilities, [makeEvent("event-2", "new event")]);
             await iface.update();
 
-            result = await iface.incrementalGraph.pull("all_events");
+            result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(2);
             const ids = result.events.map((e) => e.id.identifier);
             expect(ids).toContain("event-1");
@@ -137,22 +137,22 @@ describe("generators/interface", () => {
 
         test("handles empty store (returns no events)", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             await iface.ensureInitialized();
 
             await iface.update();
 
-            const result = await iface.incrementalGraph.pull("all_events");
+            const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
             expect(result.events).toHaveLength(0);
 
-            const freshness = await iface.incrementalGraph.debugGetFreshness("all_events");
+            const freshness = await iface.debugGetFreshness("all_events");
             expect(freshness).toBe("up-to-date");
         });
 
         test("is a no-op before ensureInitialized()", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             // Should not throw before initialization
             await expect(iface.update()).resolves.toBeUndefined();
         });
@@ -176,7 +176,6 @@ describe("generators/interface", () => {
 
             const iface = makeInterface(() => capabilities);
             await iface.ensureInitialized();
-            const initialGraph = iface.incrementalGraph;
 
             await iface.synchronizeDatabase();
 
@@ -184,15 +183,18 @@ describe("generators/interface", () => {
             expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(2);
             expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
             expect(rawDatabases[1].open).toHaveBeenCalled();
-            expect(iface.incrementalGraph).not.toBeNull();
-            expect(iface.incrementalGraph).not.toBe(initialGraph);
+            expect(iface.isInitialized()).toBe(true);
+            await expect(iface._incrementalGraph.pull("all_events")).resolves.toMatchObject({
+                type: "all_events",
+                events: [],
+            });
         });
     });
 
     describe("getEventBasicContext()", () => {
         test("returns context for event with shared hashtags", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             await iface.ensureInitialized();
 
             const events = [
@@ -217,7 +219,7 @@ describe("generators/interface", () => {
 
         test("returns only the event itself when no shared hashtags", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             await iface.ensureInitialized();
 
             const events = [makeEvent("1", "Event without hashtags")];
@@ -233,7 +235,7 @@ describe("generators/interface", () => {
 
         test("propagates through incremental graph before returning context", async () => {
             const capabilities = await getTestCapabilities();
-            const iface = makeInterface(() => capabilities);
+            const iface = capabilities.interface;
             await iface.ensureInitialized();
 
             const events = [makeEvent("1", "Test #tag event")];
@@ -248,7 +250,7 @@ describe("generators/interface", () => {
             expect(context).toHaveLength(1);
 
             // Verify that event_context was computed in the incremental graph
-            const eventContextEntry = await iface.incrementalGraph.pull("event_context");
+            const eventContextEntry = await iface._incrementalGraph.pull("event_context");
             expect(eventContextEntry).toBeDefined();
             expect(eventContextEntry.type).toBe("event_context");
             expect(eventContextEntry.contexts).toHaveLength(1);

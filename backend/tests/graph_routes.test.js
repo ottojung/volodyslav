@@ -40,7 +40,7 @@ function makeMockDateTime(iso) {
 }
 
 /**
- * Builds a minimal mock IncrementalGraph for testing.
+ * Builds a minimal mock interface implementation for graph route testing.
  * @param {object} [opts]
  * @param {Map<string, object>} [opts.headIndex] - schema map
  * @param {Array<[string, Array<string>]>} [opts.materialized] - list of materialized nodes
@@ -49,7 +49,7 @@ function makeMockDateTime(iso) {
  * @param {Map<string, {createdAt: string, modifiedAt: string}>} [opts.timestamps] - timestamps per serialized key
  * @returns {object}
  */
-function makeMockIncrementalGraph({
+function makeMockInterface({
     headIndex = new Map(),
     materialized = [],
     freshness = new Map(),
@@ -96,7 +96,24 @@ function makeMockIncrementalGraph({
 function makeTestApp(mockGraph) {
     const capabilities = {
         interface: {
-            incrementalGraph: mockGraph,
+            isInitialized: jest.fn(() => mockGraph !== null),
+            debugGetSchemas: jest.fn(() => mockGraph === null ? [] : mockGraph.debugGetSchemas()),
+            debugGetSchemaByHead: jest.fn((head) => mockGraph === null ? null : mockGraph.debugGetSchemaByHead(head)),
+            debugListMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.debugListMaterializedNodes()),
+            debugGetFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.debugGetFreshness(head, args)),
+            debugGetValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.debugGetValue(head, args)),
+            getCreationTime: jest.fn(async (head, args) => {
+                if (mockGraph === null) {
+                    throw makeMissingTimestampError(JSON.stringify({ head, args }));
+                }
+                return await mockGraph.getCreationTime(head, args);
+            }),
+            getModificationTime: jest.fn(async (head, args) => {
+                if (mockGraph === null) {
+                    throw makeMissingTimestampError(JSON.stringify({ head, args }));
+                }
+                return await mockGraph.getModificationTime(head, args);
+            }),
         },
     };
 
@@ -118,7 +135,7 @@ describe("GET /api/graph/schemas", () => {
     });
 
     it("returns empty array when no schemas are defined", async () => {
-        const graph = makeMockIncrementalGraph();
+        const graph = makeMockInterface();
         const app = makeTestApp(graph);
         const res = await request(app).get("/api/graph/schemas");
         expect(res.status).toBe(200);
@@ -136,7 +153,7 @@ describe("GET /api/graph/schemas", () => {
                 source: { isDeterministic: true, hasSideEffects: false },
             })],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex });
+        const graph = makeMockInterface({ headIndex });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/schemas");
@@ -177,7 +194,7 @@ describe("GET /api/graph/schemas/:head", () => {
     });
 
     it("returns 404 for unknown head", async () => {
-        const graph = makeMockIncrementalGraph();
+        const graph = makeMockInterface();
         const app = makeTestApp(graph);
         const res = await request(app).get("/api/graph/schemas/unknown_head");
         expect(res.status).toBe(404);
@@ -190,7 +207,7 @@ describe("GET /api/graph/schemas/:head", () => {
                 source: { isDeterministic: false, hasSideEffects: false },
             })],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex });
+        const graph = makeMockInterface({ headIndex });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/schemas/all_events");
@@ -218,7 +235,7 @@ describe("GET /api/graph/nodes", () => {
     });
 
     it("returns empty array when no nodes are materialized", async () => {
-        const graph = makeMockIncrementalGraph();
+        const graph = makeMockInterface();
         const app = makeTestApp(graph);
         const res = await request(app).get("/api/graph/nodes");
         expect(res.status).toBe(200);
@@ -238,7 +255,7 @@ describe("GET /api/graph/nodes", () => {
             [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
         ]);
-        const graph = makeMockIncrementalGraph({ materialized, freshness, timestamps });
+        const graph = makeMockInterface({ materialized, freshness, timestamps });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
@@ -260,7 +277,7 @@ describe("GET /api/graph/nodes", () => {
             [JSON.stringify({ head: "all_events", args: [] }), "up-to-date"],
         ]);
         // no timestamps entry → debugGetTimestamps returns null
-        const graph = makeMockIncrementalGraph({ materialized, freshness });
+        const graph = makeMockInterface({ materialized, freshness });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
@@ -272,7 +289,7 @@ describe("GET /api/graph/nodes", () => {
     it("excludes nodes with missing freshness", async () => {
         const materialized = [["all_events", []]];
         // freshness map has no entry for all_events → "missing"
-        const graph = makeMockIncrementalGraph({ materialized });
+        const graph = makeMockInterface({ materialized });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
@@ -293,7 +310,7 @@ describe("GET /api/graph/nodes/:head", () => {
     });
 
     it("returns 404 for unknown head", async () => {
-        const graph = makeMockIncrementalGraph();
+        const graph = makeMockInterface();
         const app = makeTestApp(graph);
         const res = await request(app).get("/api/graph/nodes/unknown_head");
         expect(res.status).toBe(404);
@@ -303,7 +320,7 @@ describe("GET /api/graph/nodes/:head", () => {
     describe("arity-0 node", () => {
         it("returns 404 when node is not yet materialized", async () => {
             const headIndex = new Map([["all_events", makeMockCompiledNode("all_events", 0)]]);
-            const graph = makeMockIncrementalGraph({ headIndex });
+            const graph = makeMockInterface({ headIndex });
             const app = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/all_events");
@@ -322,7 +339,7 @@ describe("GET /api/graph/nodes/:head", () => {
             const timestamps = new Map([
                 [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
             ]);
-            const graph = makeMockIncrementalGraph({ headIndex, freshness, values, timestamps });
+            const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
             const app = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/all_events");
@@ -341,7 +358,7 @@ describe("GET /api/graph/nodes/:head", () => {
     describe("arity-N node", () => {
         it("returns empty list when no instances are materialized", async () => {
             const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
-            const graph = makeMockIncrementalGraph({ headIndex });
+            const graph = makeMockInterface({ headIndex });
             const app = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/event");
@@ -363,7 +380,7 @@ describe("GET /api/graph/nodes/:head", () => {
                 [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
                 [JSON.stringify({ head: "event", args: ["evt-def456"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
             ]);
-            const graph = makeMockIncrementalGraph({ headIndex, materialized, freshness, timestamps });
+            const graph = makeMockInterface({ headIndex, materialized, freshness, timestamps });
             const app = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/event");
@@ -390,7 +407,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
     });
 
     it("returns 404 for unknown head", async () => {
-        const graph = makeMockIncrementalGraph();
+        const graph = makeMockInterface();
         const app = makeTestApp(graph);
         const res = await request(app).get("/api/graph/nodes/unknown_head/arg1");
         expect(res.status).toBe(404);
@@ -399,7 +416,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
 
     it("returns 400 for arity mismatch (too many args)", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
-        const graph = makeMockIncrementalGraph({ headIndex });
+        const graph = makeMockInterface({ headIndex });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/arg1/arg2");
@@ -411,7 +428,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
         const headIndex = new Map([
             ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex });
+        const graph = makeMockInterface({ headIndex });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/pair/arg1");
@@ -421,7 +438,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
 
     it("returns 404 when parameterized node is not materialized", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
-        const graph = makeMockIncrementalGraph({ headIndex });
+        const graph = makeMockInterface({ headIndex });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/evt-abc123");
@@ -440,7 +457,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
         const timestamps = new Map([
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex, freshness, values, timestamps });
+        const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/evt-abc123");
@@ -468,7 +485,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
         const timestamps = new Map([
             [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex, freshness, values, timestamps });
+        const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/pair/arg1/arg2");
