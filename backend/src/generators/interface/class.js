@@ -17,7 +17,7 @@ const {
 } = require("./default_graph");
 const {
     migrationCallback,
-} = require("./migration");
+} = require("../incremental_graph");
 
 /**
  * An interface for direct database operations.

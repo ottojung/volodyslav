@@ -2,11 +2,11 @@
 // This file contains the current migration callback.
 
 /**
- * @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities
+ * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities
  */
 
 /**
- * @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage
+ * @typedef {import('./migration_storage').MigrationStorage} MigrationStorage
  */
 
 /**

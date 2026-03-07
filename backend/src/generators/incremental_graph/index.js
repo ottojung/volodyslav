@@ -55,6 +55,7 @@ const {
     makeCreateExistingNodeError,
     isCreateExistingNode,
 } = require('./migration_errors');
+const { migrationCallback } = require('./migration');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -116,4 +117,5 @@ module.exports = {
     isCreateExistingNode,
     withMutex,
     synchronizeDatabase,
+    migrationCallback,
 };
