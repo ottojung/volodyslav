@@ -8,6 +8,13 @@
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const { toJsonKey } = require("./test_json_key_helper");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
+jest.mock('../src/generators/incremental_graph/database', () => ({
+    ...jest.requireActual('../src/generators/incremental_graph/database'),
+    checkpointDatabase: jest.fn().mockResolvedValue(undefined),
+}));
+const { checkpointDatabase: mockCheckpointDatabase } = require('../src/generators/incremental_graph/database');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared test infrastructure
@@ -72,14 +79,20 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yDb }) {
     return { rootDatabase };
 }
 
-const capabilities = {
-    sleeper: { withMutex: async (_name, procedure) => procedure() },
-    checkpointDatabase: jest.fn().mockResolvedValue(undefined),
-};
-
-beforeEach(() => {
-    capabilities.checkpointDatabase.mockClear();
-});
+/**
+ * Creates test capabilities.
+ * @returns {Promise<object>}
+ */
+async function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    mockCheckpointDatabase.mockReset();
+    mockCheckpointDatabase.mockResolvedValue(undefined);
+    capabilities.checkpointDatabase = mockCheckpointDatabase;
+    return capabilities;
+}
 
 /** Timestamp fixture for a node first computed a long time ago and modified recently. */
 const OLD_TIMESTAMP = {
@@ -127,6 +140,7 @@ async function seedNode(storage, nodeKey, {
 
 describe("keep decision: timestamps copied to new storage", () => {
     test("both createdAt and modifiedAt are identical in new storage after keep", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -146,6 +160,7 @@ describe("keep decision: timestamps copied to new storage", () => {
     });
 
     test("createdAt is preserved exactly after keep", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -166,6 +181,7 @@ describe("keep decision: timestamps copied to new storage", () => {
     });
 
     test("modifiedAt is preserved exactly after keep", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -186,6 +202,7 @@ describe("keep decision: timestamps copied to new storage", () => {
     });
 
     test("node with no previous timestamp keeps no timestamp after keep", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -205,6 +222,7 @@ describe("keep decision: timestamps copied to new storage", () => {
     });
 
     test("multiple nodes: all timestamps copied correctly on keep", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
@@ -239,6 +257,7 @@ describe("keep decision: timestamps copied to new storage", () => {
 
 describe("override decision: timestamps copied to new storage", () => {
     test("both createdAt and modifiedAt are preserved after override", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -258,6 +277,7 @@ describe("override decision: timestamps copied to new storage", () => {
     });
 
     test("override without previous timestamp leaves timestamps absent", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -277,6 +297,7 @@ describe("override decision: timestamps copied to new storage", () => {
     });
 
     test("override createdAt survives when modifiedAt differs", async () => {
+        const capabilities = await getTestCapabilities();
         const ts = { createdAt: "2023-05-01T00:00:00.000Z", modifiedAt: "2024-11-30T23:59:59.000Z" };
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -304,6 +325,7 @@ describe("override decision: timestamps copied to new storage", () => {
 
 describe("invalidate decision: timestamps copied to new storage", () => {
     test("both createdAt and modifiedAt are preserved after invalidate", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -323,6 +345,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
     });
 
     test("invalidate without previous timestamp leaves timestamps absent", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -342,6 +365,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
     });
 
     test("invalidate preserves createdAt even though value is stale", async () => {
+        const capabilities = await getTestCapabilities();
         const ts = { createdAt: "2022-01-01T00:00:00.000Z", modifiedAt: "2022-01-01T00:00:00.000Z" };
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -369,6 +393,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
 
 describe("delete decision: timestamps not present in new storage", () => {
     test("deleted node has no timestamp entry in new storage", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
@@ -418,6 +443,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
     }
 
     test("keep A, keep B: both timestamps preserved", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
@@ -435,6 +461,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
     });
 
     test("keep A, invalidate B: both timestamps preserved", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
@@ -452,6 +479,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
     });
 
     test("keep A, override B: A timestamp preserved; B timestamp preserved (createdAt unchanged)", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
@@ -470,6 +498,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
     });
 
     test("override A, B auto-invalidated: both timestamps preserved", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
@@ -488,6 +517,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
     });
 
     test("invalidate A, invalidate B: both timestamps preserved", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
@@ -511,6 +541,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
 
 describe("failed migration: x-namespace timestamps unchanged", () => {
     test("callback throws: timestamp in x-namespace is unchanged", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -530,6 +561,7 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
     });
 
     test("UndecidedNodesError: timestamp in x-namespace is unchanged", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");

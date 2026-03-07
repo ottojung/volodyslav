@@ -7,6 +7,11 @@ const {
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
+jest.mock('../src/generators/incremental_graph/database', () => ({
+    ...jest.requireActual('../src/generators/incremental_graph/database'),
+    checkpointDatabase: jest.fn().mockResolvedValue(undefined),
+}));
+const { checkpointDatabase: mockCheckpointDatabase } = require('../src/generators/incremental_graph/database');
 
 function makeInMemoryDb(table) {
     const store = new Map();
@@ -110,6 +115,9 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    mockCheckpointDatabase.mockReset();
+    mockCheckpointDatabase.mockResolvedValue(undefined);
+    capabilities.checkpointDatabase = mockCheckpointDatabase;
     return capabilities;
 }
 
@@ -195,7 +203,7 @@ describe("runMigration", () => {
         });
 
         test("records current version via setMetaVersion so future upgrades are detected", async () => {
-            const capabilities = await getTestCapabilities();
+              const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yDb } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -398,7 +406,8 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            const firstCall = capabilities.checkpointDatabase.mock.calls[0][0];
+            // checkpointDatabase(capabilities, message): [0][1] = message of first call
+            const firstCall = capabilities.checkpointDatabase.mock.calls[0][1];
             expect(firstCall).toContain("pre-migration:");
             expect(firstCall).toContain("1.0.0");
             expect(firstCall).toContain("2.0.0");
@@ -416,7 +425,8 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            const secondCall = capabilities.checkpointDatabase.mock.calls[1][0];
+            // checkpointDatabase(capabilities, message): [1][1] = message of second call
+            const secondCall = capabilities.checkpointDatabase.mock.calls[1][1];
             expect(secondCall).toContain("post-migration:");
             expect(secondCall).toContain("2.0.0");
         });
@@ -424,7 +434,7 @@ describe("runMigration", () => {
         test("pre-migration checkpoint is called before replaceContentsFrom", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
-            capabilities.checkpointDatabase.mockImplementation(async (msg) => {
+            capabilities.checkpointDatabase.mockImplementation(async (_caps, msg) => {
                 callOrder.push(`checkpoint:${msg}`);
             });
 
@@ -461,8 +471,9 @@ describe("runMigration", () => {
         });
 
         test("post-migration checkpoint is called after replaceContentsFrom", async () => {
+            const capabilities = await getTestCapabilities();
             const callOrder = [];
-            capabilities.checkpointDatabase.mockImplementation(async (msg) => {
+            capabilities.checkpointDatabase.mockImplementation(async (_caps, msg) => {
                 callOrder.push(`checkpoint:${msg}`);
             });
 
@@ -500,6 +511,7 @@ describe("runMigration", () => {
 
     describe("failure cases", () => {
         test("callback throws: replaceContentsFrom is NOT called and error propagates", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -531,6 +543,7 @@ describe("runMigration", () => {
         });
 
         test("finalize throws UndecidedNodesError when a node has no decision: replaceContentsFrom NOT called", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -566,6 +579,7 @@ describe("runMigration", () => {
         });
 
         test("callback throws: y namespace is already cleared (clearStorage was called)", async () => {
+            const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -597,6 +611,7 @@ describe("runMigration", () => {
         });
 
         test("callback throws: pre-migration checkpoint is called but post-migration is not", async () => {
+            const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
@@ -607,11 +622,13 @@ describe("runMigration", () => {
             ).rejects.toThrow("intentional failure");
 
             expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(1);
-            const firstCall = capabilities.checkpointDatabase.mock.calls[0][0];
+            // checkpointDatabase(capabilities, message): [0][1] = message of first call
+            const firstCall = capabilities.checkpointDatabase.mock.calls[0][1];
             expect(firstCall).toContain("pre-migration:");
         });
 
         test("finalize throws: pre-migration checkpoint is called but post-migration is not", async () => {
+            const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
@@ -623,7 +640,8 @@ describe("runMigration", () => {
             ).rejects.toThrow();
 
             expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(1);
-            const firstCall = capabilities.checkpointDatabase.mock.calls[0][0];
+            // checkpointDatabase(capabilities, message): [0][1] = message of first call
+            const firstCall = capabilities.checkpointDatabase.mock.calls[0][1];
             expect(firstCall).toContain("pre-migration:");
         });
     });
@@ -733,11 +751,8 @@ function makeFanInNodeDefs() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("x-namespace state preserved on migration failure", () => {
-    beforeEach(() => {
-        capabilities.checkpointDatabase.mockClear();
-    });
-
     test("callback throws synchronously: every x-sublevel entry is identical to before", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 42, freshness: "up-to-date" });
@@ -755,6 +770,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("callback returns rejected promise: every x-sublevel entry is identical to before", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 11 });
@@ -773,6 +789,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("UndecidedNodesError from finalize: x-namespace data unchanged", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
@@ -797,6 +814,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("PartialDeleteFanInError from finalize: x-namespace data unchanged", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
@@ -820,6 +838,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("DecisionConflictError from callback: x-namespace data unchanged", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 3 });
@@ -843,6 +862,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("batch() throws in applyDecisions: x-namespace data unchanged, replaceContentsFrom not called", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 99 });
@@ -866,6 +886,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("y.setMetaVersion throws: x-namespace data unchanged, replaceContentsFrom not called", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 7 });
@@ -890,6 +911,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("replaceContentsFrom throws: error propagates and x had not been modified before the throw", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 2 });
@@ -922,6 +944,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("multi-node graph: all x-values intact after UndecidedNodesError", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
@@ -944,6 +967,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("multi-node graph: counter, freshness, inputs all preserved after callback error", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
@@ -968,6 +992,7 @@ describe("x-namespace state preserved on migration failure", () => {
     });
 
     test("three-node fan-in partially deleted: all three x-values preserved after PartialDeleteFanInError", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
@@ -993,11 +1018,8 @@ describe("x-namespace state preserved on migration failure", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("x.setMetaVersion not called on migration failure", () => {
-    beforeEach(() => {
-        capabilities.checkpointDatabase.mockClear();
-    });
-
     test("callback throws: x.setMetaVersion never called", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1014,6 +1036,7 @@ describe("x.setMetaVersion not called on migration failure", () => {
     });
 
     test("UndecidedNodesError: x.setMetaVersion never called", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1032,6 +1055,7 @@ describe("x.setMetaVersion not called on migration failure", () => {
     });
 
     test("PartialDeleteFanInError: x.setMetaVersion never called", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
@@ -1055,11 +1079,8 @@ describe("x.setMetaVersion not called on migration failure", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("error identity: exact thrown object propagates", () => {
-    beforeEach(() => {
-        capabilities.checkpointDatabase.mockClear();
-    });
-
     test("exact Error instance from callback propagates (same reference)", async () => {
+        const capabilities = await getTestCapabilities();
         const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
@@ -1077,6 +1098,7 @@ describe("error identity: exact thrown object propagates", () => {
     });
 
     test("exact Error from pre-migration checkpointDatabase propagates", async () => {
+        const capabilities = await getTestCapabilities();
         const checkpointError = new Error("pre-checkpoint failure");
         capabilities.checkpointDatabase.mockRejectedValueOnce(checkpointError);
 
@@ -1096,6 +1118,7 @@ describe("error identity: exact thrown object propagates", () => {
     });
 
     test("UndecidedNodesError from finalize carries the undecided node keys", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
@@ -1122,6 +1145,7 @@ describe("error identity: exact thrown object propagates", () => {
     });
 
     test("PartialDeleteFanInError from finalize carries the fan-in node key", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
@@ -1143,6 +1167,7 @@ describe("error identity: exact thrown object propagates", () => {
     });
 
     test("DecisionConflictError from callback carries correct node key", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
@@ -1173,11 +1198,8 @@ describe("error identity: exact thrown object propagates", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("infrastructure failures", () => {
-    beforeEach(() => {
-        capabilities.checkpointDatabase.mockClear();
-    });
-
     test("getMetaVersion throws: error propagates before any migration work starts", async () => {
+        const capabilities = await getTestCapabilities();
         const metaError = new Error("getMetaVersion failure");
         const rootDatabase = {
             version: "2",
@@ -1200,6 +1222,7 @@ describe("infrastructure failures", () => {
     });
 
     test("clearStorage throws: error propagates, callback never runs", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1223,6 +1246,7 @@ describe("infrastructure failures", () => {
     });
 
     test("pre-migration checkpointDatabase throws: migration does not run, replaceContentsFrom not called", async () => {
+        const capabilities = await getTestCapabilities();
         const checkpointError = new Error("checkpoint failure");
         capabilities.checkpointDatabase.mockRejectedValueOnce(checkpointError);
 
@@ -1248,6 +1272,7 @@ describe("infrastructure failures", () => {
     });
 
     test("pre-migration checkpointDatabase throws: x-namespace data unchanged", async () => {
+        const capabilities = await getTestCapabilities();
         const checkpointError = new Error("pre-checkpoint failure");
         capabilities.checkpointDatabase.mockRejectedValueOnce(checkpointError);
 
@@ -1268,6 +1293,7 @@ describe("infrastructure failures", () => {
     });
 
     test("post-migration checkpointDatabase throws: migration was already applied (replaceContentsFrom WAS called)", async () => {
+        const capabilities = await getTestCapabilities();
         const postError = new Error("post-checkpoint failure");
 
         // First call (pre) succeeds; second call (post) rejects
@@ -1304,11 +1330,8 @@ describe("infrastructure failures", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("retry after failure", () => {
-    beforeEach(() => {
-        capabilities.checkpointDatabase.mockClear();
-    });
-
     test("failed migration followed by correct migration: second call applies migration and calls replaceContentsFrom", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1332,6 +1355,7 @@ describe("retry after failure", () => {
     });
 
     test("failed migration followed by correct migration: two pre/post checkpoint pairs are recorded", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1358,6 +1382,7 @@ describe("retry after failure", () => {
     });
 
     test("UndecidedNodes failure then correct callback: x-values reflect successful migration in y", async () => {
+        const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
