@@ -37,6 +37,15 @@ class SynchronizeDatabaseError extends Error {
 }
 
 /**
+ * Type guard for SynchronizeDatabaseError.
+ * @param {unknown} object
+ * @returns {object is SynchronizeDatabaseError}
+ */
+function isSynchronizeDatabaseError(object) {
+    return object instanceof SynchronizeDatabaseError;
+}
+
+/**
  * An interface for direct database operations.
  *
  * Created synchronously via `makeInterface(() => capabilities)` — the same lazy
@@ -261,4 +270,5 @@ function isInterface(object) {
 module.exports = {
     makeInterface,
     isInterface,
+    isSynchronizeDatabaseError,
 };
