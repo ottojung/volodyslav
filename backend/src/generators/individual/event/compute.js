@@ -46,7 +46,7 @@ function computeEventForId(eventId, oldValue, events) {
     if (value === undefined) {
         throw new EventNotFoundError(eventId);
     }
-    if (oldValue !== undefined && value.id === oldValue.value.id) {
+    if (oldValue !== undefined && JSON.stringify(value) === JSON.stringify(oldValue.value)) {
         return makeUnchanged();
     }
     return { type: "event", value };
