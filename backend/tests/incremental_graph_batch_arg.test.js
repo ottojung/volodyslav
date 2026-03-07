@@ -49,8 +49,9 @@ const KEY_SOURCE  = '{"head":"source","args":[]}';
 const KEY_DERIVED = '{"head":"derived","args":[]}';
 
 async function makeSourceGraph(computor = undefined) {
-    const db = await getRootDatabase(getTestCapabilities());
-    const graph = makeIncrementalGraph(db, [
+    const capabilities = getTestCapabilities();
+    const db = await getRootDatabase(capabilities);
+    const graph = makeIncrementalGraph(capabilities, db, [
         {
             output: "source",
             inputs: [],
@@ -63,8 +64,9 @@ async function makeSourceGraph(computor = undefined) {
 }
 
 async function makeChainGraph({ sourceComputor, derivedComputor } = {}) {
-    const db = await getRootDatabase(getTestCapabilities());
-    const graph = makeIncrementalGraph(db, [
+    const capabilities = getTestCapabilities();
+    const db = await getRootDatabase(capabilities);
+    const graph = makeIncrementalGraph(capabilities, db, [
         {
             output: "source",
             inputs: [],
@@ -240,8 +242,9 @@ describe("incremental_graph — pull() with external batch: feature contract", (
         // After pull("source", [], batch), source is up-to-date in the batch overlay.
         // A subsequent pull("derived", [], batch) must see that and NOT recompute source.
         const computeCalls = [];
-        const db = await getRootDatabase(getTestCapabilities());
-        const graph = makeIncrementalGraph(db, [
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const graph = makeIncrementalGraph(capabilities, db, [
             { output: "source",  inputs: [],         computor: async () => { computeCalls.push("source");  return A_SOURCE_VALUE;  }, isDeterministic: true, hasSideEffects: false },
             { output: "derived", inputs: ["source"], computor: async () => { computeCalls.push("derived"); return A_DERIVED_VALUE; }, isDeterministic: true, hasSideEffects: false },
         ]);
@@ -260,8 +263,9 @@ describe("incremental_graph — pull() with external batch: feature contract", (
 
     test("two nodes sharing an input: shared input computor runs only once per batch", async () => {
         const computeCalls = [];
-        const db = await getRootDatabase(getTestCapabilities());
-        const graph = makeIncrementalGraph(db, [
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const graph = makeIncrementalGraph(capabilities, db, [
             { output: "source", inputs: [],         computor: async () => { computeCalls.push("source"); return A_SOURCE_VALUE;  }, isDeterministic: true, hasSideEffects: false },
             { output: "a",      inputs: ["source"], computor: async () => { computeCalls.push("a");      return A_DERIVED_VALUE; }, isDeterministic: true, hasSideEffects: false },
             { output: "b",      inputs: ["source"], computor: async () => { computeCalls.push("b");      return A_DERIVED_VALUE; }, isDeterministic: true, hasSideEffects: false },

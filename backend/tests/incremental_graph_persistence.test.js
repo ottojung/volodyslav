@@ -70,7 +70,7 @@ describe("Incremental graph persistence and restart", () => {
                 },
             ];
 
-            const graph1 = makeIncrementalGraph(db, schemas);
+            const graph1 = makeIncrementalGraph(capabilities, db, schemas);
 
             const testDb = makeTestDatabase(graph1);
 
@@ -90,7 +90,7 @@ describe("Incremental graph persistence and restart", () => {
 
             // *** RESTART ***
             computeCalls.length = 0;
-            const graph2 = makeIncrementalGraph(db, schemas);
+            const graph2 = makeIncrementalGraph(capabilities, db, schemas);
 
             // Update A (which should invalidate B and C)
             cellA.value = { value: 20 };
@@ -150,14 +150,14 @@ describe("Incremental graph persistence and restart", () => {
             ];
 
             // Create graph with schema1
-            const graph1 = makeIncrementalGraph(db, schemas1);
+            const graph1 = makeIncrementalGraph(capabilities, db, schemas1);
             const version1 = graph1.debugGetDbVersion();
 
             cellA.value = { value: 10 };
             await graph1.invalidate("A");
 
             // Create graph with schema2 (different schema)
-            const graph2 = makeIncrementalGraph(db, schemas2);
+            const graph2 = makeIncrementalGraph(capabilities, db, schemas2);
             const version2 = graph2.debugGetDbVersion();
 
             // Both graphs use the same dbVersion since they share the same database

@@ -80,7 +80,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // Step 1: set src
             srcCell.value = { type: "all_events", events: [1] };
@@ -150,7 +150,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             srcCell.value = { type: "all_events", events: [1] };
             await graph.invalidate("src");
@@ -206,7 +206,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             bCell.value = { type: "all_events", events: [1] };
             await graph.invalidate("b");
@@ -254,7 +254,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // Set src to create a value
             srcCell.value = { type: "all_events", events: [1] };
@@ -300,7 +300,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             srcCell.value = { type: "all_events", events: [1] };
             await graph.invalidate("src");
@@ -361,7 +361,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // Set up initial state
             sourceACell.value = { type: "all_events", events: [1, 2, 3] };
@@ -436,7 +436,7 @@ describe("generators/incremental_graph counters", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
             sourceACell.value = { value: 10 };
             await graph.invalidate("sourceA");
             sourceBCell.value = { value: 20 };

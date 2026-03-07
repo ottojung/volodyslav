@@ -116,7 +116,7 @@ describe("IncrementalGraph integration with meta_events", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(db, graphDefinition);
+        const graph = makeIncrementalGraph(capabilities, db, graphDefinition);
 
         // Invalidate all_events to trigger computation
         await graph.invalidate("all_events");

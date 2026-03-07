@@ -44,7 +44,7 @@ describe("Parameterized node schemas", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, schemas);
+            const graph = makeIncrementalGraph(capabilities, db, schemas);
 
             // Try to pull with an identifier that looks like a pattern
             // In the new API, "derived(x)" is a schema pattern with variables
@@ -81,7 +81,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeIncrementalGraph(db, []);
+            const graph = makeIncrementalGraph(capabilities, db, []);
 
 
             let error = null;
@@ -118,8 +118,9 @@ describe("Parameterized node schemas", () => {
             ];
 
             expect(() => {
+                const capabilities = getTestCapabilities();
                 const db = {};  // Dummy - won't be used
-                makeIncrementalGraph(db, overlappingSchemas);
+                makeIncrementalGraph(capabilities, db, overlappingSchemas);
             }).toThrow("Schema patterns overlap");
         });
     });

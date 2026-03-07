@@ -53,7 +53,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(db, schemas);
+        const graph = makeIncrementalGraph(capabilities, db, schemas);
 
         // Invalidate source value
         await graph.invalidate("source");
@@ -101,7 +101,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(db, schemas);
+        const graph = makeIncrementalGraph(capabilities, db, schemas);
         await graph.invalidate("source");
 
         // Pull with different object bindings
@@ -150,7 +150,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(db, schemas);
+        const graph = makeIncrementalGraph(capabilities, db, schemas);
         await graph.invalidate("source");
 
         const binding = { type: "all_events", events: [{ id: "test" }] };
