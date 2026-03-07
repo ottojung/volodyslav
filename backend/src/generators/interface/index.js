@@ -3,7 +3,8 @@
  * Provides direct database operations for event storage.
  */
 
-const { makeInterface, isInterface, isSynchronizeDatabaseError } = require('./class');
+const { makeInterface, isInterface } = require('./class');
+const { isSynchronizeDatabaseError } = require('./errors');
 
 /** @typedef {import('./class').Interface} Interface */
 

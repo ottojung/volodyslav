@@ -17,36 +17,9 @@ const {
     synchronizeNoLock,
     withMutex,
 } = require("../incremental_graph");
-const {
-    createDefaultGraphDefinition,
-} = require("./default_graph");
-const {
-    migrationCallback,
-} = require("../incremental_graph");
-
-class SynchronizeDatabaseError extends Error {
-    /**
-     * @param {unknown} synchronizeCause
-     * @param {unknown} reopenCause
-     */
-    constructor(synchronizeCause, reopenCause) {
-        super(
-            `Interface database sync failed: ${synchronizeCause}; reopening database failed: ${reopenCause}`
-        );
-        this.name = "SynchronizeDatabaseError";
-        this.synchronizeCause = synchronizeCause;
-        this.reopenCause = reopenCause;
-    }
-}
-
-/**
- * Type guard for SynchronizeDatabaseError.
- * @param {unknown} object
- * @returns {object is SynchronizeDatabaseError}
- */
-function isSynchronizeDatabaseError(object) {
-    return object instanceof SynchronizeDatabaseError;
-}
+const { createDefaultGraphDefinition } = require("./default_graph");
+const { migrationCallback } = require("../incremental_graph");
+const { makeSynchronizeDatabaseError } = require("./errors");
 
 /**
  * An interface for direct database operations.
@@ -206,7 +179,7 @@ class InterfaceClass {
 
         if (reopenFailure !== null) {
             if (synchronizeFailure !== null) {
-                throw new SynchronizeDatabaseError(synchronizeFailure, reopenFailure);
+                throw makeSynchronizeDatabaseError(synchronizeFailure, reopenFailure);
             }
             throw reopenFailure;
         }
@@ -293,5 +266,4 @@ function isInterface(object) {
 module.exports = {
     makeInterface,
     isInterface,
-    isSynchronizeDatabaseError,
 };
