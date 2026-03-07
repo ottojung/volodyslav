@@ -15,7 +15,7 @@ const {
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
-const { isDateTime } = require("../src/datetime");
+const { isDateTime, make: makeDatetime } = require("../src/datetime");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -67,7 +67,7 @@ describe("generators/incremental_graph timestamps", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const before = Date.now();
+            const before = makeDatetime().now();
 
             const graphDef = [
                 {
@@ -83,13 +83,12 @@ describe("generators/incremental_graph timestamps", () => {
             await graph.invalidate("node1");
             await graph.pull("node1");
 
-            const after = Date.now();
-
             const creationTime = await graph.getCreationTime("node1");
-            const creationMs = new Date(creationTime.toISOString()).getTime();
 
-            expect(creationMs).toBeGreaterThanOrEqual(before);
-            expect(creationMs).toBeLessThanOrEqual(after + 100);
+            const after = makeDatetime().now();
+
+            expect(creationTime.isAfterOrEqual(before)).toBe(true);
+            expect(after.isAfterOrEqual(creationTime)).toBe(true);
 
             await db.close();
         });
@@ -379,10 +378,7 @@ describe("generators/incremental_graph timestamps", () => {
             await graph.pull("src");
             const secondModTime = await graph.getModificationTime("src");
 
-            const firstMs = new Date(firstModTime.toISOString()).getTime();
-            const secondMs = new Date(secondModTime.toISOString()).getTime();
-
-            expect(secondMs).toBeGreaterThanOrEqual(firstMs);
+            expect(secondModTime.isAfterOrEqual(firstModTime)).toBe(true);
 
             await db.close();
         });
@@ -475,9 +471,7 @@ describe("generators/incremental_graph timestamps", () => {
             expect(firstCreationTime.toISOString()).toBe(secondCreationTime.toISOString());
 
             // Modification time should be >= first mod time
-            const firstModMs = new Date(firstModTime.toISOString()).getTime();
-            const secondModMs = new Date(secondModTime.toISOString()).getTime();
-            expect(secondModMs).toBeGreaterThanOrEqual(firstModMs);
+            expect(secondModTime.isAfterOrEqual(firstModTime)).toBe(true);
 
             await db.close();
         });
