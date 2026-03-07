@@ -66,4 +66,28 @@ describe("getBasePath", () => {
         // checker.instantiate should only be called once
         expect(capabilities.checker.instantiate).toHaveBeenCalledTimes(1);
     });
+
+    it("extracts pathname from a full URL", async () => {
+        const capabilities = makeCapabilities("https://example.com/app");
+        const result = await basePathModule.getBasePath(capabilities);
+        expect(result).toBe("/app");
+    });
+
+    it("extracts pathname from a full URL with trailing slash", async () => {
+        const capabilities = makeCapabilities("https://example.com/app/");
+        const result = await basePathModule.getBasePath(capabilities);
+        expect(result).toBe("/app");
+    });
+
+    it("returns empty string for a full URL with no path", async () => {
+        const capabilities = makeCapabilities("https://example.com");
+        const result = await basePathModule.getBasePath(capabilities);
+        expect(result).toBe("");
+    });
+
+    it("returns empty string for empty file", async () => {
+        const capabilities = makeCapabilities("");
+        const result = await basePathModule.getBasePath(capabilities);
+        expect(result).toBe("");
+    });
 });
