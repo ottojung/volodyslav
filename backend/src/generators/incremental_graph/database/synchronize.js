@@ -56,6 +56,8 @@ async function synchronizeUnsafe(capabilities, options) {
         remoteLocation,
         options
     );
+
+    capabilities.logger.logInfo({ remotePath, options }, "Synchronized generators database with remote");
 }
 
 module.exports = { synchronize };
