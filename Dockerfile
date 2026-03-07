@@ -10,6 +10,6 @@ COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
 RUN npm ci
 COPY . .
-ARG VOLODYSLAV_BASEURL=''
+ARG VOLODYSLAV_BASEURL='/volodyslav'
 RUN sh scripts/install /usr/local
 ENTRYPOINT [ "volodyslav" ]
