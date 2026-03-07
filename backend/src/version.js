@@ -13,6 +13,28 @@ const path = require('path');
  * @param {Capabilities} capabilities
  * @returns {Promise<string>}
  */
+async function getVersionFromPackageJson(capabilities) {
+    const packageJsonPath = path.join(__dirname, '..', '..', 'package.json');
+    const packageJsonFile = await capabilities.checker.instantiate(packageJsonPath);
+    const packageJson = await capabilities.reader.readFileAsText(packageJsonFile.path);
+    const parsed = JSON.parse(packageJson);
+
+    if (
+        parsed !== null &&
+        typeof parsed === "object" &&
+        "version" in parsed &&
+        typeof parsed.version === "string"
+    ) {
+        return parsed.version;
+    }
+
+    throw new Error("package.json did not contain a string version");
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @returns {Promise<string>}
+ */
 async function getVersion(capabilities) {
     // First, try to read version from VERSION file (for installed versions)
     const versionFilePath = path.join(__dirname, '..', '..', 'VERSION');
@@ -36,13 +58,17 @@ async function getVersion(capabilities) {
         );
         return stdout.trim();
     } catch (error) {
-        // If git is not available, we can assume that the version is unknown.
-        const message =
-            error instanceof Object && error !== null && "message" in error
-                ? String(error.message)
-                : String(error);
-        capabilities.logger.logError({ error }, `Could not determine version: ${message}`);
-        return "unknown";
+        try {
+            return await getVersionFromPackageJson(capabilities);
+        } catch {
+            // If git and package metadata are not available, we can assume that the version is unknown.
+            const message =
+                error instanceof Object && error !== null && "message" in error
+                    ? String(error.message)
+                    : String(error);
+            capabilities.logger.logError({ error }, `Could not determine version: ${message}`);
+            return "unknown";
+        }
     }
 }
 
