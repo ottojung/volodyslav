@@ -1,5 +1,5 @@
 const express = require("express");
-const { isMissingTimestamp } = require('../generators/incremental_graph');
+const { isMissingTimestamp } = require('../generators');
 
 /** @typedef {import('../generators/incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('../generators/incremental_graph/types').ConstValue} ConstValue */
