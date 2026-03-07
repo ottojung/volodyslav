@@ -406,6 +406,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
+            // checkpointDatabase(capabilities, message): [0][1] = message of first call
             const firstCall = capabilities.checkpointDatabase.mock.calls[0][1];
             expect(firstCall).toContain("pre-migration:");
             expect(firstCall).toContain("1.0.0");
@@ -424,6 +425,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
+            // checkpointDatabase(capabilities, message): [1][1] = message of second call
             const secondCall = capabilities.checkpointDatabase.mock.calls[1][1];
             expect(secondCall).toContain("post-migration:");
             expect(secondCall).toContain("2.0.0");
@@ -620,6 +622,7 @@ describe("runMigration", () => {
             ).rejects.toThrow("intentional failure");
 
             expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(1);
+            // checkpointDatabase(capabilities, message): [0][1] = message of first call
             const firstCall = capabilities.checkpointDatabase.mock.calls[0][1];
             expect(firstCall).toContain("pre-migration:");
         });
@@ -637,6 +640,7 @@ describe("runMigration", () => {
             ).rejects.toThrow();
 
             expect(capabilities.checkpointDatabase).toHaveBeenCalledTimes(1);
+            // checkpointDatabase(capabilities, message): [0][1] = message of first call
             const firstCall = capabilities.checkpointDatabase.mock.calls[0][1];
             expect(firstCall).toContain("pre-migration:");
         });
