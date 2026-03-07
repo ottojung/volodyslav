@@ -812,6 +812,36 @@ class IncrementalGraphClass {
     }
 
     /**
+     * Returns the recorded timestamps for a node instance without triggering recomputation.
+     * Returns null if the node has no recorded timestamps (not yet materialized or pre-dates
+     * timestamp recording).
+     * Note: This is a debug/inspection method that reads directly from storage
+     * outside a batch context. This is acceptable for non-critical debug paths.
+     * @param {string} head - The node head name (functor only)
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @returns {Promise<{createdAt: string, modifiedAt: string} | null>}
+     */
+    async debugGetTimestamps(head, bindings = []) {
+        const nodeName = stringToNodeName(head);
+        const compiledNode = this.headIndex.get(nodeName);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeName);
+        }
+
+        checkArity(compiledNode, bindings);
+
+        const nodeKey = { head: nodeName, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+
+        // Debug read: directly from storage (acceptable for non-critical inspection)
+        const record = await this.storage.timestamps.get(concreteKey);
+        if (record === undefined) {
+            return null;
+        }
+        return { createdAt: record.createdAt, modifiedAt: record.modifiedAt };
+    }
+
+    /**
      * Returns the cached value of a node without triggering recomputation.
      * Returns undefined if the node has not been materialized.
      * Note: This is a debug/inspection method that reads directly from storage

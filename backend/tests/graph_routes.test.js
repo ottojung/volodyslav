@@ -35,6 +35,7 @@ function makeMockCompiledNode(head, arity, overrides = {}) {
  * @param {Array<[string, Array<string>]>} [opts.materialized] - list of materialized nodes
  * @param {Map<string, string>} [opts.freshness] - freshness per serialized key
  * @param {Map<string, unknown>} [opts.values] - values per serialized key
+ * @param {Map<string, {createdAt: string, modifiedAt: string}>} [opts.timestamps] - timestamps per serialized key
  * @returns {object}
  */
 function makeMockIncrementalGraph({
@@ -42,6 +43,7 @@ function makeMockIncrementalGraph({
     materialized = [],
     freshness = new Map(),
     values = new Map(),
+    timestamps = new Map(),
 } = {}) {
     return {
         headIndex,
@@ -55,6 +57,10 @@ function makeMockIncrementalGraph({
         debugGetValue: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
             return values.get(key);
+        }),
+        debugGetTimestamps: jest.fn().mockImplementation(async (head, args) => {
+            const key = JSON.stringify({ head, args });
+            return timestamps.get(key) ?? null;
         }),
     };
 }
@@ -205,7 +211,11 @@ describe("GET /api/graph/nodes", () => {
             [JSON.stringify({ head: "all_events", args: [] }), "up-to-date"],
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), "potentially-outdated"],
         ]);
-        const graph = makeMockIncrementalGraph({ materialized, freshness });
+        const timestamps = new Map([
+            [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+            [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockIncrementalGraph({ materialized, freshness, timestamps });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
@@ -213,12 +223,27 @@ describe("GET /api/graph/nodes", () => {
         expect(res.body).toHaveLength(2);
 
         const allEventsEntry = res.body.find((n) => n.head === "all_events");
-        expect(allEventsEntry).toEqual({ head: "all_events", args: [], freshness: "up-to-date" });
+        expect(allEventsEntry).toEqual({ head: "all_events", args: [], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" });
         expect(allEventsEntry).not.toHaveProperty("value");
 
         const eventEntry = res.body.find((n) => n.head === "event");
-        expect(eventEntry).toEqual({ head: "event", args: ["evt-abc123"], freshness: "potentially-outdated" });
+        expect(eventEntry).toEqual({ head: "event", args: ["evt-abc123"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" });
         expect(eventEntry).not.toHaveProperty("value");
+    });
+
+    it("includes null timestamps when timestamps are not recorded", async () => {
+        const materialized = [["all_events", []]];
+        const freshness = new Map([
+            [JSON.stringify({ head: "all_events", args: [] }), "up-to-date"],
+        ]);
+        // no timestamps entry → debugGetTimestamps returns null
+        const graph = makeMockIncrementalGraph({ materialized, freshness });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).get("/api/graph/nodes");
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0]).toEqual({ head: "all_events", args: [], freshness: "up-to-date", createdAt: null, modifiedAt: null });
     });
 
     it("excludes nodes with missing freshness", async () => {
@@ -271,7 +296,10 @@ describe("GET /api/graph/nodes/:head", () => {
             const values = new Map([
                 [JSON.stringify({ head: "all_events", args: [] }), { type: "all_events", events: [] }],
             ]);
-            const graph = makeMockIncrementalGraph({ headIndex, freshness, values });
+            const timestamps = new Map([
+                [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+            ]);
+            const graph = makeMockIncrementalGraph({ headIndex, freshness, values, timestamps });
             const app = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/all_events");
@@ -281,6 +309,8 @@ describe("GET /api/graph/nodes/:head", () => {
                 args: [],
                 freshness: "up-to-date",
                 value: { type: "all_events", events: [] },
+                createdAt: "2024-01-01T00:00:00.000Z",
+                modifiedAt: "2024-01-02T00:00:00.000Z",
             });
         });
     });
@@ -306,7 +336,11 @@ describe("GET /api/graph/nodes/:head", () => {
                 [JSON.stringify({ head: "event", args: ["evt-abc123"] }), "up-to-date"],
                 [JSON.stringify({ head: "event", args: ["evt-def456"] }), "potentially-outdated"],
             ]);
-            const graph = makeMockIncrementalGraph({ headIndex, materialized, freshness });
+            const timestamps = new Map([
+                [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+                [JSON.stringify({ head: "event", args: ["evt-def456"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
+            ]);
+            const graph = makeMockIncrementalGraph({ headIndex, materialized, freshness, timestamps });
             const app = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/event");
@@ -315,8 +349,8 @@ describe("GET /api/graph/nodes/:head", () => {
             expect(res.body[0]).not.toHaveProperty("value");
             expect(res.body[1]).not.toHaveProperty("value");
             const sorted = [...res.body].sort((a, b) => a.args[0].localeCompare(b.args[0]));
-            expect(sorted[0]).toEqual({ head: "event", args: ["evt-abc123"], freshness: "up-to-date" });
-            expect(sorted[1]).toEqual({ head: "event", args: ["evt-def456"], freshness: "potentially-outdated" });
+            expect(sorted[0]).toEqual({ head: "event", args: ["evt-abc123"], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" });
+            expect(sorted[1]).toEqual({ head: "event", args: ["evt-def456"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" });
         });
     });
 });
@@ -380,7 +414,10 @@ describe("GET /api/graph/nodes/:head/*", () => {
         const values = new Map([
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { type: "event", id: "evt-abc123" }],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex, freshness, values });
+        const timestamps = new Map([
+            [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockIncrementalGraph({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/evt-abc123");
@@ -390,6 +427,8 @@ describe("GET /api/graph/nodes/:head/*", () => {
             args: ["evt-abc123"],
             freshness: "up-to-date",
             value: { type: "event", id: "evt-abc123" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-02T00:00:00.000Z",
         });
     });
 
@@ -403,7 +442,10 @@ describe("GET /api/graph/nodes/:head/*", () => {
         const values = new Map([
             [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { result: "ok" }],
         ]);
-        const graph = makeMockIncrementalGraph({ headIndex, freshness, values });
+        const timestamps = new Map([
+            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockIncrementalGraph({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/pair/arg1/arg2");
@@ -413,6 +455,8 @@ describe("GET /api/graph/nodes/:head/*", () => {
             args: ["arg1", "arg2"],
             freshness: "up-to-date",
             value: { result: "ok" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-01T00:00:00.000Z",
         });
     });
 });

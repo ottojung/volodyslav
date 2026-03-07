@@ -82,6 +82,19 @@ async function handleGetSchemaByHead(capabilities, req, res) {
 }
 
 /**
+ * Extracts createdAt and modifiedAt from a timestamps record.
+ * Returns null values if the record is null (no timestamps recorded).
+ * @param {{createdAt: string, modifiedAt: string} | null} timestamps
+ * @returns {{createdAt: string | null, modifiedAt: string | null}}
+ */
+function extractTimestamps(timestamps) {
+    if (timestamps === null) {
+        return { createdAt: null, modifiedAt: null };
+    }
+    return { createdAt: timestamps.createdAt, modifiedAt: timestamps.modifiedAt };
+}
+
+/**
  * Handles GET /graph/nodes — lists all materialized instances with freshness.
  * @param {Capabilities} capabilities
  * @param {import('express').Request} _req
@@ -99,7 +112,8 @@ async function handleGetNodes(capabilities, _req, res) {
     for (const [head, args] of materialized) {
         const freshness = await graph.debugGetFreshness(head, args);
         if (freshness !== "missing") {
-            result.push({ head, args, freshness });
+            const { createdAt, modifiedAt } = extractTimestamps(await graph.debugGetTimestamps(head, args));
+            result.push({ head, args, freshness, createdAt, modifiedAt });
         }
     }
     res.json(result);
@@ -139,7 +153,8 @@ async function handleGetNodesByHead(capabilities, req, res) {
             return;
         }
         const value = await graph.debugGetValue(head, []);
-        res.json({ head, args: [], freshness, value });
+        const { createdAt, modifiedAt } = extractTimestamps(await graph.debugGetTimestamps(head, []));
+        res.json({ head, args: [], freshness, value, createdAt, modifiedAt });
     } else {
         // Arity-N: return list of all materialized instances without values
         const materialized = await graph.debugListMaterializedNodes();
@@ -148,7 +163,8 @@ async function handleGetNodesByHead(capabilities, req, res) {
             if (nodeHead === head) {
                 const freshness = await graph.debugGetFreshness(nodeHead, args);
                 if (freshness !== "missing") {
-                    result.push({ head, args, freshness });
+                    const { createdAt, modifiedAt } = extractTimestamps(await graph.debugGetTimestamps(nodeHead, args));
+                    result.push({ head, args, freshness, createdAt, modifiedAt });
                 }
             }
         }
@@ -204,7 +220,8 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
     }
 
     const value = await graph.debugGetValue(head, args);
-    res.json({ head, args, freshness, value });
+    const { createdAt, modifiedAt } = extractTimestamps(await graph.debugGetTimestamps(head, args));
+    res.json({ head, args, freshness, value, createdAt, modifiedAt });
 }
 
 /**
