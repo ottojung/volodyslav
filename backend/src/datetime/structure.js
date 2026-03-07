@@ -155,7 +155,7 @@ class DateTimeClass {
      * @returns {boolean} True if this DateTime is before or equal to the other
      */
     isBeforeOrEqual(other) {
-        return this.isBefore(other) || this.equals(other);
+        return !this.isAfter(other);
     }
 
     /**
@@ -164,7 +164,7 @@ class DateTimeClass {
      * @returns {boolean} True if this DateTime is after or equal to the other
      */
     isAfterOrEqual(other) {
-        return this.isAfter(other) || this.equals(other);
+        return !this.isBefore(other);
     }
 
     /**
