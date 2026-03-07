@@ -11,16 +11,18 @@ const {
 } = require("./stubs");
 
 const { everyHour, daily, allTasks } = require("../src/jobs");
+const { stubGeneratorsRepository } = require("./stub_generators_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const { fromMinutes } = require("../src/datetime");
 
-function getTestCapabilities() {
+async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubLogger(capabilities);
     stubEnvironment(capabilities);
     stubAiTranscriber(capabilities);
     stubNotifier(capabilities);
     stubDailyTasksExecutable(capabilities);
+    await stubGeneratorsRepository(capabilities);
     return capabilities;
 }
 
@@ -28,7 +30,7 @@ describe("Schedule Tasks", () => {
 
     describe("daily", () => {
         test("logs info message when starting", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = await getTestCapabilities();
 
             await daily(capabilities);
 
@@ -36,7 +38,7 @@ describe("Schedule Tasks", () => {
         });
 
         test("completes without throwing errors", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = await getTestCapabilities();
 
             await expect(daily(capabilities)).resolves.toBeUndefined();
         });
@@ -44,7 +46,7 @@ describe("Schedule Tasks", () => {
 
     describe("everyHour", () => {
         test("logs info message when starting", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = await getTestCapabilities();
 
             await everyHour(capabilities);
 
@@ -52,7 +54,7 @@ describe("Schedule Tasks", () => {
         }, 30000);
 
         test("completes without throwing errors", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = await getTestCapabilities();
 
             await expect(everyHour(capabilities)).resolves.toBeUndefined();
         }, 30000);
@@ -60,7 +62,7 @@ describe("Schedule Tasks", () => {
 
     describe("allTasks", () => {
         test("completes without throwing errors", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = await getTestCapabilities();
 
             await expect(allTasks(capabilities)).resolves.toBeUndefined();
         }, 30000);

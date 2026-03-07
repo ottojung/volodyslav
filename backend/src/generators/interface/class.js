@@ -5,12 +5,15 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
+/** @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
 const {
     makeIncrementalGraph,
     getRootDatabase,
     runMigration,
+    runMigrationUnsafe,
     synchronizeNoLock,
     withMutex,
 } = require("../incremental_graph");
@@ -106,6 +109,18 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async ensureInitialized() {
+        await this._ensureInitialized(runMigration);
+    }
+
+    /**
+     * Opens the database and runs any pending migration using the provided
+     * migration procedure.
+     *
+     * @private
+     * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<void>} runMigrationProcedure
+     * @returns {Promise<void>}
+     */
+    async _ensureInitialized(runMigrationProcedure) {
         if (this._incrementalGraph !== null) {
             return;
         }
@@ -119,7 +134,7 @@ class InterfaceClass {
         const nodeDefs = createDefaultGraphDefinition(capabilities);
 
         // Step 3: run migration (no-op on fresh/same version).
-        await runMigration(
+        await runMigrationProcedure(
             capabilities,
             database,
             nodeDefs,
@@ -141,7 +156,7 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async synchronizeDatabase(options) {
-        withMutex(this._getCapabilities().sleeper, async () => {
+        await withMutex(this._getCapabilities().sleeper, async () => {
             await this._synchronizeDatabaseNoLock(options);
         });
     }
@@ -157,26 +172,34 @@ class InterfaceClass {
     async _synchronizeDatabaseNoLock(options) {
         const capabilities = this._getCapabilities();
         const database = this._database;
+        const incrementalGraph = this._incrementalGraph;
         if (database === null) {
             await synchronizeNoLock(capabilities, options);
             return;
         }
 
-        let synchronizeFailure = null;
+        this._database = null;
+        this._incrementalGraph = null;
 
         try {
             await database.close();
+        } catch (error) {
+            this._database = database;
+            this._incrementalGraph = incrementalGraph;
+            throw error;
+        }
+
+        let synchronizeFailure = null;
+
+        try {
             await synchronizeNoLock(capabilities, options);
         } catch (error) {
             synchronizeFailure = error;
         }
 
-        this._database = null;
-        this._incrementalGraph = null;
-
         let reopenFailure = null;
         try {
-            await this.ensureInitialized();
+            await this._ensureInitialized(runMigrationUnsafe);
         } catch (error) {
             reopenFailure = error;
         }

@@ -9,6 +9,7 @@ const {
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
+const { stubGeneratorsRepository } = require("./stub_generators_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment, stubDatetime, stubEventLogRepository } = require("./stubs");
 
@@ -26,32 +27,8 @@ async function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     await stubEventLogRepository(capabilities);
-    await initializeGeneratorsRemote(capabilities);
+    await stubGeneratorsRepository(capabilities);
     return capabilities;
-}
-
-/**
- * Initializes a local git repository to act as the generators sync remote.
- * @param {object} capabilities
- */
-async function initializeGeneratorsRemote(capabilities) {
-    const remotePath = capabilities.environment.generatorsRepository();
-    await capabilities.creator.createDirectory(remotePath);
-    await capabilities.git.call("-C", remotePath, "-c", "safe.directory=*", "init", "-b", "master");
-    await capabilities.git.call(
-        "-C",
-        remotePath,
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=test-user",
-        "-c",
-        "user.email=test@example.com",
-        "commit",
-        "--allow-empty",
-        "-m",
-        "Initial empty commit",
-    );
 }
 
 /**
