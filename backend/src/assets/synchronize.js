@@ -50,25 +50,36 @@ async function synchronize(capabilities) {
 
     capabilities.logger.logInfo({ local, remote }, "Synchronizing assets directory");
 
-    try {
-        // pull: remote → local
-        await capabilities.rsync.call("--recursive", "--partial", "--", remote, local);
-    } catch (error) {
-        throw new AssetsSynchronizationError(
-            `Failed to pull assets from remote: ${error}`,
-            error
-        );
+    async function pull() {
+        try {
+            // pull: remote → local
+            return await capabilities.rsync.call("--recursive", "--partial", "--info=stats2", "--human-readable", "--", remote, local);
+        } catch (error) {
+            throw new AssetsSynchronizationError(
+                `Failed to pull assets from remote: ${error}`,
+                error
+            );
+        }
     }
 
-    try {
-        // push: local → remote
-        await capabilities.rsync.call("--recursive", "--partial", "--", local, remote);
-    } catch (error) {
-        throw new AssetsSynchronizationError(
-            `Failed to push assets to remote: ${error}`,
-            error
-        );
+    async function push() {
+        try {
+            return await capabilities.rsync.call("--recursive", "--partial", "--info=stats2", "--human-readable", "--", local, remote);
+        } catch (error) {
+            throw new AssetsSynchronizationError(
+                `Failed to push assets to remote: ${error}`,
+                error
+            );
+        }
     }
+
+    const pullResult = await pull();
+    const pushResult = await push();
+
+    capabilities.logger.logInfo(
+        { pullResult, pushResult },
+        "Assets directory synchronized successfully"
+    );
 }
 
 module.exports = { synchronize, isAssetsSynchronizationError };
