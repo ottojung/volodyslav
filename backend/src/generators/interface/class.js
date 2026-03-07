@@ -198,8 +198,9 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async update() {
+        await this.ensureInitialized();
         if (this._incrementalGraph === null) {
-            return;
+            throw new Error("Impossible: expected non-null");
         }
         await this._incrementalGraph.invalidate("all_events");
     }
@@ -213,11 +214,11 @@ class InterfaceClass {
      * @returns {Promise<Array<Event>>} The context events
      */
     async getEventBasicContext(event) {
-        const incrementalGraph = this._incrementalGraph;
-        if (incrementalGraph === null) {
-            throw new Error("Interface.getEventBasicContext(): ensureInitialized() must be called first");
+        await this.ensureInitialized();
+        if (this._incrementalGraph === null) {
+            throw new Error("Impossible: expected non-null");
         }
-        const eventContextEntry = await incrementalGraph.pull(
+        const eventContextEntry = await this._incrementalGraph.pull(
             "event_context"
         );
 
