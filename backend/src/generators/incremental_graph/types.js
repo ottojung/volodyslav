@@ -16,7 +16,8 @@
 /**
  * Capabilities needed for IncrementalGraph operations
  * @typedef {object} IncrementalGraphCapabilities
- * @property {RootDatabase} database - A root database instance
+ * @property {import('../../sleeper').SleepCapability} sleeper - A sleeper instance for mutex operations
+ * @property {import('../../datetime').Datetime} datetime - Datetime utilities for timestamp recording
  */
 
 /**

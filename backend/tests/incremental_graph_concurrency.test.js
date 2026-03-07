@@ -7,6 +7,9 @@
 const {
     makeIncrementalGraph,
 } = require("../src/generators/incremental_graph");
+const { getMockedRootCapabilities } = require("./spies");
+
+const testCapabilities = getMockedRootCapabilities();
 
 /**
  * Deep clone helper for test data
@@ -120,7 +123,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const sourceCell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -165,7 +168,7 @@ describe("IncrementalGraph concurrency", () => {
             const source1Cell = { value: { type: "test", value: 0 } };
             const source2Cell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -209,7 +212,7 @@ describe("IncrementalGraph concurrency", () => {
             let computeCount = 0;
             const sourceCell = { value: { type: "test", value: 5 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -263,7 +266,7 @@ describe("IncrementalGraph concurrency", () => {
             const source1Cell = { value: { type: "test", value: 1 } };
             const source2Cell = { value: { type: "test", value: 2 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -306,7 +309,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const sourceCell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -353,7 +356,7 @@ describe("IncrementalGraph concurrency", () => {
             let computeCount = 0;
             const sourceCell = { value: { type: "test", value: 5 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -409,7 +412,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const counterCell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "counter",
                     inputs: [],
@@ -467,7 +470,7 @@ describe("IncrementalGraph concurrency", () => {
             const aCell = { value: { type: "test", value: 1 } };
             const bCell = { value: { type: "test", value: 2 } };
 
-            const graph = makeIncrementalGraph(db, [
+            const graph = makeIncrementalGraph(testCapabilities, db, [
                 {
                     output: "a",
                     inputs: [],

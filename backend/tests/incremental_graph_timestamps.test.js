@@ -52,7 +52,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("src");
             await graph.pull("src");
@@ -79,7 +79,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
             await graph.invalidate("node1");
             await graph.pull("node1");
 
@@ -107,7 +107,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // Node exists in schema but was never pulled
             let error = null;
@@ -126,7 +126,7 @@ describe("generators/incremental_graph timestamps", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeIncrementalGraph(db, []);
+            const graph = makeIncrementalGraph(capabilities, db, []);
 
             let error = null;
             try {
@@ -158,7 +158,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // First computation
             await graph.invalidate("src");
@@ -196,7 +196,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("item", ["a"]);
             await graph.pull("item", ["a"]);
@@ -227,7 +227,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("item", ["existing"]);
             await graph.pull("item", ["existing"]);
@@ -261,7 +261,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("src");
             await graph.pull("src");
@@ -286,7 +286,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("src");
             await graph.pull("src");
@@ -313,7 +313,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             let error = null;
             try {
@@ -331,7 +331,7 @@ describe("generators/incremental_graph timestamps", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeIncrementalGraph(db, []);
+            const graph = makeIncrementalGraph(capabilities, db, []);
 
             let error = null;
             try {
@@ -363,7 +363,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // First computation
             await graph.invalidate("src");
@@ -410,7 +410,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // First computation of derived
             await graph.invalidate("src");
@@ -450,7 +450,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // First computation
             await graph.invalidate("src");
@@ -497,7 +497,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("node1");
             await graph.pull("node1");
@@ -538,7 +538,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             await graph.invalidate("source");
             await graph.pull("derived");
@@ -568,7 +568,7 @@ describe("generators/incremental_graph timestamps", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             let caughtError;
             try {

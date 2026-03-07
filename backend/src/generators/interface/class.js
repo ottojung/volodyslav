@@ -98,7 +98,7 @@ class InterfaceClass {
         );
 
         // Step 4: wire up the incremental graph.
-        this._incrementalGraph = makeIncrementalGraph(database, nodeDefs);
+        this._incrementalGraph = makeIncrementalGraph(capabilities, database, nodeDefs);
     }
 
     /**

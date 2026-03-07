@@ -47,7 +47,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const testKey = '{"head":"source","args":[]}';
@@ -79,7 +79,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const testKey = '{"head":"source","args":[]}';
@@ -115,7 +115,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const testKey = '{"head":"source","args":[]}';
@@ -155,7 +155,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const testKey = '{"head":"source","args":[]}';
@@ -184,7 +184,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const testKey = '{"head":"source","args":[]}';
@@ -228,7 +228,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const testKey = '{"head":"derived","args":[]}';
@@ -267,7 +267,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(db, graphDef);
+                const graph = makeIncrementalGraph(capabilities, db, graphDef);
                 const storage = graph.storage;
 
                 const inputKey = '{"head":"source","args":[]}';
@@ -314,7 +314,7 @@ describe("incremental_graph batch consistency", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
             const storage = graph.storage;
 
             const inputKey = '{"head":"source","args":[]}';
@@ -360,7 +360,7 @@ describe("incremental_graph batch consistency", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(db, graphDef);
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
             const storage = graph.storage;
 
             const nodeKey = '{"head":"derived","args":[]}';
