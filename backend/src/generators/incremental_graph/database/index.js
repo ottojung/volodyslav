@@ -100,5 +100,4 @@ module.exports = {
     stringToSchemaPattern,
     versionToString,
     stringToVersion,
-    synchronize: require('./synchronize').synchronize,
 };
