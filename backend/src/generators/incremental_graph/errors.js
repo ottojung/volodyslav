@@ -434,6 +434,43 @@ function isSchemaArityConflict(object) {
     return object instanceof SchemaArityConflict;
 }
 
+/**
+ * Error thrown when getCreationTime or getModificationTime is called for a node
+ * that has no recorded timestamps (either it does not exist or was materialized
+ * before timestamp recording was introduced).
+ */
+class MissingTimestamp extends Error {
+    /**
+     * @param {NodeKeyString} nodeKey
+     */
+    constructor(nodeKey) {
+        super(
+            `Node '${nodeKey}' does not have recorded timestamps. ` +
+                `The node may not exist or may have been created before timestamp recording was added.`
+        );
+        this.name = "MissingTimestampError";
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * Constructs a MissingTimestamp error.
+ * @param {NodeKeyString} nodeKey
+ * @returns {MissingTimestamp}
+ */
+function makeMissingTimestampError(nodeKey) {
+    return new MissingTimestamp(nodeKey);
+}
+
+/**
+ * Type guard for MissingTimestamp.
+ * @param {unknown} object
+ * @returns {object is MissingTimestamp}
+ */
+function isMissingTimestamp(object) {
+    return object instanceof MissingTimestamp;
+}
+
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -459,4 +496,6 @@ module.exports = {
     isSchemaArityConflict,
     makeInvalidNodeDefError,
     isInvalidNodeDef,
+    makeMissingTimestampError,
+    isMissingTimestamp,
 };

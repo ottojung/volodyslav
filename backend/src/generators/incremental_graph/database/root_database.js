@@ -14,6 +14,7 @@ const { stringToVersion } = require('./types');
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Counter} Counter */
+/** @typedef {import('./types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
@@ -79,6 +80,13 @@ const FORMAT_MARKER = 'xy-v1';
  */
 
 /**
+ * Database for storing node timestamps (creation and modification times).
+ * Key: canonical node name
+ * Value: timestamp record with createdAt and modifiedAt ISO strings
+ * @typedef {GenericDatabase<TimestampRecord>} TimestampsDatabase
+ */
+
+/**
  * Storage container for a single incremental graph namespace.
  * All data (values, freshness, indices) is isolated per namespace.
  * @typedef {object} SchemaStorage
@@ -87,6 +95,7 @@ const FORMAT_MARKER = 'xy-v1';
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
+ * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
@@ -150,6 +159,8 @@ class RootDatabaseClass {
         const revdepsSublevel = this.namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Counter>} */
         const countersSublevel = this.namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
+        /** @type {SimpleSublevel<TimestampRecord>} */
+        const timestampsSublevel = this.namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
         this.metaSublevel = this.namespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
 
@@ -183,6 +194,7 @@ class RootDatabaseClass {
             inputs: makeTypedDatabase(inputsSublevel),
             revdeps: makeTypedDatabase(revdepsSublevel),
             counters: makeTypedDatabase(countersSublevel),
+            timestamps: makeTypedDatabase(timestampsSublevel),
         };
     }
 
