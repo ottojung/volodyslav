@@ -1,6 +1,9 @@
 
 // This file contains the current migration callback.
 
+const { stringToNodeName } = require("./database");
+const { deserializeNodeKey } = require("./node_key");
+
 /**
  * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities
  */
@@ -10,21 +13,52 @@
  */
 
 /**
+ * A migration callback that keeps all nodes of a certain type.
+ *
+ * @param {string} nodeName - The name of the node type to keep (e.g., "meta_events")
+ * @param {MigrationStorage} storage - The migration storage instance
+ * @returns {Promise<void>}
+ */
+async function keepNodeType(nodeName, storage) {
+    const nodeNameTyped = stringToNodeName(nodeName);
+    const nodeKeys = storage.listMaterializedNodes();
+    for await (const nodeKey of nodeKeys) {
+        const parsed = deserializeNodeKey(nodeKey);
+        if (parsed.head === nodeNameTyped) {
+            await storage.keep(nodeKey);
+        }
+    }
+}
+
+/**
  * @param {GeneratorsCapabilities} capabilities
  * @returns {function(MigrationStorage): Promise<void>}
  */
 function migrationCallback(capabilities) {
     return async (storage) => {
-        // A temporary conservative approach.
-        // The effect is that all computed values will be invalidated.
-        // This code will be replaced by more targeted migrations in the future.
-        capabilities.logger.logInfo({}, "Migration: deleting all node values");
-        for await (const nodeKey of storage.listMaterializedNodes()) {
-            await storage.delete(nodeKey);
-        }
+        capabilities.logger.logInfo({}, "Migration tries to keep everything.");
+        await keepNodeType("all_events", storage);
+        await keepNodeType("meta_events", storage);
+        await keepNodeType("event", storage);
+        await keepNodeType("calories", storage);
     };
 }
 
+/**
+ * Deletes all node values.
+ * @param {GeneratorsCapabilities} capabilities 
+ * @param {MigrationStorage} storage 
+ */
+async function deleteAllCallback(capabilities, storage) {
+    // A conservative approach.
+    // The effect is that all computed values will be invalidated.
+    capabilities.logger.logInfo({}, "Migration: deleting all node values");
+    for await (const nodeKey of storage.listMaterializedNodes()) {
+        await storage.delete(nodeKey);
+    }
+}
+
 module.exports = {
+    deleteAllCallback,
     migrationCallback,
 };
