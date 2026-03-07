@@ -8,6 +8,7 @@ const periodic = require("./periodic");
 const entries = require("./entries");
 const config = require("./config");
 const sync = require("./sync");
+const graph = require("./graph");
 
 module.exports = {
     root,
@@ -20,4 +21,5 @@ module.exports = {
     entries,
     config,
     sync,
+    graph,
 };

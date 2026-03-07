@@ -9,6 +9,7 @@ const periodicRouter = routes.periodic;
 const entriesRouter = routes.entries;
 const configRouter = routes.config;
 const syncRouter = routes.sync;
+const graphRouter = routes.graph;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
@@ -47,6 +48,7 @@ async function addRoutes(capabilities, app) {
     app.use(`${basePath}/api`, entriesRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, configRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, syncRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, graphRouter.makeRouter(capabilities));
     app.use(`${basePath}/`, staticRouter.makeRouter(capabilities));
 }
 
