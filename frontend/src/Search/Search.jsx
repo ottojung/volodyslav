@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigationType } from "react-router-dom";
 import {
     Container,
     VStack,
@@ -25,6 +25,8 @@ import {
     BUTTON_STYLES,
 } from "../DescriptionEntry/styles.js";
 
+const SEARCH_STATE_KEY = "volodyslav_search_state";
+
 /**
  * @typedef {import('../DescriptionEntry/entry.js').Entry} Entry
  */
@@ -35,22 +37,65 @@ const EMPTY_ENTRIES = [];
 const NO_ERROR = null;
 
 /**
+ * Saves the current search state to sessionStorage so it can be restored
+ * when the user navigates back.
+ * @param {string} pattern
+ * @param {Entry[]} results
+ * @param {number} page
+ * @param {boolean} hasMore
+ * @param {string|null} error
+ */
+function saveSearchState(pattern, results, page, hasMore, error) {
+    try {
+        sessionStorage.setItem(
+            SEARCH_STATE_KEY,
+            JSON.stringify({ pattern, results, page, hasMore, error })
+        );
+    } catch {
+        // sessionStorage might be unavailable in some environments
+    }
+}
+
+/**
+ * Loads previously saved search state from sessionStorage.
+ * @returns {{ pattern: string, results: Entry[], page: number, hasMore: boolean, error: string|null } | null}
+ */
+function loadSearchState() {
+    try {
+        const saved = sessionStorage.getItem(SEARCH_STATE_KEY);
+        if (saved) {
+            return JSON.parse(saved);
+        }
+    } catch {
+        // ignore parse errors
+    }
+    return null;
+}
+
+/**
  * Search page component.
  * Shows a regex search field at the top and matching entries below.
  * Clicking an entry navigates to its detail page.
  * @returns {JSX.Element}
  */
 export default function Search() {
-    const [pattern, setPattern] = useState("");
-    const [results, setResults] = useState(EMPTY_ENTRIES);
-    const [isLoading, setIsLoading] = useState(false);
+    const navigationType = useNavigationType();
+
+    // The lazy useState initializer captures navigationType from the current render's scope
+    // and runs only once on mount, giving us the correct "back navigation" state.
+    const [restoredState] = useState(() => navigationType === "POP" ? loadSearchState() : null);
+
+    const [pattern, setPattern] = useState(restoredState?.pattern ?? "");
+    const [results, setResults] = useState(restoredState?.results ?? EMPTY_ENTRIES);
+    const [isLoading, setIsLoading] = useState(restoredState === null);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [error, setError] = useState(NO_ERROR);
-    const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(false);
+    const [error, setError] = useState(restoredState?.error ?? NO_ERROR);
+    const [page, setPage] = useState(restoredState?.page ?? 1);
+    const [hasMore, setHasMore] = useState(restoredState?.hasMore ?? false);
     const inputRef = useRef(null);
     const searchSequenceRef = useRef(0);
-    const navigate = useNavigate();
+    // Tracks whether the initial fetch should be skipped because state was restored.
+    const isStateRestoredRef = useRef(restoredState !== null);
 
     useEffect(() => {
         if (inputRef.current) {
@@ -60,9 +105,14 @@ export default function Search() {
     }, []);
 
     useEffect(() => {
-        setIsLoading(true);
         setError(null);
 
+        if (isStateRestoredRef.current) {
+            isStateRestoredRef.current = false;
+            return;
+        }
+
+        setIsLoading(true);
         const sequence = ++searchSequenceRef.current;
 
         const timer = setTimeout(async () => {
@@ -79,10 +129,11 @@ export default function Search() {
     }, [pattern]);
 
     /**
-     * @param {Entry} entry
+     * Saves current search state before navigating to an entry so the state
+     * can be restored when the user presses the browser back button.
      */
-    function handleEntryClick(entry) {
-        navigate(`/entry/${entry.id}`, { state: { entry } });
+    function handleEntryLinkClick() {
+        saveSearchState(pattern, results, page, hasMore, error);
     }
 
     async function handleLoadMore() {
@@ -133,25 +184,31 @@ export default function Search() {
                         <CardBody p={SPACING.lg}>
                             <VStack spacing={SPACING.sm} align="stretch">
                                 {results.map((entry, index) => (
-                                    <Box
+                                    <Link
                                         key={entry.id || index}
-                                        {...CARD_STYLES.entry}
-                                        cursor="pointer"
-                                        _hover={{ bg: "gray.100" }}
-                                        onClick={() => handleEntryClick(entry)}
+                                        to={`/entry/${entry.id}`}
+                                        state={{ entry }}
+                                        onClick={handleEntryLinkClick}
+                                        style={{ textDecoration: "none", color: "inherit", display: "block" }}
                                     >
-                                        <HStack justify="space-between" align="flex-start">
-                                            <VStack align="flex-start" spacing={1} flex={1}>
-                                                <HStack spacing={2}>
-                                                    <Badge {...BADGE_STYLES}>{entry.type}</Badge>
-                                                    <Text {...TEXT_STYLES.entryMeta}>
-                                                        {formatRelativeDate(entry.date)}
-                                                    </Text>
-                                                </HStack>
-                                                <Text {...TEXT_STYLES.entryText}>{entry.description}</Text>
-                                            </VStack>
-                                        </HStack>
-                                    </Box>
+                                        <Box
+                                            {...CARD_STYLES.entry}
+                                            cursor="pointer"
+                                            _hover={{ bg: "gray.100" }}
+                                        >
+                                            <HStack justify="space-between" align="flex-start">
+                                                <VStack align="flex-start" spacing={1} flex={1}>
+                                                    <HStack spacing={2}>
+                                                        <Badge {...BADGE_STYLES}>{entry.type}</Badge>
+                                                        <Text {...TEXT_STYLES.entryMeta}>
+                                                            {formatRelativeDate(entry.date)}
+                                                        </Text>
+                                                    </HStack>
+                                                    <Text {...TEXT_STYLES.entryText}>{entry.description}</Text>
+                                                </VStack>
+                                            </HStack>
+                                        </Box>
+                                    </Link>
                                 ))}
                             </VStack>
                         </CardBody>
