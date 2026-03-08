@@ -32,6 +32,14 @@ afterAll(() => {
     fs.rmSync(staticPath, { recursive: true, force: true });
 });
 
+/**
+ * Builds a test app from caller-provided module instances.
+ * Passing the modules in keeps the normal and reloaded code paths aligned.
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @param {typeof import("../src/express_app")} expressApp
+ * @param {typeof import("../src/server").addRoutes} addRoutes
+ * @returns {Promise<import("express").Express>}
+ */
 async function makeAppFromModules(capabilities, expressApp, addRoutes) {
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
@@ -39,14 +47,24 @@ async function makeAppFromModules(capabilities, expressApp, addRoutes) {
     return app;
 }
 
+/**
+ * Builds a test app using the existing module cache.
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @returns {Promise<import("express").Express>}
+ */
 async function makeApp(capabilities) {
     const expressApp = require("../src/express_app");
     const { addRoutes } = require("../src/server");
     return makeAppFromModules(capabilities, expressApp, addRoutes);
 }
 
-// Reload backend server modules only when a test changes BASE_PATH, because
-// backend/src/base_path.js memoizes the first path it reads per module instance.
+/**
+ * Builds a test app after clearing the module cache for backend routing modules.
+ * This is needed only for BASE_PATH tests because backend/src/base_path.js
+ * memoizes the first path it reads per module instance.
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @returns {Promise<import("express").Express>}
+ */
 async function makeAppWithFreshModules(capabilities) {
     jest.resetModules();
     const expressApp = require("../src/express_app");
