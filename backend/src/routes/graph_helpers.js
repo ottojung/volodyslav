@@ -51,6 +51,7 @@ async function fetchTimestamps(graph, head, args) {
 /**
  * Extract the pathname from an Express request while preserving percent-encoding.
  * Falls back across the request fields used in this codebase and strips query text.
+ * Returns an empty string only if none of those request fields contain a path.
  * @param {import('express').Request} req
  * @returns {string}
  */
@@ -81,6 +82,8 @@ function getArgsFromRequest(req) {
         return argsStr.split("/").filter((s) => s.length > 0);
     }
 
+    // Route params are already decoded by Express, so rebuild the raw marker from the
+    // decoded head before locating the argument tail within the raw pathname.
     const marker = `${GRAPH_NODE_PATH_PREFIX}${encodeURIComponent(head)}/`;
     const rawPathname = getRawPathname(req);
     const markerIndex = rawPathname.indexOf(marker);
