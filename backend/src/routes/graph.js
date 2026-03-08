@@ -212,7 +212,11 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
     res.json({ head, args, freshness, value, createdAt, modifiedAt });
 }
 
-/** @param {Capabilities} capabilities @param {import('express').Request} req @param {import('express').Response} res */
+/**
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
 async function handlePullNodeByHead(capabilities, req, res) {
     if (!capabilities.interface.isInitialized()) {
         res.status(503).json({ error: "Graph not yet initialized" });
@@ -235,7 +239,11 @@ async function handlePullNodeByHead(capabilities, req, res) {
     res.json(await pullNode(capabilities, head, []));
 }
 
-/** @param {Capabilities} capabilities @param {import('express').Request} req @param {import('express').Response} res */
+/**
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
 async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
     if (!capabilities.interface.isInitialized()) {
         res.status(503).json({ error: "Graph not yet initialized" });
