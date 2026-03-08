@@ -97,7 +97,7 @@ describe("associated_audio(e) node", () => {
         const iface = capabilities.interface;
         await iface.ensureInitialized();
 
-        const [photoPath, audioPath, textPath] = await writeDiaryEventWithAssets(
+        const [, audioPath] = await writeDiaryEventWithAssets(
             capabilities,
             "1",
             ["photo.jpg", "memo.mp3", "notes.txt"],
@@ -110,8 +110,6 @@ describe("associated_audio(e) node", () => {
             type: "associated_audio",
             value: [audioPath],
         });
-        expect(result.value).not.toContain(photoPath);
-        expect(result.value).not.toContain(textPath);
     });
 });
 

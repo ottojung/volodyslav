@@ -56,59 +56,16 @@ function hasDateParts(candidate) {
 }
 
 /**
- * Graph values can carry event dates in multiple shapes:
- * - the normal DateTime wrapper used in live event objects
- * - the serialized ISO string form used in persisted event JSON
- * - cached incremental-graph values where the wrapped Luxon date survives as
- *   `_luxonDateTime`, either as an ISO string or as an object containing raw
- *   year/month/day fields.
- *
- * This helper normalizes those representations into plain date parts so the
- * asset-directory convention can be reconstructed reliably from both fresh and
- * cached graph values.
- *
- * @param {unknown} date
+ * @param {string} iso
  * @returns {{ year: number, month: number, day: number }}
  */
-function getEventDateParts(date) {
-    if (typeof date === "string") {
-        const parsed = fromISOString(date);
-        return {
-            year: parsed.year,
-            month: parsed.month,
-            day: parsed.day,
-        };
-    }
-    if (hasDateParts(date)) {
-        return date;
-    }
-    const luxonDate = getLuxonDateContainer(date);
-    if (typeof luxonDate === "string") {
-        const parsed = fromISOString(luxonDate);
-        return {
-            year: parsed.year,
-            month: parsed.month,
-            day: parsed.day,
-        };
-    }
-    if (hasDateParts(luxonDate)) {
-        return luxonDate;
-    }
-    if (isObject(luxonDate) && "c" in luxonDate && hasDateParts(luxonDate["c"])) {
-        return luxonDate["c"];
-    }
-    if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
-        return date["c"];
-    }
-    if (isObject(date) && "toISOString" in date && typeof date["toISOString"] === "function") {
-        const parsed = fromISOString(date["toISOString"]());
-        return {
-            year: parsed.year,
-            month: parsed.month,
-            day: parsed.day,
-        };
-    }
-    throw new EventDatePartsError(date);
+function parseIsoDateParts(iso) {
+    const parsed = fromISOString(iso);
+    return {
+        year: parsed.year,
+        month: parsed.month,
+        day: parsed.day,
+    };
 }
 
 /**
@@ -120,17 +77,90 @@ function isObject(candidate) {
 }
 
 /**
- * @param {unknown} candidate
- * @returns {unknown}
+ * @param {unknown} date
+ * @returns {{ year: number, month: number, day: number } | null}
  */
-function getLuxonDateContainer(candidate) {
-    if (!isObject(candidate)) {
-        return undefined;
+function tryParseIsoDateParts(date) {
+    if (typeof date === "string") {
+        return parseIsoDateParts(date);
     }
-    if ("_luxonDateTime" in candidate) {
-        return candidate["_luxonDateTime"];
+    if (isObject(date) && "toISOString" in date && typeof date["toISOString"] === "function") {
+        return parseIsoDateParts(date["toISOString"]());
     }
-    return undefined;
+    return null;
+}
+
+/**
+ * @param {unknown} date
+ * @returns {{ year: number, month: number, day: number } | null}
+ */
+function tryParseDirectDateParts(date) {
+    if (hasDateParts(date)) {
+        return date;
+    }
+    return null;
+}
+
+/**
+ * @param {unknown} date
+ * @returns {{ year: number, month: number, day: number } | null}
+ */
+function tryParseLuxonContainerDateParts(date) {
+    if (!isObject(date) || !("_luxonDateTime" in date)) {
+        return null;
+    }
+    const luxonDate = date["_luxonDateTime"];
+    if (typeof luxonDate === "string") {
+        return parseIsoDateParts(luxonDate);
+    }
+    if (hasDateParts(luxonDate)) {
+        return luxonDate;
+    }
+    return tryParseLuxonInternalDateParts(luxonDate);
+}
+
+/**
+ * Luxon sometimes persists the raw date components under `c`.
+ * This is an internal Luxon structure rather than part of a stable public API,
+ * so this fallback exists only to keep cached graph values readable across the
+ * shapes currently observed in this repository.
+ *
+ * @param {unknown} date
+ * @returns {{ year: number, month: number, day: number } | null}
+ */
+function tryParseLuxonInternalDateParts(date) {
+    if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
+        return date["c"];
+    }
+    return null;
+}
+
+/**
+ * Graph values can carry event dates in multiple shapes:
+ * - the normal DateTime wrapper used in live event objects
+ * - the serialized ISO string form used in persisted event JSON
+ * - cached incremental-graph values where the wrapped Luxon date survives as
+ *   `_luxonDateTime`, either as an ISO string or as an object containing raw
+ *   date parts.
+ *
+ * This helper normalizes those representations into plain date parts so the
+ * asset-directory convention can be reconstructed reliably from both fresh and
+ * cached graph values.
+ *
+ * @param {unknown} date
+ * @returns {{ year: number, month: number, day: number }}
+ */
+function getEventDateParts(date) {
+    const parsedDate =
+        tryParseIsoDateParts(date) ??
+        tryParseDirectDateParts(date) ??
+        tryParseLuxonContainerDateParts(date) ??
+        tryParseLuxonInternalDateParts(date);
+
+    if (parsedDate !== null) {
+        return parsedDate;
+    }
+    throw new EventDatePartsError(date);
 }
 
 /**
