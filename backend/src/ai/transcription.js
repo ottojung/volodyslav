@@ -55,7 +55,7 @@ function isAITranscriptionError(object) {
     return object instanceof AITranscriptionError;
 }
 
-const TRANSCRIBER_MODEL = "gemini-2.0-flash";
+const TRANSCRIBER_MODEL = "gemini-3-flash-preview";
 
 /** @type {Record<string, string>} */
 const MIME_TYPE_BY_EXTENSION = {
