@@ -195,11 +195,6 @@ function App() {
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
           </Button>
-          {syncState === 'loading' && (
-            <Text fontSize="sm" color="gray.600" textAlign="center">
-              Sync has started. This can take a while, so the app will keep checking in the background.
-            </Text>
-          )}
           {syncState === 'error' && syncError.message !== '' && (
             <Alert status="error" borderRadius="md" alignItems="flex-start">
               <AlertIcon mt={1} />
