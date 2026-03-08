@@ -79,6 +79,10 @@ function versionToString(Version) {
  */
 
 /**
+ * @typedef {import('../../../transcribe').Transcription} Transcription
+ */
+
+/**
  * @typedef {import('../../individual/meta_events').MetaEvent} MetaEvent
  */
 
@@ -120,8 +124,15 @@ function versionToString(Version) {
  */
 
 /**
+ * AI transcription for a single asset path.
+ * @typedef {object} TranscriptionEntry
+ * @property {'transcription'} type - The type of the entry
+ * @property {Transcription} value - The transcription payload
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry} ComputedValue
+ * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry} ComputedValue
  */
 
 /**

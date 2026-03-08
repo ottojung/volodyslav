@@ -1,11 +1,13 @@
 
 const { isUnchanged } = require("../incremental_graph");
-const { metaEvents, eventContext, event: individualEvent, calories } = require("../individual");
+const { metaEvents, eventContext, event: individualEvent, calories, transcription } = require("../individual");
 const { transaction } = require("../../event_log_storage");
 
 /**
  * @typedef {object} Capabilities
  * @property {import('../../ai/calories').AICalories} aiCalories - A calories estimation capability.
+ * @property {import('../../ai/transcription').AITranscription} aiTranscription - An AI transcription capability.
+ * @property {import('../../random/seed').NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../logger').Logger} logger - A logger instance.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../filesystem/writer').FileWriter} writer - A file writer instance.
@@ -139,6 +141,27 @@ function createDefaultGraphDefinition(capabilities) {
                 }
                 const ev = firstInput.value;
                 return calories.computeCaloriesForEvent(ev, capabilities);
+            },
+            isDeterministic: false,
+            hasSideEffects: true,
+        },
+        {
+            output: "transcription(a)",
+            inputs: ["all_events"],
+            computor: async (inputs, _oldValue, bindings) => {
+                const firstInput = inputs[0];
+                if (!firstInput || firstInput.type !== "all_events") {
+                    throw new Error("Expected input of type all_events for transcription(a) computor");
+                }
+                const firstBinding = bindings[0];
+                if (typeof firstBinding !== "string") {
+                    throw new Error("Expected first binding to be a string for transcription(a) computor, got " + JSON.stringify(firstBinding));
+                }
+                return transcription.computeTranscriptionForAssetPath(
+                    firstInput.events,
+                    firstBinding,
+                    capabilities,
+                );
             },
             isDeterministic: false,
             hasSideEffects: true,
