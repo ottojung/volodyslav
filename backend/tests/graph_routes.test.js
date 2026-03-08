@@ -47,6 +47,7 @@ function makeMockDateTime(iso) {
  * @param {Map<string, string>} [opts.freshness] - freshness per serialized key
  * @param {Map<string, unknown>} [opts.values] - values per serialized key
  * @param {Map<string, {createdAt: string, modifiedAt: string}>} [opts.timestamps] - timestamps per serialized key
+ * @param {Map<string, unknown>} [opts.pulledValues] - pull results per serialized key
  * @returns {object}
  */
 function makeMockInterface({
@@ -55,6 +56,7 @@ function makeMockInterface({
     freshness = new Map(),
     values = new Map(),
     timestamps = new Map(),
+    pulledValues = values,
 } = {}) {
     return {
         headIndex,
@@ -85,6 +87,10 @@ function makeMockInterface({
             }
             return makeMockDateTime(record.modifiedAt);
         }),
+        pull: jest.fn().mockImplementation(async (head, args) => {
+            const key = JSON.stringify({ head, args });
+            return pulledValues.get(key);
+        }),
     };
 }
 
@@ -102,6 +108,7 @@ function makeTestApp(mockGraph) {
             debugListMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.debugListMaterializedNodes()),
             debugGetFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.debugGetFreshness(head, args)),
             debugGetValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.debugGetValue(head, args)),
+            pullGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.pull(head, args)),
             getCreationTime: jest.fn(async (head, args) => {
                 if (mockGraph === null) {
                     throw makeMissingTimestampError(JSON.stringify({ head, args }));
@@ -391,6 +398,115 @@ describe("GET /api/graph/nodes/:head", () => {
             const sorted = [...res.body].sort((a, b) => a.args[0].localeCompare(b.args[0]));
             expect(sorted[0]).toEqual({ head: "event", args: ["evt-abc123"], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" });
             expect(sorted[1]).toEqual({ head: "event", args: ["evt-def456"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" });
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/graph/nodes/:head
+// ---------------------------------------------------------------------------
+describe("POST /api/graph/nodes/:head", () => {
+    it("returns 503 when graph is not initialized", async () => {
+        const app = makeTestApp(null);
+        const res = await request(app).post("/api/graph/nodes/all_events");
+        expect(res.status).toBe(503);
+        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+    });
+
+    it("returns 404 for unknown head", async () => {
+        const graph = makeMockInterface();
+        const app = makeTestApp(graph);
+        const res = await request(app).post("/api/graph/nodes/unknown_head");
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
+    });
+
+    it("returns 400 when args are missing for a parameterized node", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).post("/api/graph/nodes/event");
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: 'Arity mismatch: "event" expects 1 argument, got 0' });
+    });
+
+    it("pulls an arity-0 node and returns its value", async () => {
+        const headIndex = new Map([["all_events", makeMockCompiledNode("all_events", 0)]]);
+        const freshness = new Map([
+            [JSON.stringify({ head: "all_events", args: [] }), "up-to-date"],
+        ]);
+        const pulledValues = new Map([
+            [JSON.stringify({ head: "all_events", args: [] }), { type: "all_events", events: [] }],
+        ]);
+        const timestamps = new Map([
+            [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).post("/api/graph/nodes/all_events");
+        expect(res.status).toBe(200);
+        expect(graph.pull).toHaveBeenCalledWith("all_events", []);
+        expect(res.body).toEqual({
+            head: "all_events",
+            args: [],
+            freshness: "up-to-date",
+            value: { type: "all_events", events: [] },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-02T00:00:00.000Z",
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/graph/nodes/:head/:arg0[/:arg1...]
+// ---------------------------------------------------------------------------
+describe("POST /api/graph/nodes/:head/*", () => {
+    it("returns 404 for unknown head", async () => {
+        const graph = makeMockInterface();
+        const app = makeTestApp(graph);
+        const res = await request(app).post("/api/graph/nodes/unknown_head/arg1");
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
+    });
+
+    it("returns 400 for arity mismatch", async () => {
+        const headIndex = new Map([
+            ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
+        ]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).post("/api/graph/nodes/pair/arg1");
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: 'Arity mismatch: "pair" expects 2 arguments, got 1' });
+    });
+
+    it("pulls a parameterized node and returns its value", async () => {
+        const headIndex = new Map([
+            ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
+        ]);
+        const freshness = new Map([
+            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), "up-to-date"],
+        ]);
+        const pulledValues = new Map([
+            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { result: "ok" }],
+        ]);
+        const timestamps = new Map([
+            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).post("/api/graph/nodes/pair/arg1/arg2");
+        expect(res.status).toBe(200);
+        expect(graph.pull).toHaveBeenCalledWith("pair", ["arg1", "arg2"]);
+        expect(res.body).toEqual({
+            head: "pair",
+            args: ["arg1", "arg2"],
+            freshness: "up-to-date",
+            value: { result: "ok" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-01T00:00:00.000Z",
         });
     });
 });
