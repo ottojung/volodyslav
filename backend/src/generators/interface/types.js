@@ -14,6 +14,8 @@
  * @typedef {import("../../sleeper").SleepCapability} SleepCapability
  * @typedef {import("../../datetime").Datetime} Datetime
  * @typedef {import("../../ai/calories").AICalories} AICalories
+ * @typedef {import("../../ai/transcription").AITranscription} AITranscription
+ * @typedef {import("../../random/seed").NonDeterministicSeed} NonDeterministicSeed
  */
 
 /**
@@ -32,6 +34,8 @@
  * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Datetime} datetime - Datetime utilities.
  * @property {AICalories} aiCalories - AI calories estimation capability.
+ * @property {AITranscription} aiTranscription - AI transcription capability.
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../generators').Interface} interface - The incremental graph interface capability.
  */
 

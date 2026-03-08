@@ -1,11 +1,20 @@
 
 const { isUnchanged } = require("../incremental_graph");
-const { metaEvents, eventContext, event: individualEvent, calories } = require("../individual");
+const {
+    metaEvents,
+    eventContext,
+    event: individualEvent,
+    calories,
+    transcription,
+    eventTranscription,
+} = require("../individual");
 const { transaction } = require("../../event_log_storage");
 
 /**
  * @typedef {object} Capabilities
  * @property {import('../../ai/calories').AICalories} aiCalories - A calories estimation capability.
+ * @property {import('../../ai/transcription').AITranscription} aiTranscription - An AI transcription capability.
+ * @property {import('../../random/seed').NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../logger').Logger} logger - A logger instance.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../filesystem/writer').FileWriter} writer - A file writer instance.
@@ -27,6 +36,11 @@ const { transaction } = require("../../event_log_storage");
  * The `all_events` node reads events directly from the git-backed event log
  * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
  * causes the next pull to re-read from disk.
+ *
+ * Graph adjacency:
+ *   all_events -> event(e)
+ *   transcription(a)                            [standalone, no graph inputs]
+ *   event(e), transcription(a) -> event_transcription(e, a)
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
@@ -142,6 +156,47 @@ function createDefaultGraphDefinition(capabilities) {
             },
             isDeterministic: false,
             hasSideEffects: true,
+        },
+        {
+            output: "transcription(a)",
+            inputs: [],
+            computor: async (_inputs, _oldValue, bindings) => {
+                const firstBinding = bindings[0];
+                if (typeof firstBinding !== "string") {
+                    throw new Error("Expected first binding to be a string for transcription(a) computor, got " + JSON.stringify(firstBinding));
+                }
+                return transcription.computeTranscriptionForAssetPath(
+                    firstBinding,
+                    capabilities,
+                );
+            },
+            isDeterministic: false,
+            hasSideEffects: true,
+        },
+        {
+            output: "event_transcription(e, a)",
+            inputs: ["event(e)", "transcription(a)"],
+            computor: async (inputs, _oldValue, bindings) => {
+                const eventEntry = inputs[0];
+                if (!eventEntry || eventEntry.type !== "event") {
+                    throw new Error("Expected event input for event_transcription(e, a) computor");
+                }
+                const transcriptionEntry = inputs[1];
+                if (!transcriptionEntry || transcriptionEntry.type !== "transcription") {
+                    throw new Error("Expected transcription input for event_transcription(e, a) computor");
+                }
+                const audioPath = bindings[1];
+                if (typeof audioPath !== "string") {
+                    throw new Error("Expected audio path binding at position 1 for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
+                }
+                return eventTranscription.computeEventTranscription(
+                    eventEntry.value,
+                    transcriptionEntry.value,
+                    audioPath,
+                );
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
         },
     ];
 }
