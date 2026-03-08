@@ -54,7 +54,7 @@ function isAITranscriptionError(object) {
     return object instanceof AITranscriptionError;
 }
 
-const TRANSCRIBER_MODEL = "gpt-4o-mini-transcribe";
+const TRANSCRIBER_MODEL = "gpt-4o-transcribe";
 
 /**
  * @typedef {object} AITranscription
