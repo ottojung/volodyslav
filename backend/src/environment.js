@@ -43,6 +43,10 @@ function openaiAPIKey() {
     return getEnv("VOLODYSLAV_OPENAI_API_KEY");
 }
 
+function geminiApiKey() {
+    return getEnv("VOLODYSLAV_GEMINI_API_KEY");
+}
+
 function workingDirectory() {
     return getEnv("VOLODYSLAV_WORKING_DIRECTORY");
 }
@@ -94,6 +98,7 @@ function eventLogAssetsRepository() {
  */
 function ensureEnvironmentIsInitialized(environment) {
     environment.openaiAPIKey();
+    environment.geminiApiKey();
     environment.workingDirectory();
     environment.myServerPort();
     environment.logLevel();
@@ -112,6 +117,7 @@ function make() {
     return {
         ensureEnvironmentIsInitialized,    
         openaiAPIKey,
+        geminiApiKey,
         workingDirectory,
         myServerPort,
         logLevel,
