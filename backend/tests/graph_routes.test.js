@@ -91,6 +91,7 @@ function makeMockInterface({
             const key = JSON.stringify({ head, args });
             return pulledValues.get(key);
         }),
+        invalidate: jest.fn().mockResolvedValue(undefined),
     };
 }
 
@@ -109,6 +110,7 @@ function makeTestApp(mockGraph) {
             debugGetFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.debugGetFreshness(head, args)),
             debugGetValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.debugGetValue(head, args)),
             pullGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.pull(head, args)),
+            invalidateGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.invalidate(head, args)),
             getCreationTime: jest.fn(async (head, args) => {
                 if (mockGraph === null) {
                     throw makeMissingTimestampError(JSON.stringify({ head, args }));
@@ -674,5 +676,95 @@ describe("GET /api/graph/nodes/:head/*", () => {
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-02T00:00:00.000Z",
         });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/graph/nodes/:head
+// ---------------------------------------------------------------------------
+describe("DELETE /api/graph/nodes/:head", () => {
+    it("returns 503 when graph is not initialized", async () => {
+        const app = makeTestApp(null);
+        const res = await request(app).delete("/api/graph/nodes/all_events");
+        expect(res.status).toBe(503);
+        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+    });
+
+    it("returns 404 for unknown head", async () => {
+        const graph = makeMockInterface();
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/unknown_head");
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
+    });
+
+    it("returns 400 when args are missing for a parameterized node", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/event");
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: 'Arity mismatch: "event" expects 1 argument, got 0' });
+    });
+
+    it("invalidates an arity-0 node and returns success", async () => {
+        const headIndex = new Map([["all_events", makeMockCompiledNode("all_events", 0)]]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/all_events");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true });
+        expect(graph.invalidate).toHaveBeenCalledWith("all_events", []);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/graph/nodes/:head/*
+// ---------------------------------------------------------------------------
+describe("DELETE /api/graph/nodes/:head/*", () => {
+    it("returns 503 when graph is not initialized", async () => {
+        const app = makeTestApp(null);
+        const res = await request(app).delete("/api/graph/nodes/event/evt-abc123");
+        expect(res.status).toBe(503);
+        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+    });
+
+    it("returns 404 for unknown head", async () => {
+        const graph = makeMockInterface();
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/unknown_head/arg1");
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
+    });
+
+    it("returns 400 for arity mismatch", async () => {
+        const headIndex = new Map([
+            ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
+        ]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/pair/arg1");
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: 'Arity mismatch: "pair" expects 2 arguments, got 1' });
+    });
+
+    it("invalidates a parameterized node and returns success", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/event/evt-abc123");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true });
+        expect(graph.invalidate).toHaveBeenCalledWith("event", ["evt-abc123"]);
+    });
+
+    it("preserves encoded slashes inside a single invalidated arg", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const graph = makeMockInterface({ headIndex });
+        const app = makeTestApp(graph);
+        const res = await request(app).delete("/api/graph/nodes/event/foo%2Fbar");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true });
+        expect(graph.invalidate).toHaveBeenCalledWith("event", ["foo/bar"]);
     });
 });
