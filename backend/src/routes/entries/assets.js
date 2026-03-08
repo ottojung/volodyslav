@@ -126,14 +126,22 @@ async function handleEntryAssets(req, res, capabilities, reqId) {
         const files = await capabilities.scanner.scanDirectory(dirPath);
 
         /** @type {AssetInfo[]} */
-        const assets = files.map((file) => {
+        const assets = [];
+
+        for (const file of files) {
+            const proof = await capabilities.checker.fileExists(file.path);
+
+            if (proof === null) {
+                continue;
+            }
+
             const filename = path.basename(file.path);
-            return {
+            assets.push({
                 filename,
                 url: assetUrlPath(entry, filename),
                 mediaType: mediaTypeFromFilename(filename),
-            };
-        });
+            });
+        }
 
         res.json({ assets });
     } catch (error) {
