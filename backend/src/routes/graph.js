@@ -1,13 +1,31 @@
 const express = require("express");
-const { isMissingTimestamp } = require('../generators');
+const {
+    fetchTimestamps,
+    formatArityMismatchMessage,
+    getArgsFromRequest,
+    pullNode,
+} = require("./graph_helpers");
 
 /** @typedef {import('../generators').Interface} Interface */
-/** @typedef {import('../generators/incremental_graph/types').ConstValue} ConstValue */
 /** @typedef {import('../generators/incremental_graph/types').CompiledNode} CompiledNode */
+/** @typedef {import('../generators/incremental_graph/types').ConstValue} ConstValue */
+
+/**
+ * @typedef {object} GraphRouteInterface
+ * @property {() => boolean} isInitialized
+ * @property {() => Array<CompiledNode>} debugGetSchemas
+ * @property {(head: string) => CompiledNode | null} debugGetSchemaByHead
+ * @property {() => Promise<Array<[string, Array<ConstValue>]>>} debugListMaterializedNodes
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} debugGetFreshness
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} debugGetValue
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getModificationTime
+ */
 
 /**
  * @typedef {object} Capabilities
- * @property {import('../generators').Interface} interface - The incremental graph interface capability.
+ * @property {GraphRouteInterface} interface - The incremental graph interface capability.
  */
 
 /**
@@ -24,18 +42,6 @@ function formatSchema(compiledNode) {
         isDeterministic: compiledNode.source.isDeterministic,
         hasSideEffects: compiledNode.source.hasSideEffects,
     };
-}
-
-/**
- * Formats an arity mismatch error message according to the API spec.
- * @param {string} head
- * @param {number} expected
- * @param {number} received
- * @returns {string}
- */
-function formatArityMismatchMessage(head, expected, received) {
-    const argWord = expected === 1 ? "argument" : "arguments";
-    return `Arity mismatch: ${JSON.stringify(head)} expects ${expected} ${argWord}, got ${received}`;
 }
 
 /**
@@ -79,27 +85,6 @@ async function handleGetSchemaByHead(capabilities, req, res) {
     }
 
     res.json(formatSchema(compiledNode));
-}
-
-/**
- * Fetches createdAt and modifiedAt for a node using the existing timestamp accessors.
- * Returns null values if no timestamps are recorded for the node.
- * @param {Interface} graph - The interface-backed graph accessor.
- * @param {string} head - The node head name.
- * @param {Array<ConstValue>} args - The node arguments.
- * @returns {Promise<{createdAt: string | null, modifiedAt: string | null}>}
- */
-async function fetchTimestamps(graph, head, args) {
-    try {
-        const createdAt = (await graph.getCreationTime(head, args)).toISOString();
-        const modifiedAt = (await graph.getModificationTime(head, args)).toISOString();
-        return { createdAt, modifiedAt };
-    } catch (err) {
-        if (isMissingTimestamp(err)) {
-            return { createdAt: null, modifiedAt: null };
-        }
-        throw err;
-    }
 }
 
 /**
@@ -202,13 +187,11 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
         return;
     }
 
-    // Extract args from wildcard path segments
-    const argsStr = req.params[0];
-    if (argsStr === undefined) {
+    const args = getArgsFromRequest(req);
+    if (args === null) {
         res.status(400).json({ error: "Missing args parameter" });
         return;
     }
-    const args = argsStr.split("/").filter((s) => s.length > 0);
 
     if (compiledNode.arity !== args.length) {
         res.status(400).json({
@@ -227,6 +210,65 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
     const value = await capabilities.interface.debugGetValue(head, args);
     const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
     res.json({ head, args, freshness, value, createdAt, modifiedAt });
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+async function handlePullNodeByHead(capabilities, req, res) {
+    if (!capabilities.interface.isInitialized()) {
+        res.status(503).json({ error: "Graph not yet initialized" });
+        return;
+    }
+    const { head } = req.params;
+    if (head === undefined) {
+        res.status(400).json({ error: "Missing head parameter" });
+        return;
+    }
+    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    if (compiledNode === null) {
+        res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
+        return;
+    }
+    if (compiledNode.arity !== 0) {
+        res.status(400).json({ error: formatArityMismatchMessage(head, compiledNode.arity, 0) });
+        return;
+    }
+    res.json(await pullNode(capabilities, head, []));
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
+    if (!capabilities.interface.isInitialized()) {
+        res.status(503).json({ error: "Graph not yet initialized" });
+        return;
+    }
+    const { head } = req.params;
+    if (head === undefined) {
+        res.status(400).json({ error: "Missing head parameter" });
+        return;
+    }
+    const args = getArgsFromRequest(req);
+    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    if (compiledNode === null) {
+        res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
+        return;
+    }
+    if (args === null) {
+        res.status(400).json({ error: "Missing args parameter" });
+        return;
+    }
+    if (compiledNode.arity !== args.length) {
+        res.status(400).json({ error: formatArityMismatchMessage(head, compiledNode.arity, args.length) });
+        return;
+    }
+    res.json(await pullNode(capabilities, head, args));
 }
 
 /**
@@ -254,8 +296,16 @@ function makeRouter(capabilities) {
         await handleGetNodeByHeadAndArgs(capabilities, req, res);
     });
 
+    router.post("/graph/nodes/:head/*", async (req, res) => {
+        await handlePullNodeByHeadAndArgs(capabilities, req, res);
+    });
+
     router.get("/graph/nodes/:head", async (req, res) => {
         await handleGetNodesByHead(capabilities, req, res);
+    });
+
+    router.post("/graph/nodes/:head", async (req, res) => {
+        await handlePullNodeByHead(capabilities, req, res);
     });
 
     return router;

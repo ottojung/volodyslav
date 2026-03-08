@@ -1,8 +1,8 @@
 # Spec: Incremental Graph Inspection API
 
-A read-only HTTP API for inspecting the incremental graph — its schema definition
-and the set of currently materialized node instances — without triggering
-recomputation.
+An HTTP API for inspecting the incremental graph — its schema definition and the
+set of currently materialized node instances — plus targeted pull operations for
+individual node keys.
 
 ---
 
@@ -220,10 +220,42 @@ an argument value.
 
 ---
 
+### 3.6 `POST /api/graph/nodes/:head`
+
+Pulls a single **arity-0** node key and returns the resulting value, freshness,
+and timestamps. This endpoint may trigger recomputation.
+
+**Response `200 OK`:** Same shape as the arity-0 response from §3.4.
+
+**Response `400 Bad Request`** (head exists but requires arguments):
+
+```json
+{ "error": "Arity mismatch: \"event\" expects 1 argument, got 0" }
+```
+
+---
+
+### 3.7 `POST /api/graph/nodes/:head/:arg0[/:arg1[/:arg2…]]`
+
+Pulls a single parameterized node key and returns the resulting value,
+freshness, and timestamps. Path segments beyond `:head` become the ordered
+`args` array, exactly like §3.5. This endpoint may trigger recomputation.
+
+**Response `200 OK`:** Same shape as the response from §3.5.
+
+**Response `400 Bad Request`** (wrong number of args for head's arity):
+
+```json
+{ "error": "Arity mismatch: \"calories\" expects 1 argument, got 2" }
+```
+
+---
+
 ## 4. Non-Triggering Guarantee
 
-All endpoints in this API **must never** call `pull()`, `pullWithStatus()`, or
-any method that may trigger recomputation.  They may only call:
+All `GET` endpoints in this API **must never** call `pull()`,
+`pullWithStatus()`, or any method that may trigger recomputation. They may only
+call:
 
 - `graph.headIndex` — to resolve schema info
 - `graph.debugListMaterializedNodes()` — to enumerate instances
@@ -232,7 +264,9 @@ any method that may trigger recomputation.  They may only call:
 - `graph.debugGetTimestamps(head, args)` — to read timestamps without triggering recomputation
 
 This protects against accidentally triggering expensive computors (e.g. OpenAI
-API calls for `calories`) merely by browsing the inspection endpoint.
+API calls for `calories`) merely by browsing the inspection endpoints. The
+`POST` endpoints in §3.6 and §3.7 are the explicit opt-in escape hatch for
+triggering recomputation of one concrete node key.
 
 ---
 
@@ -304,12 +338,14 @@ HTTP status codes used:
 | Node not materialized | `404` |
 | Arity mismatch | `400` |
 | Graph not yet initialized | `503` |
+| Successful pull | `200` |
 
 ---
 
 ## 8. Invariants and Constraints
 
-- All endpoints are **read-only** (GET only).  No mutations.
+- `GET` endpoints are read-only. `POST` endpoints may materialize or refresh one
+  concrete node key.
 - The API is **unauthenticated** at the same level as the rest of the API —
   authentication is handled at the infrastructure level, not per-route.
 - Response bodies are always `application/json`.

@@ -208,6 +208,16 @@ class InterfaceClass {
     }
 
     /**
+     * Pulls one concrete graph node for the graph API.
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<ComputedValue>}
+     */
+    async pullGraphNode(head, args = []) {
+        return await this._requireInitializedGraph().pull(head, args);
+    }
+
+    /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
      * @returns {Promise<import('../../datetime').DateTime>}
