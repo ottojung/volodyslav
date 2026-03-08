@@ -49,20 +49,21 @@ async function fetchTimestamps(graph, head, args) {
 }
 
 /**
- * Extract the pathname from an Express request while preserving percent-encoding.
- * Falls back across the request fields used in this codebase and strips query text.
- * Returns an empty string only if none of those request fields contain a path.
+ * Extract the least-decoded pathname available from an Express request.
+ * This prefers the rawer request URL fields and falls back to req.path only when
+ * needed, then strips any query text. Returns an empty string only if none of
+ * those request fields contain a path.
  * @param {import('express').Request} req
  * @returns {string}
  */
 function getRawPathname(req) {
     let rawPath = "";
-    if (typeof req.path === "string") {
-        rawPath = req.path;
-    } else if (typeof req.url === "string") {
+    if (typeof req.url === "string") {
         rawPath = req.url;
     } else if (typeof req.originalUrl === "string") {
         rawPath = req.originalUrl;
+    } else if (typeof req.path === "string") {
+        rawPath = req.path;
     }
     const queryIndex = rawPath.indexOf("?");
     return queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex);
@@ -82,8 +83,9 @@ function getArgsFromRequest(req) {
         return argsStr.split("/").filter((s) => s.length > 0);
     }
 
-    // Route params are already decoded by Express, so rebuild the raw marker from the
-    // decoded head before locating the argument tail within the raw pathname.
+    // Route params are already decoded by Express. Rebuild the marker from the decoded
+    // head so we can reliably find the raw wildcard tail and preserve encoded slashes
+    // inside args like `foo%2Fbar`.
     const marker = `${GRAPH_NODE_PATH_PREFIX}${encodeURIComponent(head)}/`;
     const rawPathname = getRawPathname(req);
     const markerIndex = rawPathname.indexOf(marker);
