@@ -92,7 +92,8 @@ function tryParseDirectDateParts(date) {
 }
 
 /**
- * Luxon sometimes persists the raw date components under `c`.
+ * Luxon sometimes persists the raw date components under the internal `c` field,
+ * which stores the raw calendar date components (year, month, day, etc.).
  * This is an internal Luxon structure rather than part of a stable public API,
  * so this fallback exists only to keep cached graph values readable across the
  * shapes currently observed in this repository.
@@ -106,7 +107,7 @@ function tryParseDirectDateParts(date) {
  * @param {unknown} date
  * @returns {{ year: number, month: number, day: number } | null}
  */
-function tryParseLuxonCDateParts(date) {
+function tryParseLuxonInternalDateParts(date) {
     if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
         return date["c"];
     }
@@ -128,7 +129,7 @@ function tryParseLuxonContainerDateParts(date) {
     if (hasDateParts(luxonDate)) {
         return luxonDate;
     }
-    return tryParseLuxonCDateParts(luxonDate);
+    return tryParseLuxonInternalDateParts(luxonDate);
 }
 
 /**

@@ -180,9 +180,8 @@ describe("event_transcription(e, a) node", () => {
         await iface.ensureInitialized();
 
         // Create two events with their own audio files
-        const [audioPath1] = await writeDiaryEventWithAssets(capabilities, "1", ["memo1.mp3"]);
+        await writeDiaryEventWithAssets(capabilities, "1", ["memo1.mp3"]);
         const [audioPath2] = await writeDiaryEventWithAssets(capabilities, "2", ["memo2.mp3"]);
-        void audioPath1;
         await iface.update();
 
         // Attempt to combine event "1" with event "2"'s audio path
