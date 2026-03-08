@@ -211,7 +211,7 @@ function App() {
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
           </Button>
-          {syncSuccessMessage !== '' && (
+          {syncSuccessMessage && (
             <Alert status="success" borderRadius="md" alignItems="flex-start">
               <AlertIcon mt={1} />
               <Box>
