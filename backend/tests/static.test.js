@@ -1,8 +1,6 @@
 const path = require("path");
 const fs = require("fs");
 const request = require("supertest");
-const expressApp = require("../src/express_app");
-const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -35,6 +33,8 @@ afterAll(() => {
 });
 
 async function makeApp(capabilities) {
+    const expressApp = require("../src/express_app");
+    const { addRoutes } = require("../src/server");
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
