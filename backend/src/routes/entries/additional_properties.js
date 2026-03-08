@@ -39,6 +39,10 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  * @property {string} [transcription] - Transcription text; omitted when unavailable.
  */
 
+/**
+ * @typedef {'calories' | 'transcription'} AdditionalPropertyName
+ */
+
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"]);
 
 /**
@@ -47,6 +51,16 @@ const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac
  */
 function isAudioFilename(filename) {
     return AUDIO_EXTENSIONS.has(path.extname(filename).toLowerCase());
+}
+
+const ADDITIONAL_PROPERTY_NAMES = new Set(["calories", "transcription"]);
+
+/**
+ * @param {unknown} value
+ * @returns {value is AdditionalPropertyName}
+ */
+function isAdditionalPropertyName(value) {
+    return typeof value === "string" && ADDITIONAL_PROPERTY_NAMES.has(value);
 }
 
 /**
@@ -130,9 +144,15 @@ async function tryGetTranscriptionText(entryId, capabilities) {
  */
 async function handleAdditionalProperties(req, res, capabilities, reqId) {
     const { id } = req.params;
+    const { property } = req.query;
 
     if (typeof id !== "string" || id.trim() === "") {
         res.status(400).json({ error: "Invalid entry id" });
+        return;
+    }
+
+    if (property !== undefined && !isAdditionalPropertyName(property)) {
+        res.status(400).json({ error: "Invalid additional property" });
         return;
     }
 
@@ -146,31 +166,35 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
     }
 
     try {
-        const caloriesEntry = await capabilities.interface.getCaloriesForEventId(id);
-
-        capabilities.logger.logDebug(
-            {
-                request_identifier: reqId.identifier,
-                entry_id: id,
-                calories_entry: caloriesEntry,
-            },
-            "Pulled calories entry for additional properties",
-        );
-
         /** @type {AdditionalProperties} */
         const properties = {};
 
-        if (
-            caloriesEntry &&
-            caloriesEntry.type === "calories" &&
-            caloriesEntry.value > 0
-        ) {
-            properties.calories = caloriesEntry.value;
+        if (property === undefined || property === "calories") {
+            const caloriesEntry = await capabilities.interface.getCaloriesForEventId(id);
+
+            capabilities.logger.logDebug(
+                {
+                    request_identifier: reqId.identifier,
+                    entry_id: id,
+                    calories_entry: caloriesEntry,
+                },
+                "Pulled calories entry for additional properties",
+            );
+
+            if (
+                caloriesEntry &&
+                caloriesEntry.type === "calories" &&
+                caloriesEntry.value > 0
+            ) {
+                properties.calories = caloriesEntry.value;
+            }
         }
 
-        const transcriptionText = await tryGetTranscriptionText(id, capabilities);
-        if (transcriptionText !== null) {
-            properties.transcription = transcriptionText;
+        if (property === undefined || property === "transcription") {
+            const transcriptionText = await tryGetTranscriptionText(id, capabilities);
+            if (transcriptionText !== null) {
+                properties.transcription = transcriptionText;
+            }
         }
 
         res.json(properties);
