@@ -121,6 +121,13 @@ async function tryGetTranscriptionText(entryId, capabilities) {
                 entryId,
                 relativeAssetPath,
             );
+            if ('message' in transcriptionEntry.transcription) {
+                capabilities.logger.logDebug(
+                    { entry_id: entryId, asset_path: relativeAssetPath, error: transcriptionEntry.transcription.message },
+                    "No transcription available for audio asset, skipping",
+                );
+                continue;
+            }
             return transcriptionEntry.transcription.text;
         } catch (error) {
             // This audio file has no transcription; try the next one.
