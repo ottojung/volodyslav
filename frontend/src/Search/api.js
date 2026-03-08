@@ -64,6 +64,10 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
  */
 
 /**
+ * @typedef {'calories' | 'transcription'} AdditionalPropertyName
+ */
+
+/**
  * @typedef {'image'|'audio'|'other'} MediaType
  */
 
@@ -78,12 +82,16 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
  * Fetches computed additional properties for an entry (e.g. calories).
  * Triggers the incremental graph pull on the server side.
  * @param {string} id - The entry id.
+ * @param {AdditionalPropertyName} [propertyName] - Specific property to fetch.
  * @returns {Promise<AdditionalProperties>}
  */
-export async function fetchAdditionalProperties(id) {
+export async function fetchAdditionalProperties(id, propertyName) {
     try {
+        const propertyParam = propertyName === undefined
+            ? ""
+            : `?property=${encodeURIComponent(propertyName)}`;
         const response = await fetch(
-            `${API_BASE_URL}/entries/${encodeURIComponent(id)}/additional-properties`,
+            `${API_BASE_URL}/entries/${encodeURIComponent(id)}/additional-properties${propertyParam}`,
         );
 
         if (response.ok) {

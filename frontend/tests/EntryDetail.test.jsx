@@ -47,6 +47,15 @@ const mockEntryNoModifiers = {
     modifiers: {},
 };
 
+function makeDeferred() {
+    /** @type {(value: import("../src/Search/api").AdditionalProperties) => void} */
+    let resolveDeferred;
+    const promise = new Promise((promiseResolve) => {
+        resolveDeferred = promiseResolve;
+    });
+    return { promise, resolve: resolveDeferred };
+}
+
 function renderWithRoute(pathname, state = undefined) {
     return render(
         <MemoryRouter initialEntries={[{ pathname, state }]}>
@@ -57,14 +66,18 @@ function renderWithRoute(pathname, state = undefined) {
     );
 }
 
+function makeNeverResolvingPromise() {
+    return new Promise(() => {});
+}
+
 describe("EntryDetail page", () => {
     beforeEach(() => {
         fetchEntryById.mockClear();
         deleteEntryById.mockClear();
         fetchAdditionalProperties.mockClear();
-        fetchAdditionalProperties.mockResolvedValue({});
+        fetchAdditionalProperties.mockImplementation(() => makeNeverResolvingPromise());
         fetchEntryAssets.mockClear();
-        fetchEntryAssets.mockResolvedValue([]);
+        fetchEntryAssets.mockImplementation(() => makeNeverResolvingPromise());
     });
 
     // --- Rendering with state ---
@@ -197,14 +210,13 @@ describe("EntryDetail page", () => {
 
         renderWithRoute("/entry/entry-123");
 
-        // Spinner should be present while loading (Chakra Spinner shows "Loading...")
-        expect(screen.getByText("Loading...")).toBeInTheDocument();
+        expect(screen.queryByText("id")).not.toBeInTheDocument();
+        expect(screen.getAllByText("Loading...")).toHaveLength(1);
 
-        // Resolve and verify spinner disappears
         await act(async () => { resolveEntry(mockEntry); });
 
         await waitFor(() => {
-            expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+            expect(screen.getAllByText("entry-123").length).toBeGreaterThan(0);
         });
     });
 
@@ -271,7 +283,14 @@ describe("EntryDetail page", () => {
     it("calls deleteEntryById with the entry id when delete button is clicked", async () => {
         deleteEntryById.mockResolvedValue(true);
 
-        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+        render(
+            <MemoryRouter initialEntries={[{ pathname: "/entry/entry-123", state: { entry: mockEntry } }]}>
+                <Routes>
+                    <Route path="/entry/:id" element={<EntryDetail />} />
+                    <Route path="/search" element={<div>Search Page</div>} />
+                </Routes>
+            </MemoryRouter>
+        );
 
         const deleteButton = screen.getByRole("button", { name: /delete/i });
         await act(async () => { fireEvent.click(deleteButton); });
@@ -320,15 +339,60 @@ describe("EntryDetail page", () => {
         expect(screen.getByText("Additional Properties")).toBeInTheDocument();
     });
 
-    it("does not show 'None' while additional properties are still loading", () => {
-        // Never resolves — simulates an in-flight request for both sections
+    it("shows an optimistic loading list while additional properties are still loading", () => {
         fetchAdditionalProperties.mockReturnValue(new Promise(() => {}));
         fetchEntryAssets.mockReturnValue(new Promise(() => {}));
 
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        // While loading, the "None" placeholder must not appear yet
+        expect(screen.getByText("Loading calories...")).toBeInTheDocument();
+        expect(screen.getByText("Loading transcription...")).toBeInTheDocument();
         expect(screen.queryByText("None")).not.toBeInTheDocument();
+    });
+
+    it("shows additional properties progressively as each request resolves", async () => {
+        const caloriesDeferred = makeDeferred();
+        const transcriptionDeferred = makeDeferred();
+
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (id !== "entry-123") {
+                return Promise.resolve({});
+            }
+
+            if (propertyName === "calories") {
+                return caloriesDeferred.promise;
+            }
+
+            if (propertyName === "transcription") {
+                return transcriptionDeferred.promise;
+            }
+
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        expect(screen.getByText("Loading calories...")).toBeInTheDocument();
+        expect(screen.getByText("Loading transcription...")).toBeInTheDocument();
+
+        await act(async () => {
+            caloriesDeferred.resolve({ calories: 420 });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("calories")).toBeInTheDocument();
+            expect(screen.getByText("420")).toBeInTheDocument();
+            expect(screen.queryByText("Loading calories...")).not.toBeInTheDocument();
+            expect(screen.getByText("Loading transcription...")).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            transcriptionDeferred.resolve({});
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Loading transcription...")).not.toBeInTheDocument();
+        });
     });
 
     it("shows 'None' when additional properties are empty", async () => {
@@ -364,13 +428,14 @@ describe("EntryDetail page", () => {
         expect(screen.queryByText("calories")).not.toBeInTheDocument();
     });
 
-    it("calls fetchAdditionalProperties with the entry id", async () => {
+    it("calls fetchAdditionalProperties with the entry id and property names", async () => {
         fetchAdditionalProperties.mockResolvedValue({});
 
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await waitFor(() => {
-            expect(fetchAdditionalProperties).toHaveBeenCalledWith("entry-123");
+            expect(fetchAdditionalProperties).toHaveBeenNthCalledWith(1, "entry-123", "calories");
+            expect(fetchAdditionalProperties).toHaveBeenNthCalledWith(2, "entry-123", "transcription");
         });
     });
 

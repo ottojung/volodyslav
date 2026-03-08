@@ -181,6 +181,20 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(res.body).toEqual({ calories: 420 });
         });
 
+        it("returns only the requested calories property", async () => {
+            const { app, capabilities } = await makeInitializedApp(300);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-calories", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/diary-calories/additional-properties?property=calories");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ calories: 300 });
+            expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
+        });
+
         it("passes the entry input text to the AI estimator", async () => {
             const { app, capabilities } = await makeInitializedApp(300);
             const input = "food: two slices of toast with butter";
@@ -257,6 +271,20 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
         });
 
+        it("returns only the requested transcription property", async () => {
+            const { app, capabilities } = await makeInitializedApp(300);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-transcription", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/diary-transcription/additional-properties?property=transcription");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ transcription: "mocked transcription result" });
+            expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
+        });
+
         it("returns transcription from the first audio asset only", async () => {
             const { app, capabilities } = await makeInitializedApp(0);
 
@@ -319,6 +347,16 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 calories: 300,
                 transcription: "mocked transcription result",
             });
+        });
+
+        it("returns 400 for an invalid requested additional property", async () => {
+            const { app } = await makeInitializedApp(0);
+
+            const res = await request(app)
+                .get("/api/entries/entry-1/additional-properties?property=unknown");
+
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toEqual({ error: "Invalid additional property" });
         });
     });
 });

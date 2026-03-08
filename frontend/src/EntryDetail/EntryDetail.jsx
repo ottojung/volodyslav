@@ -32,6 +32,10 @@ import {
  */
 
 /**
+ * @typedef {import('../Search/api.js').AdditionalPropertyName} AdditionalPropertyName
+ */
+
+/**
  * Flattens an entry into a list of key-value pairs for display.
  * @param {Entry} entry
  * @returns {Array<{key: string, value: string}>}
@@ -103,6 +107,17 @@ function filterAssetsByType(assets, mediaType) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function hasAdditionalPropertyValue(value) {
+    return value !== undefined && value !== null;
+}
+
+/** @type {AdditionalPropertyName[]} */
+const ADDITIONAL_PROPERTY_NAMES = ["calories", "transcription"];
+
+/**
  * Entry detail page. Displays all JSON fields for a single entry
  * with copy buttons on the right of each field.
  * @returns {JSX.Element}
@@ -121,16 +136,22 @@ export default function EntryDetail() {
     const [isDeleting, setIsDeleting] = useState(false);
 
     /** @type {[import('../Search/api.js').AdditionalProperties | null, Function]} */
-    const [additionalProperties, setAdditionalProperties] = useState(null);
+    const [additionalProperties, setAdditionalProperties] = useState({});
+
+    /** @type {[AdditionalPropertyName[], Function]} */
+    const [loadingAdditionalProperties, setLoadingAdditionalProperties] = useState(ADDITIONAL_PROPERTY_NAMES);
 
     /** @type {[{filename: string, url: string, mediaType: 'image'|'audio'|'other'}[] | null, Function]} */
     const [entryAssets, setEntryAssets] = useState(null);
 
     useEffect(() => {
-        if (stateEntry !== null || id === undefined) return;
+        if (stateEntry !== null || id === undefined) return undefined;
+
+        let isActive = true;
 
         setIsLoading(true);
         fetchEntryById(id).then((fetched) => {
+            if (!isActive) return;
             if (fetched === null) {
                 setNotFound(true);
             } else {
@@ -138,22 +159,58 @@ export default function EntryDetail() {
             }
             setIsLoading(false);
         });
+
+        return () => {
+            isActive = false;
+        };
     }, [id, stateEntry]);
 
     useEffect(() => {
-        if (id === undefined) return;
-        setAdditionalProperties(null);
-        fetchAdditionalProperties(id).then((props) => {
-            setAdditionalProperties(props);
-        });
+        if (id === undefined) return undefined;
+
+        let isActive = true;
+
+        setAdditionalProperties({});
+        setLoadingAdditionalProperties(ADDITIONAL_PROPERTY_NAMES);
+
+        for (const propertyName of ADDITIONAL_PROPERTY_NAMES) {
+            fetchAdditionalProperties(id, propertyName).then((props) => {
+                if (!isActive) return;
+                setAdditionalProperties(
+                    /** @param {import('../Search/api.js').AdditionalProperties} currentProperties */
+                    (currentProperties) => ({
+                    ...currentProperties,
+                    ...props,
+                    }),
+                );
+                setLoadingAdditionalProperties(
+                    /** @param {AdditionalPropertyName[]} currentProperties */
+                    (currentProperties) => currentProperties.filter(
+                        /** @param {AdditionalPropertyName} currentProperty */
+                        (currentProperty) => currentProperty !== propertyName,
+                    ),
+                );
+            });
+        }
+        return () => {
+            isActive = false;
+        };
     }, [id]);
 
     useEffect(() => {
-        if (id === undefined) return;
+        if (id === undefined) return undefined;
+
+        let isActive = true;
+
         setEntryAssets(null);
         fetchEntryAssets(id).then((assets) => {
+            if (!isActive) return;
             setEntryAssets(assets);
         });
+
+        return () => {
+            isActive = false;
+        };
     }, [id]);
 
     async function handleDelete() {
@@ -191,11 +248,7 @@ export default function EntryDetail() {
 
     const fields = entryToFields(entry);
 
-    const additionalFields = additionalProperties === null
-        ? null
-        : Object.entries(additionalProperties).filter(
-            ([, v]) => v !== undefined && v !== null,
-        );
+    const additionalFields = Object.entries(additionalProperties).filter(([, value]) => hasAdditionalPropertyValue(value));
 
     const imageAssets = filterAssetsByType(entryAssets, "image");
     const audioAssets = filterAssetsByType(entryAssets, "audio");
@@ -232,19 +285,29 @@ export default function EntryDetail() {
                         <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
                             Additional Properties
                         </Text>
-                        {additionalFields === null ? (
-                            <Box textAlign="center" py={SPACING.md}>
-                                <Spinner size="sm" color="blue.400" />
-                            </Box>
-                        ) : additionalFields.length === 0 ? (
-                            <Text {...TEXT_STYLES.helper}>None</Text>
-                        ) : (
-                            <VStack spacing={SPACING.sm} align="stretch">
+                        {additionalFields.length > 0 && (
+                            <VStack spacing={SPACING.sm} align="stretch" mb={loadingAdditionalProperties.length > 0 ? SPACING.md : 0}>
                                 {additionalFields.map(([key, value]) => (
                                     <FieldRow key={key} fieldKey={key} value={String(value)} />
                                 ))}
                             </VStack>
                         )}
+                        {loadingAdditionalProperties.length > 0 ? (
+                            <Box py={SPACING.md}>
+                                <HStack align="flex-start" spacing={SPACING.sm}>
+                                    <Spinner size="sm" color="blue.400" mt="2px" />
+                                    <VStack align="flex-start" spacing={1}>
+                                        {loadingAdditionalProperties.map((propertyName) => (
+                                            <Text key={propertyName} {...TEXT_STYLES.helper}>
+                                                Loading {propertyName}...
+                                            </Text>
+                                        ))}
+                                    </VStack>
+                                </HStack>
+                            </Box>
+                        ) : additionalFields.length === 0 ? (
+                            <Text {...TEXT_STYLES.helper}>None</Text>
+                        ) : null}
                     </CardBody>
                 </Card>
 
