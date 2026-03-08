@@ -6,6 +6,7 @@
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
+/** @typedef {import('../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
 /** @typedef {import('../incremental_graph/types').ComputedValue} ComputedValue */
 /** @typedef {import('../incremental_graph/types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
@@ -243,6 +244,19 @@ class InterfaceClass {
         const result = await this._requireInitializedGraph().pull("calories", [eventId]);
         if (result.type !== "calories") {
             throw new Error(`Expected calories entry but got type: ${result.type}`);
+        }
+        return result;
+    }
+
+    /**
+     * @param {string} eventId
+     * @param {string} audioPath - Audio path relative to the assets root
+     * @returns {Promise<EventTranscriptionEntry>}
+     */
+    async getEventTranscriptionForAudioPath(eventId, audioPath) {
+        const result = await this._requireInitializedGraph().pull("event_transcription", [eventId, audioPath]);
+        if (result.type !== "event_transcription") {
+            throw new Error(`Expected event_transcription entry but got type: ${result.type}`);
         }
         return result;
     }

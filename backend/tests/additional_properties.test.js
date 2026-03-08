@@ -2,9 +2,11 @@
  * Tests for GET /api/entries/:id/additional-properties
  */
 
+const path = require("path");
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
+const event = require("../src/event");
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
@@ -14,6 +16,7 @@ const {
     stubLogger,
     stubDatetime,
     stubAiCalories,
+    stubAiTranscriber,
     stubEventLogRepository,
 } = require("./stubs");
 
@@ -36,15 +39,55 @@ function makeEvent(id, input = "") {
 }
 
 /**
+ * Builds a minimal diary event for testing.
+ * @param {string} id
+ */
+function makeDiaryEvent(id) {
+    return {
+        id: eventId.fromString(id),
+        type: "diary",
+        description: "",
+        date: fromISOString("2024-01-01T00:00:00.000Z"),
+        original: "diary [when 0 hours ago] [audiorecording]",
+        input: "diary [when 0 hours ago] [audiorecording]",
+        modifiers: { when: "0 hours ago", audiorecording: "" },
+        creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
+    };
+}
+
+/**
  * Writes events to the event log gitstore via a transaction.
  * @param {object} capabilities
  * @param {Array<object>} events
  */
 async function writeEventsToStore(capabilities, events) {
     await transaction(capabilities, async (storage) => {
-        for (const event of events) {
-            storage.addEntry(event, []);
+        for (const entry of events) {
+            storage.addEntry(entry, []);
         }
+    });
+}
+
+/**
+ * Writes a diary event with attached audio asset files and updates the store.
+ * @param {object} capabilities
+ * @param {string} entryId
+ * @param {Array<string>} filenames
+ */
+async function writeDiaryEventWithAudioAssets(capabilities, entryId, filenames) {
+    const diaryEvent = makeDiaryEvent(entryId);
+    const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const assets = [];
+
+    for (const filename of filenames) {
+        const sourcePath = path.join(tmpDir, filename);
+        const sourceFile = await capabilities.creator.createFile(sourcePath);
+        await capabilities.writer.writeFile(sourceFile, "fake audio");
+        assets.push(event.asset.make(diaryEvent, sourceFile));
+    }
+
+    await transaction(capabilities, async (storage) => {
+        storage.addEntry(diaryEvent, assets);
     });
 }
 
@@ -57,6 +100,7 @@ async function makeUninitializedApp(defaultCalories = 0) {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubAiCalories(capabilities, defaultCalories);
+    stubAiTranscriber(capabilities);
     await stubEventLogRepository(capabilities);
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
@@ -183,6 +227,98 @@ describe("GET /api/entries/:id/additional-properties", () => {
 
             expect(resA.body).toEqual({ calories: 150 });
             expect(resB.body).toEqual({ calories: 500 });
+        });
+
+        it("returns empty object for entry with no audio assets", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeEventsToStore(capabilities, [makeEvent("entry-1", "ran 5km")]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/entry-1/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({});
+            expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
+        });
+
+        it("returns { transcription } for a diary entry with an audio asset", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-1", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/diary-1/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ transcription: "mocked transcription result" });
+            expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
+        });
+
+        it("returns transcription from the first audio asset only", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-2", ["first.mp3", "second.mp3"]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/diary-2/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body.transcription).toBe("mocked transcription result");
+        });
+
+        it("ignores non-audio assets when looking for transcription", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            const diaryEvent = makeDiaryEvent("diary-3");
+            const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+            const imgPath = path.join(tmpDir, "photo.jpg");
+            const imgFile = await capabilities.creator.createFile(imgPath);
+            await capabilities.writer.writeFile(imgFile, "fake image");
+            const assets = [event.asset.make(diaryEvent, imgFile)];
+
+            await transaction(capabilities, async (storage) => {
+                storage.addEntry(diaryEvent, assets);
+            });
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/diary-3/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({});
+            expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
+        });
+
+        it("uses cached transcription on repeated requests", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-4", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            await request(app).get("/api/entries/diary-4/additional-properties");
+            await request(app).get("/api/entries/diary-4/additional-properties");
+
+            expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
+        });
+
+        it("returns both calories and transcription when both are available", async () => {
+            const { app, capabilities } = await makeInitializedApp(300);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-5", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/diary-5/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toMatchObject({
+                calories: 300,
+                transcription: "mocked transcription result",
+            });
         });
     });
 });
