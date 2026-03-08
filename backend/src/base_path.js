@@ -6,8 +6,8 @@ const path = require("path");
  * @property {import("./filesystem/checker").FileChecker} checker - A file checker instance.
  */
 
-/** @type {WeakMap<object, string>} */
-const cachedBasePaths = new WeakMap();
+/** @type {string | undefined} */
+let cachedBasePath;
 
 /**
  * Extracts the path prefix from a raw VOLODYSLAV_BASEURL value.
@@ -31,36 +31,12 @@ function extractBasePath(raw) {
 }
 
 /**
- * @param {Capabilities & { environment?: { basePath?: () => Promise<string | undefined> | string | undefined } }} capabilities
- * @returns {Promise<string | undefined>}
- */
-async function readBasePathOverride(capabilities) {
-    if (
-        "environment" in capabilities &&
-        capabilities.environment !== null &&
-        typeof capabilities.environment === "object" &&
-        "basePath" in capabilities.environment &&
-        typeof capabilities.environment.basePath === "function"
-    ) {
-        const overriddenBasePath = await capabilities.environment.basePath();
-        if (typeof overriddenBasePath === "string") {
-            return extractBasePath(overriddenBasePath);
-        }
-    }
-    return undefined;
-}
-
-/**
  * Reads the base path prefix from the BASE_PATH file located alongside the
  * VERSION file. Returns an empty string if the file does not exist (development).
- * @param {Capabilities & { environment?: { basePath?: () => Promise<string | undefined> | string | undefined } }} capabilities
+ * @param {Capabilities} capabilities
  * @returns {Promise<string>}
  */
 async function readBasePathFromFile(capabilities) {
-    const overriddenBasePath = await readBasePathOverride(capabilities);
-    if (typeof overriddenBasePath === "string") {
-        return overriddenBasePath;
-    }
     const basePathFilePath = path.join(__dirname, "..", "..", "BASE_PATH");
     try {
         const file = await capabilities.checker.instantiate(basePathFilePath);
@@ -78,10 +54,8 @@ async function readBasePathFromFile(capabilities) {
  * @returns {Promise<string>}
  */
 async function getBasePath(capabilities) {
-    let cachedBasePath = cachedBasePaths.get(capabilities);
     if (cachedBasePath === undefined) {
         cachedBasePath = await readBasePathFromFile(capabilities);
-        cachedBasePaths.set(capabilities, cachedBasePath);
     }
     return cachedBasePath;
 }
