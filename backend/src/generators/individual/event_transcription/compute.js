@@ -97,6 +97,12 @@ function tryParseDirectDateParts(date) {
  * so this fallback exists only to keep cached graph values readable across the
  * shapes currently observed in this repository.
  *
+ * This case arises during incremental-graph persistence: when an event is stored
+ * in LevelDB and later retrieved, the Luxon DateTime object is JSON-serialized.
+ * In some Luxon versions the serialized form carries `_luxonDateTime` as an
+ * object that stores date components under the internal `c` key rather than as
+ * top-level year/month/day fields.
+ *
  * @param {unknown} date
  * @returns {{ year: number, month: number, day: number } | null}
  */
@@ -180,9 +186,13 @@ function getEventAssetDirectorySuffix(event) {
  * @returns {EventTranscriptionEntry}
  */
 function computeEventTranscription(event, transcription, audioPath) {
-    const suffix = getEventAssetDirectorySuffix(event);
-    const expectedPrefix = suffix + path.sep;
-    if (!audioPath.startsWith(expectedPrefix)) {
+    // Normalize both sides to forward-slash separators so that the check is
+    // consistent with the canonical `<YYYY-MM>/<DD>/<event id>/<filename>`
+    // layout documented in the spec, regardless of the host OS path separator.
+    const suffix = getEventAssetDirectorySuffix(event).replace(/\\/g, "/");
+    const normalizedAudioPath = audioPath.replace(/\\/g, "/");
+    const expectedPrefix = suffix + "/";
+    if (!normalizedAudioPath.startsWith(expectedPrefix)) {
         throw new AudioNotAssociatedWithEventError(audioPath, event.id.identifier);
     }
     return { type: "event_transcription", event, transcription };
