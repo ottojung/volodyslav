@@ -1,8 +1,6 @@
 const path = require("path");
 const fs = require("fs");
 const request = require("supertest");
-const expressApp = require("../src/express_app");
-const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -16,6 +14,9 @@ function getTestCapabilities() {
 
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
+const basePathFile = path.join(__dirname, "..", "..", "BASE_PATH");
+const manifestPath = path.join(staticPath, "manifest.webmanifest");
+const configuredBasePath = "/volodyslav";
 
 beforeAll(() => {
     // Create mock dist directory and files
@@ -32,11 +33,44 @@ afterAll(() => {
     fs.rmSync(staticPath, { recursive: true, force: true });
 });
 
-async function makeApp(capabilities) {
+/**
+ * Builds a test app from caller-provided module instances.
+ * Passing the modules in keeps the normal and reloaded code paths aligned.
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @param {typeof import("../src/express_app")} expressApp
+ * @param {typeof import("../src/server").addRoutes} addRoutes
+ * @returns {Promise<import("express").Express>}
+ */
+async function makeAppFromModules(capabilities, expressApp, addRoutes) {
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
+}
+
+/**
+ * Builds a test app using the existing module cache.
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @returns {Promise<import("express").Express>}
+ */
+async function makeApp(capabilities) {
+    const expressApp = require("../src/express_app");
+    const { addRoutes } = require("../src/server");
+    return makeAppFromModules(capabilities, expressApp, addRoutes);
+}
+
+/**
+ * Builds a test app after clearing the module cache for backend routing modules.
+ * This is needed only for BASE_PATH tests because backend/src/base_path.js
+ * memoizes the first path it reads per module instance.
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @returns {Promise<import("express").Express>}
+ */
+async function makeAppWithFreshModules(capabilities) {
+    jest.resetModules();
+    const expressApp = require("../src/express_app");
+    const { addRoutes } = require("../src/server");
+    return makeAppFromModules(capabilities, expressApp, addRoutes);
 }
 
 describe("Static file serving", () => {
@@ -83,5 +117,27 @@ describe("Static file serving", () => {
 
         // Clean up
         fs.unlinkSync(path.join(staticPath, "test.js"));
+    });
+
+    it("serves manifest.webmanifest under a configured base path", async () => {
+        fs.writeFileSync(basePathFile, `${configuredBasePath}\n`);
+        fs.writeFileSync(manifestPath, JSON.stringify({ name: "Volodyslav" }));
+
+        try {
+            const capabilities = getTestCapabilities();
+            const app = await makeAppWithFreshModules(capabilities);
+            const res = await request(app).get(
+                `${configuredBasePath}/manifest.webmanifest`
+            );
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ name: "Volodyslav" });
+            expect(res.headers["content-type"]).toMatch(
+                /application\/manifest\+json|application\/json/
+            );
+        } finally {
+            fs.rmSync(manifestPath, { force: true });
+            fs.rmSync(basePathFile, { force: true });
+        }
     });
 });
