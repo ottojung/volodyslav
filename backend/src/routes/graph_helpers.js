@@ -47,11 +47,46 @@ async function fetchTimestamps(graph, head, args) {
 
 /**
  * @param {import('express').Request} req
+ * @returns {string}
+ */
+function getRawPathname(req) {
+    const rawPath =
+        typeof req.path === "string"
+            ? req.path
+            : typeof req.url === "string"
+            ? req.url
+            : typeof req.originalUrl === "string"
+                ? req.originalUrl
+                : "";
+    const queryIndex = rawPath.indexOf("?");
+    return queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex);
+}
+
+/**
+ * @param {import('express').Request} req
  * @returns {Array<string> | null}
  */
 function getArgsFromRequest(req) {
     const argsStr = req.params[0];
-    return argsStr === undefined ? null : argsStr.split("/").filter((s) => s.length > 0);
+    if (argsStr === undefined) {
+        return null;
+    }
+    const { head } = req.params;
+    if (head === undefined) {
+        return argsStr.split("/").filter((s) => s.length > 0);
+    }
+
+    const marker = `/graph/nodes/${encodeURIComponent(head)}/`;
+    const markerIndex = getRawPathname(req).indexOf(marker);
+    if (markerIndex === -1) {
+        return argsStr.split("/").filter((s) => s.length > 0);
+    }
+    return getRawPathname(req)
+        .slice(markerIndex + marker.length)
+        .split("/")
+        .filter((s) => s.length > 0)
+        .map((segment) => decodeURIComponent(segment))
+        .filter((s) => s.length > 0);
 }
 
 /**

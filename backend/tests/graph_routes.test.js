@@ -462,6 +462,13 @@ describe("POST /api/graph/nodes/:head", () => {
 // POST /api/graph/nodes/:head/:arg0[/:arg1...]
 // ---------------------------------------------------------------------------
 describe("POST /api/graph/nodes/:head/*", () => {
+    it("returns 503 when graph is not initialized", async () => {
+        const app = makeTestApp(null);
+        const res = await request(app).post("/api/graph/nodes/event/evt-abc123");
+        expect(res.status).toBe(503);
+        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+    });
+
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
         const app = makeTestApp(graph);
@@ -507,6 +514,33 @@ describe("POST /api/graph/nodes/:head/*", () => {
             value: { result: "ok" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-01T00:00:00.000Z",
+        });
+    });
+
+    it("preserves encoded slashes inside a single pulled arg", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const freshness = new Map([
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), "up-to-date"],
+        ]);
+        const pulledValues = new Map([
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { type: "event", id: "foo/bar" }],
+        ]);
+        const timestamps = new Map([
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).post("/api/graph/nodes/event/foo%2Fbar");
+        expect(res.status).toBe(200);
+        expect(graph.pull).toHaveBeenCalledWith("event", ["foo/bar"]);
+        expect(res.body).toEqual({
+            head: "event",
+            args: ["foo/bar"],
+            freshness: "up-to-date",
+            value: { type: "event", id: "foo/bar" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-02T00:00:00.000Z",
         });
     });
 });
@@ -613,6 +647,32 @@ describe("GET /api/graph/nodes/:head/*", () => {
             value: { result: "ok" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-01T00:00:00.000Z",
+        });
+    });
+
+    it("preserves encoded slashes inside a single cached arg", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const freshness = new Map([
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), "up-to-date"],
+        ]);
+        const values = new Map([
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { type: "event", id: "foo/bar" }],
+        ]);
+        const timestamps = new Map([
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).get("/api/graph/nodes/event/foo%2Fbar");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            head: "event",
+            args: ["foo/bar"],
+            freshness: "up-to-date",
+            value: { type: "event", id: "foo/bar" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-02T00:00:00.000Z",
         });
     });
 });
