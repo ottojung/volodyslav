@@ -32,25 +32,26 @@ afterAll(() => {
     fs.rmSync(staticPath, { recursive: true, force: true });
 });
 
-async function makeApp(capabilities) {
-    const expressApp = require("../src/express_app");
-    const { addRoutes } = require("../src/server");
+async function makeAppFromModules(capabilities, expressApp, addRoutes) {
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
 }
 
-// Reload modules only when a test changes BASE_PATH, because getBasePath memoizes
-// the first result it reads for the lifetime of the module instance.
+async function makeApp(capabilities) {
+    const expressApp = require("../src/express_app");
+    const { addRoutes } = require("../src/server");
+    return makeAppFromModules(capabilities, expressApp, addRoutes);
+}
+
+// Reload backend server modules only when a test changes BASE_PATH, because
+// backend/src/base_path.js memoizes the first path it reads per module instance.
 async function makeAppWithFreshModules(capabilities) {
     jest.resetModules();
     const expressApp = require("../src/express_app");
     const { addRoutes } = require("../src/server");
-    const app = expressApp.make();
-    capabilities.logger.enableHttpCallsLogging(app);
-    await addRoutes(capabilities, app);
-    return app;
+    return makeAppFromModules(capabilities, expressApp, addRoutes);
 }
 
 describe("Static file serving", () => {
