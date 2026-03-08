@@ -6,8 +6,8 @@ const path = require("path");
  * @property {import("./filesystem/checker").FileChecker} checker - A file checker instance.
  */
 
-/** @type {string | undefined} */
-let cachedBasePath;
+/** @type {WeakMap<object, string>} */
+const cachedBasePaths = new WeakMap();
 
 /**
  * Extracts the path prefix from a raw VOLODYSLAV_BASEURL value.
@@ -54,8 +54,15 @@ async function readBasePathFromFile(capabilities) {
  * @returns {Promise<string>}
  */
 async function getBasePath(capabilities) {
+    if (!cachedBasePaths.has(capabilities)) {
+        cachedBasePaths.set(
+            capabilities,
+            await readBasePathFromFile(capabilities),
+        );
+    }
+    const cachedBasePath = cachedBasePaths.get(capabilities);
     if (cachedBasePath === undefined) {
-        cachedBasePath = await readBasePathFromFile(capabilities);
+        return "";
     }
     return cachedBasePath;
 }
