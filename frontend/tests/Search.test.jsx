@@ -39,10 +39,12 @@ describe("Search page", () => {
         searchEntries.mockClear();
         searchEntries.mockResolvedValue({ results: [] });
         jest.useFakeTimers();
+        sessionStorage.clear();
     });
 
     afterEach(() => {
         jest.useRealTimers();
+        sessionStorage.clear();
     });
 
     it("renders the search input", () => {
@@ -671,5 +673,111 @@ describe("Search page", () => {
         await waitFor(() => {
             expect(searchEntries).toHaveBeenLastCalledWith("sleep", 1);
         });
+    });
+
+    it("renders entry rows as anchor links with correct href", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()] });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            const entryText = screen.getByText("- Ate pizza");
+            const link = entryText.closest("a");
+            expect(link).toBeInTheDocument();
+            expect(link).toHaveAttribute("href", "/entry/entry-1");
+        });
+    });
+
+    it("saves search state to sessionStorage when an entry link is clicked", async () => {
+        searchEntries.mockResolvedValue({
+            results: [mockEntry({ id: "entry-1", description: "- Ate pizza" })],
+            hasMore: false,
+        });
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByText("- Ate pizza")).toBeInTheDocument();
+        });
+
+        const link = screen.getByText("- Ate pizza").closest("a");
+        fireEvent.click(link);
+
+        const saved = JSON.parse(sessionStorage.getItem("volodyslav_search_state"));
+        expect(saved).not.toBeNull();
+        expect(saved.pattern).toBe("food");
+        expect(saved.results).toHaveLength(1);
+        expect(saved.results[0].id).toBe("entry-1");
+        expect(saved.hasMore).toBe(false);
+    });
+
+    it("restores search results from sessionStorage on POP navigation without refetching", async () => {
+        const restoredEntry = mockEntry({ id: "restored-1", description: "- Restored entry" });
+        sessionStorage.setItem("volodyslav_search_state", JSON.stringify({
+            pattern: "food",
+            results: [restoredEntry],
+            page: 1,
+            hasMore: false,
+            error: null,
+        }));
+
+        // MemoryRouter starts with navigationType "POP", matching the back-navigation case.
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        // Results must be visible immediately without running timers or waiting for fetch.
+        await waitFor(() => {
+            expect(screen.getByText("- Restored entry")).toBeInTheDocument();
+        });
+
+        // The search input should reflect the restored pattern.
+        expect(screen.getByPlaceholderText("Search entries by regex...")).toHaveValue("food");
+
+        // searchEntries must NOT have been called since we restored from sessionStorage.
+        expect(searchEntries).not.toHaveBeenCalled();
+    });
+
+    it("does not show a spinner when state is restored from sessionStorage on POP navigation", async () => {
+        const restoredEntry = mockEntry({ id: "restored-1", description: "- Restored entry" });
+        sessionStorage.setItem("volodyslav_search_state", JSON.stringify({
+            pattern: "",
+            results: [restoredEntry],
+            page: 1,
+            hasMore: false,
+            error: null,
+        }));
+
+        render(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        // No loading spinner should be visible when state is restored.
+        await waitFor(() => {
+            expect(screen.getByText("- Restored entry")).toBeInTheDocument();
+        });
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
 });
