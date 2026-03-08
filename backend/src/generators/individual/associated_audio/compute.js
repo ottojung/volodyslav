@@ -56,6 +56,17 @@ function hasDateParts(candidate) {
 }
 
 /**
+ * Graph values can carry event dates in multiple shapes:
+ * - the normal DateTime wrapper used in live event objects
+ * - the serialized ISO string form used in persisted event JSON
+ * - cached incremental-graph values where the wrapped Luxon date survives as
+ *   `_luxonDateTime`, either as an ISO string or as an object containing raw
+ *   year/month/day fields.
+ *
+ * This helper normalizes those representations into plain date parts so the
+ * asset-directory convention can be reconstructed reliably from both fresh and
+ * cached graph values.
+ *
  * @param {unknown} date
  * @returns {{ year: number, month: number, day: number }}
  */
@@ -71,43 +82,26 @@ function getEventDateParts(date) {
     if (hasDateParts(date)) {
         return date;
     }
-    if (
-        date !== null &&
-        typeof date === "object" &&
-        "_luxonDateTime" in date &&
-        typeof date._luxonDateTime === "string"
-    ) {
-        const parsed = fromISOString(date._luxonDateTime);
+    const luxonDate = getLuxonDateContainer(date);
+    if (typeof luxonDate === "string") {
+        const parsed = fromISOString(luxonDate);
         return {
             year: parsed.year,
             month: parsed.month,
             day: parsed.day,
         };
     }
-    if (
-        date !== null &&
-        typeof date === "object" &&
-        "_luxonDateTime" in date &&
-        hasDateParts(date._luxonDateTime)
-    ) {
-        return date._luxonDateTime;
+    if (hasDateParts(luxonDate)) {
+        return luxonDate;
     }
-    if (
-        date !== null &&
-        typeof date === "object" &&
-        "_luxonDateTime" in date &&
-        date._luxonDateTime !== null &&
-        typeof date._luxonDateTime === "object" &&
-        "c" in date._luxonDateTime &&
-        hasDateParts(date._luxonDateTime.c)
-    ) {
-        return date._luxonDateTime.c;
+    if (isObject(luxonDate) && "c" in luxonDate && hasDateParts(luxonDate["c"])) {
+        return luxonDate["c"];
     }
-    if (date !== null && typeof date === "object" && "c" in date && hasDateParts(date.c)) {
-        return date.c;
+    if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
+        return date["c"];
     }
-    if (date !== null && typeof date === "object" && "toISOString" in date && typeof date.toISOString === "function") {
-        const parsed = fromISOString(date.toISOString());
+    if (isObject(date) && "toISOString" in date && typeof date["toISOString"] === "function") {
+        const parsed = fromISOString(date["toISOString"]());
         return {
             year: parsed.year,
             month: parsed.month,
@@ -115,6 +109,28 @@ function getEventDateParts(date) {
         };
     }
     throw new EventDatePartsError(date);
+}
+
+/**
+ * @param {unknown} candidate
+ * @returns {candidate is Record<string, unknown>}
+ */
+function isObject(candidate) {
+    return candidate !== null && typeof candidate === "object";
+}
+
+/**
+ * @param {unknown} candidate
+ * @returns {unknown}
+ */
+function getLuxonDateContainer(candidate) {
+    if (!isObject(candidate)) {
+        return undefined;
+    }
+    if ("_luxonDateTime" in candidate) {
+        return candidate["_luxonDateTime"];
+    }
+    return undefined;
 }
 
 /**

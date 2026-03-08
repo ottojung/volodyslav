@@ -110,7 +110,6 @@ function ensureAssociatedAudioPath(relativeAssetPath, associatedAudioPaths) {
 }
 
 /**
- * @param {string} relativeAssetPath
  * @param {Array<string>} associatedAudioPaths
  * @param {string} relativeAssetPath
  * @param {TranscriptionCapabilities} capabilities
