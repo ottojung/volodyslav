@@ -49,6 +49,8 @@ async function fetchTimestamps(graph, head, args) {
 }
 
 /**
+ * Extract the pathname from an Express request while preserving percent-encoding.
+ * Falls back across the request fields used in this codebase and strips query text.
  * @param {import('express').Request} req
  * @returns {string}
  */
@@ -80,11 +82,12 @@ function getArgsFromRequest(req) {
     }
 
     const marker = `${GRAPH_NODE_PATH_PREFIX}${encodeURIComponent(head)}/`;
-    const markerIndex = getRawPathname(req).indexOf(marker);
+    const rawPathname = getRawPathname(req);
+    const markerIndex = rawPathname.indexOf(marker);
     if (markerIndex === -1) {
         return argsStr.split("/").filter((s) => s.length > 0);
     }
-    return getRawPathname(req)
+    return rawPathname
         .slice(markerIndex + marker.length)
         .split("/")
         .map((segment) => decodeURIComponent(segment))
