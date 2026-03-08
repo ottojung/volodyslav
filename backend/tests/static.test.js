@@ -14,7 +14,6 @@ function getTestCapabilities() {
 
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
-const basePathFile = path.join(__dirname, "..", "..", "BASE_PATH");
 const manifestPath = path.join(staticPath, "manifest.json");
 const configuredBasePath = "/volodyslav";
 
@@ -120,11 +119,11 @@ describe("Static file serving", () => {
     });
 
     it("serves manifest.json under a configured base path", async () => {
-        fs.writeFileSync(basePathFile, `${configuredBasePath}\n`);
         fs.writeFileSync(manifestPath, JSON.stringify({ name: "Volodyslav" }));
 
         try {
             const capabilities = getTestCapabilities();
+            capabilities.environment.basePath.mockReturnValue(configuredBasePath);
             const app = await makeAppWithFreshModules(capabilities);
             const res = await request(app).get(
                 `${configuredBasePath}/manifest.json`
@@ -137,7 +136,6 @@ describe("Static file serving", () => {
             );
         } finally {
             fs.rmSync(manifestPath, { force: true });
-            fs.rmSync(basePathFile, { force: true });
         }
     });
 });
