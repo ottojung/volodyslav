@@ -2,6 +2,9 @@ const { isMissingTimestamp } = require("../generators");
 
 /** @typedef {import('../generators/incremental_graph/types').ConstValue} ConstValue */
 /** @typedef {import('../datetime').DateTime} DateTime */
+
+const GRAPH_NODE_PATH_PREFIX = "/graph/nodes/";
+
 /**
  * @typedef {object} TimestampReader
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getCreationTime
@@ -50,14 +53,14 @@ async function fetchTimestamps(graph, head, args) {
  * @returns {string}
  */
 function getRawPathname(req) {
-    const rawPath =
-        typeof req.path === "string"
-            ? req.path
-            : typeof req.url === "string"
-            ? req.url
-            : typeof req.originalUrl === "string"
-                ? req.originalUrl
-                : "";
+    let rawPath = "";
+    if (typeof req.path === "string") {
+        rawPath = req.path;
+    } else if (typeof req.url === "string") {
+        rawPath = req.url;
+    } else if (typeof req.originalUrl === "string") {
+        rawPath = req.originalUrl;
+    }
     const queryIndex = rawPath.indexOf("?");
     return queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex);
 }
@@ -76,7 +79,7 @@ function getArgsFromRequest(req) {
         return argsStr.split("/").filter((s) => s.length > 0);
     }
 
-    const marker = `/graph/nodes/${encodeURIComponent(head)}/`;
+    const marker = `${GRAPH_NODE_PATH_PREFIX}${encodeURIComponent(head)}/`;
     const markerIndex = getRawPathname(req).indexOf(marker);
     if (markerIndex === -1) {
         return argsStr.split("/").filter((s) => s.length > 0);
@@ -84,7 +87,6 @@ function getArgsFromRequest(req) {
     return getRawPathname(req)
         .slice(markerIndex + marker.length)
         .split("/")
-        .filter((s) => s.length > 0)
         .map((segment) => decodeURIComponent(segment))
         .filter((s) => s.length > 0);
 }
