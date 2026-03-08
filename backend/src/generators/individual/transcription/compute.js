@@ -2,7 +2,6 @@ const path = require("path");
 const transcribe = require("../../../transcribe");
 
 /** @typedef {import('../../incremental_graph/database/types').TranscriptionEntry} TranscriptionEntry */
-/** @typedef {import('../../../event').Event} Event */
 
 /**
  * @typedef {object} TranscriptionCapabilities
@@ -34,23 +33,23 @@ function isInvalidTranscriptionPathError(object) {
     return object instanceof InvalidTranscriptionPathError;
 }
 
-class AssetEventNotFoundError extends Error {
+class AssociatedAudioPathNotFoundError extends Error {
     /**
      * @param {string} relativeAssetPath
      */
     constructor(relativeAssetPath) {
-        super(`No event found for asset path ${relativeAssetPath}`);
-        this.name = "AssetEventNotFoundError";
+        super(`Associated audio path not found: ${relativeAssetPath}`);
+        this.name = "AssociatedAudioPathNotFoundError";
         this.relativeAssetPath = relativeAssetPath;
     }
 }
 
 /**
  * @param {unknown} object
- * @returns {object is AssetEventNotFoundError}
+ * @returns {object is AssociatedAudioPathNotFoundError}
  */
-function isAssetEventNotFoundError(object) {
-    return object instanceof AssetEventNotFoundError;
+function isAssociatedAudioPathNotFoundError(object) {
+    return object instanceof AssociatedAudioPathNotFoundError;
 }
 
 class AssetFileNotFoundError extends Error {
@@ -101,42 +100,25 @@ function resolveAssetPath(capabilities, relativeAssetPath) {
 }
 
 /**
- * @param {Array<Event>} events
  * @param {string} relativeAssetPath
- * @returns {Event}
+ * @param {Array<string>} associatedAudioPaths
  */
-function findEventForAssetPath(events, relativeAssetPath) {
-    const segments = relativeAssetPath.split(path.sep).filter(Boolean);
-    if (segments.length < 4) {
-        throw new AssetEventNotFoundError(relativeAssetPath);
+function ensureAssociatedAudioPath(relativeAssetPath, associatedAudioPaths) {
+    if (!associatedAudioPaths.includes(relativeAssetPath)) {
+        throw new AssociatedAudioPathNotFoundError(relativeAssetPath);
     }
-
-    const [yearMonth, day, eventIdSegment] = segments;
-    const matchingEvent = events.find((event) => {
-        const month = event.date.month.toString().padStart(2, "0");
-        const eventYearMonth = `${event.date.year}-${month}`;
-        const eventDay = event.date.day.toString().padStart(2, "0");
-        return event.id.identifier === eventIdSegment &&
-            eventYearMonth === yearMonth &&
-            eventDay === day;
-    });
-
-    if (matchingEvent === undefined) {
-        throw new AssetEventNotFoundError(relativeAssetPath);
-    }
-
-    return matchingEvent;
 }
 
 /**
- * @param {Array<Event>} events
+ * @param {string} relativeAssetPath
+ * @param {Array<string>} associatedAudioPaths
  * @param {string} relativeAssetPath
  * @param {TranscriptionCapabilities} capabilities
  * @returns {Promise<TranscriptionEntry>}
  */
-async function computeTranscriptionForAssetPath(events, relativeAssetPath, capabilities) {
+async function computeTranscriptionForAssetPath(associatedAudioPaths, relativeAssetPath, capabilities) {
     const absoluteAssetPath = resolveAssetPath(capabilities, relativeAssetPath);
-    const event = findEventForAssetPath(events, relativeAssetPath);
+    ensureAssociatedAudioPath(relativeAssetPath, associatedAudioPaths);
     const file = await capabilities.checker.instantiate(absoluteAssetPath).catch((cause) => {
         throw new AssetFileNotFoundError(relativeAssetPath, absoluteAssetPath, cause);
     });
@@ -144,7 +126,6 @@ async function computeTranscriptionForAssetPath(events, relativeAssetPath, capab
     const value = await transcribe.transcribeStream(capabilities, fileStream);
     capabilities.logger.logDebug(
         {
-            event_id: event.id.identifier,
             relative_asset_path: relativeAssetPath,
             transcription_length: value.text.length,
         },
@@ -156,6 +137,6 @@ async function computeTranscriptionForAssetPath(events, relativeAssetPath, capab
 module.exports = {
     computeTranscriptionForAssetPath,
     isInvalidTranscriptionPathError,
-    isAssetEventNotFoundError,
+    isAssociatedAudioPathNotFoundError,
     isAssetFileNotFoundError,
 };

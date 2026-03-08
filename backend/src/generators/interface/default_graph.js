@@ -1,6 +1,13 @@
 
 const { isUnchanged } = require("../incremental_graph");
-const { metaEvents, eventContext, event: individualEvent, calories, transcription } = require("../individual");
+const {
+    metaEvents,
+    eventContext,
+    event: individualEvent,
+    calories,
+    associatedAudio,
+    transcription,
+} = require("../individual");
 const { transaction } = require("../../event_log_storage");
 
 /**
@@ -9,6 +16,7 @@ const { transaction } = require("../../event_log_storage");
  * @property {import('../../ai/transcription').AITranscription} aiTranscription - An AI transcription capability.
  * @property {import('../../random/seed').NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../logger').Logger} logger - A logger instance.
+ * @property {import('../../filesystem/dirscanner').DirScanner} scanner - A directory scanner instance.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../filesystem/writer').FileWriter} writer - A file writer instance.
  * @property {import('../../filesystem/creator').FileCreator} creator - A file creator instance.
@@ -146,19 +154,51 @@ function createDefaultGraphDefinition(capabilities) {
             hasSideEffects: true,
         },
         {
-            output: "transcription(a)",
+            output: "associated_audio(e)",
+            inputs: ["event(e)"],
+            computor: async (inputs, _oldValue, _bindings) => {
+                const firstInput = inputs[0];
+                if (!firstInput || firstInput.type !== "event") {
+                    throw new Error("Expected input of type event for associated_audio(e) computor");
+                }
+                return associatedAudio.computeAssociatedAudioForEvent(
+                    firstInput.value,
+                    capabilities,
+                );
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "all_associated_audio",
             inputs: ["all_events"],
-            computor: async (inputs, _oldValue, bindings) => {
+            computor: async (inputs, _oldValue, _bindings) => {
                 const firstInput = inputs[0];
                 if (!firstInput || firstInput.type !== "all_events") {
-                    throw new Error("Expected input of type all_events for transcription(a) computor");
+                    throw new Error("Expected input of type all_events for all_associated_audio computor");
+                }
+                return associatedAudio.computeAllAssociatedAudio(
+                    firstInput.events,
+                    capabilities,
+                );
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "transcription(a)",
+            inputs: ["all_associated_audio"],
+            computor: async (inputs, _oldValue, bindings) => {
+                const firstInput = inputs[0];
+                if (!firstInput || firstInput.type !== "all_associated_audio") {
+                    throw new Error("Expected input of type all_associated_audio for transcription(a) computor");
                 }
                 const firstBinding = bindings[0];
                 if (typeof firstBinding !== "string") {
                     throw new Error("Expected first binding to be a string for transcription(a) computor, got " + JSON.stringify(firstBinding));
                 }
                 return transcription.computeTranscriptionForAssetPath(
-                    firstInput.events,
+                    firstInput.value,
                     firstBinding,
                     capabilities,
                 );

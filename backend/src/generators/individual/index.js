@@ -7,6 +7,7 @@ const metaEvents = require('./meta_events');
 const eventContext = require('./event_context');
 const event = require('./event');
 const calories = require('./calories');
+const associatedAudio = require('./associated_audio');
 const transcription = require('./transcription');
 
 module.exports = {
@@ -14,5 +15,6 @@ module.exports = {
     eventContext,
     event,
     calories,
+    associatedAudio,
     transcription,
 };

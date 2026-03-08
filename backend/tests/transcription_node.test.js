@@ -44,41 +44,100 @@ async function getTestCapabilities() {
 /**
  * @param {object} capabilities
  * @param {string} eventId
- * @param {string} filename
- * @returns {Promise<string>}
+ * @param {Array<string>} filenames
+ * @returns {Promise<Array<string>>}
  */
-async function writeDiaryEventWithAsset(capabilities, eventId, filename) {
-    const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
-    const sourcePath = path.join(tmpDir, filename);
-    const sourceFile = await capabilities.creator.createFile(sourcePath);
-    await capabilities.writer.writeFile(sourceFile, "fake audio");
-
+async function writeDiaryEventWithAssets(capabilities, eventId, filenames) {
     const diaryEvent = makeDiaryEvent(eventId);
-    const asset = event.asset.make(diaryEvent, sourceFile);
+    const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const assets = [];
+
+    for (const filename of filenames) {
+        const sourcePath = path.join(tmpDir, filename);
+        const sourceFile = await capabilities.creator.createFile(sourcePath);
+        await capabilities.writer.writeFile(sourceFile, "fake file");
+        assets.push(event.asset.make(diaryEvent, sourceFile));
+    }
+
     await transaction(capabilities, async (storage) => {
-        storage.addEntry(diaryEvent, [asset]);
+        storage.addEntry(diaryEvent, assets);
     });
 
-    return path.relative(
-        capabilities.environment.eventLogAssetsDirectory(),
-        event.asset.targetPath(capabilities, asset),
-    );
+    return assets.map((asset) => {
+        return path.relative(
+            capabilities.environment.eventLogAssetsDirectory(),
+            event.asset.targetPath(capabilities, asset),
+        );
+    });
 }
 
-describe("transcription(a) node", () => {
-    test("transcribes an event asset path relative to the assets root", async () => {
+describe("associated_audio(e) node", () => {
+    test("lists the audio files attached to one event", async () => {
         const capabilities = await getTestCapabilities();
         const iface = capabilities.interface;
         await iface.ensureInitialized();
 
-        const relativeAssetPath = await writeDiaryEventWithAsset(
+        const [audioPath] = await writeDiaryEventWithAssets(
             capabilities,
             "1",
-            "memo.mp3",
+            ["memo.mp3"],
         );
         await iface.update();
 
-        const result = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
+        const result = await iface._incrementalGraph.pull("associated_audio", ["1"]);
+
+        expect(result).toEqual({
+            type: "associated_audio",
+            value: [audioPath],
+        });
+    });
+
+    test("filters out non-audio files for the same event", async () => {
+        const capabilities = await getTestCapabilities();
+        const iface = capabilities.interface;
+        await iface.ensureInitialized();
+
+        const [photoPath, audioPath, textPath] = await writeDiaryEventWithAssets(
+            capabilities,
+            "1",
+            ["photo.jpg", "memo.mp3", "notes.txt"],
+        );
+        await iface.update();
+
+        const result = await iface._incrementalGraph.pull("associated_audio", ["1"]);
+
+        expect(result).toEqual({
+            type: "associated_audio",
+            value: [audioPath],
+        });
+        expect(result.value).not.toContain(photoPath);
+        expect(result.value).not.toContain(textPath);
+    });
+});
+
+describe("transcription(a) node", () => {
+    test("transcribes a path discovered from the owning event", async () => {
+        const capabilities = await getTestCapabilities();
+        const iface = capabilities.interface;
+        await iface.ensureInitialized();
+
+        const [relativeAssetPath] = await writeDiaryEventWithAssets(
+            capabilities,
+            "1",
+            ["memo.mp3"],
+        );
+        await iface.update();
+
+        const associatedAudio = await iface._incrementalGraph.pull("associated_audio", ["1"]);
+        expect(associatedAudio).toEqual({
+            type: "associated_audio",
+            value: [relativeAssetPath],
+        });
+
+        const result = await iface._incrementalGraph.pull(
+            "transcription",
+            [associatedAudio.value[0]],
+        );
 
         expect(result).toMatchObject({
             type: "transcription",
@@ -96,7 +155,7 @@ describe("transcription(a) node", () => {
             path.join(
                 capabilities.environment.eventLogAssetsDirectory(),
                 relativeAssetPath,
-            )
+            ),
         );
     });
 
@@ -105,12 +164,18 @@ describe("transcription(a) node", () => {
         const iface = capabilities.interface;
         await iface.ensureInitialized();
 
-        const relativeAssetPath = await writeDiaryEventWithAsset(
+        const [relativeAssetPath] = await writeDiaryEventWithAssets(
             capabilities,
             "1",
-            "memo.mp3",
+            ["memo.mp3"],
         );
         await iface.update();
+
+        const associatedAudio = await iface._incrementalGraph.pull("associated_audio", ["1"]);
+        expect(associatedAudio).toEqual({
+            type: "associated_audio",
+            value: [relativeAssetPath],
+        });
 
         const first = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
         const second = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
@@ -123,6 +188,7 @@ describe("transcription(a) node", () => {
         const capabilities = await getTestCapabilities();
         const iface = capabilities.interface;
         await iface.ensureInitialized();
+        await iface.update();
 
         await expect(
             iface._incrementalGraph.pull("transcription", ["../escape.mp3"])
@@ -130,7 +196,7 @@ describe("transcription(a) node", () => {
         expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
     });
 
-    test("rejects asset paths that do not match any event in all_events", async () => {
+    test("rejects paths that are not associated with any event", async () => {
         const capabilities = await getTestCapabilities();
         const iface = capabilities.interface;
         await iface.ensureInitialized();
@@ -138,7 +204,7 @@ describe("transcription(a) node", () => {
 
         await expect(
             iface._incrementalGraph.pull("transcription", ["2024-01/01/999/memo.mp3"])
-        ).rejects.toThrow("No event found for asset path 2024-01/01/999/memo.mp3");
+        ).rejects.toThrow("Associated audio path not found: 2024-01/01/999/memo.mp3");
         expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
     });
 });
