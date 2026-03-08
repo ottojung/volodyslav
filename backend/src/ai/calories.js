@@ -49,7 +49,7 @@ function isAICaloriesError(object) {
     return object instanceof AICaloriesError;
 }
 
-const CALORIES_MODEL = "gpt-5.2";
+const CALORIES_MODEL = "gpt-4o-mini";
 
 const SYSTEM_PROMPT = `You are a nutrition assistant. Given a personal log entry, estimate the number of calories consumed.
 
