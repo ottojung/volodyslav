@@ -1,6 +1,8 @@
 const path = require("path");
 const fs = require("fs");
 const request = require("supertest");
+const expressApp = require("../src/express_app");
+const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -15,6 +17,7 @@ function getTestCapabilities() {
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
 const basePathFile = path.join(__dirname, "..", "..", "BASE_PATH");
+const manifestPath = path.join(staticPath, "manifest.webmanifest");
 
 beforeAll(() => {
     // Create mock dist directory and files
@@ -24,10 +27,6 @@ beforeAll(() => {
         "<html><body>Test</body></html>"
     );
     fs.writeFileSync(path.join(staticPath, "test.txt"), "test content");
-    fs.writeFileSync(
-        path.join(staticPath, "manifest.webmanifest"),
-        JSON.stringify({ name: "Volodyslav" })
-    );
 });
 
 afterAll(() => {
@@ -37,9 +36,17 @@ afterAll(() => {
 
 afterEach(() => {
     fs.rmSync(basePathFile, { force: true });
+    fs.rmSync(manifestPath, { force: true });
 });
 
 async function makeApp(capabilities) {
+    const app = expressApp.make();
+    capabilities.logger.enableHttpCallsLogging(app);
+    await addRoutes(capabilities, app);
+    return app;
+}
+
+async function makeAppWithFreshModules(capabilities) {
     jest.resetModules();
     const expressApp = require("../src/express_app");
     const { addRoutes } = require("../src/server");
@@ -97,9 +104,10 @@ describe("Static file serving", () => {
 
     it("serves manifest.webmanifest under a configured base path", async () => {
         fs.writeFileSync(basePathFile, "/volodyslav\n");
+        fs.writeFileSync(manifestPath, JSON.stringify({ name: "Volodyslav" }));
 
         const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
+        const app = await makeAppWithFreshModules(capabilities);
         const res = await request(app).get("/volodyslav/manifest.webmanifest");
 
         expect(res.statusCode).toBe(200);
