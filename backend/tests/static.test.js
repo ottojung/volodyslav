@@ -34,11 +34,6 @@ afterAll(() => {
     fs.rmSync(staticPath, { recursive: true, force: true });
 });
 
-afterEach(() => {
-    fs.rmSync(basePathFile, { force: true });
-    fs.rmSync(manifestPath, { force: true });
-});
-
 async function makeApp(capabilities) {
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
@@ -46,6 +41,8 @@ async function makeApp(capabilities) {
     return app;
 }
 
+// Reload modules only when a test changes BASE_PATH, because getBasePath memoizes
+// the first result it reads for the lifetime of the module instance.
 async function makeAppWithFreshModules(capabilities) {
     jest.resetModules();
     const expressApp = require("../src/express_app");
@@ -106,14 +103,19 @@ describe("Static file serving", () => {
         fs.writeFileSync(basePathFile, "/volodyslav\n");
         fs.writeFileSync(manifestPath, JSON.stringify({ name: "Volodyslav" }));
 
-        const capabilities = getTestCapabilities();
-        const app = await makeAppWithFreshModules(capabilities);
-        const res = await request(app).get("/volodyslav/manifest.webmanifest");
+        try {
+            const capabilities = getTestCapabilities();
+            const app = await makeAppWithFreshModules(capabilities);
+            const res = await request(app).get("/volodyslav/manifest.webmanifest");
 
-        expect(res.statusCode).toBe(200);
-        expect(res.body).toEqual({ name: "Volodyslav" });
-        expect(res.headers["content-type"]).toMatch(
-            /application\/manifest\+json|application\/json/
-        );
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ name: "Volodyslav" });
+            expect(res.headers["content-type"]).toMatch(
+                /application\/manifest\+json|application\/json/
+            );
+        } finally {
+            fs.rmSync(manifestPath, { force: true });
+            fs.rmSync(basePathFile, { force: true });
+        }
     });
 });
