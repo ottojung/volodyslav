@@ -47,6 +47,9 @@ const mockEntryNoModifiers = {
     modifiers: {},
 };
 
+const longFieldValue = `Long field ${"x".repeat(120)} ending`;
+const collapsedLongFieldValue = `${longFieldValue.slice(0, 100)}…`;
+
 function makeDeferred() {
     /** @type {(value: import("../src/Search/api").AdditionalProperties) => void} */
     let resolveDeferred;
@@ -176,6 +179,26 @@ describe("EntryDetail page", () => {
         expect(screen.getByText("modifiers.when")).toBeInTheDocument();
         expect(screen.getByText("9")).toBeInTheDocument();
         expect(screen.getByText("yesterday")).toBeInTheDocument();
+    });
+
+    it("collapses long field values by default and expands them on demand", async () => {
+        renderWithRoute("/entry/entry-123", {
+            entry: {
+                ...mockEntry,
+                description: longFieldValue,
+            },
+        });
+
+        expect(screen.getByText(collapsedLongFieldValue)).toBeInTheDocument();
+        expect(screen.queryByText(longFieldValue)).not.toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show full description" }));
+        });
+
+        expect(screen.getByText(longFieldValue)).toBeInTheDocument();
+        expect(screen.queryByText(collapsedLongFieldValue)).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Show less description" })).toBeInTheDocument();
     });
 
     // --- Fetching from API ---
@@ -437,6 +460,34 @@ describe("EntryDetail page", () => {
             expect(fetchAdditionalProperties).toHaveBeenNthCalledWith(1, "entry-123", "calories");
             expect(fetchAdditionalProperties).toHaveBeenNthCalledWith(2, "entry-123", "transcription");
         });
+    });
+
+    it("collapses long additional property values by default and expands them on demand", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (id !== "entry-123") {
+                return Promise.resolve({});
+            }
+
+            if (propertyName === "transcription") {
+                return Promise.resolve({ transcription: longFieldValue });
+            }
+
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(collapsedLongFieldValue)).toBeInTheDocument();
+        });
+        expect(screen.queryByText(longFieldValue)).not.toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show full transcription" }));
+        });
+
+        expect(screen.getByText(longFieldValue)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Show less transcription" })).toBeInTheDocument();
     });
 
     // --- Media / Assets section ---
