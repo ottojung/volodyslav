@@ -16,6 +16,7 @@ function getTestCapabilities() {
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
 const basePathFile = path.join(__dirname, "..", "..", "BASE_PATH");
 const manifestPath = path.join(staticPath, "manifest.webmanifest");
+const configuredBasePath = "/volodyslav";
 
 beforeAll(() => {
     // Create mock dist directory and files
@@ -37,7 +38,7 @@ afterAll(() => {
  * Passing the modules in keeps the normal and reloaded code paths aligned.
  * @param {ReturnType<typeof getTestCapabilities>} capabilities
  * @param {typeof import("../src/express_app")} expressApp
- * @param {typeof import("../src/server").addRoutes} addRoutes
+ * @param {{ addRoutes: typeof import("../src/server")["addRoutes"] }["addRoutes"]} addRoutes
  * @returns {Promise<import("express").Express>}
  */
 async function makeAppFromModules(capabilities, expressApp, addRoutes) {
@@ -119,13 +120,15 @@ describe("Static file serving", () => {
     });
 
     it("serves manifest.webmanifest under a configured base path", async () => {
-        fs.writeFileSync(basePathFile, "/volodyslav\n");
+        fs.writeFileSync(basePathFile, `${configuredBasePath}\n`);
         fs.writeFileSync(manifestPath, JSON.stringify({ name: "Volodyslav" }));
 
         try {
             const capabilities = getTestCapabilities();
             const app = await makeAppWithFreshModules(capabilities);
-            const res = await request(app).get("/volodyslav/manifest.webmanifest");
+            const res = await request(app).get(
+                `${configuredBasePath}/manifest.webmanifest`
+            );
 
             expect(res.statusCode).toBe(200);
             expect(res.body).toEqual({ name: "Volodyslav" });
