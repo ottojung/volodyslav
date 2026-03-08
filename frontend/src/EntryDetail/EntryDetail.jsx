@@ -13,8 +13,12 @@ import {
     Box,
     Badge,
     Button,
+    SimpleGrid,
+    Image,
+    Link,
 } from "@chakra-ui/react";
-import { fetchEntryById, deleteEntryById, fetchAdditionalProperties } from "../Search/api.js";
+import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../Search/api.js";
+import { API_BASE_URL } from "../api_base_url.js";
 import {
     SPACING,
     SIZES,
@@ -88,6 +92,17 @@ function FieldRow({ fieldKey, value }) {
 }
 
 /**
+ * Filters assets by media type.
+ * @param {import('../Search/api.js').AssetInfo[] | null} assets
+ * @param {import('../Search/api.js').MediaType} mediaType
+ * @returns {import('../Search/api.js').AssetInfo[] | null}
+ */
+function filterAssetsByType(assets, mediaType) {
+    if (assets === null) return null;
+    return assets.filter((a) => a.mediaType === mediaType);
+}
+
+/**
  * Entry detail page. Displays all JSON fields for a single entry
  * with copy buttons on the right of each field.
  * @returns {JSX.Element}
@@ -108,6 +123,9 @@ export default function EntryDetail() {
     /** @type {[import('../Search/api.js').AdditionalProperties | null, Function]} */
     const [additionalProperties, setAdditionalProperties] = useState(null);
 
+    /** @type {[{filename: string, url: string, mediaType: 'image'|'audio'|'other'}[] | null, Function]} */
+    const [entryAssets, setEntryAssets] = useState(null);
+
     useEffect(() => {
         if (stateEntry !== null || id === undefined) return;
 
@@ -127,6 +145,14 @@ export default function EntryDetail() {
         setAdditionalProperties(null);
         fetchAdditionalProperties(id).then((props) => {
             setAdditionalProperties(props);
+        });
+    }, [id]);
+
+    useEffect(() => {
+        if (id === undefined) return;
+        setEntryAssets(null);
+        fetchEntryAssets(id).then((assets) => {
+            setEntryAssets(assets);
         });
     }, [id]);
 
@@ -171,6 +197,9 @@ export default function EntryDetail() {
             ([, v]) => v !== undefined && v !== null,
         );
 
+    const imageAssets = filterAssetsByType(entryAssets, "image");
+    const audioAssets = filterAssetsByType(entryAssets, "audio");
+
     return (
         <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
             <VStack spacing={SPACING.xxl} align="stretch" justify="flex-start">
@@ -213,6 +242,60 @@ export default function EntryDetail() {
                                 {additionalFields.map(([key, value]) => (
                                     <FieldRow key={key} fieldKey={key} value={String(value)} />
                                 ))}
+                            </VStack>
+                        )}
+                    </CardBody>
+                </Card>
+
+                <Card {...CARD_STYLES.secondary}>
+                    <CardBody p={SPACING.lg}>
+                        <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
+                            Media
+                        </Text>
+                        {imageAssets === null ? (
+                            <Box textAlign="center" py={SPACING.md}>
+                                <Spinner size="sm" color="blue.400" />
+                            </Box>
+                        ) : imageAssets.length === 0 && audioAssets !== null && audioAssets.length === 0 ? (
+                            <Text {...TEXT_STYLES.helper}>None</Text>
+                        ) : (
+                            <VStack spacing={SPACING.md} align="stretch">
+                                {imageAssets.length > 0 && (
+                                    <Box>
+                                        <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Photos</Text>
+                                        <SimpleGrid columns={[2, 3, 4]} spacing={SPACING.sm}>
+                                            {imageAssets.map((asset) => (
+                                                <Link
+                                                    key={asset.filename}
+                                                    href={`${API_BASE_URL}${asset.url}`}
+                                                    isExternal
+                                                >
+                                                    <Image
+                                                        src={`${API_BASE_URL}${asset.url}`}
+                                                        alt={asset.filename}
+                                                        objectFit="cover"
+                                                        borderRadius="md"
+                                                        w="100%"
+                                                        h="120px"
+                                                    />
+                                                </Link>
+                                            ))}
+                                        </SimpleGrid>
+                                    </Box>
+                                )}
+                                {audioAssets !== null && audioAssets.length > 0 && (
+                                    <Box>
+                                        <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Audio</Text>
+                                        <VStack spacing={SPACING.sm} align="stretch">
+                                            {audioAssets.map((asset) => (
+                                                <Box key={asset.filename}>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>{asset.filename}</Text>
+                                                    <Box as="audio" controls w="100%" src={`${API_BASE_URL}${asset.url}`} />
+                                                </Box>
+                                            ))}
+                                        </VStack>
+                                    </Box>
+                                )}
                             </VStack>
                         )}
                     </CardBody>
