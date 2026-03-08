@@ -54,15 +54,10 @@ async function readBasePathFromFile(capabilities) {
  * @returns {Promise<string>}
  */
 async function getBasePath(capabilities) {
-    if (!cachedBasePaths.has(capabilities)) {
-        cachedBasePaths.set(
-            capabilities,
-            await readBasePathFromFile(capabilities),
-        );
-    }
-    const cachedBasePath = cachedBasePaths.get(capabilities);
+    let cachedBasePath = cachedBasePaths.get(capabilities);
     if (cachedBasePath === undefined) {
-        return "";
+        cachedBasePath = await readBasePathFromFile(capabilities);
+        cachedBasePaths.set(capabilities, cachedBasePath);
     }
     return cachedBasePath;
 }

@@ -57,12 +57,14 @@ class AssetFileNotFoundError extends Error {
     /**
      * @param {string} relativeAssetPath
      * @param {string} absoluteAssetPath
+     * @param {unknown} cause
      */
-    constructor(relativeAssetPath, absoluteAssetPath) {
+    constructor(relativeAssetPath, absoluteAssetPath, cause) {
         super(`Asset file for transcription not found: ${relativeAssetPath}`);
         this.name = "AssetFileNotFoundError";
         this.relativeAssetPath = relativeAssetPath;
         this.absoluteAssetPath = absoluteAssetPath;
+        this.cause = cause;
     }
 }
 
@@ -109,12 +111,12 @@ function findEventForAssetPath(events, relativeAssetPath) {
         throw new AssetEventNotFoundError(relativeAssetPath);
     }
 
-    const [yearMonth, day, eventId] = segments;
+    const [yearMonth, day, eventIdSegment] = segments;
     const matchingEvent = events.find((event) => {
         const month = event.date.month.toString().padStart(2, "0");
         const eventYearMonth = `${event.date.year}-${month}`;
         const eventDay = event.date.day.toString().padStart(2, "0");
-        return event.id.identifier === eventId &&
+        return event.id.identifier === eventIdSegment &&
             eventYearMonth === yearMonth &&
             eventDay === day;
     });
@@ -135,8 +137,8 @@ function findEventForAssetPath(events, relativeAssetPath) {
 async function computeTranscriptionForAssetPath(events, relativeAssetPath, capabilities) {
     const absoluteAssetPath = resolveAssetPath(capabilities, relativeAssetPath);
     const event = findEventForAssetPath(events, relativeAssetPath);
-    const file = await capabilities.checker.instantiate(absoluteAssetPath).catch(() => {
-        throw new AssetFileNotFoundError(relativeAssetPath, absoluteAssetPath);
+    const file = await capabilities.checker.instantiate(absoluteAssetPath).catch((cause) => {
+        throw new AssetFileNotFoundError(relativeAssetPath, absoluteAssetPath, cause);
     });
     const fileStream = capabilities.reader.createReadStream(file);
     const value = await transcribe.transcribeStream(capabilities, fileStream);

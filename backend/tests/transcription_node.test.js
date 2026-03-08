@@ -92,7 +92,12 @@ describe("transcription(a) node", () => {
             },
         });
         expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
-        expect(typeof capabilities.aiTranscription.transcribeStream.mock.calls[0][0].pipe).toBe("function");
+        expect(capabilities.aiTranscription.transcribeStream.mock.calls[0][0].path).toBe(
+            path.join(
+                capabilities.environment.eventLogAssetsDirectory(),
+                relativeAssetPath,
+            )
+        );
     });
 
     test("returns cached value for repeated pulls without updates", async () => {
