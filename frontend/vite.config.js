@@ -36,6 +36,7 @@ export default defineConfig({
             strategies: "injectManifest",
             srcDir: "src",
             filename: "sw.js",
+            manifestFilename: "manifest.json",
             registerType: "autoUpdate",
             workbox: {
                 globPatterns: ['**/*.{js,css,html,ico,png,svg}']
