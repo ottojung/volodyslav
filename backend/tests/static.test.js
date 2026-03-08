@@ -38,7 +38,7 @@ afterAll(() => {
  * Passing the modules in keeps the normal and reloaded code paths aligned.
  * @param {ReturnType<typeof getTestCapabilities>} capabilities
  * @param {typeof import("../src/express_app")} expressApp
- * @param {{ addRoutes: typeof import("../src/server")["addRoutes"] }["addRoutes"]} addRoutes
+ * @param {typeof import("../src/server").addRoutes} addRoutes
  * @returns {Promise<import("express").Express>}
  */
 async function makeAppFromModules(capabilities, expressApp, addRoutes) {
