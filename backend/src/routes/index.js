@@ -10,6 +10,7 @@ const config = require("./config");
 const sync = require("./sync");
 const graph = require("./graph");
 const version = require("./version");
+const assets = require("./assets");
 
 module.exports = {
     root,
@@ -24,4 +25,5 @@ module.exports = {
     sync,
     graph,
     version,
+    assets,
 };

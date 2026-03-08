@@ -6,6 +6,7 @@ const { handleEntriesGet } = require("./list");
 const { handleEntryDelete } = require("./delete");
 const { handleEntryGetById } = require("./get_by_id");
 const { handleAdditionalProperties } = require("./additional_properties");
+const { handleEntryAssets } = require("./assets");
 
 /**
 /**
@@ -22,6 +23,7 @@ const { handleAdditionalProperties } = require("./additional_properties");
  * @typedef {import('../../event/structure').SerializedEvent} SerializedEvent
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
  * @typedef {import('../../generators').Interface} Interface
+ * @typedef {import('../../filesystem/dirscanner').DirScanner} DirScanner
  */
 
 /**
@@ -35,6 +37,7 @@ const { handleAdditionalProperties } = require("./additional_properties");
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {DirScanner} scanner - A directory scanner instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
@@ -149,6 +152,32 @@ function makeRouter(capabilities) {
                     query: req.query,
                 },
                 "Unhandled error during entry delete request",
+            );
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Internal server error" });
+            }
+        }
+    });
+
+    /**
+     * GET /entries/:id/assets - Get the list of asset files associated with an entry
+     */
+    router.get("/entries/:id/assets", async (req, res) => {
+        const reqId = randomRequestId(capabilities);
+
+        try {
+            await handleEntryAssets(req, res, capabilities, reqId);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    client_ip: req.ip,
+                    entry_id: req.params.id,
+                },
+                "Unhandled error during entry assets request",
             );
             if (!res.headersSent) {
                 res.status(500).json({ error: "Internal server error" });

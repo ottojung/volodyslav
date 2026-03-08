@@ -9,6 +9,12 @@ jest.mock("../src/Search/api", () => ({
     fetchEntryById: jest.fn(),
     deleteEntryById: jest.fn(),
     fetchAdditionalProperties: jest.fn(),
+    fetchEntryAssets: jest.fn(),
+}));
+
+// Mock the api_base_url module
+jest.mock("../src/api_base_url.js", () => ({
+    API_BASE_URL: "/api",
 }));
 
 // Mock the logger module
@@ -22,7 +28,7 @@ jest.mock("../src/DescriptionEntry/logger", () => ({
 }));
 
 import EntryDetail from "../src/EntryDetail/EntryDetail.jsx";
-import { fetchEntryById, deleteEntryById, fetchAdditionalProperties } from "../src/Search/api";
+import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../src/Search/api";
 
 const mockEntry = {
     id: "entry-123",
@@ -57,6 +63,8 @@ describe("EntryDetail page", () => {
         deleteEntryById.mockClear();
         fetchAdditionalProperties.mockClear();
         fetchAdditionalProperties.mockResolvedValue({});
+        fetchEntryAssets.mockClear();
+        fetchEntryAssets.mockResolvedValue([]);
     });
 
     // --- Rendering with state ---
@@ -313,8 +321,9 @@ describe("EntryDetail page", () => {
     });
 
     it("does not show 'None' while additional properties are still loading", () => {
-        // Never resolves — simulates an in-flight request
+        // Never resolves — simulates an in-flight request for both sections
         fetchAdditionalProperties.mockReturnValue(new Promise(() => {}));
+        fetchEntryAssets.mockReturnValue(new Promise(() => {}));
 
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
@@ -328,7 +337,7 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await waitFor(() => {
-            expect(screen.getByText("None")).toBeInTheDocument();
+            expect(screen.getAllByText("None").length).toBeGreaterThanOrEqual(1);
         });
     });
 
@@ -349,7 +358,7 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await waitFor(() => {
-            expect(screen.getByText("None")).toBeInTheDocument();
+            expect(screen.getAllByText("None").length).toBeGreaterThanOrEqual(1);
         });
 
         expect(screen.queryByText("calories")).not.toBeInTheDocument();
@@ -362,6 +371,205 @@ describe("EntryDetail page", () => {
 
         await waitFor(() => {
             expect(fetchAdditionalProperties).toHaveBeenCalledWith("entry-123");
+        });
+    });
+
+    // --- Media / Assets section ---
+
+    it("shows the Media section header", async () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Media")).toBeInTheDocument();
+        });
+    });
+
+    it("calls fetchEntryAssets with the entry id", async () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(fetchEntryAssets).toHaveBeenCalledWith("entry-123");
+        });
+    });
+
+    it("shows 'None' when there are no assets", async () => {
+        fetchEntryAssets.mockResolvedValue([]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            // "None" appears both for additional properties and media
+            const noneElements = screen.getAllByText("None");
+            expect(noneElements.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it("does not show 'None' in Media while assets are loading", () => {
+        fetchEntryAssets.mockReturnValue(new Promise(() => {}));
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        // While loading, there should be a spinner but not the "None" empty state yet
+        expect(screen.queryByText("Media")).toBeInTheDocument();
+        expect(screen.queryByText("None")).not.toBeInTheDocument();
+    });
+
+    it("shows Photos section when image assets are present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "photo.jpg", url: "/assets/2024-01/01/entry-123/photo.jpg", mediaType: "image" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Photos")).toBeInTheDocument();
+        });
+    });
+
+    it("renders image with correct src when image asset is present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "photo.jpg", url: "/assets/2024-01/01/entry-123/photo.jpg", mediaType: "image" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            const img = screen.getByAltText("photo.jpg");
+            expect(img).toBeInTheDocument();
+            expect(img).toHaveAttribute("src", "/api/assets/2024-01/01/entry-123/photo.jpg");
+        });
+    });
+
+    it("renders image as a link to the full resolution image", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "photo.jpg", url: "/assets/2024-01/01/entry-123/photo.jpg", mediaType: "image" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            const link = screen.getByRole("link", { name: /photo\.jpg/i });
+            expect(link).toHaveAttribute("href", "/api/assets/2024-01/01/entry-123/photo.jpg");
+        });
+    });
+
+    it("shows Audio section when audio assets are present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "recording.m4a", url: "/assets/2024-01/01/entry-123/recording.m4a", mediaType: "audio" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Audio")).toBeInTheDocument();
+        });
+    });
+
+    it("renders audio element with correct src when audio asset is present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "recording.m4a", url: "/assets/2024-01/01/entry-123/recording.m4a", mediaType: "audio" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            const audio = document.querySelector("audio");
+            expect(audio).toBeInTheDocument();
+            expect(audio).toHaveAttribute("src", "/api/assets/2024-01/01/entry-123/recording.m4a");
+        });
+    });
+
+    it("shows both Photos and Audio sections when both types are present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "photo.jpg", url: "/assets/2024-01/01/entry-123/photo.jpg", mediaType: "image" },
+            { filename: "audio.mp3", url: "/assets/2024-01/01/entry-123/audio.mp3", mediaType: "audio" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Photos")).toBeInTheDocument();
+            expect(screen.getByText("Audio")).toBeInTheDocument();
+        });
+    });
+
+    it("shows the audio filename", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "my-recording.mp3", url: "/assets/2024-01/01/entry-123/my-recording.mp3", mediaType: "audio" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("my-recording.mp3")).toBeInTheDocument();
+        });
+    });
+
+    it("shows 'Other files' section when other-type assets are present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "document.pdf", url: "/assets/2024-01/01/entry-123/document.pdf", mediaType: "other" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Other files")).toBeInTheDocument();
+        });
+    });
+
+    it("does not show 'None' when only other-type assets are present", async () => {
+        fetchAdditionalProperties.mockResolvedValue({ calories: 100 });
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "document.pdf", url: "/assets/2024-01/01/entry-123/document.pdf", mediaType: "other" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Other files")).toBeInTheDocument();
+        });
+
+        expect(screen.queryByText("None")).not.toBeInTheDocument();
+    });
+
+    it("renders a link for other-type assets", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "document.pdf", url: "/assets/2024-01/01/entry-123/document.pdf", mediaType: "other" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            const link = screen.getByRole("link", { name: /document\.pdf/i });
+            expect(link).toHaveAttribute("href", "/api/assets/2024-01/01/entry-123/document.pdf");
+        });
+    });
+
+    it("shows the filename in the other-type asset link", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "notes.txt", url: "/assets/2024-01/01/entry-123/notes.txt", mediaType: "other" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("notes.txt")).toBeInTheDocument();
+        });
+    });
+
+    it("shows all three sections when assets of all types are present", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "photo.jpg", url: "/assets/2024-01/01/entry-123/photo.jpg", mediaType: "image" },
+            { filename: "audio.mp3", url: "/assets/2024-01/01/entry-123/audio.mp3", mediaType: "audio" },
+            { filename: "document.pdf", url: "/assets/2024-01/01/entry-123/document.pdf", mediaType: "other" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("Photos")).toBeInTheDocument();
+            expect(screen.getByText("Audio")).toBeInTheDocument();
+            expect(screen.getByText("Other files")).toBeInTheDocument();
         });
     });
 });

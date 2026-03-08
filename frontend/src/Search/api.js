@@ -63,6 +63,17 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
  */
 
 /**
+ * @typedef {'image'|'audio'|'other'} MediaType
+ */
+
+/**
+ * @typedef {object} AssetInfo
+ * @property {string} filename - The filename of the asset.
+ * @property {string} url - The URL path to the asset (relative to API base, e.g. "/assets/...").
+ * @property {MediaType} mediaType - The media type of the asset.
+ */
+
+/**
  * Fetches computed additional properties for an entry (e.g. calories).
  * Triggers the incremental graph pull on the server side.
  * @param {string} id - The entry id.
@@ -106,6 +117,33 @@ export async function fetchEntryById(id) {
     } catch (error) {
         logger.error("Error fetching entry by id:", error);
         return null;
+    }
+}
+
+/**
+ * Fetches the asset files associated with an entry.
+ * @param {string} id - The entry id.
+ * @returns {Promise<AssetInfo[]>}
+ */
+export async function fetchEntryAssets(id) {
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/entries/${encodeURIComponent(id)}/assets`,
+        );
+
+        if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data.assets)) {
+                return data.assets;
+            }
+            return [];
+        }
+
+        logger.warn("Failed to fetch entry assets:", response.status);
+        return [];
+    } catch (error) {
+        logger.error("Error fetching entry assets:", error);
+        return [];
     }
 }
 
