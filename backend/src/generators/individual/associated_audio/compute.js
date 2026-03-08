@@ -8,6 +8,7 @@ const { fromISOString } = require("../../../datetime");
 /**
  * @typedef {object} AssociatedAudioCapabilities
  * @property {import('../../../environment').Environment} environment
+ * @property {import('../../../filesystem/checker').FileChecker} checker
  * @property {import('../../../filesystem/dirscanner').DirScanner} scanner
  */
 
@@ -85,7 +86,11 @@ function tryParseIsoDateParts(date) {
         return parseIsoDateParts(date);
     }
     if (isObject(date) && "toISOString" in date && typeof date["toISOString"] === "function") {
-        return parseIsoDateParts(date["toISOString"]());
+        try {
+            return parseIsoDateParts(date["toISOString"]());
+        } catch {
+            return null;
+        }
     }
     return null;
 }
@@ -197,9 +202,11 @@ function getEventAssetDirectory(capabilities, event) {
  */
 async function listAssociatedAudioPaths(capabilities, event) {
     const assetDirectory = getEventAssetDirectory(capabilities, event);
-    const members = await capabilities.scanner.scanDirectory(assetDirectory).catch(() => {
+    const assetDirectoryExists = await capabilities.checker.directoryExists(assetDirectory);
+    if (!assetDirectoryExists) {
         return [];
-    });
+    }
+    const members = await capabilities.scanner.scanDirectory(assetDirectory);
 
     return members
         .map((member) => path.basename(member.path))
