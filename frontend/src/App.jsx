@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Box, VStack, Text, Select, Spinner, Divider } from '@chakra-ui/react';
+import {
+  Button,
+  Box,
+  VStack,
+  Text,
+  Select,
+  Spinner,
+  Divider,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  Code,
+  UnorderedList,
+  ListItem,
+} from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { postSync } from './Sync/api.js';
 import { fetchVersion } from './version_api.js';
@@ -10,7 +25,7 @@ function App() {
   const [isInstallable, setIsInstallable] = useState(false);
   const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
   const [syncState, setSyncState] = useState('idle');
-  const [syncError, setSyncError] = useState('');
+  const [syncError, setSyncError] = useState(null);
   const [version, setVersion] = useState('');
   const [versionState, setVersionState] = useState('loading');
 
@@ -94,7 +109,7 @@ function App() {
 
   const handleSyncClick = async () => {
     setSyncState('loading');
-    setSyncError('');
+    setSyncError(null);
 
     const result = await postSync(syncResetToTheirs || undefined);
 
@@ -103,7 +118,10 @@ function App() {
       setTimeout(() => setSyncState('idle'), 2000);
     } else {
       setSyncState('error');
-      setSyncError(result.error || 'Sync failed');
+      setSyncError({
+        message: result.error || 'Sync failed',
+        details: result.details || [],
+      });
     }
   };
 
@@ -146,7 +164,7 @@ function App() {
           <Select
             size="sm"
             value={syncResetToTheirs ? 'reset-to-theirs' : ''}
-            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(''); }}
+            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(null); }}
             w="200px"
           >
             <option value="">Normal sync</option>
@@ -162,8 +180,41 @@ function App() {
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
           </Button>
-          {syncState === 'error' && syncError !== '' && (
-            <Text fontSize="sm" color="red.600" textAlign="center">{syncError}</Text>
+          {syncState === 'loading' && (
+            <Text fontSize="sm" color="gray.600" textAlign="center">
+              Sync has started. This can take a while, so the app will keep checking in the background.
+            </Text>
+          )}
+          {syncState === 'error' && syncError !== null && (
+            <Alert status="error" borderRadius="md" alignItems="flex-start">
+              <AlertIcon mt={1} />
+              <Box>
+                <AlertTitle>Sync failed</AlertTitle>
+                <AlertDescription>
+                  <VStack spacing={3} align="stretch" mt={2}>
+                    <Text whiteSpace="pre-wrap">{syncError.message}</Text>
+                    {syncError.details.length > 0 && (
+                      <Box>
+                        <Text fontWeight="semibold" mb={2}>Details</Text>
+                        <UnorderedList spacing={2} ml={4}>
+                          {syncError.details.map((detail) => (
+                            <ListItem key={`${detail.name}-${detail.message}`}>
+                              <Text fontWeight="medium">{detail.name}</Text>
+                              <Text>{detail.message}</Text>
+                              {detail.causes.length > 0 && (
+                                <Code display="block" mt={2} whiteSpace="pre-wrap">
+                                  {detail.causes.join('\n')}
+                                </Code>
+                              )}
+                            </ListItem>
+                          ))}
+                        </UnorderedList>
+                      </Box>
+                    )}
+                  </VStack>
+                </AlertDescription>
+              </Box>
+            </Alert>
           )}
         </VStack>
 
