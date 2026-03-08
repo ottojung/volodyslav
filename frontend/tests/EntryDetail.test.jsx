@@ -409,9 +409,9 @@ describe("EntryDetail page", () => {
 
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        // While loading, there should be a spinner but not "None" for media yet
-        // (there might be "None" for additional properties which resolved already)
+        // While loading, there should be a spinner but not the "None" empty state yet
         expect(screen.queryByText("Media")).toBeInTheDocument();
+        expect(screen.queryByText("None")).not.toBeInTheDocument();
     });
 
     it("shows Photos section when image assets are present", async () => {
