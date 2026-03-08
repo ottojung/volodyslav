@@ -5,8 +5,8 @@ const {
     eventContext,
     event: individualEvent,
     calories,
-    associatedAudio,
     transcription,
+    eventTranscription,
 } = require("../individual");
 const { transaction } = require("../../event_log_storage");
 
@@ -16,7 +16,6 @@ const { transaction } = require("../../event_log_storage");
  * @property {import('../../ai/transcription').AITranscription} aiTranscription - An AI transcription capability.
  * @property {import('../../random/seed').NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../logger').Logger} logger - A logger instance.
- * @property {import('../../filesystem/dirscanner').DirScanner} scanner - A directory scanner instance.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../filesystem/writer').FileWriter} writer - A file writer instance.
  * @property {import('../../filesystem/creator').FileCreator} creator - A file creator instance.
@@ -37,6 +36,11 @@ const { transaction } = require("../../event_log_storage");
  * The `all_events` node reads events directly from the git-backed event log
  * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
  * causes the next pull to re-read from disk.
+ *
+ * Graph adjacency:
+ *   all_events -> event(e)
+ *   transcription(a)                            [standalone, no graph inputs]
+ *   event(e), transcription(a) -> event_transcription(e, a)
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
@@ -154,57 +158,45 @@ function createDefaultGraphDefinition(capabilities) {
             hasSideEffects: true,
         },
         {
-            output: "associated_audio(e)",
-            inputs: ["event(e)"],
-            computor: async (inputs, _oldValue, _bindings) => {
-                const firstInput = inputs[0];
-                if (!firstInput || firstInput.type !== "event") {
-                    throw new Error("Expected input of type event for associated_audio(e) computor");
-                }
-                return associatedAudio.computeAssociatedAudioForEvent(
-                    firstInput.value,
-                    capabilities,
-                );
-            },
-            isDeterministic: true,
-            hasSideEffects: false,
-        },
-        {
-            output: "all_associated_audio",
-            inputs: ["all_events"],
-            computor: async (inputs, _oldValue, _bindings) => {
-                const firstInput = inputs[0];
-                if (!firstInput || firstInput.type !== "all_events") {
-                    throw new Error("Expected input of type all_events for all_associated_audio computor");
-                }
-                return associatedAudio.computeAllAssociatedAudio(
-                    firstInput.events,
-                    capabilities,
-                );
-            },
-            isDeterministic: true,
-            hasSideEffects: false,
-        },
-        {
             output: "transcription(a)",
-            inputs: ["all_associated_audio"],
-            computor: async (inputs, _oldValue, bindings) => {
-                const firstInput = inputs[0];
-                if (!firstInput || firstInput.type !== "all_associated_audio") {
-                    throw new Error("Expected input of type all_associated_audio for transcription(a) computor");
-                }
+            inputs: [],
+            computor: async (_inputs, _oldValue, bindings) => {
                 const firstBinding = bindings[0];
                 if (typeof firstBinding !== "string") {
                     throw new Error("Expected first binding to be a string for transcription(a) computor, got " + JSON.stringify(firstBinding));
                 }
                 return transcription.computeTranscriptionForAssetPath(
-                    firstInput.value,
                     firstBinding,
                     capabilities,
                 );
             },
             isDeterministic: false,
             hasSideEffects: true,
+        },
+        {
+            output: "event_transcription(e, a)",
+            inputs: ["event(e)", "transcription(a)"],
+            computor: async (inputs, _oldValue, bindings) => {
+                const eventEntry = inputs[0];
+                if (!eventEntry || eventEntry.type !== "event") {
+                    throw new Error("Expected event input for event_transcription(e, a) computor");
+                }
+                const transcriptionEntry = inputs[1];
+                if (!transcriptionEntry || transcriptionEntry.type !== "transcription") {
+                    throw new Error("Expected transcription input for event_transcription(e, a) computor");
+                }
+                const audioPath = bindings[1];
+                if (typeof audioPath !== "string") {
+                    throw new Error("Expected audio path binding at position 1 for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
+                }
+                return eventTranscription.computeEventTranscription(
+                    eventEntry.value,
+                    transcriptionEntry.value,
+                    audioPath,
+                );
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
         },
     ];
 }

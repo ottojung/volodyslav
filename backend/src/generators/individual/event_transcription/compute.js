@@ -1,44 +1,29 @@
 const path = require("path");
 const { fromISOString } = require("../../../datetime");
 
-/** @typedef {import('../../incremental_graph/database/types').AssociatedAudioEntry} AssociatedAudioEntry */
-/** @typedef {import('../../incremental_graph/database/types').AllAssociatedAudioEntry} AllAssociatedAudioEntry */
+/** @typedef {import('../../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
 /** @typedef {import('../../../event').Event} Event */
+/** @typedef {import('../../../transcribe').Transcription} Transcription */
 
-/**
- * @typedef {object} AssociatedAudioCapabilities
- * @property {import('../../../environment').Environment} environment
- * @property {import('../../../filesystem/checker').FileChecker} checker
- * @property {import('../../../filesystem/dirscanner').DirScanner} scanner
- */
-
-const AUDIO_EXTENSIONS = new Set([
-    ".aac",
-    ".flac",
-    ".m4a",
-    ".mp3",
-    ".ogg",
-    ".wav",
-    ".webm",
-]);
-
-/**
- * @param {string} filename
- * @returns {boolean}
- */
-function isAudioFilename(filename) {
-    return AUDIO_EXTENSIONS.has(path.extname(filename).toLowerCase());
+class AudioNotAssociatedWithEventError extends Error {
+    /**
+     * @param {string} audioPath
+     * @param {string} eventId
+     */
+    constructor(audioPath, eventId) {
+        super(`Audio path ${audioPath} is not associated with event ${eventId}`);
+        this.name = "AudioNotAssociatedWithEventError";
+        this.audioPath = audioPath;
+        this.eventId = eventId;
+    }
 }
 
-class EventDatePartsError extends Error {
-    /**
-     * @param {unknown} date
-     */
-    constructor(date) {
-        super(`Could not extract event date parts from ${JSON.stringify(date)}`);
-        this.name = "EventDatePartsError";
-        this.date = date;
-    }
+/**
+ * @param {unknown} object
+ * @returns {object is AudioNotAssociatedWithEventError}
+ */
+function isAudioNotAssociatedWithEventError(object) {
+    return object instanceof AudioNotAssociatedWithEventError;
 }
 
 /**
@@ -107,6 +92,22 @@ function tryParseDirectDateParts(date) {
 }
 
 /**
+ * Luxon sometimes persists the raw date components under `c`.
+ * This is an internal Luxon structure rather than part of a stable public API,
+ * so this fallback exists only to keep cached graph values readable across the
+ * shapes currently observed in this repository.
+ *
+ * @param {unknown} date
+ * @returns {{ year: number, month: number, day: number } | null}
+ */
+function tryParseLuxonCDateParts(date) {
+    if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
+        return date["c"];
+    }
+    return null;
+}
+
+/**
  * @param {unknown} date
  * @returns {{ year: number, month: number, day: number } | null}
  */
@@ -122,22 +123,6 @@ function tryParseLuxonContainerDateParts(date) {
         return luxonDate;
     }
     return tryParseLuxonCDateParts(luxonDate);
-}
-
-/**
- * Luxon sometimes persists the raw date components under `c`.
- * This is an internal Luxon structure rather than part of a stable public API,
- * so this fallback exists only to keep cached graph values readable across the
- * shapes currently observed in this repository.
- *
- * @param {unknown} date
- * @returns {{ year: number, month: number, day: number } | null}
- */
-function tryParseLuxonCDateParts(date) {
-    if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
-        return date["c"];
-    }
-    return null;
 }
 
 /**
@@ -164,10 +149,13 @@ function getEventDateParts(date) {
     if (parsedDate !== null) {
         return parsedDate;
     }
-    throw new EventDatePartsError(date);
+    throw new Error(`Could not extract event date parts from ${JSON.stringify(date)}`);
 }
 
 /**
+ * Computes the asset directory suffix for an event.
+ * The canonical layout is: `<YYYY-MM>/<DD>/<event id>`
+ *
  * @param {Event} event
  * @returns {string}
  */
@@ -183,66 +171,24 @@ function getEventAssetDirectorySuffix(event) {
 }
 
 /**
- * @param {AssociatedAudioCapabilities} capabilities
+ * Combines an event and its transcription after validating that the audio path
+ * belongs to the event.
+ *
  * @param {Event} event
- * @returns {string}
+ * @param {Transcription} transcription
+ * @param {string} audioPath - Audio path relative to the assets root
+ * @returns {EventTranscriptionEntry}
  */
-function getEventAssetDirectory(capabilities, event) {
-    return path.join(
-        capabilities.environment.eventLogAssetsDirectory(),
-        getEventAssetDirectorySuffix(event),
-    );
-}
-
-/**
- * @param {AssociatedAudioCapabilities} capabilities
- * @param {Event} event
- * @returns {Promise<string[]>}
- */
-async function listAssociatedAudioPaths(capabilities, event) {
-    const assetDirectory = getEventAssetDirectory(capabilities, event);
-    const assetDirectoryExists = await capabilities.checker.directoryExists(assetDirectory);
-    if (!assetDirectoryExists) {
-        return [];
+function computeEventTranscription(event, transcription, audioPath) {
+    const suffix = getEventAssetDirectorySuffix(event);
+    const expectedPrefix = suffix + path.sep;
+    if (!audioPath.startsWith(expectedPrefix)) {
+        throw new AudioNotAssociatedWithEventError(audioPath, event.id.identifier);
     }
-    const members = await capabilities.scanner.scanDirectory(assetDirectory);
-
-    return members
-        .map((member) => path.basename(member.path))
-        .filter(isAudioFilename)
-        .sort()
-        .map((filename) => path.join(getEventAssetDirectorySuffix(event), filename));
-}
-
-/**
- * @param {Event} event
- * @param {AssociatedAudioCapabilities} capabilities
- * @returns {Promise<AssociatedAudioEntry>}
- */
-async function computeAssociatedAudioForEvent(event, capabilities) {
-    const value = await listAssociatedAudioPaths(capabilities, event);
-    return {
-        type: "associated_audio",
-        value,
-    };
-}
-
-/**
- * @param {Array<Event>} events
- * @param {AssociatedAudioCapabilities} capabilities
- * @returns {Promise<AllAssociatedAudioEntry>}
- */
-async function computeAllAssociatedAudio(events, capabilities) {
-    const grouped = await Promise.all(
-        events.map((event) => listAssociatedAudioPaths(capabilities, event))
-    );
-    return {
-        type: "all_associated_audio",
-        value: grouped.flat(),
-    };
+    return { type: "event_transcription", event, transcription };
 }
 
 module.exports = {
-    computeAssociatedAudioForEvent,
-    computeAllAssociatedAudio,
+    computeEventTranscription,
+    isAudioNotAssociatedWithEventError,
 };

@@ -33,25 +33,6 @@ function isInvalidTranscriptionPathError(object) {
     return object instanceof InvalidTranscriptionPathError;
 }
 
-class AssociatedAudioPathNotFoundError extends Error {
-    /**
-     * @param {string} relativeAssetPath
-     */
-    constructor(relativeAssetPath) {
-        super(`Associated audio path not found: ${relativeAssetPath}`);
-        this.name = "AssociatedAudioPathNotFoundError";
-        this.relativeAssetPath = relativeAssetPath;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is AssociatedAudioPathNotFoundError}
- */
-function isAssociatedAudioPathNotFoundError(object) {
-    return object instanceof AssociatedAudioPathNotFoundError;
-}
-
 class AssetFileNotFoundError extends Error {
     /**
      * @param {string} relativeAssetPath
@@ -100,24 +81,14 @@ function resolveAssetPath(capabilities, relativeAssetPath) {
 }
 
 /**
- * @param {string} relativeAssetPath
- * @param {Array<string>} associatedAudioPaths
- */
-function ensureAssociatedAudioPath(relativeAssetPath, associatedAudioPaths) {
-    if (!associatedAudioPaths.includes(relativeAssetPath)) {
-        throw new AssociatedAudioPathNotFoundError(relativeAssetPath);
-    }
-}
-
-/**
- * @param {Array<string>} associatedAudioPaths
- * @param {string} relativeAssetPath
+ * Transcribes the audio file at the given asset-root-relative path.
+ *
+ * @param {string} relativeAssetPath - Path relative to the event-log assets root
  * @param {TranscriptionCapabilities} capabilities
  * @returns {Promise<TranscriptionEntry>}
  */
-async function computeTranscriptionForAssetPath(associatedAudioPaths, relativeAssetPath, capabilities) {
+async function computeTranscriptionForAssetPath(relativeAssetPath, capabilities) {
     const absoluteAssetPath = resolveAssetPath(capabilities, relativeAssetPath);
-    ensureAssociatedAudioPath(relativeAssetPath, associatedAudioPaths);
     const file = await capabilities.checker.instantiate(absoluteAssetPath).catch((cause) => {
         throw new AssetFileNotFoundError(relativeAssetPath, absoluteAssetPath, cause);
     });
@@ -136,6 +107,5 @@ async function computeTranscriptionForAssetPath(associatedAudioPaths, relativeAs
 module.exports = {
     computeTranscriptionForAssetPath,
     isInvalidTranscriptionPathError,
-    isAssociatedAudioPathNotFoundError,
     isAssetFileNotFoundError,
 };

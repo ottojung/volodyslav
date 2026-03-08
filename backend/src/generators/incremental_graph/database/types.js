@@ -124,20 +124,6 @@ function versionToString(Version) {
  */
 
 /**
- * Audio file paths associated with one event.
- * @typedef {object} AssociatedAudioEntry
- * @property {'associated_audio'} type - The type of the entry
- * @property {Array<string>} value - Relative audio asset paths for this event
- */
-
-/**
- * Audio file paths associated with all events.
- * @typedef {object} AllAssociatedAudioEntry
- * @property {'all_associated_audio'} type - The type of the entry
- * @property {Array<string>} value - Relative audio asset paths for all events
- */
-
-/**
  * AI transcription for a single asset path.
  * @typedef {object} TranscriptionEntry
  * @property {'transcription'} type - The type of the entry
@@ -145,8 +131,16 @@ function versionToString(Version) {
  */
 
 /**
+ * Combined event and transcription for a specific audio file associated with an event.
+ * @typedef {object} EventTranscriptionEntry
+ * @property {'event_transcription'} type - The type of the entry
+ * @property {Event} event - The associated event
+ * @property {Transcription} transcription - The AI transcription
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | AssociatedAudioEntry | AllAssociatedAudioEntry | TranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
  */
 
 /**

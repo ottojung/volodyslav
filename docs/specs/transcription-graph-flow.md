@@ -32,56 +32,82 @@ deterministic path:
 
 `<assets root>/<YYYY-MM>/<DD>/<event id>/<filename>`
 
-This means the association between an event and its files is reconstructed from:
+This means the association between an event and its files can be validated from:
 
 - the event date
 - the event id
-- the directory layout inside the assets root
+- the audio file path
 
 So the event is the conceptual owner of the files, and the filesystem layout is
 the durable representation of that ownership.
 
-## Graph flow
+## Graph adjacency
 
-The graph flow should be read in two steps:
+```
+all_events -> event(e)
+transcription(a)
+event(e), transcription(a) -> event_transcription(e, a)
+```
 
-1. **Event-oriented navigation**
-   - `all_events`
-   - `event(e)`
-   - `associated_audio(e)`
+- `all_events -> event(e)`: selects one event from the full event log by id.
 
-   This part answers:
-   - “Which event are we talking about?”
-   - “Which audio files are associated with that event?”
+- `transcription(a)`: standalone node that takes an audio file path `a`
+  (relative to the assets root) and returns an AI transcription of that file.
+  It has no dependencies on events.
 
-2. **Asset-oriented transcription**
-   - `transcription(a)`
+- `event(e), transcription(a) -> event_transcription(e, a)`: combines the
+  event `e` and the transcription of audio path `a`, after validating that `a`
+  is an audio file belonging to event `e`.
 
-   Here `a` is one concrete relative path returned by the event-oriented step.
-   This node answers:
-   - “What is the AI transcription for this associated audio file?”
+## Node descriptions
 
-In human terms, the intended flow is:
+### `transcription(a)`
 
-`all_events -> event(e) -> associated audio path a -> transcription(a)`
+- `a` is a path to an audio file, relative to the event-log assets root.
+- The node resolves the path, validates it does not escape the assets root, and
+  calls the AI transcription module.
+- It is standalone: it does not depend on events and can be pulled independently.
+- Its result is cached; a second pull with the same `a` returns the cached value.
 
-## Why the split matters
+### `event_transcription(e, a)`
 
-`transcription(a)` should work with an already-associated audio path.
-It should not rediscover the owning event by searching through `all_events`.
+- `e` is an event id.
+- `a` is a path to an audio file, relative to the event-log assets root.
+- The node depends on both `event(e)` and `transcription(a)`.
+- Before returning, it validates that `a` is an audio file belonging to `e`
+  by checking that the path prefix matches the canonical layout for that event:
+  `<YYYY-MM>/<DD>/<e>/`.
+- Returns both the event and the transcription together.
 
-The association logic belongs in the event-oriented part of the graph.
-The transcription logic belongs in the asset-oriented part of the graph.
+## Why this split matters
+
+`transcription(a)` is a pure asset-level computation.  It does not need to know
+which event owns the file.
+
+`event_transcription(e, a)` is the node that expresses the ownership relationship.
+It brings the two independent sub-graphs together and validates the association.
 
 This keeps responsibilities clear:
 
-- event nodes identify which files belong to which event
-- transcription nodes only transcribe a specific associated audio file
+- `event(e)` represents the event in the graph.
+- `transcription(a)` transcribes a specific audio file.
+- `event_transcription(e, a)` ties them together with an explicit ownership check.
 
-## Summary
+## Usage example
 
-- `all_events` is the root event collection
-- `event(e)` picks one event
-- `associated_audio(e)` lists audio files attached to that event
-- each listed file path is relative to the assets root
-- `transcription(a)` transcribes one such associated audio file
+```js
+const result = await iface._incrementalGraph.pull(
+    "event_transcription",
+    ["12345", "2024-01/01/12345/memo.mp3"]
+);
+
+// => {
+//      type: "event_transcription",
+//      event: { id: { identifier: "12345" }, ... },
+//      transcription: {
+//          text: "...",
+//          transcriber: { name: "...", creator: "..." },
+//          creator: { ... }
+//      }
+//    }
+```
