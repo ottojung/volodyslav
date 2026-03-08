@@ -35,6 +35,8 @@ import {
  * @typedef {import('../Search/api.js').AdditionalPropertyName} AdditionalPropertyName
  */
 
+const COLLAPSED_FIELD_VALUE_LENGTH = 100;
+
 /**
  * Flattens an entry into a list of key-value pairs for display.
  * @param {Entry} entry
@@ -64,6 +66,11 @@ function entryToFields(entry) {
  */
 function FieldRow({ fieldKey, value }) {
     const [copied, setCopied] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const isCollapsible = value.length > COLLAPSED_FIELD_VALUE_LENGTH;
+    const displayedValue = !isCollapsible || isExpanded
+        ? value
+        : `${value.slice(0, COLLAPSED_FIELD_VALUE_LENGTH)}…`;
 
     async function handleCopy() {
         await navigator.clipboard.writeText(value);
@@ -78,7 +85,18 @@ function FieldRow({ fieldKey, value }) {
                     <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase">
                         {fieldKey}
                     </Text>
-                    <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{value}</Text>
+                    <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{displayedValue}</Text>
+                    {isCollapsible && (
+                        <Button
+                            size="xs"
+                            variant="link"
+                            colorScheme="blue"
+                            onClick={() => setIsExpanded((currentValue) => !currentValue)}
+                            aria-label={`${isExpanded ? "Show less" : "Show full"} ${fieldKey}`}
+                        >
+                            {isExpanded ? "Show less" : "Show more"}
+                        </Button>
+                    )}
                 </VStack>
                 <Tooltip label={copied ? "Copied!" : "Copy"} placement="left">
                     <IconButton
