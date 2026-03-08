@@ -121,7 +121,7 @@ function tryParseLuxonContainerDateParts(date) {
     if (hasDateParts(luxonDate)) {
         return luxonDate;
     }
-    return tryParseLuxonInternalDateParts(luxonDate);
+    return tryParseLuxonCDateParts(luxonDate);
 }
 
 /**
@@ -133,7 +133,7 @@ function tryParseLuxonContainerDateParts(date) {
  * @param {unknown} date
  * @returns {{ year: number, month: number, day: number } | null}
  */
-function tryParseLuxonInternalDateParts(date) {
+function tryParseLuxonCDateParts(date) {
     if (isObject(date) && "c" in date && hasDateParts(date["c"])) {
         return date["c"];
     }
@@ -159,8 +159,7 @@ function getEventDateParts(date) {
     const parsedDate =
         tryParseIsoDateParts(date) ??
         tryParseDirectDateParts(date) ??
-        tryParseLuxonContainerDateParts(date) ??
-        tryParseLuxonInternalDateParts(date);
+        tryParseLuxonContainerDateParts(date);
 
     if (parsedDate !== null) {
         return parsedDate;
