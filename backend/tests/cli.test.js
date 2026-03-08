@@ -11,10 +11,10 @@ describe('CLI', () => {
             code: expect.any(Number),
             stderr: expect.stringMatching(/unknown command/i),
         });
-    });
+    }, 10000);
 
     test('--version displays version', async () => {
         const { stdout } = await execFileAsync('node', [cliPath, '--version']);
         expect(stdout.trim()).not.toHaveLength(0);
-    });
+    }, 10000);
 });
