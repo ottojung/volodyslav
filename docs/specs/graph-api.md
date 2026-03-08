@@ -251,6 +251,46 @@ freshness, and timestamps. Path segments beyond `:head` become the ordered
 
 ---
 
+### 3.8 `DELETE /api/graph/nodes/:head`
+
+Invalidates a single **arity-0** node key, marking it and all its transitive
+dependents as `potentially-outdated`.  Does not trigger recomputation — the
+next `pull` (or `POST`) call will recompute the value.
+
+**Response `200 OK`:**
+
+```json
+{ "success": true }
+```
+
+**Response `400 Bad Request`** (head exists but requires arguments):
+
+```json
+{ "error": "Arity mismatch: \"event\" expects 1 argument, got 0" }
+```
+
+---
+
+### 3.9 `DELETE /api/graph/nodes/:head/:arg0[/:arg1[/:arg2…]]`
+
+Invalidates a single parameterized node key, marking it and all its transitive
+dependents as `potentially-outdated`.  Path segments beyond `:head` become the
+ordered `args` array, exactly like §3.5.  Does not trigger recomputation.
+
+**Response `200 OK`:**
+
+```json
+{ "success": true }
+```
+
+**Response `400 Bad Request`** (wrong number of args for head's arity):
+
+```json
+{ "error": "Arity mismatch: \"calories\" expects 1 argument, got 2" }
+```
+
+---
+
 ## 4. Non-Triggering Guarantee
 
 All `GET` endpoints in this API **must never** call `pull()`,
@@ -339,13 +379,15 @@ HTTP status codes used:
 | Arity mismatch | `400` |
 | Graph not yet initialized | `503` |
 | Successful pull | `200` |
+| Successful invalidation | `200` |
 
 ---
 
 ## 8. Invariants and Constraints
 
 - `GET` endpoints are read-only. `POST` endpoints may materialize or refresh one
-  concrete node key.
+  concrete node key. `DELETE` endpoints invalidate one concrete node key, marking
+  it and its transitive dependents as `potentially-outdated`.
 - The API is **unauthenticated** at the same level as the rest of the API —
   authentication is handled at the infrastructure level, not per-route.
 - Response bodies are always `application/json`.

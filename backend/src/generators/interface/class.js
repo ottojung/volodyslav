@@ -219,6 +219,16 @@ class InterfaceClass {
     }
 
     /**
+     * Invalidates one concrete graph node for the graph API.
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @returns {Promise<void>}
+     */
+    async invalidateGraphNode(head, args = []) {
+        return await this._requireInitializedGraph().invalidate(head, args);
+    }
+
+    /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
      * @returns {Promise<import('../../datetime').DateTime>}

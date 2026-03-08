@@ -19,6 +19,7 @@ const {
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} debugGetFreshness
  * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} debugGetValue
  * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<void>} invalidateGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getModificationTime
  */
@@ -272,6 +273,67 @@ async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
 }
 
 /**
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+async function handleInvalidateNodeByHead(capabilities, req, res) {
+    if (!capabilities.interface.isInitialized()) {
+        res.status(503).json({ error: "Graph not yet initialized" });
+        return;
+    }
+    const { head } = req.params;
+    if (head === undefined) {
+        res.status(400).json({ error: "Missing head parameter" });
+        return;
+    }
+    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    if (compiledNode === null) {
+        res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
+        return;
+    }
+    if (compiledNode.arity !== 0) {
+        res.status(400).json({ error: formatArityMismatchMessage(head, compiledNode.arity, 0) });
+        return;
+    }
+    await capabilities.interface.invalidateGraphNode(head, []);
+    res.json({ success: true });
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+async function handleInvalidateNodeByHeadAndArgs(capabilities, req, res) {
+    if (!capabilities.interface.isInitialized()) {
+        res.status(503).json({ error: "Graph not yet initialized" });
+        return;
+    }
+    const { head } = req.params;
+    if (head === undefined) {
+        res.status(400).json({ error: "Missing head parameter" });
+        return;
+    }
+    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    if (compiledNode === null) {
+        res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
+        return;
+    }
+    const args = getArgsFromRequest(req);
+    if (args === null) {
+        res.status(400).json({ error: "Missing args parameter" });
+        return;
+    }
+    if (compiledNode.arity !== args.length) {
+        res.status(400).json({ error: formatArityMismatchMessage(head, compiledNode.arity, args.length) });
+        return;
+    }
+    await capabilities.interface.invalidateGraphNode(head, args);
+    res.json({ success: true });
+}
+
+/**
  * Creates an Express router for the graph inspection endpoints.
  * @param {Capabilities} capabilities
  * @returns {import('express').Router}
@@ -300,12 +362,20 @@ function makeRouter(capabilities) {
         await handlePullNodeByHeadAndArgs(capabilities, req, res);
     });
 
+    router.delete("/graph/nodes/:head/*", async (req, res) => {
+        await handleInvalidateNodeByHeadAndArgs(capabilities, req, res);
+    });
+
     router.get("/graph/nodes/:head", async (req, res) => {
         await handleGetNodesByHead(capabilities, req, res);
     });
 
     router.post("/graph/nodes/:head", async (req, res) => {
         await handlePullNodeByHead(capabilities, req, res);
+    });
+
+    router.delete("/graph/nodes/:head", async (req, res) => {
+        await handleInvalidateNodeByHead(capabilities, req, res);
     });
 
     return router;
