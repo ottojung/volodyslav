@@ -33,29 +33,6 @@ function isInvalidTranscriptionPathError(object) {
     return object instanceof InvalidTranscriptionPathError;
 }
 
-class AssetFileNotFoundError extends Error {
-    /**
-     * @param {string} relativeAssetPath
-     * @param {string} absoluteAssetPath
-     * @param {unknown} cause
-     */
-    constructor(relativeAssetPath, absoluteAssetPath, cause) {
-        super(`Asset file for transcription not found: ${relativeAssetPath}`);
-        this.name = "AssetFileNotFoundError";
-        this.relativeAssetPath = relativeAssetPath;
-        this.absoluteAssetPath = absoluteAssetPath;
-        this.cause = cause;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is AssetFileNotFoundError}
- */
-function isAssetFileNotFoundError(object) {
-    return object instanceof AssetFileNotFoundError;
-}
-
 /**
  * @param {TranscriptionCapabilities} capabilities
  * @param {string} relativeAssetPath
@@ -89,9 +66,11 @@ function resolveAssetPath(capabilities, relativeAssetPath) {
  */
 async function computeTranscriptionForAssetPath(relativeAssetPath, capabilities) {
     const absoluteAssetPath = resolveAssetPath(capabilities, relativeAssetPath);
-    const file = await capabilities.checker.instantiate(absoluteAssetPath).catch((cause) => {
-        throw new AssetFileNotFoundError(relativeAssetPath, absoluteAssetPath, cause);
-    });
+    const file = await capabilities.checker.instantiate(absoluteAssetPath).catch(() => null);
+    if (!file) {
+        return { type: "transcription", value: { "message": `File not found: ${JSON.stringify(relativeAssetPath)}` } };
+    }
+
     const fileStream = capabilities.reader.createReadStream(file);
     const value = await transcribe.transcribeStream(capabilities, fileStream);
     capabilities.logger.logDebug(
@@ -107,5 +86,4 @@ async function computeTranscriptionForAssetPath(relativeAssetPath, capabilities)
 module.exports = {
     computeTranscriptionForAssetPath,
     isInvalidTranscriptionPathError,
-    isAssetFileNotFoundError,
 };

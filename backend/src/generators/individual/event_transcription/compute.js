@@ -3,7 +3,7 @@ const { fromISOString } = require("../../../datetime");
 
 /** @typedef {import('../../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
 /** @typedef {import('../../../event').Event} Event */
-/** @typedef {import('../../../transcribe').Transcription} Transcription */
+/** @typedef {import('../../incremental_graph/database/types').TranscriptionResult} TranscriptionResult */
 
 class AudioNotAssociatedWithEventError extends Error {
     /**
@@ -182,7 +182,7 @@ function getEventAssetDirectorySuffix(event) {
  * belongs to the event.
  *
  * @param {Event} event
- * @param {Transcription} transcription
+ * @param {TranscriptionResult} transcription
  * @param {string} audioPath - Audio path relative to the assets root
  * @returns {EventTranscriptionEntry}
  */

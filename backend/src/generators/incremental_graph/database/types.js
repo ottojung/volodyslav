@@ -123,11 +123,21 @@ function versionToString(Version) {
  * @property {number} value - The estimated number of calories
  */
 
+
+/**
+ * @typedef {object} TranscriptionError
+ * @property {string} message
+ */
+
+/**
+ * @typedef {Transcription | TranscriptionError} TranscriptionResult
+ */
+
 /**
  * AI transcription for a single asset path.
  * @typedef {object} TranscriptionEntry
  * @property {'transcription'} type - The type of the entry
- * @property {Transcription} value - The transcription payload
+ * @property {TranscriptionResult} value - The transcription payload
  */
 
 /**
@@ -135,7 +145,7 @@ function versionToString(Version) {
  * @typedef {object} EventTranscriptionEntry
  * @property {'event_transcription'} type - The type of the entry
  * @property {Event} event - The associated event
- * @property {Transcription} transcription - The AI transcription
+ * @property {TranscriptionResult} transcription - The AI transcription
  */
 
 /**
