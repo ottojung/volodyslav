@@ -52,7 +52,7 @@ async function fetchTimestamps(graph, head, args) {
  * Extract the least-decoded pathname available from an Express request.
  * This prefers the rawer request URL fields and falls back to req.path only when
  * needed, then strips any query text. Returns an empty string only if none of
- * those request fields contain a path.
+ * those request fields are available as strings.
  * @param {import('express').Request} req
  * @returns {string}
  */
@@ -83,9 +83,9 @@ function getArgsFromRequest(req) {
         return argsStr.split("/").filter((s) => s.length > 0);
     }
 
-    // Route params are already decoded by Express. Rebuild the marker from the decoded
-    // head so we can reliably find the raw wildcard tail and preserve encoded slashes
-    // inside args like `foo%2Fbar`.
+    // Route params are already decoded by Express. Re-encode the decoded head so the
+    // marker matches the raw URL format, then use it to find the raw wildcard tail
+    // while preserving encoded slashes inside args like `foo%2Fbar`.
     const marker = `${GRAPH_NODE_PATH_PREFIX}${encodeURIComponent(head)}/`;
     const rawPathname = getRawPathname(req);
     const markerIndex = rawPathname.indexOf(marker);
