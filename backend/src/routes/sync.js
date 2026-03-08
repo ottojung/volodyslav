@@ -43,7 +43,7 @@ function describeErrorCauses(error) {
     while (current !== undefined) {
         if (current instanceof Error) {
             causes.push(current.message);
-            current = current.cause;
+            current = "cause" in current ? current.cause : undefined;
             continue;
         }
 
@@ -78,7 +78,9 @@ function makeSyncErrorResponse(error) {
             {
                 name: error instanceof Error ? error.name : "Error",
                 message,
-                causes: error instanceof Error ? describeErrorCauses(error.cause) : [],
+                causes: error instanceof Error && "cause" in error
+                    ? describeErrorCauses(error.cause)
+                    : [],
             },
         ],
     };
@@ -101,7 +103,7 @@ function makeSyncController(capabilities) {
             return currentState;
         }
 
-        const started_at = new Date().toISOString();
+        const started_at = capabilities.datetime.now().toISOString();
         const reset_to_theirs = options.resetToTheirs === true;
 
         /** @type {RunningSyncState} */
@@ -113,16 +115,13 @@ function makeSyncController(capabilities) {
             "Sync started in background"
         );
 
-        void Promise.resolve()
-            .then(async () => {
-                await synchronizeAll(capabilities, options);
-            })
+        void synchronizeAll(capabilities, options)
             .then(() => {
                 if (currentState !== runningState) {
                     return;
                 }
 
-                const finished_at = new Date().toISOString();
+                const finished_at = capabilities.datetime.now().toISOString();
                 currentState = {
                     status: "success",
                     started_at,
@@ -139,7 +138,7 @@ function makeSyncController(capabilities) {
                     return;
                 }
 
-                const finished_at = new Date().toISOString();
+                const finished_at = capabilities.datetime.now().toISOString();
                 const syncError = makeSyncErrorResponse(error);
                 currentState = {
                     status: "error",

@@ -42,8 +42,11 @@ async function readSyncResponse(response) {
  */
 async function readSyncErrorResponse(response) {
     const data = await readSyncResponse(response);
-    const message = data?.error?.message || data?.error || `Sync failed with status ${response.status}`;
-    const details = Array.isArray(data?.error?.details) ? data.error.details : undefined;
+    const error = data?.error;
+    const message = typeof error === "string"
+        ? error
+        : error?.message || `Sync failed with status ${response.status}`;
+    const details = Array.isArray(error?.details) ? error.details : undefined;
     logger.warn("Sync failed:", message, details);
     return { success: false, error: message, details };
 }

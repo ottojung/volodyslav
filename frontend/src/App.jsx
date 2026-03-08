@@ -20,12 +20,27 @@ import { logger } from './DescriptionEntry/logger.js';
 import { postSync } from './Sync/api.js';
 import { fetchVersion } from './version_api.js';
 
+/**
+ * @typedef {{ name: string, message: string, causes: string[] }} SyncErrorDetail
+ */
+
+/**
+ * @typedef {{ message: string, details: SyncErrorDetail[] }} SyncErrorState
+ */
+
+/**
+ * @returns {SyncErrorState}
+ */
+function makeEmptySyncError() {
+  return { message: '', details: [] };
+}
+
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
   const [syncState, setSyncState] = useState('idle');
-  const [syncError, setSyncError] = useState(null);
+  const [syncError, setSyncError] = useState(makeEmptySyncError());
   const [version, setVersion] = useState('');
   const [versionState, setVersionState] = useState('loading');
 
@@ -109,7 +124,7 @@ function App() {
 
   const handleSyncClick = async () => {
     setSyncState('loading');
-    setSyncError(null);
+    setSyncError(makeEmptySyncError());
 
     const result = await postSync(syncResetToTheirs || undefined);
 
@@ -164,7 +179,7 @@ function App() {
           <Select
             size="sm"
             value={syncResetToTheirs ? 'reset-to-theirs' : ''}
-            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(null); }}
+            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(makeEmptySyncError()); }}
             w="200px"
           >
             <option value="">Normal sync</option>
@@ -185,7 +200,7 @@ function App() {
               Sync has started. This can take a while, so the app will keep checking in the background.
             </Text>
           )}
-          {syncState === 'error' && syncError !== null && (
+          {syncState === 'error' && syncError.message !== '' && (
             <Alert status="error" borderRadius="md" alignItems="flex-start">
               <AlertIcon mt={1} />
               <Box>
@@ -197,8 +212,8 @@ function App() {
                       <Box>
                         <Text fontWeight="semibold" mb={2}>Details</Text>
                         <UnorderedList spacing={2} ml={4}>
-                          {syncError.details.map((detail) => (
-                            <ListItem key={`${detail.name}-${detail.message}`}>
+                          {syncError.details.map((detail, index) => (
+                            <ListItem key={`${detail.name}-${index}`}>
                               <Text fontWeight="medium">{detail.name}</Text>
                               <Text>{detail.message}</Text>
                               {detail.causes.length > 0 && (
