@@ -199,6 +199,7 @@ export default function EntryDetail() {
 
     const imageAssets = filterAssetsByType(entryAssets, "image");
     const audioAssets = filterAssetsByType(entryAssets, "audio");
+    const otherAssets = filterAssetsByType(entryAssets, "other");
 
     return (
         <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
@@ -252,11 +253,11 @@ export default function EntryDetail() {
                         <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
                             Media
                         </Text>
-                        {imageAssets === null ? (
+                        {imageAssets === null || audioAssets === null || otherAssets === null ? (
                             <Box textAlign="center" py={SPACING.md}>
                                 <Spinner size="sm" color="blue.400" />
                             </Box>
-                        ) : imageAssets.length === 0 && audioAssets !== null && audioAssets.length === 0 ? (
+                        ) : imageAssets.length === 0 && audioAssets.length === 0 && otherAssets.length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : (
                             <VStack spacing={SPACING.md} align="stretch">
@@ -283,7 +284,7 @@ export default function EntryDetail() {
                                         </SimpleGrid>
                                     </Box>
                                 )}
-                                {audioAssets !== null && audioAssets.length > 0 && (
+                                {audioAssets.length > 0 && (
                                     <Box>
                                         <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Audio</Text>
                                         <VStack spacing={SPACING.sm} align="stretch">
@@ -292,6 +293,22 @@ export default function EntryDetail() {
                                                     <Text fontSize="xs" color="gray.500" mb={1}>{asset.filename}</Text>
                                                     <Box as="audio" controls w="100%" src={`${API_BASE_URL}${asset.url}`} />
                                                 </Box>
+                                            ))}
+                                        </VStack>
+                                    </Box>
+                                )}
+                                {otherAssets.length > 0 && (
+                                    <Box>
+                                        <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Other files</Text>
+                                        <VStack spacing={SPACING.sm} align="stretch">
+                                            {otherAssets.map((asset) => (
+                                                <Link
+                                                    key={asset.filename}
+                                                    href={`${API_BASE_URL}${asset.url}`}
+                                                    isExternal
+                                                >
+                                                    <Text fontSize="sm">{asset.filename}</Text>
+                                                </Link>
                                             ))}
                                         </VStack>
                                     </Box>
