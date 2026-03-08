@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
 import { ChakraProvider } from "@chakra-ui/react";
@@ -39,6 +39,10 @@ describe("App", () => {
     beforeEach(() => {
         fetchVersion.mockReset();
         postSync.mockReset();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
     });
 
     it("shows the fetched version in the footer", async () => {
@@ -91,5 +95,53 @@ describe("App", () => {
         expect(screen.getByText("EventLogSyncError")).toBeInTheDocument();
         expect(screen.getByText("Event log sync failed: git push failed")).toBeInTheDocument();
         expect(screen.getByText("git push failed")).toBeInTheDocument();
+    });
+
+    it("shows a persistent success confirmation after sync completes", async () => {
+        jest.useFakeTimers();
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({ success: true });
+
+        renderApp();
+
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync complete")).toBeInTheDocument();
+        });
+
+        expect(screen.getByText("Your local and remote data are now in sync.")).toBeInTheDocument();
+        expect(screen.getByText("Synced!")).toBeInTheDocument();
+
+        act(() => {
+            jest.advanceTimersByTime(2000);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync")).toBeInTheDocument();
+        });
+
+        expect(screen.getByText("Sync complete")).toBeInTheDocument();
+    });
+
+    it("clears a previous success confirmation when the sync mode changes", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({ success: true });
+
+        renderApp();
+
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync complete")).toBeInTheDocument();
+        });
+
+        fireEvent.change(screen.getByRole("combobox"), {
+            target: { value: "reset-to-theirs" },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Sync complete")).not.toBeInTheDocument();
+        });
     });
 });

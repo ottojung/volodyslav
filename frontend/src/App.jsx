@@ -35,12 +35,25 @@ function makeEmptySyncError() {
   return { message: '', details: [] };
 }
 
+/**
+ * @param {boolean} resetToTheirs
+ * @returns {string}
+ */
+function makeSyncSuccessMessage(resetToTheirs) {
+  if (resetToTheirs) {
+    return 'Your local data was reset to match the remote copy.';
+  }
+
+  return 'Your local and remote data are now in sync.';
+}
+
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState(makeEmptySyncError());
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [version, setVersion] = useState('');
   const [versionState, setVersionState] = useState('loading');
 
@@ -125,14 +138,17 @@ function App() {
   const handleSyncClick = async () => {
     setSyncState('loading');
     setSyncError(makeEmptySyncError());
+    setSyncSuccessMessage('');
 
     const result = await postSync(syncResetToTheirs || undefined);
 
     if (result.success) {
       setSyncState('success');
+      setSyncSuccessMessage(makeSyncSuccessMessage(syncResetToTheirs));
       setTimeout(() => setSyncState('idle'), 2000);
     } else {
       setSyncState('error');
+      setSyncSuccessMessage('');
       setSyncError({
         message: result.error || 'Sync failed',
         details: result.details || [],
@@ -179,7 +195,7 @@ function App() {
           <Select
             size="sm"
             value={syncResetToTheirs ? 'reset-to-theirs' : ''}
-            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(makeEmptySyncError()); }}
+            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(makeEmptySyncError()); setSyncSuccessMessage(''); }}
             w="200px"
           >
             <option value="">Normal sync</option>
@@ -195,6 +211,15 @@ function App() {
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
           </Button>
+          {syncSuccessMessage !== '' && (
+            <Alert status="success" borderRadius="md" alignItems="flex-start">
+              <AlertIcon mt={1} />
+              <Box>
+                <AlertTitle>Sync complete</AlertTitle>
+                <AlertDescription>{syncSuccessMessage}</AlertDescription>
+              </Box>
+            </Alert>
+          )}
           {syncState === 'error' && syncError.message !== '' && (
             <Alert status="error" borderRadius="md" alignItems="flex-start">
               <AlertIcon mt={1} />
