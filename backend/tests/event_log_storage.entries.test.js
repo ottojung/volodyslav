@@ -136,4 +136,74 @@ describe("event_log_storage", () => {
             );
         });
     });
+
+    test("getExistingEntries returns an empty cached array when data.json is missing", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
+            const workTree = await store.getWorkTree();
+            await capabilities.deleter.deleteFile(path.join(workTree, "data.json"));
+            await store.commit("Remove data.json");
+        });
+
+        await transaction(capabilities, async (storage) => {
+            const callCountBefore =
+                capabilities.reader.createReadStream.mock.calls.length;
+            const firstResult = await storage.getExistingEntries();
+            const callCountAfterFirstRead =
+                capabilities.reader.createReadStream.mock.calls.length;
+            const secondResult = await storage.getExistingEntries();
+
+            expect(firstResult).toEqual([]);
+            expect(secondResult).toBe(firstResult);
+            expect(callCountAfterFirstRead).toBe(callCountBefore);
+            expect(capabilities.reader.createReadStream.mock.calls.length).toBe(
+                callCountAfterFirstRead
+            );
+        });
+    });
+
+    test("getExistingEntries reports read failures instead of returning an empty list", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(
+                {
+                    id: { identifier: "existing-read-failure" },
+                    date: fromISOString("2025-05-26"),
+                    original: "existing read failure",
+                    input: "existing read failure",
+                    type: "read_failure",
+                    description: "Existing event for read failure test",
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+                },
+                []
+            );
+        });
+
+        const originalCreateReadStream =
+            capabilities.reader.createReadStream.getMockImplementation();
+        capabilities.reader.createReadStream.mockImplementation((file) => {
+            if (file.path.endsWith("data.json")) {
+                throw new Error("simulated data read failure");
+            }
+            return originalCreateReadStream(file);
+        });
+
+        await expect(
+            transaction(capabilities, async (storage) => {
+                await storage.getExistingEntries();
+            })
+        ).rejects.toThrow("Failed to read existing entries from");
+
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
+            expect.objectContaining({
+                filepath: expect.stringContaining("data.json"),
+                error: expect.stringContaining("simulated data read failure"),
+            }),
+            "Failed to read data.json"
+        );
+    });
 });

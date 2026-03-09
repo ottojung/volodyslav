@@ -1,5 +1,9 @@
 const event = require("../event");
 const { readObjects } = require("../json_stream_file");
+const {
+    ExistingConfigReadError,
+    ExistingEntriesReadError,
+} = require("./read_errors");
 /** @typedef {import('./types').Capabilities} Capabilities */
 /** @typedef {import('./types').AppendCapabilities} AppendCapabilities */
 /** @typedef {import('./types').CopyAssetCapabilities} CopyAssetCapabilities */
@@ -43,10 +47,12 @@ class EventLogStorageClass {
     absorbedDeletionIds;
 
     /**
-     * Path to the data.json file, set during transaction
-     * @type {ExistingFile|null}
+     * Path to the data.json file, set during transaction.
+     * Undefined means no transaction has initialized this storage yet;
+     * null means the transaction is active but data.json does not exist.
+     * @type {ExistingFile|null|undefined}
      */
-    dataFile = null;
+    dataFile = undefined;
 
     /**
      * Path to the config.json file, set during transaction
@@ -57,9 +63,17 @@ class EventLogStorageClass {
     /**
      * Cache for existing entries loaded from data.json
      * @private
-     * @type {Array<import('../event/structure').Event>|null}
+     * @type {Array<import('../event/structure').Event>}
      */
-    existingEntriesCache = null;
+    existingEntriesCache = [];
+
+    /**
+     * Tracks whether existing entries have already been loaded during the
+     * current transaction.
+     * @private
+     * @type {boolean}
+     */
+    hasExistingEntriesCache = false;
 
     /**
      * Cache for existing config loaded from config.json
@@ -67,6 +81,14 @@ class EventLogStorageClass {
      * @type {import('../config/structure').Config|null}
      */
     existingConfigCache = null;
+
+    /**
+     * Tracks whether existing config has already been loaded during the
+     * current transaction.
+     * @private
+     * @type {boolean}
+     */
+    hasExistingConfigCache = false;
 
     /**
      * New config to be written to config.json
@@ -189,13 +211,14 @@ class EventLogStorageClass {
         }
 
         // Return cached results if available
-        if (this.existingConfigCache !== null) {
+        if (this.hasExistingConfigCache) {
             return this.existingConfigCache;
         }
 
         // If config file doesn't exist, return null
         if (this.configFile === null) {
             this.existingConfigCache = null;
+            this.hasExistingConfigCache = true;
             return null;
         }
 
@@ -212,29 +235,42 @@ class EventLogStorageClass {
             if (config.isTryDeserializeError(configResult)) {
                 this.capabilities.logger.logWarning(
                     {
-                        filepath: this.configFile,
+                        filepath: this.configFile.path,
                         error: configResult.message,
                         field: configResult.field,
                         value: configResult.value,
                         expectedType: configResult.expectedType,
-                        errorType: configResult.name
+                        errorType: configResult.name,
                     },
                     "Found invalid config object in file"
                 );
                 this.existingConfigCache = null;
+                this.hasExistingConfigCache = true;
                 return null;
             }
 
             if (configResult instanceof Error) {
-                this.existingConfigCache = null;
-                return null;
+                throw new ExistingConfigReadError(
+                    this.configFile.path,
+                    configResult
+                );
             }
 
             this.existingConfigCache = configResult;
+            this.hasExistingConfigCache = true;
             return this.existingConfigCache;
         } catch (error) {
-            this.existingConfigCache = null;
-            return this.existingConfigCache;
+            const readError = error instanceof ExistingConfigReadError
+                ? error
+                : new ExistingConfigReadError(this.configFile.path, error);
+            this.capabilities.logger.logError(
+                {
+                    filepath: this.configFile.path,
+                    error: readError.message,
+                },
+                "Failed to read config.json"
+            );
+            throw readError;
         }
     }
 
@@ -249,14 +285,20 @@ class EventLogStorageClass {
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingEntries() {
-        if (!this.dataFile) {
+        if (this.dataFile === undefined) {
             throw new Error(
                 "getExistingEntries() called outside of a transaction"
             );
         }
 
         // Return cached results if available
-        if (this.existingEntriesCache !== null) {
+        if (this.hasExistingEntriesCache) {
+            return this.existingEntriesCache;
+        }
+
+        if (this.dataFile === null) {
+            this.existingEntriesCache = [];
+            this.hasExistingEntriesCache = true;
             return this.existingEntriesCache;
         }
 
@@ -272,12 +314,13 @@ class EventLogStorageClass {
                 if (event.isTryDeserializeError(result)) {
                     this.capabilities.logger.logWarning(
                         {
+                            filepath: this.dataFile.path,
                             invalidObject: obj,
                             error: result.message,
                             field: result.field,
                             value: result.value,
                             expectedType: result.expectedType,
-                            errorType: result.name
+                            errorType: result.name,
                         },
                         "Found invalid object in data.json, skipping"
                     );
@@ -287,10 +330,20 @@ class EventLogStorageClass {
             }
 
             this.existingEntriesCache = validEvents;
+            this.hasExistingEntriesCache = true;
             return this.existingEntriesCache;
         } catch (error) {
-            this.existingEntriesCache = [];
-            return this.existingEntriesCache;
+            const readError = error instanceof ExistingEntriesReadError
+                ? error
+                : new ExistingEntriesReadError(this.dataFile.path, error);
+            this.capabilities.logger.logError(
+                {
+                    filepath: this.dataFile.path,
+                    error: readError.message,
+                },
+                "Failed to read data.json"
+            );
+            throw readError;
         }
     }
 }
