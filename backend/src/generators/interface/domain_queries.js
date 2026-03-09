@@ -11,6 +11,45 @@
  * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
  */
 
+const { isEventNotFoundError } = require('../individual').event;
+const { isDateTime, fromISOString } = require('../../datetime');
+const { id: eventIdModule } = require('../../event');
+
+/**
+ * Reconstructs a proper Event object from a potentially JSON-deserialized event.
+ *
+ * Events stored in the incremental graph database are serialized as plain JSON.
+ * When read back from the DB cache, custom class instances (DateTime, EventId) become
+ * plain objects. This function restores them to their proper types.
+ *
+ * @param {Event} ev - The potentially plain-JSON event object
+ * @returns {Event}
+ */
+function rehydrateEvent(ev) {
+    // Rehydrate the date field if it is not already a proper DateTime instance.
+    // When a DateTimeClass is stored in the DB, JSON.stringify serializes the internal
+    // Luxon DateTime (via its toJSON()) as an ISO string under the _luxonDateTime key.
+    let date = ev.date;
+    if (!isDateTime(date)) {
+        const rawDate = ev.date;
+        if (!rawDate || typeof rawDate !== 'object' || typeof rawDate._luxonDateTime !== 'string') {
+            throw new Error(`Cannot rehydrate event date: ${JSON.stringify(ev.date)}`);
+        }
+        date = fromISOString(rawDate._luxonDateTime);
+    }
+
+    // Always rehydrate the id field to ensure we have a proper EventId instance.
+    // When an EventIdClass is stored in the DB, JSON.stringify serializes it as a
+    // plain object with an identifier string property.
+    const rawId = ev.id;
+    if (!rawId || typeof rawId.identifier !== 'string') {
+        throw new Error(`Cannot rehydrate event id: ${JSON.stringify(ev.id)}`);
+    }
+    const id = eventIdModule.fromString(rawId.identifier);
+
+    return { ...ev, date, id };
+}
+
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
  * @param {string} eventId
@@ -75,8 +114,48 @@ async function internalGetEventBasicContext(interfaceInstance, event) {
     return contextEntry.context;
 }
 
+/**
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @returns {Promise<Array<Event>>}
+ */
+async function internalGetAllEvents(interfaceInstance) {
+    await interfaceInstance.ensureInitialized();
+    const result = await interfaceInstance
+        ._requireInitializedGraph()
+        .pull("all_events");
+    if (result.type !== "all_events") {
+        throw new Error(`Expected all_events entry but got type: ${result.type}`);
+    }
+    return result.events.map(rehydrateEvent);
+}
+
+/**
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @param {string} eventId
+ * @returns {Promise<Event | null>}
+ */
+async function internalGetEvent(interfaceInstance, eventId) {
+    await interfaceInstance.ensureInitialized();
+    try {
+        const result = await interfaceInstance
+            ._requireInitializedGraph()
+            .pull("event", [eventId]);
+        if (result.type !== "event") {
+            throw new Error(`Expected event entry but got type: ${result.type}`);
+        }
+        return rehydrateEvent(result.value);
+    } catch (error) {
+        if (isEventNotFoundError(error)) {
+            return null;
+        }
+        throw error;
+    }
+}
+
 module.exports = {
+    internalGetAllEvents,
     internalGetCaloriesForEventId,
+    internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
 };

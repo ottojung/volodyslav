@@ -26,7 +26,9 @@ const {
     internalUpdate,
 } = require("./graph_api");
 const {
+    internalGetAllEvents,
     internalGetCaloriesForEventId,
+    internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
 } = require("./domain_queries");
@@ -164,6 +166,26 @@ class InterfaceClass {
      */
     async getModificationTime(head, args = []) {
         return await internalGetModificationTime(this, head, args);
+    }
+
+    /**
+     * Returns all events from the incremental graph.
+     * Reads from the cached `all_events` graph node instead of performing a
+     * full gitstore transaction, making reads significantly faster.
+     * @returns {Promise<Array<Event>>}
+     */
+    async getAllEvents() {
+        return await internalGetAllEvents(this);
+    }
+
+    /**
+     * Returns a single event by its ID from the incremental graph, or null if
+     * no event with that ID exists.
+     * @param {string} eventId
+     * @returns {Promise<Event | null>}
+     */
+    async getEvent(eventId) {
+        return await internalGetEvent(this, eventId);
     }
 
     /**

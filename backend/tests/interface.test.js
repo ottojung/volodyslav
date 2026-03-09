@@ -257,6 +257,99 @@ describe("generators/interface", () => {
         });
     });
 
+    describe("getAllEvents()", () => {
+        test("returns all events from the incremental graph", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            await writeEventsToStore(capabilities, [
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+
+            const events = await iface.getAllEvents();
+
+            expect(events).toHaveLength(2);
+            const ids = events.map((e) => e.id.identifier);
+            expect(ids).toContain("event-1");
+            expect(ids).toContain("event-2");
+        });
+
+        test("returns empty array when no events exist", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            const events = await iface.getAllEvents();
+            expect(events).toHaveLength(0);
+        });
+
+        test("returns events with proper DateTime instances (cache hit path)", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            await writeEventsToStore(capabilities, [makeEvent("event-1", "First event")]);
+
+            // First call: computes all_events fresh
+            const firstResult = await iface.getAllEvents();
+            expect(firstResult).toHaveLength(1);
+
+            // Second call: reads from DB cache – DateTime must still be a proper instance
+            const secondResult = await iface.getAllEvents();
+            expect(secondResult).toHaveLength(1);
+            // Ensure the date supports DateTime methods (would throw on plain JSON object)
+            expect(typeof secondResult[0].date.toISOString()).toBe("string");
+        });
+    });
+
+    describe("getEvent()", () => {
+        test("returns the event for an existing id", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            const event1 = makeEvent("event-1", "First event");
+            await writeEventsToStore(capabilities, [event1]);
+
+            const result = await iface.getEvent("event-1");
+            expect(result).not.toBeNull();
+            expect(result.id.identifier).toBe("event-1");
+        });
+
+        test("returns null for a non-existent id", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            const result = await iface.getEvent("does-not-exist");
+            expect(result).toBeNull();
+        });
+
+        test("can fetch multiple different events in sequence (cache hit path)", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            await writeEventsToStore(capabilities, [
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+
+            // First call primes the all_events cache
+            const first = await iface.getEvent("event-1");
+            expect(first).not.toBeNull();
+            expect(first.id.identifier).toBe("event-1");
+
+            // Second call uses the cached all_events – DateTime must remain functional
+            const second = await iface.getEvent("event-2");
+            expect(second).not.toBeNull();
+            expect(second.id.identifier).toBe("event-2");
+            expect(typeof second.date.toISOString()).toBe("string");
+        });
+    });
+
     describe("Type guards", () => {
         test("isInterface correctly identifies instances", async () => {
             const capabilities = await getTestCapabilities();

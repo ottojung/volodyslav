@@ -118,6 +118,10 @@ async function synchronizeAll(capabilities, options) {
         errors.push(new GeneratorsSyncError(cause));
     });
 
+    await capabilities.interface.update().catch((cause) => {
+        errors.push(new InterfaceUpdateError(cause));
+    });
+
     await assets.synchronize(capabilities).catch((cause) => {
         errors.push(new AssetsSyncError(cause));
     });
