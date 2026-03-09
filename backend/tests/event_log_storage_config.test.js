@@ -1,3 +1,4 @@
+const fs = require("fs").promises;
 const path = require("path");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
@@ -123,6 +124,71 @@ describe("event_log_storage", () => {
             const final = await storage.getExistingConfig();
             expect(final).toEqual(updatedConfig);
         });
+    });
+
+    test("transaction caches invalid existing config results within a transaction", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
+            const workTree = await store.getWorkTree();
+            await fs.writeFile(
+                path.join(workTree, "config.json"),
+                JSON.stringify({ invalid: "format" })
+            );
+            await store.commit("Write invalid config");
+        });
+
+        await transaction(capabilities, async (storage) => {
+            const firstResult = await storage.getExistingConfig();
+            const secondResult = await storage.getExistingConfig();
+
+            expect(firstResult).toBeNull();
+            expect(secondResult).toBeNull();
+            expect(capabilities.logger.logWarning).toHaveBeenCalledTimes(1);
+            expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filepath: expect.stringContaining("config.json"),
+                    field: "help",
+                }),
+                "Found invalid config object in file"
+            );
+        });
+    });
+
+    test("transaction reports config.json read failures instead of returning null", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "Readable config",
+                shortcuts: [{ pattern: "cfg", replacement: "config" }],
+            });
+        });
+
+        const originalCreateReadStream =
+            capabilities.reader.createReadStream.getMockImplementation();
+        capabilities.reader.createReadStream.mockImplementation((file) => {
+            if (file.path.endsWith("config.json")) {
+                throw new Error("simulated config read failure");
+            }
+            return originalCreateReadStream(file);
+        });
+
+        await expect(
+            transaction(capabilities, async (storage) => {
+                await storage.getExistingConfig();
+            })
+        ).rejects.toThrow("Failed to read existing config from");
+
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
+            expect.objectContaining({
+                filepath: expect.stringContaining("config.json"),
+                error: expect.stringContaining("simulated config read failure"),
+            }),
+            "Failed to read config.json"
+        );
     });
 
     test("transaction commits when both entries and config are added", async () => {
