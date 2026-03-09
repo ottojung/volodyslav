@@ -15,6 +15,11 @@ async function synchronize(capabilities, options) {
     const workingPath = "working-git-repository";
     const remotePath = capabilities.environment.eventLogRepository();
     const remoteLocation = { url: remotePath };
+
+    await capabilities.interface.update().catch((/** @type {unknown} */ cause) => {
+        capabilities.logger.logError({ cause }, "Interface update failed during synchronization");
+    });
+
     return await workingRepository.synchronize(capabilities, workingPath, remoteLocation, options);
 }
 

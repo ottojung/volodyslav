@@ -17,6 +17,7 @@ const { withRetry } = require("../retryer");
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../generators/interface').Interface} Interface */
 
 /**
  * @typedef {object} RemoteLocation
@@ -33,6 +34,7 @@ const { withRetry } = require("../retryer");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {Datetime} datetime - Datetime utilities.
+ * @property {Interface} interface - An interface instance with an update() method.
  */
 
 /**
