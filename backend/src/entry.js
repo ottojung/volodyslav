@@ -169,10 +169,8 @@ async function getEntries(capabilities, pagination) {
         }
     }
 
-    // Fetch all entries from storage
-    const entries = await transaction(capabilities, async (storage) => {
-        return await storage.getExistingEntries();
-    });
+    // Fetch all events from the incremental graph (fast path, no git transaction needed)
+    const entries = await capabilities.interface.getAllEvents();
 
     // Filter entries by search regex if provided
     const filteredEntries = searchRegex === null
@@ -242,12 +240,7 @@ async function deleteEntry(capabilities, id) {
  * @returns {Promise<import('./event/structure').Event|null>} - The entry, or null if not found.
  */
 async function getEntryById(capabilities, id) {
-    const entries = await transaction(capabilities, async (storage) => {
-        return await storage.getExistingEntries();
-    });
-
-    const found = entries.find(entry => entry.id.identifier === id);
-    return found !== undefined ? found : null;
+    return await capabilities.interface.getEvent(id);
 }
 
 module.exports = {
