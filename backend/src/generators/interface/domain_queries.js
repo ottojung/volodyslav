@@ -5,10 +5,14 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
 /** @typedef {import('../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
-/** @typedef {import('./class').Interface} Interface */
+/**
+ * @typedef {object} InterfaceQueryAccess
+ * @property {() => Promise<void>} ensureInitialized
+ * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
+ */
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceQueryAccess} interfaceInstance
  * @param {string} eventId
  * @returns {Promise<CaloriesEntry>}
  */
@@ -23,7 +27,7 @@ async function internalGetCaloriesForEventId(interfaceInstance, eventId) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceQueryAccess} interfaceInstance
  * @param {string} eventId
  * @param {string} audioPath
  * @returns {Promise<EventTranscriptionEntry>}
@@ -45,7 +49,7 @@ async function internalGetEventTranscriptionForAudioPath(
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceQueryAccess} interfaceInstance
  * @param {Event} event
  * @returns {Promise<Array<Event>>}
  */

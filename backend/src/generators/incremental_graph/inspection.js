@@ -2,10 +2,15 @@
  * Inspection and timestamp helpers for IncrementalGraph.
  */
 
-/** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('../../datetime').DateTime} DateTime */
+/**
+ * @typedef {object} IncrementalGraphInspectionAccess
+ * @property {Map<import('./types').NodeName, CompiledNode>} headIndex
+ * @property {import('./graph_storage').GraphStorage} storage
+ * @property {import('./types').Version} dbVersion
+ */
 
 const {
     nodeNameToString,
@@ -18,7 +23,7 @@ const { fromISOString } = require("../../datetime");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} head
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
@@ -46,7 +51,7 @@ async function internalDebugGetFreshness(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} head
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<import('./types').ComputedValue | undefined>}
@@ -66,7 +71,7 @@ async function internalDebugGetValue(incrementalGraph, head, bindings = []) {
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @returns {Array<CompiledNode>}
  */
 function internalDebugGetSchemas(incrementalGraph) {
@@ -74,7 +79,7 @@ function internalDebugGetSchemas(incrementalGraph) {
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} head
  * @returns {CompiledNode | null}
  */
@@ -84,7 +89,7 @@ function internalDebugGetSchemaByHead(incrementalGraph, head) {
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @returns {Promise<Array<[string, Array<ConstValue>]>>}
  */
 async function internalDebugListMaterializedNodes(incrementalGraph) {
@@ -96,7 +101,7 @@ async function internalDebugListMaterializedNodes(incrementalGraph) {
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @returns {string}
  */
 function internalDebugGetDbVersion(incrementalGraph) {
@@ -104,7 +109,7 @@ function internalDebugGetDbVersion(incrementalGraph) {
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<DateTime>}
@@ -133,7 +138,7 @@ async function internalGetCreationTime(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<DateTime>}

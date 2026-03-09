@@ -2,13 +2,20 @@
  * Pull operations for IncrementalGraph.
  */
 
-/** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/**
+ * @typedef {object} IncrementalGraphPullAccess
+ * @property {Map<NodeName, import('./types').CompiledNode>} headIndex
+ * @property {import('../../sleeper').SleepCapability} sleeper
+ * @property {import('./graph_storage').GraphStorage} storage
+ * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {(nodeDefinition: import('./types').ConcreteNode, batch: BatchBuilder, externalBatch: BatchBuilder | undefined) => Promise<RecomputeResult>} maybeRecalculate
+ */
 
 const { nodeKeyStringToString, stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
@@ -17,7 +24,7 @@ const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
  * @param {BatchBuilder | undefined} externalBatch
@@ -41,7 +48,7 @@ async function internalUnsafePull(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
  * @param {BatchBuilder | undefined} [externalBatch]
@@ -59,7 +66,7 @@ async function internalPull(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeName} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
  * @param {BatchBuilder | undefined} [externalBatch]
@@ -81,7 +88,7 @@ async function internalPullWithStatus(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeKeyString} nodeKeyStr
  * @param {BatchBuilder | undefined} [externalBatch]
  * @returns {Promise<RecomputeResult>}

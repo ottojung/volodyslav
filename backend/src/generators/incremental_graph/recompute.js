@@ -2,10 +2,15 @@
  * Recalculation helpers for IncrementalGraph.
  */
 
-/** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/**
+ * @typedef {object} IncrementalGraphRecomputeAccess
+ * @property {import('./graph_storage').GraphStorage} storage
+ * @property {import('../../datetime').Datetime} datetime
+ * @property {(nodeKeyStr: import('./types').NodeKeyString, externalBatch?: BatchBuilder | undefined) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatus
+ */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { deserializeNodeKey } = require("./node_key");
@@ -13,7 +18,7 @@ const { isUnchanged } = require("./unchanged");
 const { nodeKeyStringToString } = require("./database");
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ConcreteNode} nodeDefinition
  * @param {BatchBuilder} batch
  * @param {BatchBuilder | undefined} externalBatch

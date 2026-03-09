@@ -2,10 +2,16 @@
  * Invalidation operations for IncrementalGraph.
  */
 
-/** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/**
+ * @typedef {object} IncrementalGraphInvalidateAccess
+ * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
+ * @property {import('../../sleeper').SleepCapability} sleeper
+ * @property {import('./graph_storage').GraphStorage} storage
+ * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ */
 
 const { stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
@@ -14,7 +20,7 @@ const { serializeNodeKey } = require("./node_key");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {NodeKeyString} changedKey
  * @param {BatchBuilder} batch
  * @param {Set<NodeKeyString>} [nodesBecomingOutdated]
@@ -63,7 +69,7 @@ async function internalPropagateOutdated(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
  * @param {BatchBuilder | undefined} [externalBatch]
@@ -125,7 +131,7 @@ async function internalUnsafeInvalidate(
 }
 
 /**
- * @param {IncrementalGraph} incrementalGraph
+ * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
  * @param {BatchBuilder | undefined} [externalBatch]

@@ -6,7 +6,12 @@
 /** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
 /** @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
-/** @typedef {import('./class').Interface} Interface */
+/**
+ * @typedef {object} InterfaceLifecycleAccess
+ * @property {() => GeneratorsCapabilities} _getCapabilities
+ * @property {import('../incremental_graph').IncrementalGraph | null} _incrementalGraph
+ * @property {RootDatabase | null} _database
+ */
 
 const {
     makeIncrementalGraph,
@@ -19,13 +24,13 @@ const { createDefaultGraphDefinition } = require("./default_graph");
 const { migrationCallback, runMigration } = require("../incremental_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 
-/** @param {Interface} interfaceInstance */
+/** @param {InterfaceLifecycleAccess} interfaceInstance */
 function internalIsInitialized(interfaceInstance) {
     return interfaceInstance._incrementalGraph !== null;
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceLifecycleAccess} interfaceInstance
  * @returns {import('../incremental_graph').IncrementalGraph}
  */
 function internalRequireInitializedGraph(interfaceInstance) {
@@ -35,13 +40,13 @@ function internalRequireInitializedGraph(interfaceInstance) {
     return interfaceInstance._incrementalGraph;
 }
 
-/** @param {Interface} interfaceInstance */
+/** @param {InterfaceLifecycleAccess} interfaceInstance */
 async function internalEnsureInitialized(interfaceInstance) {
     await internalEnsureInitializedWithMigration(interfaceInstance, runMigration);
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceLifecycleAccess} interfaceInstance
  * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<void>} runMigrationProcedure
  * @returns {Promise<void>}
  */
@@ -71,7 +76,7 @@ async function internalEnsureInitializedWithMigration(
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceLifecycleAccess} interfaceInstance
  * @param {{ resetToTheirs?: boolean }} [options]
  */
 async function internalSynchronizeDatabase(interfaceInstance, options) {
@@ -81,7 +86,7 @@ async function internalSynchronizeDatabase(interfaceInstance, options) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceLifecycleAccess} interfaceInstance
  * @param {{ resetToTheirs?: boolean }} [options]
  * @returns {Promise<void>}
  */

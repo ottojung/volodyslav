@@ -2,10 +2,14 @@
  * Graph-facing API methods for the generators interface.
  */
 
-/** @typedef {import('./class').Interface} Interface */
+/**
+ * @typedef {object} InterfaceGraphAccess
+ * @property {() => Promise<void>} ensureInitialized
+ * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
+ */
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @returns {Promise<void>}
  */
 async function internalUpdate(interfaceInstance) {
@@ -14,7 +18,7 @@ async function internalUpdate(interfaceInstance) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @returns {Array<import('../incremental_graph/types').CompiledNode>}
  */
 function internalDebugGetSchemas(interfaceInstance) {
@@ -22,7 +26,7 @@ function internalDebugGetSchemas(interfaceInstance) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @returns {import('../incremental_graph/types').CompiledNode | null}
  */
@@ -31,7 +35,7 @@ function internalDebugGetSchemaByHead(interfaceInstance, head) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
  */
 async function internalDebugListMaterializedNodes(interfaceInstance) {
@@ -41,7 +45,7 @@ async function internalDebugListMaterializedNodes(interfaceInstance) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
@@ -53,7 +57,7 @@ async function internalDebugGetFreshness(interfaceInstance, head, args = []) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
@@ -63,7 +67,7 @@ async function internalDebugGetValue(interfaceInstance, head, args = []) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
@@ -73,7 +77,7 @@ async function internalPullGraphNode(interfaceInstance, head, args = []) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<void>}
@@ -83,7 +87,7 @@ async function internalInvalidateGraphNode(interfaceInstance, head, args = []) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../../datetime').DateTime>}
@@ -95,7 +99,7 @@ async function internalGetCreationTime(interfaceInstance, head, args = []) {
 }
 
 /**
- * @param {Interface} interfaceInstance
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../../datetime').DateTime>}
