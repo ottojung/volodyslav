@@ -97,6 +97,12 @@ function versionToString(Version) {
  */
 
 /**
+ * @typedef {object} ConfigEntry
+ * @property {'config'} type - The type of the entry
+ * @property {import('../../../config/structure').Config | null} config - The configuration or null if not found
+ */
+
+/**
  * @typedef {object} MetaEventsEntry
  * @property {'meta_events'} type - The type of the entry
  * @property {Array<MetaEvent>} meta_events - Array of meta events
@@ -150,7 +156,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
  */
 
 /**

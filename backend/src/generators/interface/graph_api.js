@@ -15,6 +15,7 @@
 async function internalUpdate(interfaceInstance) {
     await interfaceInstance.ensureInitialized();
     await interfaceInstance._requireInitializedGraph().invalidate("all_events");
+    await interfaceInstance._requireInitializedGraph().invalidate("config");
 }
 
 /**

@@ -28,6 +28,7 @@ const {
 const {
     internalGetAllEvents,
     internalGetCaloriesForEventId,
+    internalGetConfig,
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
@@ -166,6 +167,16 @@ class InterfaceClass {
      */
     async getModificationTime(head, args = []) {
         return await internalGetModificationTime(this, head, args);
+    }
+
+    /**
+     * Returns the current configuration from the incremental graph.
+     * Reads from the cached `config` graph node instead of performing a
+     * full gitstore transaction, making reads significantly faster.
+     * @returns {Promise<import('../../config/structure').Config | null>}
+     */
+    async getConfig() {
+        return await internalGetConfig(this);
     }
 
     /**
