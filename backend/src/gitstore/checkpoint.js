@@ -35,6 +35,7 @@ const { gitStoreMutexKey } = require("./mutex");
 /** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('./working_repository').RemoteLocation} RemoteLocation */
+/** @typedef {import('../generators/interface').Interface} Interface */
 
 /**
  * @typedef {object} Capabilities
@@ -47,6 +48,7 @@ const { gitStoreMutexKey } = require("./mutex");
  * @property {Logger} logger
  * @property {SleepCapability} sleeper
  * @property {Datetime} datetime
+ * @property {Interface} interface - An interface instance with an update() method.
  */
 
 /**

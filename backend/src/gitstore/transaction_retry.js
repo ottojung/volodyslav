@@ -26,6 +26,7 @@ const { withRetry } = require("../retryer");
 /** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('./transaction_attempt').GitStore} GitStore */
+/** @typedef {import('../generators/interface').Interface} Interface */
 
 /**
  * @typedef {object} RemoteLocation
@@ -43,6 +44,7 @@ const { withRetry } = require("../retryer");
  * @property {Logger} logger - A logger instance.
  * @property {Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance.
+ * @property {Interface} interface - An interface instance with an update() method.
  */
 
 /**

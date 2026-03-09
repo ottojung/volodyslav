@@ -44,6 +44,7 @@ const { checkpointDatabase } = require("./database");
  * @typedef {import("../../sleeper").SleepCapability} SleepCapability
  * @typedef {import("../../datetime").Datetime} Datetime
  * @typedef {import("../../ai/calories").AICalories} AICalories
+ * @typedef {import('../../generators/interface').Interface} Interface
  */
 
 /**
@@ -57,6 +58,7 @@ const { checkpointDatabase } = require("./database");
  * @property {FileWriter} writer - A file writer instance
  * @property {Environment} environment - An environment instance
  * @property {Datetime} datetime - Datetime utilities.
+ * @property {Interface} interface - An interface instance with an update() method.
  */
 
 /**

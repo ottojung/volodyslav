@@ -15,6 +15,7 @@ const workingRepository = require("./working_repository");
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../generators/interface').Interface} Interface */
 
 /**
  * @typedef {object} RemoteLocation
@@ -32,6 +33,7 @@ const workingRepository = require("./working_repository");
  * @property {Logger} logger - A logger instance.
  * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Datetime} datetime - A datetime instance.
+ * @property {Interface} interface - An interface instance with an update() method.
  */
 
 /**
