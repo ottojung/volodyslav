@@ -3,47 +3,50 @@
  */
 
 /** @typedef {import('../../event').Event} Event */
-/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
-/** @typedef {import('../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
-/** @typedef {import('../incremental_graph/types').ComputedValue} ComputedValue */
-/** @typedef {import('../incremental_graph/types').FreshnessStatus} FreshnessStatus */
-/** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
-/** @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage */
+/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
 const {
-    makeIncrementalGraph,
-    getRootDatabase,
-    runMigration,
-    runMigrationUnsafe,
-    synchronizeNoLock,
-    withMutex,
-} = require("../incremental_graph");
-const { createDefaultGraphDefinition } = require("./default_graph");
-const { migrationCallback } = require("../incremental_graph");
-const { makeSynchronizeDatabaseError } = require("./errors");
+    internalEnsureInitialized,
+    internalIsInitialized,
+    internalRequireInitializedGraph,
+    internalSynchronizeDatabase,
+} = require("./lifecycle");
+const {
+    internalDebugGetFreshness,
+    internalDebugGetSchemaByHead,
+    internalDebugGetSchemas,
+    internalDebugGetValue,
+    internalDebugListMaterializedNodes,
+    internalGetCreationTime,
+    internalGetModificationTime,
+    internalInvalidateGraphNode,
+    internalPullGraphNode,
+    internalUpdate,
+} = require("./graph_api");
+const {
+    internalGetCaloriesForEventId,
+    internalGetEventBasicContext,
+    internalGetEventTranscriptionForAudioPath,
+} = require("./domain_queries");
 
 /** Interface that encapsulates incremental-graph operations. */
 class InterfaceClass {
     /**
      * Lazy getter for the capabilities object, captured at construction time.
-     * @private
      * @type {() => GeneratorsCapabilities}
      */
     _getCapabilities;
 
     /**
      * The live incremental graph, available after ensureInitialized().
-     * @private
      * @type {IncrementalGraph | null}
      */
     _incrementalGraph;
 
     /**
      * The currently open root database, available after ensureInitialized().
-     * @private
      * @type {RootDatabase | null}
      */
     _database;
@@ -62,117 +65,34 @@ class InterfaceClass {
      * @returns {boolean}
      */
     isInitialized() {
-        return this._incrementalGraph !== null;
+        return internalIsInitialized(this);
     }
 
-    /**
-     * @private
-     * @returns {IncrementalGraph}
-     */
+    /** @returns {IncrementalGraph} */
     _requireInitializedGraph() {
-        if (this._incrementalGraph === null) {
-            throw new Error("Impossible: expected non-null");
-        }
-        return this._incrementalGraph;
+        return internalRequireInitializedGraph(this);
     }
 
     /** @returns {Promise<void>} */
     async ensureInitialized() {
-        await this._ensureInitialized(runMigration);
-    }
-
-    /**
-     * @private
-     * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<void>} runMigrationProcedure
-     * @returns {Promise<void>}
-     */
-    async _ensureInitialized(runMigrationProcedure) {
-        if (this._incrementalGraph !== null) {
-            return;
-        }
-
-        const capabilities = this._getCapabilities();
-        const database = await getRootDatabase(capabilities);
-        const nodeDefs = createDefaultGraphDefinition(capabilities);
-        await runMigrationProcedure(
-            capabilities,
-            database,
-            nodeDefs,
-            migrationCallback(capabilities),
-        );
-        this._database = database;
-        this._incrementalGraph = makeIncrementalGraph(capabilities, database, nodeDefs);
+        await internalEnsureInitialized(this);
     }
 
     /** @param {{ resetToTheirs?: boolean }} [options] */
     async synchronizeDatabase(options) {
-        await withMutex(this._getCapabilities().sleeper, async () => {
-            await this._synchronizeDatabaseNoLock(options);
-        });
-    }
-
-    /**
-     * @private
-     * @param {{ resetToTheirs?: boolean }} [options]
-     * @returns {Promise<void>}
-     */
-    async _synchronizeDatabaseNoLock(options) {
-        const capabilities = this._getCapabilities();
-        const database = this._database;
-        const incrementalGraph = this._incrementalGraph;
-        if (database === null) {
-            await synchronizeNoLock(capabilities, options);
-            return;
-        }
-
-        this._database = null;
-        this._incrementalGraph = null;
-
-        try {
-            await database.close();
-        } catch (error) {
-            this._database = database;
-            this._incrementalGraph = incrementalGraph;
-            throw error;
-        }
-
-        let synchronizeFailure = null;
-
-        try {
-            await synchronizeNoLock(capabilities, options);
-        } catch (error) {
-            synchronizeFailure = error;
-        }
-
-        let reopenFailure = null;
-        try {
-            await this._ensureInitialized(runMigrationUnsafe);
-        } catch (error) {
-            reopenFailure = error;
-        }
-
-        if (reopenFailure !== null) {
-            if (synchronizeFailure !== null) {
-                throw makeSynchronizeDatabaseError(synchronizeFailure, reopenFailure);
-            }
-            throw reopenFailure;
-        }
-        if (synchronizeFailure !== null) {
-            throw synchronizeFailure;
-        }
+        await internalSynchronizeDatabase(this, options);
     }
 
     /** @returns {Promise<void>} */
     async update() {
-        await this.ensureInitialized();
-        await this._requireInitializedGraph().invalidate("all_events");
+        await internalUpdate(this);
     }
 
     /**
      * @returns {Array<import('../incremental_graph/types').CompiledNode>}
      */
     debugGetSchemas() {
-        return this._requireInitializedGraph().debugGetSchemas();
+        return internalDebugGetSchemas(this);
     }
 
     /**
@@ -180,42 +100,42 @@ class InterfaceClass {
      * @returns {import('../incremental_graph/types').CompiledNode | null}
      */
     debugGetSchemaByHead(head) {
-        return this._requireInitializedGraph().debugGetSchemaByHead(head);
+        return internalDebugGetSchemaByHead(this, head);
     }
 
     /**
      * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
      */
     async debugListMaterializedNodes() {
-        return await this._requireInitializedGraph().debugListMaterializedNodes();
+        return await internalDebugListMaterializedNodes(this);
     }
 
     /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<FreshnessStatus>}
+     * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
      */
     async debugGetFreshness(head, args = []) {
-        return await this._requireInitializedGraph().debugGetFreshness(head, args);
+        return await internalDebugGetFreshness(this, head, args);
     }
 
     /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<ComputedValue | undefined>}
+     * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
      */
     async debugGetValue(head, args = []) {
-        return await this._requireInitializedGraph().debugGetValue(head, args);
+        return await internalDebugGetValue(this, head, args);
     }
 
     /**
      * Pulls one concrete graph node for the graph API.
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<ComputedValue>}
+     * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
      */
     async pullGraphNode(head, args = []) {
-        return await this._requireInitializedGraph().pull(head, args);
+        return await internalPullGraphNode(this, head, args);
     }
 
     /**
@@ -225,7 +145,7 @@ class InterfaceClass {
      * @returns {Promise<void>}
      */
     async invalidateGraphNode(head, args = []) {
-        return await this._requireInitializedGraph().invalidate(head, args);
+        return await internalInvalidateGraphNode(this, head, args);
     }
 
     /**
@@ -234,7 +154,7 @@ class InterfaceClass {
      * @returns {Promise<import('../../datetime').DateTime>}
      */
     async getCreationTime(head, args = []) {
-        return await this._requireInitializedGraph().getCreationTime(head, args);
+        return await internalGetCreationTime(this, head, args);
     }
 
     /**
@@ -243,32 +163,28 @@ class InterfaceClass {
      * @returns {Promise<import('../../datetime').DateTime>}
      */
     async getModificationTime(head, args = []) {
-        return await this._requireInitializedGraph().getModificationTime(head, args);
+        return await internalGetModificationTime(this, head, args);
     }
 
     /**
      * @param {string} eventId
-     * @returns {Promise<CaloriesEntry>}
+     * @returns {Promise<import('../incremental_graph/database/types').CaloriesEntry>}
      */
     async getCaloriesForEventId(eventId) {
-        const result = await this._requireInitializedGraph().pull("calories", [eventId]);
-        if (result.type !== "calories") {
-            throw new Error(`Expected calories entry but got type: ${result.type}`);
-        }
-        return result;
+        return await internalGetCaloriesForEventId(this, eventId);
     }
 
     /**
      * @param {string} eventId
      * @param {string} audioPath - Audio path relative to the assets root
-     * @returns {Promise<EventTranscriptionEntry>}
+     * @returns {Promise<import('../incremental_graph/database/types').EventTranscriptionEntry>}
      */
     async getEventTranscriptionForAudioPath(eventId, audioPath) {
-        const result = await this._requireInitializedGraph().pull("event_transcription", [eventId, audioPath]);
-        if (result.type !== "event_transcription") {
-            throw new Error(`Expected event_transcription entry but got type: ${result.type}`);
-        }
-        return result;
+        return await internalGetEventTranscriptionForAudioPath(
+            this,
+            eventId,
+            audioPath
+        );
     }
 
     /**
@@ -276,25 +192,7 @@ class InterfaceClass {
      * @returns {Promise<Array<Event>>}
      */
     async getEventBasicContext(event) {
-        await this.ensureInitialized();
-        const eventContextEntry = await this._requireInitializedGraph().pull(
-            "event_context"
-        );
-
-        if (!eventContextEntry || eventContextEntry.type !== "event_context") {
-            return [event];
-        }
-
-        const eventIdStr = event.id.identifier;
-        const contextEntry = eventContextEntry.contexts.find(
-            (ctx) => ctx.eventId === eventIdStr
-        );
-
-        if (!contextEntry) {
-            return [event];
-        }
-
-        return contextEntry.context;
+        return await internalGetEventBasicContext(this, event);
     }
 }
 
