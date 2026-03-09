@@ -19,9 +19,10 @@ const {
     runMigrationUnsafe,
     synchronizeNoLock,
     withMutex,
+    migrationCallback,
+    runMigration,
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
-const { migrationCallback, runMigration } = require("../incremental_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
