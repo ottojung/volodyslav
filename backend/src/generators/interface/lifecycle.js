@@ -62,18 +62,32 @@ async function internalEnsureInitializedWithMigration(
     const capabilities = interfaceInstance._getCapabilities();
     const database = await getRootDatabase(capabilities);
     const nodeDefs = createDefaultGraphDefinition(capabilities);
-    await runMigrationProcedure(
-        capabilities,
-        database,
-        nodeDefs,
-        migrationCallback(capabilities),
-    );
-    interfaceInstance._database = database;
-    interfaceInstance._incrementalGraph = makeIncrementalGraph(
-        capabilities,
-        database,
-        nodeDefs
-    );
+    try {
+        await runMigrationProcedure(
+            capabilities,
+            database,
+            nodeDefs,
+            migrationCallback(capabilities),
+        );
+        const incrementalGraph = makeIncrementalGraph(
+            capabilities,
+            database,
+            nodeDefs
+        );
+        interfaceInstance._database = database;
+        interfaceInstance._incrementalGraph = incrementalGraph;
+    } catch (error) {
+        try {
+            await database.close();
+        } catch (closeError) {
+            // Swallow close errors to avoid masking the original failure.
+            capabilities.logger.logDebug(
+                { closeError },
+                `Failed to close database after initialization failure: ${closeError}`,
+            );
+        }
+        throw error;
+    }
 }
 
 /**
