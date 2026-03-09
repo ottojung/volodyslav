@@ -32,14 +32,14 @@ const { transaction } = require("./event_log_storage");
 
 /**
  * Retrieves the current configuration from the event log.
+ * Reads from the cached `config` graph node instead of performing a
+ * full gitstore transaction, making reads significantly faster.
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
  * @returns {Promise<import('./config/structure').Config | null>} - The current config or null if not found.
  */
 async function getConfig(capabilities) {
-    const config = await transaction(capabilities, async (storage) => {
-        return await storage.getExistingConfig();
-    });
+    const config = await capabilities.interface.getConfig();
 
     capabilities.logger.logDebug(
         {

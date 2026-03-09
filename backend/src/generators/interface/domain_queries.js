@@ -116,6 +116,21 @@ async function internalGetEventBasicContext(interfaceInstance, event) {
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
+ * @returns {Promise<import('../../config/structure').Config | null>}
+ */
+async function internalGetConfig(interfaceInstance) {
+    await interfaceInstance.ensureInitialized();
+    const result = await interfaceInstance
+        ._requireInitializedGraph()
+        .pull("config");
+    if (result.type !== "config") {
+        throw new Error(`Expected config entry but got type: ${result.type}`);
+    }
+    return result.config;
+}
+
+/**
+ * @param {InterfaceQueryAccess} interfaceInstance
  * @returns {Promise<Array<Event>>}
  */
 async function internalGetAllEvents(interfaceInstance) {
@@ -155,6 +170,7 @@ async function internalGetEvent(interfaceInstance, eventId) {
 module.exports = {
     internalGetAllEvents,
     internalGetCaloriesForEventId,
+    internalGetConfig,
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,

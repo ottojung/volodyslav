@@ -37,16 +37,33 @@ const { transaction } = require("../../event_log_storage");
  * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
  * causes the next pull to re-read from disk.
  *
+ * The `config` node reads config.json directly from the git-backed event log
+ * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
+ * causes the next pull to re-read from disk.
+ *
  * Graph adjacency:
  *   all_events -> event(e)
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e), transcription(a) -> event_transcription(e, a)
+ *   config                                      [standalone, no graph inputs]
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
 function createDefaultGraphDefinition(capabilities) {
     return [
+        {
+            output: "config",
+            inputs: [],
+            computor: async (_inputs, _oldValue, _bindings) => {
+                const config = await transaction(capabilities, async (storage) => {
+                    return await storage.getExistingConfig();
+                });
+                return { type: "config", config };
+            },
+            isDeterministic: false,
+            hasSideEffects: false,
+        },
         {
             output: "all_events",
             inputs: [],
