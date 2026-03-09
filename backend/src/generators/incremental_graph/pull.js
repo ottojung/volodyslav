@@ -14,7 +14,7 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
- * @property {(nodeDefinition: import('./types').ConcreteNode, batch: BatchBuilder, externalBatch: BatchBuilder | undefined) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {(nodeDefinition: import('./types').ConcreteNode, batch: BatchBuilder) => Promise<RecomputeResult>} maybeRecalculate
  */
 
 const { nodeKeyStringToString, stringToNodeName } = require("./database");
@@ -27,22 +27,19 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
- * @param {BatchBuilder | undefined} externalBatch
  * @returns {Promise<ComputedValue>}
  */
 async function internalUnsafePull(
     incrementalGraph,
     nodeName,
-    bindings,
-    externalBatch = undefined
+    bindings
 ) {
     ensureNodeNameIsHead(nodeName);
     const nodeNameValue = stringToNodeName(nodeName);
     const { value } = await internalPullWithStatus(
         incrementalGraph,
         nodeNameValue,
-        bindings,
-        externalBatch
+        bindings
     );
     return value;
 }
@@ -51,17 +48,15 @@ async function internalUnsafePull(
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
- * @param {BatchBuilder | undefined} [externalBatch]
  * @returns {Promise<ComputedValue>}
  */
 async function internalPull(
     incrementalGraph,
     nodeName,
-    bindings = [],
-    externalBatch = undefined
+    bindings = []
 ) {
     return withMutex(incrementalGraph.sleeper, () =>
-        internalUnsafePull(incrementalGraph, nodeName, bindings, externalBatch)
+        internalUnsafePull(incrementalGraph, nodeName, bindings)
     );
 }
 
@@ -69,34 +64,26 @@ async function internalPull(
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeName} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
- * @param {BatchBuilder | undefined} [externalBatch]
  * @returns {Promise<RecomputeResult>}
  */
 async function internalPullWithStatus(
     incrementalGraph,
     nodeName,
-    bindings = [],
-    externalBatch = undefined
+    bindings = []
 ) {
     const nodeKey = { head: nodeName, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    return await internalPullByNodeKeyStringWithStatus(
-        incrementalGraph,
-        concreteKey,
-        externalBatch
-    );
+    return await internalPullByNodeKeyStringWithStatus(incrementalGraph, concreteKey);
 }
 
 /**
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeKeyString} nodeKeyStr
- * @param {BatchBuilder | undefined} [externalBatch]
  * @returns {Promise<RecomputeResult>}
  */
 async function internalPullByNodeKeyStringWithStatus(
     incrementalGraph,
-    nodeKeyStr,
-    externalBatch = undefined
+    nodeKeyStr
 ) {
     /**
      * @param {BatchBuilder} batch
@@ -132,14 +119,9 @@ async function internalPullByNodeKeyStringWithStatus(
 
         return await incrementalGraph.maybeRecalculate(
             nodeDefinition,
-            batch,
-            externalBatch
+            batch
         );
     };
-
-    if (externalBatch !== undefined) {
-        return run(externalBatch);
-    }
     return incrementalGraph.storage.withBatch(run);
 }
 
