@@ -1,4 +1,3 @@
-const fs = require("fs").promises;
 const path = require("path");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
@@ -132,8 +131,10 @@ describe("event_log_storage", () => {
 
         await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
             const workTree = await store.getWorkTree();
-            await fs.writeFile(
-                path.join(workTree, "config.json"),
+            const configPath = path.join(workTree, "config.json");
+            const configFile = await capabilities.creator.createFile(configPath);
+            await capabilities.writer.writeFile(
+                configFile,
                 JSON.stringify({ invalid: "format" })
             );
             await store.commit("Write invalid config");

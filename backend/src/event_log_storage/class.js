@@ -47,7 +47,9 @@ class EventLogStorageClass {
     absorbedDeletionIds;
 
     /**
-     * Path to the data.json file, set during transaction
+     * Path to the data.json file, set during transaction.
+     * Undefined means no transaction has initialized this storage yet;
+     * null means the transaction is active but data.json does not exist.
      * @type {ExistingFile|null|undefined}
      */
     dataFile = undefined;

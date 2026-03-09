@@ -1,4 +1,3 @@
-const fs = require("fs").promises;
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
@@ -144,7 +143,7 @@ describe("event_log_storage", () => {
 
         await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
             const workTree = await store.getWorkTree();
-            await fs.unlink(path.join(workTree, "data.json"));
+            await capabilities.deleter.deleteFile(path.join(workTree, "data.json"));
             await store.commit("Remove data.json");
         });
 
