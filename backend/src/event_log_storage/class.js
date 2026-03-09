@@ -61,9 +61,9 @@ class EventLogStorageClass {
     /**
      * Cache for existing entries loaded from data.json
      * @private
-     * @type {Array<import('../event/structure').Event>|null}
+     * @type {Array<import('../event/structure').Event>}
      */
-    existingEntriesCache = null;
+    existingEntriesCache = [];
 
     /**
      * Tracks whether existing entries have already been loaded during the
