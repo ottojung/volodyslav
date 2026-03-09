@@ -112,21 +112,19 @@ class IncrementalGraphClass {
     /**
      * @param {string} nodeName
      * @param {Array<ConstValue>} bindings
-     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<void>}
      */
-    async unsafeInvalidate(nodeName, bindings, externalBatch = undefined) {
-        await internalUnsafeInvalidate(this, nodeName, bindings, externalBatch);
+    async unsafeInvalidate(nodeName, bindings) {
+        await internalUnsafeInvalidate(this, nodeName, bindings);
     }
 
     /**
      * @param {string} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
-     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<void>}
      */
-    async invalidate(nodeName, bindings = [], externalBatch = undefined) {
-        await internalInvalidate(this, nodeName, bindings, externalBatch);
+    async invalidate(nodeName, bindings = []) {
+        await internalInvalidate(this, nodeName, bindings);
     }
 
     /**
@@ -147,59 +145,45 @@ class IncrementalGraphClass {
     /**
      * @param {ConcreteNode} nodeDefinition
      * @param {BatchBuilder} batch
-     * @param {BatchBuilder | undefined} externalBatch
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, batch, externalBatch) {
-        return await internalMaybeRecalculate(
-            this,
-            nodeDefinition,
-            batch,
-            externalBatch
-        );
+    async maybeRecalculate(nodeDefinition, batch) {
+        return await internalMaybeRecalculate(this, nodeDefinition, batch);
     }
 
     /**
      * @param {string} nodeName
      * @param {Array<ConstValue>} bindings
-     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<ComputedValue>}
      */
-    async unsafePull(nodeName, bindings, externalBatch = undefined) {
-        return await internalUnsafePull(this, nodeName, bindings, externalBatch);
+    async unsafePull(nodeName, bindings) {
+        return await internalUnsafePull(this, nodeName, bindings);
     }
 
     /**
      * @param {string} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
-     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<ComputedValue>}
      */
-    async pull(nodeName, bindings = [], externalBatch = undefined) {
-        return await internalPull(this, nodeName, bindings, externalBatch);
+    async pull(nodeName, bindings = []) {
+        return await internalPull(this, nodeName, bindings);
     }
 
     /**
      * @param {import('./types').NodeName} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
-     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName, bindings = [], externalBatch = undefined) {
-        return await internalPullWithStatus(this, nodeName, bindings, externalBatch);
+    async pullWithStatus(nodeName, bindings = []) {
+        return await internalPullWithStatus(this, nodeName, bindings);
     }
 
     /**
      * @param {NodeKeyString} nodeKeyStr
-     * @param {BatchBuilder | undefined} [externalBatch]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullByNodeKeyStringWithStatus(nodeKeyStr, externalBatch = undefined) {
-        return await internalPullByNodeKeyStringWithStatus(
-            this,
-            nodeKeyStr,
-            externalBatch
-        );
+    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
+        return await internalPullByNodeKeyStringWithStatus(this, nodeKeyStr);
     }
 
     /**

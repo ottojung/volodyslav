@@ -72,14 +72,12 @@ async function internalPropagateOutdated(
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
- * @param {BatchBuilder | undefined} [externalBatch]
  * @returns {Promise<void>}
  */
 async function internalUnsafeInvalidate(
     incrementalGraph,
     nodeName,
-    bindings,
-    externalBatch = undefined
+    bindings
 ) {
     ensureNodeNameIsHead(nodeName);
     const nodeNameTyped = stringToNodeName(nodeName);
@@ -124,9 +122,6 @@ async function internalUnsafeInvalidate(
         );
     };
 
-    if (externalBatch !== undefined) {
-        return run(externalBatch);
-    }
     await incrementalGraph.storage.withBatch(run);
 }
 
@@ -134,22 +129,15 @@ async function internalUnsafeInvalidate(
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
- * @param {BatchBuilder | undefined} [externalBatch]
  * @returns {Promise<void>}
  */
 async function internalInvalidate(
     incrementalGraph,
     nodeName,
-    bindings = [],
-    externalBatch = undefined
+    bindings = []
 ) {
     return withMutex(incrementalGraph.sleeper, () =>
-        internalUnsafeInvalidate(
-            incrementalGraph,
-            nodeName,
-            bindings,
-            externalBatch
-        )
+        internalUnsafeInvalidate(incrementalGraph, nodeName, bindings)
     );
 }
 

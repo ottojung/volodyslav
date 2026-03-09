@@ -9,7 +9,7 @@
  * @typedef {object} IncrementalGraphRecomputeAccess
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
- * @property {(nodeKeyStr: import('./types').NodeKeyString, externalBatch?: BatchBuilder | undefined) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatus
+ * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatus
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -21,14 +21,12 @@ const { nodeKeyStringToString } = require("./database");
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ConcreteNode} nodeDefinition
  * @param {BatchBuilder} batch
- * @param {BatchBuilder | undefined} externalBatch
  * @returns {Promise<RecomputeResult>}
  */
 async function internalMaybeRecalculate(
     incrementalGraph,
     nodeDefinition,
-    batch,
-    externalBatch
+    batch
 ) {
     const nodeKey = nodeDefinition.output;
     const oldValue = await batch.values.get(nodeKey);
@@ -38,10 +36,7 @@ async function internalMaybeRecalculate(
 
     for (const inputKey of nodeDefinition.inputs) {
         const { value: inputValue } =
-            await incrementalGraph.pullByNodeKeyStringWithStatus(
-                inputKey,
-                externalBatch
-            );
+            await incrementalGraph.pullByNodeKeyStringWithStatus(inputKey);
         inputValues.push(inputValue);
 
         const inputCounter = await batch.counters.get(inputKey);
