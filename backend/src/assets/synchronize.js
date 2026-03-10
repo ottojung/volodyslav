@@ -45,10 +45,17 @@ function withTrailingSlash(p) {
  * @returns {Promise<void>}
  */
 async function synchronize(capabilities) {
-    const local = withTrailingSlash(capabilities.environment.eventLogAssetsDirectory());
-    const remote = withTrailingSlash(capabilities.environment.eventLogAssetsRepository());
+    const local = withTrailingSlash(
+        capabilities.environment.eventLogAssetsDirectory(),
+    );
+    const remote = withTrailingSlash(
+        capabilities.environment.eventLogAssetsRepository(),
+    );
 
-    capabilities.logger.logInfo({ local, remote }, "Synchronizing assets directory");
+    capabilities.logger.logInfo(
+        { local, remote },
+        "Synchronizing assets directory",
+    );
 
     /**
      * @param {string} from
@@ -56,7 +63,16 @@ async function synchronize(capabilities) {
      * @returns {Promise<{ stdout: string, stderr: string }>}
      */
     async function rsync(from, to) {
-        return await capabilities.rsync.call("--recursive", "--times", "--partial-dir=.rsync-partial", "--info=stats2", "--human-readable", "--", from, to);
+        return await capabilities.rsync.call(
+            "--recursive",
+            "--times",
+            "--partial-dir=.rsync-partial",
+            "--info=stats2",
+            "--human-readable",
+            "--",
+            from,
+            to,
+        );
     }
 
     async function pull() {
@@ -66,7 +82,7 @@ async function synchronize(capabilities) {
         } catch (error) {
             throw new AssetsSynchronizationError(
                 `Failed to pull assets from remote: ${error}`,
-                error
+                error,
             );
         }
     }
@@ -77,7 +93,7 @@ async function synchronize(capabilities) {
         } catch (error) {
             throw new AssetsSynchronizationError(
                 `Failed to push assets to remote: ${error}`,
-                error
+                error,
             );
         }
     }
@@ -87,7 +103,7 @@ async function synchronize(capabilities) {
 
     capabilities.logger.logInfo(
         { pullResult, pushResult },
-        "Assets directory synchronized successfully"
+        "Assets directory synchronized successfully",
     );
 }
 
