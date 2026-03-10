@@ -2,8 +2,6 @@
  * SleepCapability capability for pausing execution.
  */
 
-const memconst = require('./memconst');
-
 /** @typedef {import('./datetime').Duration} Duration */
 /** @typedef {import('./unique_functor').UniqueTerm} UniqueTerm */
 
@@ -22,7 +20,7 @@ const memconst = require('./memconst');
 
 function make() {
 
-    /** @type {Map<string, () => Promise<unknown>>} */
+    /** @type {Map<string, Promise<void>>} */
     const mutexes = new Map();
 
     /**
@@ -36,21 +34,24 @@ function make() {
         for (;;) {
             const existing = mutexes.get(stringKey);
             if (existing === undefined) {
-                break;    
-            } else {
-                await existing();
+                break;
             }
+            await existing;
         }
 
-        const wrapped = memconst(async () => {
-            mutexes.set(stringKey, wrapped);
-            try {
-                return await procedure();
-            } finally {
-                mutexes.delete(stringKey);
-            }
+        /** @type {(value: void) => void} */
+        let release = () => undefined;
+        const lock = new Promise((resolve) => {
+            release = resolve;
         });
-        return await wrapped();
+        mutexes.set(stringKey, lock);
+
+        try {
+            return await procedure();
+        } finally {
+            mutexes.delete(stringKey);
+            release();
+        }
     }
 
     /**
