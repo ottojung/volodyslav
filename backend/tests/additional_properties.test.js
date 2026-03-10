@@ -358,5 +358,75 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(res.statusCode).toBe(400);
             expect(res.body).toEqual({ error: "Invalid additional property" });
         });
+
+        it("includes transcription error in response when transcription AI fails", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-error", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            // Override the stub to simulate AI failure after graph invalidation
+            capabilities.aiTranscription.transcribeStream.mockRejectedValue(
+                new Error("AI transcription service unavailable"),
+            );
+
+            const res = await request(app)
+                .get("/api/entries/diary-error/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toMatchObject({
+                errors: {
+                    transcription: expect.any(String),
+                },
+            });
+            expect(res.body.transcription).toBeUndefined();
+        });
+
+        it("includes calories error in response when calories AI fails", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeEventsToStore(capabilities, [makeEvent("entry-calories-error", "food: a pizza")]);
+            await capabilities.interface.update();
+
+            // Override the stub to simulate AI failure after graph invalidation
+            capabilities.aiCalories.estimateCalories.mockRejectedValue(
+                new Error("AI calories service unavailable"),
+            );
+
+            const res = await request(app)
+                .get("/api/entries/entry-calories-error/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toMatchObject({
+                errors: {
+                    calories: expect.any(String),
+                },
+            });
+            expect(res.body.calories).toBeUndefined();
+        });
+
+        it("includes errors for all failed properties and values for successful ones", async () => {
+            const { app, capabilities } = await makeInitializedApp(420);
+
+            await writeDiaryEventWithAudioAssets(capabilities, "diary-mixed", ["memo.mp3"]);
+            await capabilities.interface.update();
+
+            // Calories should succeed (returns 420), transcription should fail
+            capabilities.aiTranscription.transcribeStream.mockRejectedValue(
+                new Error("AI transcription service unavailable"),
+            );
+
+            const res = await request(app)
+                .get("/api/entries/diary-mixed/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toMatchObject({
+                calories: 420,
+                errors: {
+                    transcription: expect.any(String),
+                },
+            });
+            expect(res.body.transcription).toBeUndefined();
+        });
     });
 });

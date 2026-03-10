@@ -37,6 +37,7 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  * @typedef {object} AdditionalProperties
  * @property {number} [calories] - Estimated calorie count; omitted when 0 or unknown.
  * @property {string} [transcription] - Transcription text; omitted when unavailable.
+ * @property {Object<string, string>} [errors] - Per-property error messages; omitted when no errors.
  */
 
 /**
@@ -78,11 +79,20 @@ function entryAssetsDir(assetsDir, entry) {
 }
 
 /**
+ * Result of attempting to get a transcription for an entry.
+ * @typedef {{ text: string } | { error: string }} TranscriptionResult
+ * - `{ text: string }` when at least one audio asset was successfully transcribed.
+ * - `{ error: string }` when audio assets exist but all transcription attempts failed.
+ * Returns `null` when the entry has no audio assets (normal empty case).
+ */
+
+/**
  * Tries to find a transcription for one of the audio assets associated with the entry.
- * Returns the text of the first successful transcription, or null if none found.
+ * Returns the text of the first successful transcription, an error object when all
+ * audio assets fail to transcribe, or null when there are no relevant audio assets.
  * @param {string} entryId
  * @param {Capabilities} capabilities
- * @returns {Promise<string|null>}
+ * @returns {Promise<TranscriptionResult | null>}
  */
 async function tryGetTranscriptionText(entryId, capabilities) {
     const entry = await getEntryById(capabilities, entryId);
@@ -107,6 +117,9 @@ async function tryGetTranscriptionText(entryId, capabilities) {
         throw error;
     }
 
+    /** @type {string | null} */
+    let transcriptionError = null;
+
     for (const file of files) {
         const proof = await capabilities.checker.fileExists(file.path);
         if (proof === null) continue;
@@ -122,20 +135,28 @@ async function tryGetTranscriptionText(entryId, capabilities) {
                 relativeAssetPath,
             );
             if ('message' in transcriptionEntry.transcription) {
+                const errorMessage = transcriptionEntry.transcription.message;
                 capabilities.logger.logDebug(
-                    { entry_id: entryId, asset_path: relativeAssetPath, error: transcriptionEntry.transcription.message },
+                    { entry_id: entryId, asset_path: relativeAssetPath, error: errorMessage },
                     "No transcription available for audio asset, skipping",
                 );
+                transcriptionError = errorMessage;
                 continue;
             }
-            return transcriptionEntry.transcription.text;
+            return { text: transcriptionEntry.transcription.text };
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             // This audio file has no transcription; try the next one.
             capabilities.logger.logDebug(
-                { entry_id: entryId, asset_path: relativeAssetPath, error: error instanceof Error ? error.message : String(error) },
+                { entry_id: entryId, asset_path: relativeAssetPath, error: errorMessage },
                 "No transcription available for audio asset, skipping",
             );
+            transcriptionError = errorMessage;
         }
+    }
+
+    if (transcriptionError !== null) {
+        return { error: transcriptionError };
     }
 
     return null;
@@ -172,11 +193,14 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
         return;
     }
 
-    try {
-        /** @type {AdditionalProperties} */
-        const properties = {};
+    /** @type {Omit<AdditionalProperties, 'errors'>} */
+    const properties = {};
 
-        if (property === undefined || property === "calories") {
+    /** @type {Object<string, string>} */
+    const errors = {};
+
+    if (property === undefined || property === "calories") {
+        try {
             const caloriesEntry = await capabilities.interface.getCaloriesForEventId(id);
 
             capabilities.logger.logDebug(
@@ -195,39 +219,54 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
             ) {
                 properties.calories = caloriesEntry.value;
             }
-        }
-
-        if (property === undefined || property === "transcription") {
-            const transcriptionText = await tryGetTranscriptionText(id, capabilities);
-            if (transcriptionText !== null) {
-                properties.transcription = transcriptionText;
+        } catch (error) {
+            if (!isEventNotFoundError(error)) {
+                const message = error instanceof Error ? error.message : String(error);
+                errors["calories"] = message;
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        entry_id: id,
+                        error: message,
+                    },
+                    `Failed to compute calories for entry ${id}: ${message}`,
+                );
             }
         }
-
-        res.json(properties);
-    } catch (error) {
-        // An unknown entry ID simply has no additional properties.
-        if (isEventNotFoundError(error)) {
-            res.json({});
-            return;
-        }
-
-        const message = error instanceof Error ? error.message : String(error);
-
-        capabilities.logger.logError(
-            {
-                request_identifier: reqId.identifier,
-                error: message,
-                error_name: error instanceof Error ? error.name : "Unknown",
-                stack: error instanceof Error ? error.stack : undefined,
-                entry_id: id,
-                client_ip: req.ip,
-            },
-            `Failed to compute additional properties for entry ${id}: ${message}`,
-        );
-
-        res.status(500).json({ error: "Internal server error" });
     }
+
+    if (property === undefined || property === "transcription") {
+        try {
+            const transcriptionResult = await tryGetTranscriptionText(id, capabilities);
+            if (transcriptionResult !== null) {
+                if ('text' in transcriptionResult) {
+                    properties.transcription = transcriptionResult.text;
+                } else {
+                    errors["transcription"] = transcriptionResult.error;
+                }
+            }
+        } catch (error) {
+            if (!isEventNotFoundError(error)) {
+                const message = error instanceof Error ? error.message : String(error);
+                errors["transcription"] = message;
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        entry_id: id,
+                        error: message,
+                    },
+                    `Failed to compute transcription for entry ${id}: ${message}`,
+                );
+            }
+        }
+    }
+
+    /** @type {AdditionalProperties} */
+    const response = Object.keys(errors).length > 0
+        ? { ...properties, errors }
+        : properties;
+
+    res.json(response);
 }
 
 module.exports = { handleAdditionalProperties };

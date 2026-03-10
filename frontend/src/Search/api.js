@@ -61,6 +61,7 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
  * @typedef {object} AdditionalProperties
  * @property {number} [calories] - Estimated calorie count; absent when 0 or unknown.
  * @property {string} [transcription] - Transcription text; absent when unavailable.
+ * @property {Object<string, string>} [errors] - Per-property error messages; absent when no errors.
  */
 
 /**
