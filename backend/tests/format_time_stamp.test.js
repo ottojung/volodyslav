@@ -24,6 +24,13 @@ describe('formatFileTimestamp', () => {
     );
   });
 
+
+  it('throws an error when extension is missing after dot', async () => {
+    await expect(async () =>
+      formatFileTimestamp('20250228T120000Z.')
+    ).rejects.toThrow('does not start with YYYYMMDDThhmmssZ');
+  });
+
   it('throws an error for invalid calendar date', async () => {
     const dt = require('../src/datetime').make();
     await expect(async () =>
