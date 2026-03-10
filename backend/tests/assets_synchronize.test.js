@@ -37,7 +37,8 @@ describe("assets/synchronize", () => {
         const firstCall = capabilities.rsync.call.mock.calls[0];
         expect(firstCall).toEqual([
             "--recursive",
-            "--partial",
+            "--times",
+            "--partial-dir=.rsync-partial",
             "--info=stats2",
             "--human-readable",
             "--",
@@ -54,7 +55,8 @@ describe("assets/synchronize", () => {
         const secondCall = capabilities.rsync.call.mock.calls[1];
         expect(secondCall).toEqual([
             "--recursive",
-            "--partial",
+            "--times",
+            "--partial-dir=.rsync-partial",
             "--info=stats2",
             "--human-readable",
             "--",
@@ -67,7 +69,7 @@ describe("assets/synchronize", () => {
         const order = [];
         const capabilities = makeCapabilities({
             rsyncCall: (...args) => {
-                order.push(args[5]); // source is 6th arg (index 5)
+                order.push(args[6]); // source is the 7th arg (index 6)
                 return Promise.resolve();
             },
         });
@@ -84,8 +86,8 @@ describe("assets/synchronize", () => {
         await synchronize(capabilities);
 
         for (const callArgs of capabilities.rsync.call.mock.calls) {
-            const source = callArgs[5];
-            const destination = callArgs[6];
+            const source = callArgs[6];
+            const destination = callArgs[7];
             expect(source).toMatch(/\/$/);
             expect(destination).toMatch(/\/$/);
         }
