@@ -1,5 +1,7 @@
 const { defaultGenerator } = require("../src/random");
 
+const { make } = require("../src/random/interface");
+
 const capabilities = {
     seed: {
         generate: () => 42,
@@ -30,5 +32,15 @@ describe("RandomNumberGeneratorClass", () => {
         expect(() => rng.nextInt(1.2, 5)).toThrow(TypeError);
         expect(() => rng.nextInt(5, 4)).toThrow(RangeError);
         expect(() => rng.nextInt(10, 5)).toThrow(RangeError);
+    });
+
+    test("nextInt handles boundary value when nextFloat returns 1", () => {
+        const rng = make({ nextFloat: () => 1 });
+        expect(rng.nextInt(5, 10)).toBe(10);
+    });
+
+    test("nextInt throws when nextFloat returns invalid value", () => {
+        const rng = make({ nextFloat: () => Number.NaN });
+        expect(() => rng.nextInt(1, 3)).toThrow(RangeError);
     });
 });

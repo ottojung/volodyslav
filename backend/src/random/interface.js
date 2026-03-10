@@ -24,8 +24,17 @@ function fromFloatGenerator(nextFloat) {
             throw new RangeError("max must be greater or equal than min");
         }
 
+        const randomFloat = nextFloat();
+        if (!Number.isFinite(randomFloat) || randomFloat < 0 || randomFloat > 1) {
+            throw new RangeError("nextFloat must return a finite number in [0, 1]");
+        }
+
+        const boundedFloat = randomFloat === 1
+            ? 1 - Number.EPSILON
+            : randomFloat;
+
         const range = max + 1 - min;
-        return min + Math.floor(nextFloat() * range);
+        return min + Math.floor(boundedFloat * range);
     }
 
     return nextInt;
