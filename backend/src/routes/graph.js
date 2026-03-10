@@ -22,6 +22,7 @@ const {
  * @property {(head: string, args?: Array<ConstValue>) => Promise<void>} invalidateGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getModificationTime
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<string>} getCreator
  */
 
 /**

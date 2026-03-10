@@ -7,6 +7,7 @@ export VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY="dist/test/recordings"
 export VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY="dist/test/event-log-assets"
 export VOLODYSLAV_EVENT_LOG_ASSETS_REPOSITORY="dist/test/mock-event-log-assets-repository"
 export VOLODYSLAV_SERVER_PORT=3000
+export VOLODYSLAV_HOSTNAME="${VOLODYSLAV_HOSTNAME:-$(hostname)}"
 
 if test -z "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
 then

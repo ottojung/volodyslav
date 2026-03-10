@@ -471,6 +471,9 @@ interface IncrementalGraph {
   getCreationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
+  // Creator API
+  getCreator(nodeName: NodeName, bindings?: BindingEnvironment): Promise<string>;
+
   // Debug interface (REQUIRED)
   debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   debugListMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
@@ -489,7 +492,7 @@ interface IncrementalGraph {
 * `debugListMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
 * `debugGetDbVersion()` — Returns the version string used for storage namespacing.
 
-**REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps for each node instance when its value is first set or changed.
+**REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps and creator metadata for each node instance when its value is first set or changed.
 
 **REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value (i.e. when its value counter was initialized to 1). MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
@@ -501,6 +504,10 @@ interface IncrementalGraph {
 * `getModificationTime(N, B)` MUST only update when the computor returns a new value (not when it returns `Unchanged`).
 
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
+
+**REQ-IFACE-10 (Creator API):** `getCreator(nodeName, bindings?)` MUST return the hostname string (the value of `VOLODYSLAV_HOSTNAME` at the time of first computation) for the node instance. MUST throw `MissingTimestampError` if the node instance has never been computed or if no creator record exists for it.
+
+**REQ-IFACE-11 (Creator Invariant):** `getCreator(N, B)` MUST NOT change once set. Subsequent recomputations on different hosts MUST NOT overwrite the originally recorded hostname.
 
 ### 3.3 Database Interfaces
 
@@ -577,7 +584,7 @@ type Computor = (
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
-| `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
+| `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime`/`getCreator` called for a node with no recorded timestamps (public API) |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
