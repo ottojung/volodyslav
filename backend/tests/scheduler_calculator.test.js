@@ -1,6 +1,7 @@
 
 const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
 const { parseCronExpression } = require("../src/scheduler/expression");
+const { isCronCalculationError } = require("../src/scheduler/calculator/errors");
 const { fromISOString } = require("../src/datetime");
 
 function next(cronExprStr, fromISOStringStr) {
@@ -172,6 +173,23 @@ describe("getMostRecentExecution", () => {
 
     test("previous minute explicit values alignment: prev('0,15,30,45 * * * *') from :01 → :00", () => {
         expect(prev("0,15,30,45 * * * *", "2025-01-14T10:01:00.000Z")).toBe("2025-01-14T10:00:00.000Z");
+    });
+
+    test("throws CronCalculationError when cron expression has no valid minutes", () => {
+        const expr = parseCronExpression("* * * * *");
+        expr.validMinutes.length = 0;
+
+        expect(() => getMostRecentExecution(expr, fromISOString("2025-01-01T00:00:00.000Z"))).toThrow(
+            /Cron expression has no valid hour\/minute values/
+        );
+
+        let thrown;
+        try {
+            getMostRecentExecution(expr, fromISOString("2025-01-01T00:00:00.000Z"));
+        } catch (error) {
+            thrown = error;
+        }
+        expect(isCronCalculationError(thrown)).toBe(true);
     });
 });
 

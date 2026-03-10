@@ -16,6 +16,13 @@ const { CronCalculationError } = require("./errors");
  * @returns {import('../../datetime').DateTime} Previous execution datetime, or null if none found
  */
 function getMostRecentExecution(cronExpr, origin) {
+    if (cronExpr.validHours.length === 0 || cronExpr.validMinutes.length === 0) {
+        throw new CronCalculationError("Cron expression has no valid hour/minute values", {
+            cronExpression: cronExpr,
+            origin,
+        });
+    }
+
     for (const { year, month, day } of iterateValidDaysBackwards(cronExpr, origin)) {
         const getTime = () => {
             const validHours = cronExpr.validHours;
@@ -48,6 +55,14 @@ function getMostRecentExecution(cronExpr, origin) {
             } else {
                 const hour = validHours[validHours.length - 1];
                 const minute = validMinutes[validMinutes.length - 1];
+
+                if (hour === undefined || minute === undefined) {
+                    throw new CronCalculationError("Cron expression has no valid hour/minute values", {
+                        cronExpression: cronExpr,
+                        origin,
+                    });
+                }
+
                 return { hour, minute };
             }
         };
