@@ -50,10 +50,19 @@ async function synchronize(capabilities) {
 
     capabilities.logger.logInfo({ local, remote }, "Synchronizing assets directory");
 
+    /**
+     * @param {string} from
+     * @param {string} to
+     * @returns {Promise<{ stdout: string, stderr: string }>}
+     */
+    async function rsync(from, to) {
+        return await capabilities.rsync.call("--recursive", "--partial", "--info=stats2", "--human-readable", "--", from, to);
+    }
+
     async function pull() {
         try {
             // pull: remote → local
-            return await capabilities.rsync.call("--recursive", "--partial", "--info=stats2", "--human-readable", "--", remote, local);
+            return await rsync(remote, local);
         } catch (error) {
             throw new AssetsSynchronizationError(
                 `Failed to pull assets from remote: ${error}`,
@@ -64,7 +73,7 @@ async function synchronize(capabilities) {
 
     async function push() {
         try {
-            return await capabilities.rsync.call("--recursive", "--partial", "--info=stats2", "--human-readable", "--", local, remote);
+            return await rsync(local, remote);
         } catch (error) {
             throw new AssetsSynchronizationError(
                 `Failed to push assets to remote: ${error}`,
