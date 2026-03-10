@@ -310,59 +310,7 @@ triggering recomputation of one concrete node key.
 
 ---
 
-## 5. New Graph Method Required
-
-The implementation requires adding one new method to `IncrementalGraphClass`:
-
-```javascript
-/**
- * Returns the cached value of a node without triggering recomputation.
- * Returns undefined if the node has not been materialized.
- * @param {NodeName} nodeName
- * @param {Array<ConstValue>} bindings
- * @returns {Promise<ComputedValue | undefined>}
- */
-async debugGetValue(nodeName, bindings = []) { … }
-```
-
-This reads directly from `this.storage.values.get(concreteKeyString)` inside the
-existing graph class, analogous to `debugGetFreshness`.  It does **not** acquire
-the graph mutex.
-
----
-
-## 6. Integration Points
-
-### Route file
-
-New file: `backend/src/routes/graph.js`
-
-The route reads `capabilities.interface.incrementalGraph` directly (the graph is
-already initialized by the time any request is served).  It does not need to call
-`ensureInitialized()`.
-
-The route must return `503 Service Unavailable` if called before initialization:
-
-```json
-{ "error": "Graph not yet initialized" }
-```
-
-### Server registration
-
-In `server.js`, mount the graph router alongside the existing API routes:
-
-```javascript
-app.use(`${BASE_PATH_PREFIX}/api/graph`, makeGraphRouter(capabilities));
-```
-
-### Capabilities type
-
-The route requires only `capabilities.interface` — the existing `Interface`
-object already exposed on root capabilities.
-
----
-
-## 7. Error Response Shape
+## 5. Error Response Shape
 
 All error responses use the same envelope:
 
@@ -383,7 +331,7 @@ HTTP status codes used:
 
 ---
 
-## 8. Invariants and Constraints
+## 6. Invariants and Constraints
 
 - `GET` endpoints are read-only. `POST` endpoints may materialize or refresh one
   concrete node key. `DELETE` endpoints invalidate one concrete node key, marking
