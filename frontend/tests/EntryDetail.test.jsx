@@ -462,6 +462,102 @@ describe("EntryDetail page", () => {
         });
     });
 
+    it("shows a transcription error when the API returns an errors object", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "transcription") {
+                return Promise.resolve({ errors: { transcription: "AI transcription service unavailable" } });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(/transcription error/i)).toBeInTheDocument();
+            expect(screen.getByText("AI transcription service unavailable")).toBeInTheDocument();
+        });
+    });
+
+    it("shows a calories error when the API returns an errors object", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "calories") {
+                return Promise.resolve({ errors: { calories: "AI calories service unavailable" } });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(/calories error/i)).toBeInTheDocument();
+            expect(screen.getByText("AI calories service unavailable")).toBeInTheDocument();
+        });
+    });
+
+    it("shows both errors and successful property values when mixed", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "calories") {
+                return Promise.resolve({ calories: 420 });
+            }
+            if (propertyName === "transcription") {
+                return Promise.resolve({ errors: { transcription: "Transcription failed" } });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("calories")).toBeInTheDocument();
+            expect(screen.getByText("420")).toBeInTheDocument();
+            expect(screen.getByText(/transcription error/i)).toBeInTheDocument();
+            expect(screen.getByText("Transcription failed")).toBeInTheDocument();
+        });
+    });
+
+    it("does not show 'None' when there are only errors", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "transcription") {
+                return Promise.resolve({ errors: { transcription: "Transcription failed" } });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(/transcription error/i)).toBeInTheDocument();
+        });
+
+        const noneTexts = screen.queryAllByText("None");
+        // 'None' should not appear in the Additional Properties section
+        // (it may still appear in the Media section if assets haven't loaded yet,
+        //  but that's handled by fetchEntryAssets which is a never-resolving mock here)
+        // Since fetchEntryAssets never resolves, Media will be in loading state (spinner, no 'None').
+        expect(noneTexts.length).toBe(0);
+    });
+
+    it("merges errors from multiple property requests correctly", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "calories") {
+                return Promise.resolve({ errors: { calories: "Calories error" } });
+            }
+            if (propertyName === "transcription") {
+                return Promise.resolve({ errors: { transcription: "Transcription error" } });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getAllByText(/calories error/i).length).toBeGreaterThanOrEqual(1);
+            expect(screen.getByText("Calories error")).toBeInTheDocument();
+            expect(screen.getAllByText(/transcription error/i).length).toBeGreaterThanOrEqual(1);
+            expect(screen.getByText("Transcription error")).toBeInTheDocument();
+        });
+    });
+
     it("collapses long additional property values by default and expands them on demand", async () => {
         fetchAdditionalProperties.mockImplementation((id, propertyName) => {
             if (id !== "entry-123") {

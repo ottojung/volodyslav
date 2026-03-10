@@ -132,6 +132,27 @@ function hasAdditionalPropertyValue(value) {
     return value !== undefined && value !== null;
 }
 
+/**
+ * Merges two AdditionalProperties objects, deeply merging the `errors` sub-object.
+ * @param {import('../Search/api.js').AdditionalProperties} current
+ * @param {import('../Search/api.js').AdditionalProperties} incoming
+ * @returns {import('../Search/api.js').AdditionalProperties}
+ */
+function mergeAdditionalProperties(current, incoming) {
+    const mergedErrors = {
+        ...(current.errors ?? {}),
+        ...(incoming.errors ?? {}),
+    };
+    /** @type {import('../Search/api.js').AdditionalProperties} */
+    const merged = { ...current, ...incoming };
+    if (Object.keys(mergedErrors).length > 0) {
+        merged.errors = mergedErrors;
+    } else {
+        delete merged.errors;
+    }
+    return merged;
+}
+
 /** @type {AdditionalPropertyName[]} */
 const ADDITIONAL_PROPERTY_NAMES = ["calories", "transcription"];
 
@@ -196,10 +217,7 @@ export default function EntryDetail() {
                 if (!isActive) return;
                 setAdditionalProperties(
                     /** @param {import('../Search/api.js').AdditionalProperties} currentProperties */
-                    (currentProperties) => ({
-                    ...currentProperties,
-                    ...props,
-                    }),
+                    (currentProperties) => mergeAdditionalProperties(currentProperties, props),
                 );
                 setLoadingAdditionalProperties(
                     /** @param {AdditionalPropertyName[]} currentProperties */
@@ -266,7 +284,9 @@ export default function EntryDetail() {
 
     const fields = entryToFields(entry);
 
-    const additionalFields = Object.entries(additionalProperties).filter(([, value]) => hasAdditionalPropertyValue(value));
+    const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && hasAdditionalPropertyValue(value));
+
+    const additionalPropertyErrors = additionalProperties.errors ?? {};
 
     const imageAssets = filterAssetsByType(entryAssets, "image");
     const audioAssets = filterAssetsByType(entryAssets, "audio");
@@ -323,9 +343,21 @@ export default function EntryDetail() {
                                     </VStack>
                                 </HStack>
                             </Box>
-                        ) : additionalFields.length === 0 ? (
+                        ) : additionalFields.length === 0 && Object.keys(additionalPropertyErrors).length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : null}
+                        {Object.keys(additionalPropertyErrors).length > 0 && loadingAdditionalProperties.length === 0 && (
+                            <VStack spacing={SPACING.sm} align="stretch" mt={additionalFields.length > 0 ? SPACING.sm : 0}>
+                                {Object.entries(additionalPropertyErrors).map(([key, message]) => (
+                                    <Box key={key} px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
+                                        <Text fontSize="xs" fontWeight="semibold" color="red.600" textTransform="uppercase" mb={1}>
+                                            {key} error
+                                        </Text>
+                                        <Text fontSize="sm" color="red.700">{message}</Text>
+                                    </Box>
+                                ))}
+                            </VStack>
+                        )}
                     </CardBody>
                 </Card>
 
