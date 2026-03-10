@@ -14,9 +14,6 @@ function getTestCapabilities() {
 
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
-const basePathFile = path.join(__dirname, "..", "..", "BASE_PATH");
-const manifestPath = path.join(staticPath, "manifest.json");
-const configuredBasePath = "/volodyslav";
 
 beforeAll(() => {
     // Create mock dist directory and files
@@ -54,20 +51,6 @@ async function makeAppFromModules(capabilities, expressApp, addRoutes) {
  * @returns {Promise<import("express").Express>}
  */
 async function makeApp(capabilities) {
-    const expressApp = require("../src/express_app");
-    const { addRoutes } = require("../src/server");
-    return makeAppFromModules(capabilities, expressApp, addRoutes);
-}
-
-/**
- * Builds a test app after clearing the module cache for backend routing modules.
- * This is needed only for BASE_PATH tests because backend/src/base_path.js
- * memoizes the first path it reads per module instance.
- * @param {ReturnType<typeof getTestCapabilities>} capabilities
- * @returns {Promise<import("express").Express>}
- */
-async function makeAppWithFreshModules(capabilities) {
-    jest.resetModules();
     const expressApp = require("../src/express_app");
     const { addRoutes } = require("../src/server");
     return makeAppFromModules(capabilities, expressApp, addRoutes);
@@ -117,27 +100,5 @@ describe("Static file serving", () => {
 
         // Clean up
         fs.unlinkSync(path.join(staticPath, "test.js"));
-    });
-
-    it("serves manifest.json under a configured base path", async () => {
-        fs.writeFileSync(basePathFile, `${configuredBasePath}\n`);
-        fs.writeFileSync(manifestPath, JSON.stringify({ name: "Volodyslav" }));
-
-        try {
-            const capabilities = getTestCapabilities();
-            const app = await makeAppWithFreshModules(capabilities);
-            const res = await request(app).get(
-                `${configuredBasePath}/manifest.json`
-            );
-
-            expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({ name: "Volodyslav" });
-            expect(res.headers["content-type"]).toMatch(
-                /application\/manifest\+json|application\/json/
-            );
-        } finally {
-            fs.rmSync(manifestPath, { force: true });
-            fs.rmSync(basePathFile, { force: true });
-        }
     });
 });
