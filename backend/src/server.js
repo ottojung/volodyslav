@@ -63,7 +63,7 @@ async function addRoutes(capabilities, app) {
  * @description Ensures that the necessary startup dependencies are available.
  */
 async function ensureStartupDependencies(capabilities, app) {
-    addRoutes(capabilities, app);
+    await addRoutes(capabilities, app);
     await capabilities.environment.ensureEnvironmentIsInitialized(
         capabilities.environment
     );
