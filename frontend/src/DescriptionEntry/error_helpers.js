@@ -105,31 +105,36 @@ export const ErrorMessages = {
  * @returns {string} - User-friendly error message
  */
 export function getUserFriendlyErrorMessage(error) {
+    const normalizedMessage = error instanceof Error ? error.message.toLowerCase() : "";
+
     if (isPhotoRetrievalError(error)) {
-        if (error.message.includes('JSON')) {
+        if (normalizedMessage.includes('json')) {
             return ErrorMessages.photoRetrieval.corrupted;
         }
-        if (error.message.includes('fetch') || error.message.includes('File')) {
+        if (normalizedMessage.includes('fetch') || normalizedMessage.includes('file')) {
             return ErrorMessages.photoRetrieval.conversionFailed;
         }
-        if (error.message.includes('storage')) {
+        if (normalizedMessage.includes('storage')) {
             return ErrorMessages.photoRetrieval.sessionStorage;
         }
         return ErrorMessages.photoRetrieval.notFound;
     }
 
     if (isPhotoStorageError(error)) {
-        if (error.message.includes('quota') || error.message.includes('QuotaExceededError')) {
+        if (normalizedMessage.includes('quota') || normalizedMessage.includes('quotaexceedederror')) {
             return ErrorMessages.photoStorage.quotaExceeded;
+        }
+        if (normalizedMessage.includes('denied') || normalizedMessage.includes('permission')) {
+            return ErrorMessages.photoStorage.accessDenied;
         }
         return ErrorMessages.photoStorage.genericFailure;
     }
 
     if (isCameraAccessError(error)) {
-        if (error.message.includes('Permission') || error.message.includes('permission')) {
+        if (normalizedMessage.includes('permission')) {
             return ErrorMessages.cameraAccess.permissionDenied;
         }
-        if (error.message.includes('device') || error.message.includes('Device')) {
+        if (normalizedMessage.includes('device')) {
             return ErrorMessages.cameraAccess.deviceNotFound;
         }
         return ErrorMessages.cameraAccess.genericFailure;
@@ -142,7 +147,7 @@ export function getUserFriendlyErrorMessage(error) {
         if (error.statusCode && error.statusCode >= 500) {
             return ErrorMessages.submission.serverError;
         }
-        if (error.message.includes('network') || error.message.includes('fetch')) {
+        if (normalizedMessage.includes('network') || normalizedMessage.includes('fetch')) {
             return ErrorMessages.submission.networkError;
         }
         return ErrorMessages.submission.genericFailure;
@@ -212,4 +217,3 @@ export function makePhotoStorageError(message, cause = null) {
 export function makePhotoConversionError(message, conversionType, cause = null) {
     return new PhotoConversionError(message, conversionType, cause);
 }
-
