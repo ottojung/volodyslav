@@ -206,4 +206,42 @@ describe("event_log_storage", () => {
             "Failed to read data.json"
         );
     });
+
+    test("transaction propagates filesystem I/O errors from checker.instantiate instead of silently returning empty list", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // First transaction: create initial entry so data.json exists
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(
+                {
+                    id: { identifier: "entry-for-io-failure-test" },
+                    date: fromISOString("2025-05-27"),
+                    original: "test entry",
+                    input: "test entry input",
+                    type: "io_failure_test",
+                    description: "Entry to create data.json for I/O failure test",
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+                },
+                []
+            );
+        });
+
+        // Mock checker.instantiate to simulate an I/O failure for data.json
+        const originalInstantiate =
+            capabilities.checker.instantiate.getMockImplementation();
+        capabilities.checker.instantiate.mockImplementation(async (filePath) => {
+            if (filePath.endsWith("data.json")) {
+                throw new Error("simulated I/O failure checking data.json");
+            }
+            return originalInstantiate(filePath);
+        });
+
+        // The error should propagate, not be silently swallowed as an empty list
+        await expect(
+            transaction(capabilities, async (storage) => {
+                await storage.getExistingEntries();
+            })
+        ).rejects.toThrow("simulated I/O failure checking data.json");
+    });
 });

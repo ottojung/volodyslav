@@ -17,6 +17,7 @@ const { targetPath } = asset;
 const config = require("../config");
 const configStorage = config.storage;
 const { make: makeEventLogStorage } = require("./class");
+const { isFileNotFoundError } = require("../filesystem/checker");
 
 /** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
 /** @typedef {import("./types").AppendCapabilities} AppendCapabilities */
@@ -125,10 +126,20 @@ async function performGitTransaction(
         const configPath = path.join(workTree, "config.json");
         const dataFile = await capabilities.checker
             .instantiate(dataPath)
-            .catch(() => null);
+            .catch((error) => {
+                if (isFileNotFoundError(error)) {
+                    return null;
+                }
+                throw error;
+            });
         const configFile = await capabilities.checker
             .instantiate(configPath)
-            .catch(() => null);
+            .catch((error) => {
+                if (isFileNotFoundError(error)) {
+                    return null;
+                }
+                throw error;
+            });
 
         // Set file paths for possible lazy loading
         eventLogStorage.dataFile = dataFile;
