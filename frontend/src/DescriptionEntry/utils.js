@@ -11,9 +11,18 @@ import { DateTime } from 'luxon';
  */
 export const formatRelativeDate = (dateString) => {
     const date = DateTime.fromISO(dateString);
+    if (!date.isValid) {
+        return "just now";
+    }
+
     const now = DateTime.now();
     const diff = now.diff(date);
     const diffMs = diff.as('milliseconds');
+
+    if (diffMs <= 0) {
+        return "just now";
+    }
+
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
