@@ -230,7 +230,7 @@ function App() {
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
           </Button>
-          {(syncState === 'loading' || syncState === 'success' || syncState === 'error') && syncSteps.length > 0 && (
+          {(syncState === 'loading' || syncState === 'success' || syncState === 'error') && (
             <SyncStepList steps={syncSteps} isRunning={syncState === 'loading'} />
           )}
           {syncSuccessMessage && (
