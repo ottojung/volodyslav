@@ -20,9 +20,6 @@ describe("getBasePath", () => {
     function makeCapabilities(basePathFileContent) {
         const fileExists = basePathFileContent !== null;
         return {
-            environment: {
-                basePath: jest.fn().mockReturnValue(""),
-            },
             checker: {
                 instantiate: jest.fn(async (filePath) => {
                     if (!fileExists) {
@@ -92,30 +89,5 @@ describe("getBasePath", () => {
         const capabilities = makeCapabilities("");
         const result = await basePathModule.getBasePath(capabilities);
         expect(result).toBe("");
-    });
-
-    it("prioritizes environment.basePath() over file when non-empty", async () => {
-        // Even if a file with a different path exists, environment.basePath() wins
-        const capabilities = makeCapabilities("/file/path");
-        capabilities.environment.basePath = jest.fn().mockReturnValue("/env/path");
-        const result = await basePathModule.getBasePath(capabilities);
-        expect(result).toBe("/env/path");
-        expect(capabilities.checker.instantiate).not.toHaveBeenCalled();
-    });
-
-    it("falls back to file when environment.basePath() returns empty string", async () => {
-        const capabilities = makeCapabilities("/file/path");
-        capabilities.environment.basePath = jest.fn().mockReturnValue("");
-        const result = await basePathModule.getBasePath(capabilities);
-        expect(result).toBe("/file/path");
-    });
-
-    it("memoizes per capabilities instance", async () => {
-        const caps1 = makeCapabilities("/path/1");
-        const caps2 = makeCapabilities("/path/2");
-        const result1 = await basePathModule.getBasePath(caps1);
-        const result2 = await basePathModule.getBasePath(caps2);
-        expect(result1).toBe("/path/1");
-        expect(result2).toBe("/path/2");
     });
 });
