@@ -56,7 +56,7 @@ async function synchronize(capabilities) {
      * @returns {Promise<{ stdout: string, stderr: string }>}
      */
     async function rsync(from, to) {
-        return await capabilities.rsync.call("--recursive", "--times", "--partial", "--info=stats2", "--human-readable", "--", from, to);
+        return await capabilities.rsync.call("--recursive", "--times", "--partial-dir=.rsync-partial", "--info=stats2", "--human-readable", "--", from, to);
     }
 
     async function pull() {
