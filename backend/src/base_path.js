@@ -4,10 +4,11 @@ const path = require("path");
  * @typedef {object} Capabilities
  * @property {import("./filesystem/reader").FileReader} reader - A file reader instance.
  * @property {import("./filesystem/checker").FileChecker} checker - A file checker instance.
+ * @property {import("./environment").Environment} environment - An environment instance.
  */
 
-/** @type {string | undefined} */
-let cachedBasePath;
+/** @type {WeakMap<object, string>} */
+const cache = new WeakMap();
 
 /**
  * Extracts the path prefix from a raw VOLODYSLAV_BASEURL value.
@@ -48,16 +49,28 @@ async function readBasePathFromFile(capabilities) {
 }
 
 /**
- * Gets the base path prefix. Reads from the BASE_PATH file if present,
- * otherwise returns an empty string (root path). Memoized after the first call.
+ * Gets the base path prefix. Checks the injectable `capabilities.environment.basePath()`
+ * first; if it returns a non-empty value, that value is used. Otherwise falls back to
+ * reading from the BASE_PATH file. The result is memoized per capabilities object so
+ * it is computed at most once per capabilities instance.
  * @param {Capabilities} capabilities
  * @returns {Promise<string>}
  */
 async function getBasePath(capabilities) {
-    if (cachedBasePath === undefined) {
-        cachedBasePath = await readBasePathFromFile(capabilities);
+    if (cache.has(capabilities)) {
+        return /** @type {string} */ (cache.get(capabilities));
     }
-    return cachedBasePath;
+
+    const envBasePath = capabilities.environment.basePath();
+    if (envBasePath) {
+        const result = extractBasePath(envBasePath);
+        cache.set(capabilities, result);
+        return result;
+    }
+
+    const result = await readBasePathFromFile(capabilities);
+    cache.set(capabilities, result);
+    return result;
 }
 
 module.exports = { getBasePath };

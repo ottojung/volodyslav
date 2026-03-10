@@ -91,6 +91,10 @@ function eventLogAssetsRepository() {
     return getEnv("VOLODYSLAV_EVENT_LOG_ASSETS_REPOSITORY");
 }
 
+function basePath() {
+    return process.env["VOLODYSLAV_BASEURL"] || "";
+}
+
 /**
  * Ensures that the environment is initialized by checking all required variables.
  * @param {Environment} environment - The environment object to check.
@@ -127,6 +131,7 @@ function make() {
         eventLogRepository,
         generatorsRepository,
         eventLogAssetsRepository,
+        basePath,
     };
 }
 
