@@ -17,7 +17,7 @@ const { targetPath } = asset;
 const config = require("../config");
 const configStorage = config.storage;
 const { make: makeEventLogStorage } = require("./class");
-const { isFileNotFoundError } = require("../filesystem/checker");
+const { isFileNotFoundError } = require("../filesystem").checker;
 
 /** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
 /** @typedef {import("./types").AppendCapabilities} AppendCapabilities */
