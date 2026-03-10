@@ -77,7 +77,6 @@ async function synchronize(capabilities) {
 
     async function pull() {
         try {
-            // pull: remote → local
             return await rsync(remote, local);
         } catch (error) {
             throw new AssetsSynchronizationError(
