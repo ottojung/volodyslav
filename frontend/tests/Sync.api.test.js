@@ -48,7 +48,7 @@ describe("postSync", () => {
             result = await postSync(true);
         });
 
-        expect(result).toEqual({ success: true });
+        expect(result).toEqual({ success: true, steps: undefined });
         expect(global.fetch).toHaveBeenNthCalledWith(
             1,
             "/api/sync",
@@ -95,5 +95,76 @@ describe("postSync", () => {
             error: "Sync failed: Event log sync failed: git push failed",
             details,
         });
+    });
+
+    it("returns steps from the final success response", async () => {
+        const steps = [
+            { name: "event_log", status: "success" },
+            { name: "generators", status: "success" },
+            { name: "assets", status: "success" },
+        ];
+        global.fetch
+            .mockResolvedValueOnce(makeResponse(202, { status: "running", steps: [] }))
+            .mockResolvedValueOnce(makeResponse(200, { status: "success", steps }));
+
+        let result;
+        await act(async () => {
+            result = await postSync();
+        });
+
+        expect(result).toEqual({ success: true, steps });
+    });
+
+    it("returns steps from the final error response", async () => {
+        const steps = [
+            { name: "event_log", status: "success" },
+            { name: "generators", status: "error" },
+        ];
+        const details = [
+            {
+                name: "GeneratorsSyncError",
+                message: "Generators database sync failed",
+                causes: ["db error"],
+            },
+        ];
+        global.fetch
+            .mockResolvedValueOnce(makeResponse(202, { status: "running", steps: [] }))
+            .mockResolvedValueOnce(makeResponse(500, {
+                status: "error",
+                steps,
+                error: {
+                    message: "Sync failed: Generators database sync failed",
+                    details,
+                },
+            }));
+
+        let result;
+        await act(async () => {
+            result = await postSync();
+        });
+
+        expect(result).toEqual({
+            success: false,
+            error: "Sync failed: Generators database sync failed",
+            details,
+            steps,
+        });
+    });
+
+    it("calls onProgress with intermediate steps while the sync is running", async () => {
+        const intermediateSteps = [{ name: "event_log", status: "success" }];
+        global.fetch
+            .mockResolvedValueOnce(makeResponse(202, { status: "running", steps: intermediateSteps }))
+            .mockResolvedValueOnce(makeResponse(202, { status: "running", steps: intermediateSteps }))
+            .mockResolvedValueOnce(makeResponse(200, { status: "success", steps: [...intermediateSteps, { name: "generators", status: "success" }] }));
+
+        const onProgress = jest.fn();
+
+        await act(async () => {
+            await postSync(undefined, onProgress);
+        });
+
+        expect(onProgress).toHaveBeenCalledWith(intermediateSteps);
+        expect(onProgress).toHaveBeenCalledTimes(2);
     });
 });

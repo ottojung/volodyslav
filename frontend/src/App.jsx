@@ -18,15 +18,12 @@ import {
 } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { postSync } from './Sync/api.js';
+import { SyncStepList } from './Sync/SyncStepList.jsx';
 import { fetchVersion } from './version_api.js';
 
-/**
- * @typedef {{ name: string, message: string, causes: string[] }} SyncErrorDetail
- */
-
-/**
- * @typedef {{ message: string, details: SyncErrorDetail[] }} SyncErrorState
- */
+/** @typedef {{ name: string, message: string, causes: string[] }} SyncErrorDetail */
+/** @typedef {{ message: string, details: SyncErrorDetail[] }} SyncErrorState */
+/** @typedef {import('./Sync/SyncStepList.jsx').SyncStepResult} SyncStepResult */
 
 /**
  * @returns {SyncErrorState}
@@ -47,6 +44,13 @@ function makeSyncSuccessMessage(resetToTheirs) {
   return 'Your local and remote data are now in sync.';
 }
 
+/**
+ * @returns {SyncStepResult[]}
+ */
+function makeEmptySyncSteps() {
+  return [];
+}
+
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
@@ -54,6 +58,7 @@ function App() {
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState(makeEmptySyncError());
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
+  const [syncSteps, setSyncSteps] = useState(makeEmptySyncSteps());
   const [version, setVersion] = useState('');
   const [versionState, setVersionState] = useState('loading');
 
@@ -135,20 +140,34 @@ function App() {
     setIsInstallable(false);
   };
 
+  /** @param {{ target: { value: string } }} e */
+  const handleSyncModeChange = (e) => {
+    setSyncResetToTheirs(e.target.value === 'reset-to-theirs');
+    setSyncState('idle');
+    setSyncError(makeEmptySyncError());
+    setSyncSuccessMessage('');
+    setSyncSteps([]);
+  };
+
   const handleSyncClick = async () => {
     setSyncState('loading');
     setSyncError(makeEmptySyncError());
     setSyncSuccessMessage('');
+    setSyncSteps([]);
 
-    const result = await postSync(syncResetToTheirs || undefined);
+    const result = await postSync(syncResetToTheirs || undefined, (steps) => {
+      setSyncSteps(steps);
+    });
 
     if (result.success) {
       setSyncState('success');
       setSyncSuccessMessage(makeSyncSuccessMessage(syncResetToTheirs));
+      setSyncSteps(result.steps || []);
       setTimeout(() => setSyncState('idle'), 2000);
     } else {
       setSyncState('error');
       setSyncSuccessMessage('');
+      setSyncSteps(result.steps || []);
       setSyncError({
         message: result.error || 'Sync failed',
         details: result.details || [],
@@ -195,7 +214,7 @@ function App() {
           <Select
             size="sm"
             value={syncResetToTheirs ? 'reset-to-theirs' : ''}
-            onChange={(e) => { setSyncResetToTheirs(e.target.value === 'reset-to-theirs'); setSyncState('idle'); setSyncError(makeEmptySyncError()); setSyncSuccessMessage(''); }}
+            onChange={handleSyncModeChange}
             w="200px"
           >
             <option value="">Normal sync</option>
@@ -211,6 +230,9 @@ function App() {
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
           </Button>
+          {(syncState === 'loading' || syncState === 'success' || syncState === 'error') && syncSteps.length > 0 && (
+            <SyncStepList steps={syncSteps} isRunning={syncState === 'loading'} />
+          )}
           {syncSuccessMessage && (
             <Alert status="success" borderRadius="md" alignItems="flex-start">
               <AlertIcon mt={1} />

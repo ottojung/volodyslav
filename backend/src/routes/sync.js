@@ -12,19 +12,23 @@ const { synchronizeAll, isSynchronizeAllError } = require("../sync");
  */
 
 /**
+ * @typedef {{ name: string, status: "success" | "error" }} SyncStepResult
+ */
+
+/**
  * @typedef {{ status: "idle" }} IdleSyncState
  */
 
 /**
- * @typedef {{ status: "running", started_at: string, reset_to_theirs: boolean }} RunningSyncState
+ * @typedef {{ status: "running", started_at: string, reset_to_theirs: boolean, steps: SyncStepResult[] }} RunningSyncState
  */
 
 /**
- * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_theirs: boolean }} SuccessfulSyncState
+ * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_theirs: boolean, steps: SyncStepResult[] }} SuccessfulSyncState
  */
 
 /**
- * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_theirs: boolean, error: SyncErrorResponse }} FailedSyncState
+ * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_theirs: boolean, error: SyncErrorResponse, steps: SyncStepResult[] }} FailedSyncState
  */
 
 /**
@@ -107,7 +111,7 @@ function makeSyncController(capabilities) {
         const reset_to_theirs = options.resetToTheirs === true;
 
         /** @type {RunningSyncState} */
-        const runningState = { status: "running", started_at, reset_to_theirs };
+        const runningState = { status: "running", started_at, reset_to_theirs, steps: [] };
         currentState = runningState;
 
         capabilities.logger.logInfo(
@@ -115,7 +119,14 @@ function makeSyncController(capabilities) {
             "Sync started in background"
         );
 
-        void synchronizeAll(capabilities, options)
+        /** @param {SyncStepResult} step */
+        const onStepComplete = (step) => {
+            if (currentState === runningState) {
+                runningState.steps.push(step);
+            }
+        };
+
+        void synchronizeAll(capabilities, options, onStepComplete)
             .then(() => {
                 if (currentState !== runningState) {
                     return;
@@ -127,6 +138,7 @@ function makeSyncController(capabilities) {
                     started_at,
                     finished_at,
                     reset_to_theirs,
+                    steps: runningState.steps,
                 };
                 capabilities.logger.logInfo(
                     { started_at, finished_at, reset_to_theirs },
@@ -146,6 +158,7 @@ function makeSyncController(capabilities) {
                     finished_at,
                     reset_to_theirs,
                     error: syncError,
+                    steps: runningState.steps,
                 };
                 capabilities.logger.logError(
                     { error: syncError.message, details: syncError.details },

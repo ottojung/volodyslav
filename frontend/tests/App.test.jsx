@@ -144,4 +144,106 @@ describe("App", () => {
             expect(screen.queryByText("Sync complete")).not.toBeInTheDocument();
         });
     });
+
+    it("shows individual step results after a successful sync", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({
+            success: true,
+            steps: [
+                { name: "event_log", status: "success" },
+                { name: "generators", status: "success" },
+                { name: "assets", status: "success" },
+            ],
+        });
+
+        renderApp();
+
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync complete")).toBeInTheDocument();
+        });
+
+        expect(screen.getByText("Event Log")).toBeInTheDocument();
+        expect(screen.getByText("Generators")).toBeInTheDocument();
+        expect(screen.getByText("Assets")).toBeInTheDocument();
+        expect(screen.getAllByText("done")).toHaveLength(3);
+    });
+
+    it("shows individual step results when some steps fail", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({
+            success: false,
+            error: "Sync failed: Generators database sync failed",
+            details: [
+                {
+                    name: "GeneratorsSyncError",
+                    message: "Generators database sync failed",
+                    causes: ["db error"],
+                },
+            ],
+            steps: [
+                { name: "event_log", status: "success" },
+                { name: "generators", status: "error" },
+            ],
+        });
+
+        renderApp();
+
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync failed")).toBeInTheDocument();
+        });
+
+        expect(screen.getByText("Event Log")).toBeInTheDocument();
+        expect(screen.getByText("Generators")).toBeInTheDocument();
+        expect(screen.getByText("done")).toBeInTheDocument();
+        expect(screen.getByText("failed")).toBeInTheDocument();
+    });
+
+    it("shows step progress via the onProgress callback during sync", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+
+        postSync.mockImplementation((_resetToTheirs, onProgress) => {
+            onProgress?.([{ name: "event_log", status: "success" }]);
+            return Promise.resolve({ success: true, steps: [{ name: "event_log", status: "success" }] });
+        });
+
+        renderApp();
+
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Event Log")).toBeInTheDocument();
+        });
+    });
+
+    it("clears step list when sync mode changes", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({
+            success: true,
+            steps: [
+                { name: "event_log", status: "success" },
+                { name: "generators", status: "success" },
+                { name: "assets", status: "success" },
+            ],
+        });
+
+        renderApp();
+
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Event Log")).toBeInTheDocument();
+        });
+
+        fireEvent.change(screen.getByRole("combobox"), {
+            target: { value: "reset-to-theirs" },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Event Log")).not.toBeInTheDocument();
+        });
+    });
 });

@@ -8,11 +8,15 @@ const SYNC_STATUS_POLL_INTERVAL_MS = 1000;
  */
 
 /**
- * @typedef {{ status: "idle" | "running" | "success" | "error", error?: { message: string, details: SyncErrorDetail[] } }} SyncResponse
+ * @typedef {{ name: string, status: "success" | "error" }} SyncStepResult
  */
 
 /**
- * @typedef {{ success: boolean, error?: string, details?: SyncErrorDetail[] }} PostSyncResult
+ * @typedef {{ status: "idle" | "running" | "success" | "error", steps?: SyncStepResult[], error?: { message: string, details: SyncErrorDetail[] } }} SyncResponse
+ */
+
+/**
+ * @typedef {{ success: boolean, error?: string, details?: SyncErrorDetail[], steps?: SyncStepResult[] }} PostSyncResult
  */
 
 /**
@@ -57,7 +61,7 @@ async function readSyncErrorResponse(response) {
  */
 function toSyncResult(data) {
     if (data?.status === "success") {
-        return { success: true };
+        return { success: true, steps: data.steps };
     }
 
     if (data?.status === "error") {
@@ -65,6 +69,7 @@ function toSyncResult(data) {
             success: false,
             error: data.error?.message || "Sync failed",
             details: data.error?.details || [],
+            steps: data.steps,
         };
     }
 
@@ -84,9 +89,10 @@ function toSyncResult(data) {
 /**
  * Calls POST /api/sync to synchronize event log and generators database.
  * @param {boolean} [resetToTheirs] - When true, resets local state to the remote (theirs) version.
+ * @param {(steps: SyncStepResult[]) => void} [onProgress] - Called with current step results whenever the running state is polled.
  * @returns {Promise<PostSyncResult>}
  */
-export async function postSync(resetToTheirs) {
+export async function postSync(resetToTheirs, onProgress) {
     try {
         /** @type {{ reset_to_theirs?: boolean }} */
         const body = {};
@@ -100,21 +106,29 @@ export async function postSync(resetToTheirs) {
             body: JSON.stringify(body),
         });
 
-        if (!response.ok && response.status !== 202) {
+        if (response.status !== 200 && response.status !== 202 && response.status !== 500) {
             return await readSyncErrorResponse(response);
         }
 
         let data = await readSyncResponse(response);
 
+        if (data?.status === "running" && data.steps) {
+            onProgress?.(data.steps);
+        }
+
         while (data?.status === "running") {
             await waitForNextSyncPoll();
             const statusResponse = await fetch(`${API_BASE_URL}/sync`);
 
-            if (!statusResponse.ok && statusResponse.status !== 202) {
+            if (statusResponse.status !== 200 && statusResponse.status !== 202 && statusResponse.status !== 500) {
                 return await readSyncErrorResponse(statusResponse);
             }
 
             data = await readSyncResponse(statusResponse);
+
+            if (data?.status === "running" && data.steps) {
+                onProgress?.(data.steps);
+            }
         }
 
         return toSyncResult(data);
