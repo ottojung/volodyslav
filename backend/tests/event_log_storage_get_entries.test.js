@@ -36,7 +36,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "first" },
             type: "existing_event",
             description: "First existing event",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -52,7 +52,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "new" },
             type: "new_event",
             description: "New event added after checking existing",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -91,7 +91,7 @@ describe("event_log_storage", () => {
             input: "cache test input",
             type: "cache_test",
             description: "Testing getExistingEntries caching",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -131,6 +131,7 @@ describe("event_log_storage", () => {
                         name: "test",
                         uuid: "test-uuid",
                         version: "1.0.0",
+                        hostname: "test-host",
                     },
                 },
                 []

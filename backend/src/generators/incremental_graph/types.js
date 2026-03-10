@@ -18,6 +18,7 @@
  * @typedef {object} IncrementalGraphCapabilities
  * @property {import('../../sleeper').SleepCapability} sleeper - A sleeper instance for mutex operations
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities for timestamp recording
+ * @property {import('../../environment').Environment} environment - Environment for hostname access
  */
 
 /**

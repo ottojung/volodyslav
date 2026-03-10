@@ -9,7 +9,7 @@ describe('event.tryDeserialize', () => {
       input: 'i',
       type: 't',
       description: 'd',
-      creator: { name: 'n', uuid: 'u', version: 'v' },
+      creator: { name: 'n', uuid: 'u', version: 'v', hostname: 'test-host' },
       modifiers: 0
     };
     const result = event.tryDeserialize(obj);

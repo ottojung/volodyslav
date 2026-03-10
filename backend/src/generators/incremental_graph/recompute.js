@@ -158,10 +158,12 @@ async function internalMaybeRecalculate(
     batch.counters.put(nodeKey, newCounter);
 
     const nowIso = incrementalGraph.datetime.now().toISOString();
+    const hostnameStr = incrementalGraph.environment.hostname();
     if (oldCounter === undefined) {
         batch.timestamps.put(nodeKey, {
             createdAt: nowIso,
             modifiedAt: nowIso,
+            createdBy: hostnameStr,
         });
     } else {
         const existingTimestamp = await batch.timestamps.get(nodeKey);
@@ -169,7 +171,11 @@ async function internalMaybeRecalculate(
             existingTimestamp !== undefined
                 ? existingTimestamp.createdAt
                 : nowIso;
-        batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso });
+        const createdBy =
+            existingTimestamp !== undefined
+                ? existingTimestamp.createdBy
+                : hostnameStr;
+        batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso, createdBy });
     }
 
     batch.values.put(nodeKey, computedValue);

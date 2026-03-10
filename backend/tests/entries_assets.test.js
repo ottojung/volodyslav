@@ -32,7 +32,7 @@ function makeEvent(id, dateStr = "2024-01-15T10:00:00.000Z") {
         original: "text - test description",
         input: "text - test description",
         modifiers: {},
-        creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
+        creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0", hostname: "test-host" },
     };
 }
 

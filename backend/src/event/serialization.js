@@ -179,10 +179,14 @@ function tryDeserialize(obj) {
         if (!("version" in creator)) {
             return makeNestedFieldError("creator", "version", creator, "missing required field");
         }
+        if (!("hostname" in creator)) {
+            return makeNestedFieldError("creator", "hostname", creator, "missing required field");
+        }
 
         const creatorName = creator.name;
         const creatorUuid = creator.uuid;
         const creatorVersion = creator.version;
+        const creatorHostname = creator.hostname;
         if (typeof creatorName !== "string") {
             return makeNestedFieldError("creator", "name", creatorName, "expected string");
         }
@@ -191,6 +195,9 @@ function tryDeserialize(obj) {
         }
         if (typeof creatorVersion !== "string") {
             return makeNestedFieldError("creator", "version", creatorVersion, "expected string");
+        }
+        if (typeof creatorHostname !== "string") {
+            return makeNestedFieldError("creator", "hostname", creatorHostname, "expected string");
         }
 
         const sourceEntries = Object.entries(modifiers);
@@ -221,6 +228,7 @@ function tryDeserialize(obj) {
                 name: creatorName,
                 uuid: creatorUuid,
                 version: creatorVersion,
+                hostname: creatorHostname,
             },
             modifiers: validatedModifiers,
         };

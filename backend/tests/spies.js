@@ -19,8 +19,12 @@ function mockCapabilities(real) {
     return real;
 }
 
-const getMockedRootCapabilities = () =>
-    mockCapabilities(rootCapabilities.make());
+const getMockedRootCapabilities = () => {
+    const caps = mockCapabilities(rootCapabilities.make());
+    // Override hostname to avoid requiring VOLODYSLAV_HOSTNAME env var in tests
+    caps.environment.hostname = jest.fn().mockReturnValue('test-host');
+    return caps;
+};
 
 module.exports = {
     getMockedRootCapabilities,

@@ -11,7 +11,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(1);
@@ -27,7 +27,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(3);
@@ -45,7 +45,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(0);
@@ -60,7 +60,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(1);
@@ -76,7 +76,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(3);
@@ -94,7 +94,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(1);
@@ -110,7 +110,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(1);
@@ -126,7 +126,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(3);
@@ -144,7 +144,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         // All three should be recognized as "tag" and deduplicated
@@ -163,7 +163,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(3);
@@ -181,7 +181,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(0);
@@ -196,7 +196,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(0);
@@ -211,7 +211,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(1);
@@ -227,7 +227,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(3);
@@ -245,7 +245,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(2);
@@ -262,7 +262,7 @@ describe("extractHashtags", () => {
             modifiers: {},
             type: "note",
             description: "test",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
         };
         const hashtags = extractHashtags(entry);
         expect(hashtags.size).toBe(3);

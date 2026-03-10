@@ -176,6 +176,7 @@ function versionToString(Version) {
  * @typedef {object} TimestampRecord
  * @property {string} createdAt - ISO string of when the node was first given a value
  * @property {string} modifiedAt - ISO string of when the node's value last changed
+ * @property {string} createdBy - The hostname of the machine that first computed this node
  */
 
 /**

@@ -35,7 +35,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "first" },
             type: "existing_event",
             description: "First existing event",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -51,7 +51,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "new" },
             type: "new_event",
             description: "New event added after checking existing",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -90,7 +90,7 @@ describe("event_log_storage", () => {
             input: "cache test input",
             type: "cache_test",
             description: "Testing getExistingEntries caching",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -130,6 +130,7 @@ describe("event_log_storage", () => {
                         name: "test",
                         uuid: "test-uuid",
                         version: "1.0.0",
+                        hostname: "test-host",
                     },
                 },
                 []
@@ -177,7 +178,7 @@ describe("event_log_storage", () => {
                     input: "existing read failure",
                     type: "read_failure",
                     description: "Existing event for read failure test",
-                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
                 },
                 []
             );
@@ -221,7 +222,7 @@ describe("event_log_storage", () => {
                     input: "test entry input",
                     type: "io_failure_test",
                     description: "Entry to create data.json for I/O failure test",
-                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
                 },
                 []
             );
