@@ -46,7 +46,7 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
 
         if (response.ok) {
             const data = await response.json();
-            return { results: parseEntries(data.results), hasMore: data.next !== null };
+            return { results: parseEntries(data.results), hasMore: data.next != null };
         }
 
         logger.warn("Failed to search entries:", response.status);
