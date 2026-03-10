@@ -28,6 +28,6 @@ describe('formatFileTimestamp', () => {
     const dt = require('../src/datetime').make();
     await expect(async () =>
       formatFileTimestamp('20250230T000000Z.txt', dt)
-    ).rejects.toThrow('Failed to parse valid Date from timestamp string: 20250230T000000Z');
+    ).rejects.toThrow('Filename "20250230T000000Z.txt" contains an invalid timestamp: 20250230T000000Z');
   });
 });

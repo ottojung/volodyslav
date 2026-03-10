@@ -46,10 +46,9 @@ function formatFileTimestamp(filename) {
     const dateObject = formatTimeStamp(basic);
 
     if (dateObject === undefined) {
-        // This should ideally not be hit if 'basic' is from the regex match above
-        // and format_time_stamp's regex is correct.
-        throw new Error(
-            `Failed to parse valid Date from timestamp string: ${basic}`
+        throw new FilenameDoesNotEncodeDate(
+            `Filename ${JSON.stringify(filename)} contains an invalid timestamp: ${basic}`,
+            filename,
         );
     }
 
