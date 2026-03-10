@@ -51,6 +51,29 @@ function isFileCheckerError(object) {
 }
 
 /**
+ * Error thrown by `instantiate` specifically when the file does not exist
+ * (as opposed to a real I/O failure such as a permission error).
+ */
+class FileNotFoundError extends FileCheckerError {
+    /**
+     * @param {string} filePath
+     */
+    constructor(filePath) {
+        super(`File does not exist: ${filePath}`, filePath);
+        this.name = "FileNotFoundError";
+    }
+}
+
+/**
+ * Checks if the error is a FileNotFoundError.
+ * @param {unknown} object - The error to check.
+ * @returns {object is FileNotFoundError}
+ */
+function isFileNotFoundError(object) {
+    return object instanceof FileNotFoundError;
+}
+
+/**
  * @typedef {object} FileChecker
  * @property {typeof fileExists} fileExists
  * @property {typeof directoryExists} directoryExists
@@ -151,7 +174,7 @@ async function directoryExists(dirPath) {
 async function instantiate(path) {
     const proof = await fileExists(path);
     if (!proof) {
-        throw new FileCheckerError(`File does not exist: ${path}`, path);
+        throw new FileNotFoundError(path);
     }
     return fromExisting(path, proof);
 }
@@ -240,5 +263,6 @@ function make(getCapabilities) {
 
 module.exports = {
     isFileCheckerError,
+    isFileNotFoundError,
     make,
 };
