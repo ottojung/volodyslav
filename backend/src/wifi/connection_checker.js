@@ -106,11 +106,17 @@ function parseWifiConnectionInfo(jsonOutput) {
     try {
         const data = JSON.parse(jsonOutput);
 
-        // Check if we have the expected structure and bssid is not null
-        if (data && typeof data === 'object' && 'bssid' in data && data.bssid !== null) {
-            const ssid = data.ssid || null;
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+            return makeDisconnectedStatus();
+        }
+
+        const hasValidBssid = "bssid" in data && typeof data.bssid === "string" && data.bssid.length > 0;
+
+        // Check if we have the expected structure and bssid is a non-empty string
+        if (hasValidBssid) {
+            const ssid = typeof data.ssid === "string" ? data.ssid : null;
             const bssid = data.bssid;
-            const rssi = typeof data.rssi === 'number' ? data.rssi : null;
+            const rssi = typeof data.rssi === "number" ? data.rssi : null;
 
             return makeConnectedStatus(ssid, bssid, rssi);
         }
