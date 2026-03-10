@@ -5,6 +5,7 @@
 import {
     makePhotoRetrievalError,
     makeEntrySubmissionError,
+    makePhotoStorageError,
     getUserFriendlyErrorMessage,
     isPhotoRetrievalError,
     isEntrySubmissionError
@@ -50,6 +51,18 @@ describe('Error Handling System', () => {
             const error = makeEntrySubmissionError('fetch failed');
             const message = getUserFriendlyErrorMessage(error);
             expect(message).toContain('Network');
+        });
+
+        it('handles uppercase fetch/file hints for photo retrieval errors', () => {
+            const error = makePhotoRetrievalError('File conversion failed after FETCH');
+            const message = getUserFriendlyErrorMessage(error);
+            expect(message).toContain('Failed to process');
+        });
+
+        it('returns access denied message for photo storage permission errors', () => {
+            const error = makePhotoStorageError('Permission denied while writing image');
+            const message = getUserFriendlyErrorMessage(error);
+            expect(message).toContain('browser settings');
         });
 
         it('generates appropriate message for validation errors', () => {
