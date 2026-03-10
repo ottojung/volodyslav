@@ -92,6 +92,10 @@ function isSynchronizeAllError(object) {
 // ---------------------------------------------------------------------------
 
 /**
+ * @typedef {{ name: string, status: "success" | "error" }} SyncStepResult
+ */
+
+/**
  * Synchronizes all destinations (event log, assets, generators database) and
  * then invalidates the incremental graph interface.
  *
@@ -103,23 +107,33 @@ function isSynchronizeAllError(object) {
  *
  * @param {Capabilities} capabilities
  * @param {{ resetToTheirs?: boolean }} [options]
+ * @param {(step: SyncStepResult) => void} [onStepComplete]
  * @returns {Promise<void>}
  * @throws {SynchronizeAllError}
  */
-async function synchronizeAll(capabilities, options) {
+async function synchronizeAll(capabilities, options, onStepComplete) {
     /** @type {SyncDestinationError[]} */
     const errors = [];
 
-    await eventLogStorage.synchronize(capabilities, options).catch((cause) => {
+    await eventLogStorage.synchronize(capabilities, options).then(() => {
+        onStepComplete?.({ name: "event_log", status: "success" });
+    }).catch((cause) => {
         errors.push(new EventLogSyncError(cause));
+        onStepComplete?.({ name: "event_log", status: "error" });
     });
 
-    await capabilities.interface.synchronizeDatabase(options).catch((cause) => {
+    await capabilities.interface.synchronizeDatabase(options).then(() => {
+        onStepComplete?.({ name: "generators", status: "success" });
+    }).catch((cause) => {
         errors.push(new GeneratorsSyncError(cause));
+        onStepComplete?.({ name: "generators", status: "error" });
     });
 
-    await assets.synchronize(capabilities).catch((cause) => {
+    await assets.synchronize(capabilities).then(() => {
+        onStepComplete?.({ name: "assets", status: "success" });
+    }).catch((cause) => {
         errors.push(new AssetsSyncError(cause));
+        onStepComplete?.({ name: "assets", status: "error" });
     });
 
     if (errors.length > 0) {

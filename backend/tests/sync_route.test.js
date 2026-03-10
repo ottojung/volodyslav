@@ -104,4 +104,88 @@ describe("sync route", () => {
             },
         });
     });
+
+    it("includes an empty steps array in the initial running state", async () => {
+        const deferred = makeDeferred();
+        synchronizeAll.mockReturnValue(deferred.promise);
+        const app = await makeApp();
+
+        const startResponse = await request(app).post("/api/sync").send({});
+
+        expect(startResponse.statusCode).toBe(202);
+        expect(startResponse.body.steps).toEqual([]);
+
+        deferred.resolve();
+    });
+
+    it("reports completed steps via the onStepComplete callback during sync", async () => {
+        const deferred = makeDeferred();
+
+        synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
+            onStepComplete?.({ name: "event_log", status: "success" });
+            onStepComplete?.({ name: "generators", status: "success" });
+            return deferred.promise;
+        });
+
+        const app = await makeApp();
+        await request(app).post("/api/sync").send({});
+
+        const runningResponse = await request(app).get("/api/sync");
+        expect(runningResponse.statusCode).toBe(202);
+        expect(runningResponse.body.steps).toEqual([
+            { name: "event_log", status: "success" },
+            { name: "generators", status: "success" },
+        ]);
+
+        deferred.resolve();
+    });
+
+    it("includes completed steps in the final success state", async () => {
+        synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
+            onStepComplete?.({ name: "event_log", status: "success" });
+            onStepComplete?.({ name: "generators", status: "success" });
+            onStepComplete?.({ name: "assets", status: "success" });
+            return Promise.resolve();
+        });
+
+        const app = await makeApp();
+        await request(app).post("/api/sync").send({});
+        await new Promise((resolve) => setImmediate(resolve));
+
+        const finishedResponse = await request(app).get("/api/sync");
+        expect(finishedResponse.statusCode).toBe(200);
+        expect(finishedResponse.body.steps).toEqual([
+            { name: "event_log", status: "success" },
+            { name: "generators", status: "success" },
+            { name: "assets", status: "success" },
+        ]);
+    });
+
+    it("includes completed steps in the final error state", async () => {
+        synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
+            onStepComplete?.({ name: "event_log", status: "success" });
+            onStepComplete?.({ name: "generators", status: "error" });
+            return Promise.reject({
+                name: "SynchronizeAllError",
+                errors: [
+                    {
+                        name: "GeneratorsSyncError",
+                        message: "Generators database sync failed",
+                        cause: new Error("db error"),
+                    },
+                ],
+            });
+        });
+
+        const app = await makeApp();
+        await request(app).post("/api/sync").send({});
+        await new Promise((resolve) => setImmediate(resolve));
+
+        const failedResponse = await request(app).get("/api/sync");
+        expect(failedResponse.statusCode).toBe(500);
+        expect(failedResponse.body.steps).toEqual([
+            { name: "event_log", status: "success" },
+            { name: "generators", status: "error" },
+        ]);
+    });
 });
