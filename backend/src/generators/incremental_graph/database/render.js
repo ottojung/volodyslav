@@ -359,10 +359,16 @@ async function walkFilesRecursively(capabilities, dir) {
     const children = await capabilities.scanner.scanDirectory(dir);
     const files = [];
     for (const child of children) {
+        // Prevent traversal outside the current directory (for example via symlinks).
+        const relative = path.relative(dir, child.path);
+        if (relative === '..' || relative.startsWith('..' + path.sep)) {
+            continue;
+        }
+
         if (await capabilities.checker.directoryExists(child.path)) {
             const nested = await walkFilesRecursively(capabilities, child.path);
             files.push(...nested);
-        } else {
+        } else if (await capabilities.checker.fileExists(child.path)) {
             files.push(child.path);
         }
     }
