@@ -67,6 +67,7 @@ const { nodeKeyStringToString } = require('./types');
 /** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../../../logger').Logger} Logger */
 
 /**
@@ -77,6 +78,7 @@ const { nodeKeyStringToString } = require('./types');
  * @property {FileReader} reader - Reads file content as a UTF-8 string.
  * @property {FileChecker} checker - Checks whether a path is a file or directory.
  * @property {DirScanner} scanner - Scans directory contents (non-recursive).
+ * @property {FileDeleter} deleter - Deletes files or directories.
  * @property {Logger} logger - Logger for progress messages.
  */
 
@@ -91,6 +93,7 @@ const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'meta']);
  * A path segment starting with '~' holds a JSON-encoded non-string value.
  */
 const NON_STRING_ARG_PREFIX = '~';
+const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
 
 /**
  * Parses a raw LevelDB key into its sublevel names and key content.
@@ -108,19 +111,31 @@ const NON_STRING_ARG_PREFIX = '~';
  * @returns {{ sublevels: string[], keyContent: string }}
  */
 function parseRawKey(rawKey) {
-    const stripped = rawKey.slice(1); // remove leading '!'
-    const parts = stripped.split('!!');
-    const outerSublevels = parts.slice(0, -1);
-    const lastPart = parts[parts.length - 1] ?? '';
-    const bangIdx = lastPart.indexOf('!');
-    if (bangIdx === -1) {
-        // Malformed key: no '!' after the last sublevel name.
-        // Treat the whole lastPart as the sublevel name and keyContent as empty.
-        return { sublevels: [...outerSublevels, lastPart], keyContent: '' };
+    /** @type {string[]} */
+    const sublevels = [];
+    let current = '';
+    let i = 1;
+    while (i < rawKey.length) {
+        const character = rawKey[i];
+        if (character === '!') {
+            const nextCharacter = i + 1 < rawKey.length ? rawKey[i + 1] : '';
+            if (nextCharacter === '!') {
+                sublevels.push(current);
+                current = '';
+                i += 2;
+                continue;
+            } else {
+                sublevels.push(current);
+                return { sublevels, keyContent: rawKey.slice(i + 1) };
+            }
+        } else {
+            current += character;
+        }
+        i += 1;
     }
-    const lastSublevel = lastPart.slice(0, bangIdx);
-    const keyContent = lastPart.slice(bangIdx + 1);
-    return { sublevels: [...outerSublevels, lastSublevel], keyContent };
+
+    sublevels.push(current);
+    return { sublevels, keyContent: '' };
 }
 
 /**
@@ -168,6 +183,11 @@ function decodeSegment(s) {
  */
 function encodeArg(arg) {
     if (typeof arg === 'string') {
+        if (arg.startsWith(NON_STRING_ARG_PREFIX)) {
+            // Escape a leading '~' in string args so "~42" stays distinct from
+            // the encoded non-string number 42, which is also prefixed with '~'.
+            return ESCAPED_STRING_ARG_PREFIX + encodeSegment(arg.slice(1));
+        }
         return encodeSegment(arg);
     }
     return NON_STRING_ARG_PREFIX + encodeSegment(JSON.stringify(arg));
@@ -181,6 +201,11 @@ function encodeArg(arg) {
  * @returns {*}
  */
 function decodeArg(segment) {
+    if (segment.startsWith(ESCAPED_STRING_ARG_PREFIX)) {
+        return NON_STRING_ARG_PREFIX + decodeSegment(
+            segment.slice(ESCAPED_STRING_ARG_PREFIX.length)
+        );
+    }
     if (segment.startsWith(NON_STRING_ARG_PREFIX)) {
         return JSON.parse(decodeSegment(segment.slice(NON_STRING_ARG_PREFIX.length)));
     }
@@ -289,6 +314,11 @@ function relativePathToKey(relPath) {
 
     let keyContent;
     if (isPlainKey) {
+        if (keyComponents.length !== 1) {
+            throw new Error(
+                `Invalid database path '${relPath}': plain-key sublevels require exactly one key segment`
+            );
+        }
         // key is a single plain string segment
         keyContent = decodeSegment(keyComponents[0] ?? '');
     } else {
@@ -299,6 +329,21 @@ function relativePathToKey(relPath) {
     }
 
     return buildRawKey(sublevels, keyContent);
+}
+
+/**
+ * Removes a previous rendered snapshot directory if it exists.
+ * This prevents stale files from surviving across repeated renders into the
+ * same output directory when the database shrinks between snapshots.
+ *
+ * @param {RenderCapabilities} capabilities
+ * @param {string} outputDir
+ * @returns {Promise<void>}
+ */
+async function clearRenderedSnapshot(capabilities, outputDir) {
+    if (await capabilities.checker.directoryExists(outputDir)) {
+        await capabilities.deleter.deleteDirectory(outputDir);
+    }
 }
 
 /**
@@ -342,6 +387,7 @@ async function walkFilesRecursively(capabilities, dir) {
  * @returns {Promise<void>}
  */
 async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
+    await clearRenderedSnapshot(capabilities, outputDir);
     let count = 0;
     for await (const [key, value] of rootDatabase._rawEntries()) {
         const relPath = keyToRelativePath(nodeKeyStringToString(key));
@@ -405,4 +451,3 @@ module.exports = {
     keyToRelativePath,
     relativePathToKey,
 };
-

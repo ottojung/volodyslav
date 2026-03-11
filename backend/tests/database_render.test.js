@@ -23,6 +23,8 @@ const {
     scanFromFilesystem,
     keyToRelativePath,
     relativePathToKey,
+    CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
 } = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
@@ -135,10 +137,22 @@ describe('keyToRelativePath()', () => {
         )).toBe('x/values/event/a%21b');
     });
 
+    test('one-arg NodeKey with "!!" in arg keeps content intact', () => {
+        expect(keyToRelativePath(
+            '!x!!values!{"head":"event","args":["a!!b"]}'
+        )).toBe('x/values/event/a%21%21b');
+    });
+
     test('one-arg NodeKey with "%" in arg', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":["50%off"]}'
         )).toBe('x/values/event/50%25off');
+    });
+
+    test('string arg beginning with "~" is escaped to stay distinct from non-string args', () => {
+        expect(keyToRelativePath(
+            '!x!!values!{"head":"event","args":["~42"]}'
+        )).toBe('x/values/event/~~42');
     });
 
     test('two-arg NodeKey', () => {
@@ -196,6 +210,12 @@ describe('relativePathToKey()', () => {
         );
     });
 
+    test('decodes "%21%21" back to "!!" in arg', () => {
+        expect(relativePathToKey('x/values/event/a%21%21b')).toBe(
+            '!x!!values!{"head":"event","args":["a!!b"]}'
+        );
+    });
+
     test('decodes "%25" back to "%" in arg', () => {
         expect(relativePathToKey('x/values/event/50%25off')).toBe(
             '!x!!values!{"head":"event","args":["50%off"]}'
@@ -214,9 +234,24 @@ describe('relativePathToKey()', () => {
         );
     });
 
+    test('string arg with leading "~" remains a string', () => {
+        expect(relativePathToKey('x/values/event/~~42')).toBe(
+            '!x!!values!{"head":"event","args":["~42"]}'
+        );
+    });
+
     test('throws for fewer than two segments', () => {
         expect(() => relativePathToKey('onlyone')).toThrow();
         expect(() => relativePathToKey('')).toThrow();
+    });
+
+    test('throws when plain-key sublevels have extra path segments', () => {
+        expect(() => relativePathToKey('_meta/format/extra')).toThrow(
+            'plain-key sublevels require exactly one key segment'
+        );
+        expect(() => relativePathToKey('x/meta/version/extra')).toThrow(
+            'plain-key sublevels require exactly one key segment'
+        );
     });
 });
 
@@ -237,7 +272,10 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
         '!x!!values!{"head":"transcription","args":["/path/to/audio.mp3"]}',
         '!x!!values!{"head":"event","args":["id/with/slashes"]}',
         '!x!!values!{"head":"event","args":["a!b"]}',
+        '!x!!values!{"head":"event","args":["a!!b"]}',
         '!x!!values!{"head":"event","args":["50%off"]}',
+        '!x!!values!{"head":"event","args":["~42"]}',
+        '!x!!values!{"head":"event","args":[42]}',
         '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}',
         '!y!!values!{"head":"all_events","args":[]}',
         '!y!!meta!version',
@@ -255,6 +293,14 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
         const paths = testKeys.map(keyToRelativePath);
         const uniquePaths = new Set(paths);
         expect(uniquePaths.size).toBe(testKeys.length);
+    });
+
+    test('string "~42" and number 42 map to distinct paths', () => {
+        expect(
+            keyToRelativePath('!x!!values!{"head":"event","args":["~42"]}')
+        ).not.toBe(
+            keyToRelativePath('!x!!values!{"head":"event","args":[42]}')
+        );
     });
 });
 
@@ -317,6 +363,52 @@ describe('renderToFilesystem()', () => {
             expect(relPath).toContain('%21');
         } finally {
             await db.close();
+        }
+    });
+
+    test('re-render to same outputDir removes stale files from previous snapshot', async () => {
+        const { capabilities: firstCapabilities, tmpDir } = makeTestCapabilities();
+        const { capabilities: secondCapabilities } = makeTestCapabilities();
+        const outputDir = path.join(tmpDir, 'render-shrink');
+        const staleRelPath = 'x/values/stale_node';
+        const firstDb = await makeSeededDatabase(firstCapabilities, [
+            ['!_meta!format', 'xy-v1'],
+            ['!x!!values!{"head":"stale_node","args":[]}', { stale: true }],
+        ]);
+        const isolatedTmpDir = await secondCapabilities.creator.createTemporaryDirectory(
+            secondCapabilities
+        );
+        secondCapabilities.environment.workingDirectory = jest.fn().mockReturnValue(
+            path.join(isolatedTmpDir, 'results')
+        );
+        try {
+            await renderToFilesystem(firstCapabilities, firstDb, outputDir);
+            expect(collectFiles(outputDir).some(file => file.relPath === staleRelPath)).toBe(true);
+        } finally {
+            await firstDb.close();
+        }
+
+        try {
+            const secondDb = await makeSeededDatabase(secondCapabilities, [
+                ['!_meta!format', 'xy-v1'],
+            ]);
+            try {
+                expect(secondCapabilities.environment.workingDirectory).toHaveBeenCalled();
+                expect(await secondCapabilities.checker.directoryExists(
+                    path.join(
+                        isolatedTmpDir,
+                        'results',
+                        CHECKPOINT_WORKING_PATH,
+                        DATABASE_SUBPATH
+                    )
+                )).toBeTruthy();
+                await renderToFilesystem(secondCapabilities, secondDb, outputDir);
+                expect(collectFiles(outputDir).some(file => file.relPath === staleRelPath)).toBe(false);
+            } finally {
+                await secondDb.close();
+            }
+        } finally {
+            await secondCapabilities.deleter.deleteDirectory(isolatedTmpDir);
         }
     });
 
@@ -538,6 +630,18 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         assertAllEntriesPresent(dbAEntries, dbBEntries);
     });
 
+    test('entry with "!!" in the key arg round-trips', async () => {
+        const seed = [
+            [
+                '!x!!values!{"head":"event","args":["a!!b"]}',
+                { type: 'event', value: 'double-bang' },
+            ],
+        ];
+        const { dbAEntries, dbBEntries } = await renderAndScan(seed);
+        expect(dbBEntries.has('!x!!values!{"head":"event","args":["a!!b"]}')).toBe(true);
+        assertAllEntriesPresent(dbAEntries, dbBEntries);
+    });
+
     test('entry with "%" in the key arg', async () => {
         const seed = [
             [
@@ -547,6 +651,18 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         ];
         const { dbAEntries, dbBEntries } = await renderAndScan(seed);
         expect(dbBEntries.has('!x!!values!{"head":"event","args":["50%off"]}')).toBe(true);
+        assertAllEntriesPresent(dbAEntries, dbBEntries);
+    });
+
+    test('string arg beginning with "~" round-trips as a string', async () => {
+        const seed = [
+            [
+                '!x!!values!{"head":"event","args":["~42"]}',
+                { type: 'event', value: 'tilde-string' },
+            ],
+        ];
+        const { dbAEntries, dbBEntries } = await renderAndScan(seed);
+        expect(dbBEntries.has('!x!!values!{"head":"event","args":["~42"]}')).toBe(true);
         assertAllEntriesPresent(dbAEntries, dbBEntries);
     });
 
@@ -659,6 +775,25 @@ describe('additional reliability tests', () => {
                 expect(typeof key).toBe('string');
                 expect(key.startsWith('!')).toBe(true);
             }
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('scan rejects malformed plain-key snapshot paths with extra segments', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'malformed-plain-key');
+        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, '_meta', 'format'));
+        const malformedFile = await capabilities.creator.createFile(
+            path.join(inputDir, '_meta', 'format', 'extra')
+        );
+        await capabilities.writer.writeFile(malformedFile, JSON.stringify('xy-v1'));
+        const db = await getRootDatabase(capabilities);
+        try {
+            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow(
+                'plain-key sublevels require exactly one key segment'
+            );
         } finally {
             await db.close();
         }
