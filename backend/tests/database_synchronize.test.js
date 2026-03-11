@@ -166,4 +166,39 @@ describe("synchronizeNoLock", () => {
             await reopened.close();
         }
     });
+
+    test("can synchronize twice even though the persistent rendered repository work tree is stale between runs", async () => {
+        const capabilities = getTestCapabilities();
+        await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v1"]]);
+
+        const firstKey = '!x!!values!{"head":"event","args":["first"]}';
+        const secondKey = '!x!!values!{"head":"event","args":["second"]}';
+
+        const firstDb = await getRootDatabase(capabilities);
+        try {
+            await firstDb._rawPut(firstKey, { source: "first-sync" });
+        } finally {
+            await firstDb.close();
+        }
+
+        await synchronizeNoLock(capabilities);
+
+        const secondDb = await getRootDatabase(capabilities);
+        try {
+            await secondDb._rawPut(secondKey, { source: "second-sync" });
+        } finally {
+            await secondDb.close();
+        }
+
+        await expect(synchronizeNoLock(capabilities)).resolves.toBeUndefined();
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(firstKey)).toEqual({ source: "first-sync" });
+            expect(entries.get(secondKey)).toEqual({ source: "second-sync" });
+        } finally {
+            await reopened.close();
+        }
+    });
 });

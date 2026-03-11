@@ -1,4 +1,5 @@
 const path = require("path");
+const { execFileSync } = require("child_process");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const {
@@ -15,6 +16,20 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     return capabilities;
+}
+
+/**
+ * @param {string} repositoryPath
+ * @param {string} filePath
+ * @returns {string}
+ */
+function fileContentAtHead(repositoryPath, filePath) {
+    return execFileSync("git", [
+        "-C",
+        repositoryPath,
+        "show",
+        `HEAD:${filePath}`,
+    ]).toString();
 }
 
 describe("working_repository", () => {
@@ -249,5 +264,123 @@ describe("working_repository", () => {
         ).then(() => true).catch(() => false);
         expect(hasOriginAfter).toBe(true);
     });
-});
 
+    test("synchronize refreshes a stale checked-out work tree before pull and push", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+        await stubEventLogRepository(capabilities);
+
+        await workingRepository.synchronize(
+            capabilities,
+            "working-git-repository",
+            { url: capabilities.environment.eventLogRepository() }
+        );
+
+        const localWorkDir = path.join(
+            capabilities.environment.workingDirectory(),
+            "working-git-repository"
+        );
+        const temporaryClone = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const remoteVerificationClone = await capabilities.creator.createTemporaryDirectory(capabilities);
+
+        try {
+            await capabilities.git.call("clone", localWorkDir, temporaryClone);
+            const trackedFile = path.join(temporaryClone, "data.json");
+            const trackedOutput = await capabilities.creator.createFile(trackedFile);
+            await capabilities.writer.writeFile(trackedOutput, '{"events":["stale-head-update"]}');
+            await capabilities.git.call("-C", temporaryClone, "add", "data.json");
+            await capabilities.git.call(
+                "-C",
+                temporaryClone,
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "commit",
+                "-m",
+                "Advance local repo head only"
+            );
+            await capabilities.git.call("-C", temporaryClone, "push", "origin", defaultBranch);
+
+            expect(await capabilities.reader.readFileAsText(path.join(localWorkDir, "data.json")))
+                .not.toBe('{"events":["stale-head-update"]}');
+            expect(fileContentAtHead(localWorkDir, "data.json"))
+                .toBe('{"events":["stale-head-update"]}');
+
+            await expect(
+                workingRepository.synchronize(
+                    capabilities,
+                    "working-git-repository",
+                    { url: capabilities.environment.eventLogRepository() }
+                )
+            ).resolves.toBeUndefined();
+
+            expect(await capabilities.reader.readFileAsText(path.join(localWorkDir, "data.json")))
+                .toBe('{"events":["stale-head-update"]}');
+
+            await capabilities.git.call(
+                "clone",
+                `--branch=${defaultBranch}`,
+                capabilities.environment.eventLogRepository(),
+                remoteVerificationClone
+            );
+            expect(await capabilities.reader.readFileAsText(path.join(remoteVerificationClone, "data.json")))
+                .toBe('{"events":["stale-head-update"]}');
+        } finally {
+            await capabilities.deleter.deleteDirectory(temporaryClone);
+            await capabilities.deleter.deleteDirectory(remoteVerificationClone);
+        }
+    });
+
+    test("synchronize removes stale untracked files that would block checkout updates", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+        await stubEventLogRepository(capabilities);
+
+        await workingRepository.synchronize(
+            capabilities,
+            "working-git-repository",
+            { url: capabilities.environment.eventLogRepository() }
+        );
+
+        const localWorkDir = path.join(
+            capabilities.environment.workingDirectory(),
+            "working-git-repository"
+        );
+        const blockingFile = path.join(localWorkDir, "conflict.txt");
+        const createdBlockingFile = await capabilities.creator.createFile(blockingFile);
+        await capabilities.writer.writeFile(createdBlockingFile, "local untracked blocker");
+
+        const temporaryClone = await capabilities.creator.createTemporaryDirectory(capabilities);
+        try {
+            await capabilities.git.call("clone", localWorkDir, temporaryClone);
+            const trackedConflict = await capabilities.creator.createFile(path.join(temporaryClone, "conflict.txt"));
+            await capabilities.writer.writeFile(trackedConflict, "tracked from head");
+            await capabilities.git.call("-C", temporaryClone, "add", "conflict.txt");
+            await capabilities.git.call(
+                "-C",
+                temporaryClone,
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "commit",
+                "-m",
+                "Add conflict file"
+            );
+            await capabilities.git.call("-C", temporaryClone, "push", "origin", defaultBranch);
+
+            await expect(
+                workingRepository.synchronize(
+                    capabilities,
+                    "working-git-repository",
+                    { url: capabilities.environment.eventLogRepository() }
+                )
+            ).resolves.toBeUndefined();
+
+            expect(await capabilities.reader.readFileAsText(blockingFile)).toBe("tracked from head");
+        } finally {
+            await capabilities.deleter.deleteDirectory(temporaryClone);
+        }
+    });
+});

@@ -612,7 +612,7 @@ describe("runMigration", () => {
             expect(yMock.clearStorageCalled).toBe(true);
         });
 
-        test("callback throws: transaction records the pre-migration commit but not the post-migration commit", async () => {
+        test("callback throws: transaction attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -634,7 +634,7 @@ describe("runMigration", () => {
             expect(callOrder[0]).toContain("pre-migration:");
         });
 
-        test("finalize throws: transaction records the pre-migration commit but not the post-migration commit", async () => {
+        test("finalize throws: transaction attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
