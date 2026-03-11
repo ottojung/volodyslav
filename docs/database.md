@@ -88,9 +88,11 @@ graph nodes in URLs:
   → x/values/transcription/%2Faudio%2Fx.mp3
 ```
 
-String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
-Non-string arguments (numbers, booleans, arrays, objects) are JSON-encoded and
-prefixed with `~` to distinguish them from plain strings.
+String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`, and `~` → `%7E`.
+In addition, literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
+to prevent path traversal while keeping the key↔path mapping bijective. Non-string arguments
+(numbers, booleans, arrays, objects) are JSON-encoded and prefixed with `~` so they remain
+unambiguous even when string arguments begin with `~`.
 
 #### Meta sublevels (`_meta`, `meta`)
 
