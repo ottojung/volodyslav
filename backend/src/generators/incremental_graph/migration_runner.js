@@ -37,6 +37,7 @@ const { checkpointDatabase } = require("./database");
  * @typedef {import("../../filesystem/checker").FileChecker} FileChecker
  * @typedef {import("../../filesystem/creator").FileCreator} FileCreator
  * @typedef {import("../../filesystem/deleter").FileDeleter} FileDeleter
+ * @typedef {import("../../filesystem/dirscanner").DirScanner} DirScanner
  * @typedef {import("../../filesystem/writer").FileWriter} FileWriter
  * @typedef {import("../../filesystem/copier").FileCopier} FileCopier
  * @typedef {import("../../filesystem/appender").FileAppender} FileAppender
@@ -54,8 +55,11 @@ const { checkpointDatabase } = require("./database");
  * @property {FileChecker} checker - A file checker instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileDeleter} deleter - A file deleter instance
+ * @property {DirScanner} scanner - A directory scanner instance
  * @property {Command} git - A command instance for Git operations.
+ * @property {FileReader} reader - A file reader instance
  * @property {FileWriter} writer - A file writer instance
+ * @property {LevelDatabase} levelDatabase - A level database instance
  * @property {Environment} environment - An environment instance
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Interface} interface - An interface instance with an update() method.
@@ -231,7 +235,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
     }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
 
     // Snapshot the database state before migration starts.
-    await checkpointDatabase(capabilities, `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`);
+    await checkpointDatabase(
+        capabilities,
+        `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`,
+        rootDatabase
+    );
 
     // Create the staging namespace ("y") from the same underlying database.
     const nextDb = rootDatabase.withNamespace('y');
@@ -273,7 +281,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
     await rootDatabase.replaceContentsFrom(nextDb);
 
     // Snapshot the database state after migration completes successfully.
-    await checkpointDatabase(capabilities, `post-migration: ${String(currentVersion)}`);
+    await checkpointDatabase(
+        capabilities,
+        `post-migration: ${String(currentVersion)}`,
+        rootDatabase
+    );
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion

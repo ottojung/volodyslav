@@ -23,8 +23,7 @@ const {
     scanFromFilesystem,
     keyToRelativePath,
     relativePathToKey,
-    CHECKPOINT_WORKING_PATH,
-    DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
 } = require('../src/generators/incremental_graph/database');
 const { RAW_BATCH_CHUNK_SIZE } = require('../src/generators/incremental_graph/database/root_database');
 const { getMockedRootCapabilities } = require('./spies');
@@ -486,8 +485,7 @@ describe('renderToFilesystem()', () => {
                     path.join(
                         isolatedTmpDir,
                         'results',
-                        CHECKPOINT_WORKING_PATH,
-                        DATABASE_SUBPATH
+                        LIVE_DATABASE_WORKING_PATH
                     )
                 )).toBeTruthy();
                 await renderToFilesystem(secondCapabilities, secondDb, outputDir);

@@ -1,0 +1,169 @@
+const path = require("path");
+const {
+    synchronizeNoLock,
+    getRootDatabase,
+    CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
+    keyToRelativePath,
+} = require("../src/generators/incremental_graph/database");
+const defaultBranch = require("../src/gitstore/default_branch");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
+
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubDatetime(capabilities);
+    stubLogger(capabilities);
+    return capabilities;
+}
+
+/**
+ * @param {object} capabilities
+ * @param {Array<[string, *]>} entries
+ * @returns {Promise<void>}
+ */
+async function seedRemoteRepository(capabilities, entries) {
+    const remotePath = capabilities.environment.generatorsRepository();
+    await capabilities.git.call("init", "--bare", "--", remotePath);
+
+    const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+    try {
+        await capabilities.git.call(
+            "init",
+            "--initial-branch",
+            defaultBranch,
+            "--",
+            workTree
+        );
+        for (const [key, value] of entries) {
+            const filePath = path.join(
+                workTree,
+                DATABASE_SUBPATH,
+                ...keyToRelativePath(key).split("/")
+            );
+            const file = await capabilities.creator.createFile(filePath);
+            await capabilities.writer.writeFile(file, JSON.stringify(value));
+        }
+        await capabilities.git.call("-C", workTree, "add", "--all");
+        await capabilities.git.call(
+            "-C",
+            workTree,
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "-m",
+            "Initial rendered snapshot"
+        );
+        await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
+        await capabilities.git.call("-C", workTree, "push", "origin", defaultBranch);
+    } finally {
+        await capabilities.deleter.deleteDirectory(workTree);
+    }
+}
+
+/**
+ * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} db
+ * @returns {Promise<Map<string, *>>}
+ */
+async function collectRawEntries(db) {
+    const entries = new Map();
+    for await (const [key, value] of db._rawEntries()) {
+        entries.set(key, value);
+    }
+    return entries;
+}
+
+describe("synchronizeNoLock", () => {
+    test("renders the live database into the tracked repository and pushes it to remote", async () => {
+        const capabilities = getTestCapabilities();
+        await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v1"]]);
+
+        const db = await getRootDatabase(capabilities);
+        const eventKey = '!x!!values!{"head":"event","args":["local"]}';
+        try {
+            await db._rawPut(eventKey, { source: "local" });
+        } finally {
+            await db.close();
+        }
+
+        await synchronizeNoLock(capabilities);
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(eventKey)).toEqual({ source: "local" });
+        } finally {
+            await reopened.close();
+        }
+
+        const clonedRemote = await capabilities.creator.createTemporaryDirectory(capabilities);
+        try {
+            await capabilities.git.call(
+                "clone",
+                `--branch=${defaultBranch}`,
+                capabilities.environment.generatorsRepository(),
+                clonedRemote
+            );
+            const renderedFile = path.join(
+                clonedRemote,
+                DATABASE_SUBPATH,
+                ...keyToRelativePath(eventKey).split("/")
+            );
+            expect(await capabilities.reader.readFileAsText(renderedFile)).toBe(
+                JSON.stringify({ source: "local" })
+            );
+            expect(
+                await capabilities.checker.directoryExists(
+                    path.join(
+                        capabilities.environment.workingDirectory(),
+                        CHECKPOINT_WORKING_PATH,
+                        DATABASE_SUBPATH
+                    )
+                )
+            ).toBeTruthy();
+            expect(
+                await capabilities.checker.directoryExists(
+                    path.join(
+                        capabilities.environment.workingDirectory(),
+                        LIVE_DATABASE_WORKING_PATH
+                    )
+                )
+            ).toBeTruthy();
+        } finally {
+            await capabilities.deleter.deleteDirectory(clonedRemote);
+        }
+    });
+
+    test("scans the synchronized rendered repository back into the live database", async () => {
+        const capabilities = getTestCapabilities();
+        const remoteKey = '!x!!values!{"head":"event","args":["remote"]}';
+        await seedRemoteRepository(capabilities, [
+            ["!_meta!format", "xy-v1"],
+            [remoteKey, { source: "remote" }],
+            ["!x!!meta!version", "remote-version"],
+        ]);
+
+        const db = await getRootDatabase(capabilities);
+        try {
+            await db._rawPut('!x!!values!{"head":"event","args":["local-only"]}', { source: "local" });
+        } finally {
+            await db.close();
+        }
+
+        await synchronizeNoLock(capabilities, { resetToTheirs: true });
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(remoteKey)).toEqual({ source: "remote" });
+            expect(entries.get("!x!!meta!version")).toBe("remote-version");
+            expect(entries.has('!x!!values!{"head":"event","args":["local-only"]}')).toBe(false);
+        } finally {
+            await reopened.close();
+        }
+    });
+});
