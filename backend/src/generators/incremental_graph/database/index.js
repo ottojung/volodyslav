@@ -8,6 +8,7 @@ const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const {
     checkpointDatabase,
+    runMigrationInTransaction,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
@@ -95,6 +96,7 @@ module.exports = {
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,
+    runMigrationInTransaction,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,

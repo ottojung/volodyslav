@@ -16,12 +16,13 @@
  *
  * ## Checkpoint policy
  *
- * Checkpoints are taken only at migration boundaries — once before and once
- * after every `runMigration` call (see `migration_runner.js`). Normal
- * incremental-graph writes (i.e. `invalidate` + `pull` cycles) do NOT produce
- * checkpoints directly. Migration boundaries, by contrast, represent discrete,
- * application-level schema transitions that are worth preserving as durable
- * rendered snapshots.
+ * Migration snapshots are taken only at migration boundaries. `runMigration`
+ * wraps the whole migration in a single gitstore transaction and records two
+ * commits in that transaction: one before the migration logic runs and one
+ * after it completes successfully. Normal incremental-graph writes (i.e.
+ * `invalidate` + `pull` cycles) do NOT produce checkpoints directly.
+ * Migration boundaries, by contrast, represent discrete, application-level
+ * schema transitions that are worth preserving as durable rendered snapshots.
  */
 
 const path = require('path');
@@ -157,8 +158,49 @@ async function checkpointDatabase(
     }
 }
 
+/**
+ * Run a migration inside a single gitstore transaction while recording two
+ * rendered snapshots of the live database: one before the migration callback
+ * runs and one after it completes successfully.
+ *
+ * Both commits happen in the same transaction worktree, so any failure aborts
+ * the overall transaction without pushing a partially checkpointed history.
+ *
+ * @template T
+ * @param {CheckpointCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
+ * @param {string} preMessage
+ * @param {string} postMessage
+ * @param {() => Promise<T>} callback
+ * @returns {Promise<T>}
+ */
+async function runMigrationInTransaction(
+    capabilities,
+    rootDatabase,
+    preMessage,
+    postMessage,
+    callback
+) {
+    return await transaction(
+        capabilities,
+        CHECKPOINT_WORKING_PATH,
+        "empty",
+        async (store) => {
+            const workTree = await store.getWorkTree();
+            const renderedPath = path.join(workTree, DATABASE_SUBPATH);
+            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await store.commit(preMessage);
+            const result = await callback();
+            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await store.commit(postMessage);
+            return result;
+        }
+    );
+}
+
 module.exports = {
     checkpointDatabase,
+    runMigrationInTransaction,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,

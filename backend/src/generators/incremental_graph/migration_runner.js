@@ -12,7 +12,7 @@ const { compileNodeDef } = require("./compiled_node");
 const { stringToNodeKeyString } = require("./database");
 const { withMutex } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
-const { checkpointDatabase } = require("./database");
+const { runMigrationInTransaction } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -234,57 +234,51 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         prevVersion, currentVersion
     }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
 
-    // Snapshot the database state before migration starts.
-    await checkpointDatabase(
+    await runMigrationInTransaction(
         capabilities,
+        rootDatabase,
         `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`,
-        rootDatabase
-    );
-
-    // Create the staging namespace ("y") from the same underlying database.
-    const nextDb = rootDatabase.withNamespace('y');
-
-    // Clear "y" before migration so a crash-retry starts clean.
-    await nextDb.clearStorage();
-
-    const prevStorage = rootDatabase.getSchemaStorage();
-    const newStorage = nextDb.getSchemaStorage();
-
-    // Compile new schema and build head index for compatibility checks.
-    const compiledNodes = nodeDefs.map(compileNodeDef);
-    /** @type {Map<NodeName, CompiledNode>} */
-    const newHeadIndex = new Map(compiledNodes.map((n) => [n.head, n]));
-
-    // Load previous-version materialized nodes.
-    const materializedNodes = await loadMaterializedNodes(prevStorage);
-
-    // Create the MigrationStorage for the user callback.
-    const migrationStorage = makeMigrationStorage(
-        prevStorage,
-        newHeadIndex,
-        materializedNodes
-    );
-
-    // Execute user migration callback.
-    await callback(migrationStorage);
-
-    // Finalize: propagate deletes, check fan-in, check completeness.
-    const decisions = await migrationStorage.finalize();
-
-    // Apply decisions atomically to the staging namespace ("y").
-    await applyDecisions(prevStorage, newStorage, decisions);
-
-    // Write the version into y's meta BEFORE the swap so it is included in the atomic copy.
-    await nextDb.setMetaVersion(rootDatabase.version);
-
-    // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
-    await rootDatabase.replaceContentsFrom(nextDb);
-
-    // Snapshot the database state after migration completes successfully.
-    await checkpointDatabase(
-        capabilities,
         `post-migration: ${String(currentVersion)}`,
-        rootDatabase
+        async () => {
+            // Create the staging namespace ("y") from the same underlying database.
+            const nextDb = rootDatabase.withNamespace('y');
+
+            // Clear "y" before migration so a crash-retry starts clean.
+            await nextDb.clearStorage();
+
+            const prevStorage = rootDatabase.getSchemaStorage();
+            const newStorage = nextDb.getSchemaStorage();
+
+            // Compile new schema and build head index for compatibility checks.
+            const compiledNodes = nodeDefs.map(compileNodeDef);
+            /** @type {Map<NodeName, CompiledNode>} */
+            const newHeadIndex = new Map(compiledNodes.map((n) => [n.head, n]));
+
+            // Load previous-version materialized nodes.
+            const materializedNodes = await loadMaterializedNodes(prevStorage);
+
+            // Create the MigrationStorage for the user callback.
+            const migrationStorage = makeMigrationStorage(
+                prevStorage,
+                newHeadIndex,
+                materializedNodes
+            );
+
+            // Execute user migration callback.
+            await callback(migrationStorage);
+
+            // Finalize: propagate deletes, check fan-in, check completeness.
+            const decisions = await migrationStorage.finalize();
+
+            // Apply decisions atomically to the staging namespace ("y").
+            await applyDecisions(prevStorage, newStorage, decisions);
+
+            // Write the version into y's meta BEFORE the swap so it is included in the atomic copy.
+            await nextDb.setMetaVersion(rootDatabase.version);
+
+            // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
+            await rootDatabase.replaceContentsFrom(nextDb);
+        }
     );
 
     capabilities.logger.logInfo({

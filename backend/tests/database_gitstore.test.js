@@ -11,6 +11,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const {
     checkpointDatabase,
+    runMigrationInTransaction,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
@@ -71,6 +72,19 @@ function latestCommitMessage(gitDir) {
         "--git-dir", gitDir,
         "log", "-1", "--format=%s",
     ]).toString().trim();
+}
+
+/**
+ * Subject lines of the most recent commits, newest first.
+ * @param {string} gitDir
+ * @param {number} count
+ * @returns {string[]}
+ */
+function latestCommitMessages(gitDir, count) {
+    return execFileSync("git", [
+        "--git-dir", gitDir,
+        "log", `-n${count}`, "--format=%s",
+    ]).toString().trim().split("\n").filter(Boolean);
 }
 
 /**
@@ -367,6 +381,65 @@ describe("checkpointDatabase", () => {
             expect(
                 fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
             ).toBe(JSON.stringify({ value: "base" }));
+        } finally {
+            await db.close();
+        }
+    });
+});
+
+describe("runMigrationInTransaction", () => {
+    test("records pre-migration and post-migration commits inside one transaction", async () => {
+        const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["migration"]}';
+        const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
+        try {
+            const result = await runMigrationInTransaction(
+                capabilities,
+                db,
+                "pre-migration: 1 → 2",
+                "post-migration: 2",
+                async () => {
+                    await db._rawPut(key, { version: "after" });
+                    return "done";
+                }
+            );
+
+            expect(result).toBe("done");
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(gitDir)).toBe(3);
+            expect(latestCommitMessages(gitDir, 2)).toEqual([
+                "post-migration: 2",
+                "pre-migration: 1 → 2",
+            ]);
+            expect(
+                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+            ).toBe(JSON.stringify({ version: "after" }));
+        } finally {
+            await db.close();
+        }
+    });
+
+    test("does not persist pre-migration commit if the migration callback fails", async () => {
+        const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["migration-fail"]}';
+        const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
+        try {
+            await expect(
+                runMigrationInTransaction(
+                    capabilities,
+                    db,
+                    "pre-migration: fail",
+                    "post-migration: fail",
+                    async () => {
+                        await db._rawPut(key, { version: "after" });
+                        throw new Error("migration failure");
+                    }
+                )
+            ).rejects.toThrow("migration failure");
+
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(gitDir)).toBe(1);
+            expect(allTrackedFiles(gitDir)).toEqual([]);
         } finally {
             await db.close();
         }
