@@ -431,19 +431,27 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
  * @returns {Promise<void>}
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
-    // P2: Clear all existing entries first to ensure deleted keys don't survive
-    await rootDatabase._rawDeleteAll();
-
+    // Phase 1: Walk, read, and parse all entries before mutating the database.
     const allFiles = await walkFilesRecursively(capabilities, inputDir);
+
+    /** @type {{ key: NodeKeyString, value: any }[]} */
+    const entries = [];
     let count = 0;
+
     for (const absPath of allFiles) {
         const relPath = path.relative(inputDir, absPath);
         const normalizedRelPath = relPath.split(path.sep).join('/');
         const key = relativePathToKey(normalizedRelPath);
         const content = await capabilities.reader.readFileAsText(absPath);
         const value = JSON.parse(content);
-        await rootDatabase._rawPut(key, value);
+        entries.push({ key, value });
         count++;
+    }
+
+    // Phase 2: After successful validation, clear and repopulate the database.
+    await rootDatabase._rawDeleteAll();
+    for (const entry of entries) {
+        await rootDatabase._rawPut(entry.key, entry.value);
     }
     capabilities.logger.logInfo(
         { inputDir, count },
