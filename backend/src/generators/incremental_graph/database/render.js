@@ -94,6 +94,24 @@ const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'meta']);
  */
 const NON_STRING_ARG_PREFIX = '~';
 const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
+// Use uppercase sentinels as the canonical on-disk form for literal '.' and '..'
+// segments so renderToFilesystem() is deterministic; decode accepts lowercase
+// too so scanFromFilesystem() stays tolerant of manually created snapshots.
+const DOT_SEGMENT_SENTINEL = '%2E';
+const DOT_DOT_SEGMENT_SENTINEL = '%2E%2E';
+const DOT_SEGMENT_PATTERN = /^%2e$/i;
+const DOT_DOT_SEGMENT_PATTERN = /^%2e%2e$/i;
+const PARENT_DIRECTORY_PREFIX = '..' + path.sep;
+
+/**
+ * The input here is the result of path.relative() between two resolved paths,
+ * so parent traversal can only appear as a leading `..` component.
+ * @param {string} relativePath
+ * @returns {boolean}
+ */
+function isParentTraversal(relativePath) {
+    return relativePath === '..' || relativePath.startsWith(PARENT_DIRECTORY_PREFIX);
+}
 
 /**
  * Parses a raw LevelDB key into its sublevel names and key content.
@@ -166,10 +184,18 @@ function buildRawKey(sublevels, keyContent) {
 /**
  * Percent-encodes a plain string for use as a single filesystem path segment.
  * Encodes `%` first to avoid double-encoding, then `/` and `!`.
+ * Segments that are exactly `.` or `..` are mapped to sentinels so they never
+ * become literal filesystem traversal segments.
  * @param {string} s
  * @returns {string}
  */
 function encodeSegment(s) {
+    if (s === '.') {
+        return DOT_SEGMENT_SENTINEL;
+    }
+    if (s === '..') {
+        return DOT_DOT_SEGMENT_SENTINEL;
+    }
     // Encode '%' first to prevent double-encoding (e.g. '/' → '%2F' → '%252F').
     return s.replace(/%/g, '%25').replace(/\//g, '%2F').replace(/!/g, '%21');
 }
@@ -180,7 +206,45 @@ function encodeSegment(s) {
  * @returns {string}
  */
 function decodeSegment(s) {
+    // Accept either uppercase or lowercase sentinels when scanning a
+    // filesystem snapshot, even though encodeSegment() always emits the
+    // uppercase canonical sentinels defined above, so manually created
+    // snapshots can still be imported reliably.
+    if (DOT_SEGMENT_PATTERN.test(s)) {
+        return '.';
+    }
+    if (DOT_DOT_SEGMENT_PATTERN.test(s)) {
+        return '..';
+    }
     return s.replace(/%21/gi, '!').replace(/%2F/gi, '/').replace(/%25/gi, '%');
+}
+
+/**
+ * Resolves a rendered relative path under a base directory and rejects paths
+ * that would escape that directory.
+ *
+ * This check assumes `baseDir` itself is a trusted local directory with no
+ * symlink-based escapes. Per the PR requirement for this follow-up, symlink
+ * handling is intentionally out of scope here.
+ * @param {string} baseDir
+ * @param {string} relPath
+ * @returns {string}
+ */
+function resolveContainedPath(baseDir, relPath) {
+    const resolvedBaseDir = path.resolve(baseDir);
+    const resolvedPath = path.resolve(baseDir, relPath);
+    const relativePath = path.relative(resolvedBaseDir, resolvedPath);
+    if (relativePath === '') {
+        throw new Error(
+            `Invalid relative path '${relPath}': resolved path '${resolvedPath}' must point to a file within '${resolvedBaseDir}', not the directory itself`
+        );
+    }
+    if (isParentTraversal(relativePath)) {
+        throw new Error(
+            `Invalid relative path '${relPath}': resolved path '${resolvedPath}' escapes the output directory '${resolvedBaseDir}'`
+        );
+    }
+    return resolvedPath;
 }
 
 /**
@@ -378,9 +442,8 @@ async function clearRenderedSnapshot(capabilities, outputDir) {
 }
 
 /**
- * Recursively collects the absolute paths of every regular file under `dir`
- * using the capabilities pattern.
- * Directories are traversed but not included in the result.
+ * Recursively collects the absolute paths of every file under `dir` using the
+ * capabilities pattern. Directories are traversed but not included in the result.
  *
  * @param {RenderCapabilities} capabilities
  * @param {string} dir - Root directory to walk.
@@ -390,12 +453,6 @@ async function walkFilesRecursively(capabilities, dir) {
     const children = await capabilities.scanner.scanDirectory(dir);
     const files = [];
     for (const child of children) {
-        // Prevent traversal outside the current directory (for example via symlinks).
-        const relative = path.relative(dir, child.path);
-        if (relative === '..' || relative.startsWith('..' + path.sep)) {
-            continue;
-        }
-
         if (await capabilities.checker.directoryExists(child.path)) {
             const nested = await walkFilesRecursively(capabilities, child.path);
             files.push(...nested);
@@ -433,7 +490,7 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
 
     await clearRenderedSnapshot(capabilities, outputDir);
     for (const entry of validatedEntries) {
-        const absPath = path.join(outputDir, entry.relPath);
+        const absPath = resolveContainedPath(outputDir, entry.relPath);
         const file = await capabilities.creator.createFile(absPath);
         await capabilities.writer.writeFile(file, JSON.stringify(entry.value));
     }
@@ -487,9 +544,7 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
 
     // Phase 2: After successful validation, clear and repopulate the database.
     await rootDatabase._rawDeleteAll();
-    for (const entry of entries) {
-        await rootDatabase._rawPut(entry.key, entry.value);
-    }
+    await rootDatabase._rawPutAll(entries);
     capabilities.logger.logInfo(
         { inputDir, count },
         'Scanned database from filesystem'

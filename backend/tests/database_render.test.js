@@ -26,6 +26,7 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
 } = require('../src/generators/incremental_graph/database');
+const { RAW_BATCH_CHUNK_SIZE } = require('../src/generators/incremental_graph/database/root_database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
 
@@ -149,6 +150,13 @@ describe('keyToRelativePath()', () => {
         )).toBe('x/values/event/50%25off');
     });
 
+    test('dot segments are escaped so they remain literal path values', () => {
+        expect(keyToRelativePath(
+            '!x!!values!{"head":"event","args":[".",".."]}'
+        )).toBe('x/values/event/%2E/%2E%2E');
+        expect(keyToRelativePath('!_meta!..')).toBe('_meta/%2E%2E');
+    });
+
     test('string arg beginning with "~" is escaped to stay distinct from non-string args', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":["~42"]}'
@@ -254,6 +262,13 @@ describe('relativePathToKey()', () => {
         );
     });
 
+    test('decodes escaped dot segments back to literal "." and ".."', () => {
+        expect(relativePathToKey('x/values/event/%2E/%2E%2E')).toBe(
+            '!x!!values!{"head":"event","args":[".",".."]}'
+        );
+        expect(relativePathToKey('_meta/%2E%2E')).toBe('!_meta!..');
+    });
+
     test('two-arg NodeKey path', () => {
         expect(relativePathToKey('x/values/event_transcription/evtId/%2Faudio%2Fx.mp3')).toBe(
             '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}'
@@ -342,6 +357,19 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
             keyToRelativePath('!x!!values!{"head":"event","args":[42]}')
         );
     });
+
+    test('dot-segment sentinels stay distinct from literal percent-encoded text', () => {
+        expect(
+            keyToRelativePath('!x!!values!{"head":"event","args":["."]}')
+        ).not.toBe(
+            keyToRelativePath('!x!!values!{"head":"event","args":["%2E"]}')
+        );
+        expect(
+            keyToRelativePath('!x!!values!{"head":"event","args":[".."]}')
+        ).not.toBe(
+            keyToRelativePath('!x!!values!{"head":"event","args":["%2E%2E"]}')
+        );
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -401,6 +429,26 @@ describe('renderToFilesystem()', () => {
             expect(matchedFile).toBeDefined();
             // Path contains %21 for the '!' in the arg
             expect(relPath).toContain('%21');
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('dot-segment keys render to contained encoded paths', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const db = await makeSeededDatabase(capabilities, [
+            ['!x!!values!{"head":"event","args":[".."]}', { type: 'event', value: 'safe' }],
+            ['!_meta!..', 'meta-dotdot'],
+        ]);
+        try {
+            const outputDir = path.join(tmpDir, 'render-dot-segments');
+            await renderToFilesystem(capabilities, db, outputDir);
+            const files = collectFiles(outputDir).sort((a, b) => a.relPath.localeCompare(b.relPath));
+            expect(files).toEqual([
+                { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
+                { relPath: '_meta/format', content: JSON.stringify('xy-v1') },
+                { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }) },
+            ]);
         } finally {
             await db.close();
         }
@@ -704,6 +752,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
             await db.close();
         }
     });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -995,8 +1044,38 @@ describe('additional reliability tests', () => {
             keyToRelativePath('!x!!values!{"head":"event","args":["a!!b"]}'),
             keyToRelativePath('!x!!values!{"head":"event","args":["a/b"]}'),
             keyToRelativePath('!x!!values!{"head":"event","args":["a%b"]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":["."]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":[".."]}'),
         ];
         expect(new Set(relPaths).size).toBe(relPaths.length);
+    });
+
+    test('_rawPutAll writes large batches in chunks', async () => {
+        const { capabilities } = makeTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const batchSpy = jest.spyOn(db.db, 'batch');
+        try {
+            const entriesCount = RAW_BATCH_CHUNK_SIZE + 1;
+            const entries = Array.from({ length: entriesCount }, (_, index) => {
+                return {
+                    key: `!x!!values!{"head":"event","args":["${index}"]}`,
+                    value: { index },
+                };
+            });
+            await db._rawPutAll(entries);
+            expect(batchSpy).toHaveBeenCalledTimes(2);
+            const storedEntries = await collectRawEntries(db);
+            // +1 accounts for the format marker that getRootDatabase() writes on open.
+            expect(storedEntries.size).toBe(entriesCount + 1);
+            expect(
+                storedEntries.get(
+                    `!x!!values!{"head":"event","args":["${entriesCount - 1}"]}`
+                )
+            ).toEqual({ index: entriesCount - 1 });
+        } finally {
+            batchSpy.mockRestore();
+            await db.close();
+        }
     });
 
     test('empty Level instance has no entries', async () => {

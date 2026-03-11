@@ -31,6 +31,7 @@ const { stringToVersion, stringToNodeKeyString } = require('./types');
  * The format marker value that identifies a database using the x/y namespace layout.
  */
 const FORMAT_MARKER = 'xy-v1';
+const RAW_BATCH_CHUNK_SIZE = 500;
 
 /**
  * @template T
@@ -291,10 +292,9 @@ class RootDatabaseClass {
 
         /** @type {NodeKeyString[]} */
         const pending = [];
-        const CHUNK_SIZE = 500;
         for await (const key of this.db.keys()) {
             pending.push(key);
-            if (pending.length === CHUNK_SIZE) {
+            if (pending.length === RAW_BATCH_CHUNK_SIZE) {
                 await this.db.batch(pending.map(makeDelOp));
                 pending.length = 0;
             }
@@ -333,6 +333,35 @@ class RootDatabaseClass {
      */
     async _rawPut(key, value) {
         await this.db.put(stringToNodeKeyString(key), value);
+    }
+
+    /**
+     * Writes many raw key/value pairs directly into the root LevelDB instance
+     * using chunked batches. Chunking keeps large restores efficient without
+     * building one huge batch object in memory; an empty input array simply
+     * results in no batch writes.
+     * @param {Array<{ key: string, value: * }>} entries
+     * @returns {Promise<void>}
+     */
+    async _rawPutAll(entries) {
+        /**
+         * Converts a plain raw-entry object into a LevelDB batch put operation,
+         * applying the JSDoc-level NodeKeyString wrapper expected by this.db.
+         * @param {{ key: string, value: * }} entry
+         * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+         */
+        function makePutOp(entry) {
+            return {
+                type: 'put',
+                key: stringToNodeKeyString(entry.key),
+                value: entry.value,
+            };
+        }
+
+        for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
+            const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
+            await this.db.batch(chunk.map(makePutOp));
+        }
     }
 
     /**
@@ -419,4 +448,5 @@ function isRootDatabase(object) {
 module.exports = {
     makeRootDatabase,
     isRootDatabase,
+    RAW_BATCH_CHUNK_SIZE,
 };
