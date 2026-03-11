@@ -109,8 +109,15 @@ const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
  *
  * @param {string} rawKey
  * @returns {{ sublevels: string[], keyContent: string }}
+ * @throws {Error} If rawKey does not match the expected `!sublevels!key` format.
  */
 function parseRawKey(rawKey) {
+    if (!rawKey.startsWith('!')) {
+        throw new Error(
+            `Invalid database key '${rawKey}': expected raw LevelDB keys to start with '!'`
+        );
+    }
+
     /** @type {string[]} */
     const sublevels = [];
     let current = '';
@@ -119,6 +126,11 @@ function parseRawKey(rawKey) {
         const character = rawKey[i];
         if (character === '!') {
             const nextCharacter = i + 1 < rawKey.length ? rawKey[i + 1] : '';
+            if (current === '') {
+                throw new Error(
+                    `Invalid database key '${rawKey}': sublevel names must not be empty.`
+                );
+            }
             if (nextCharacter === '!') {
                 sublevels.push(current);
                 current = '';
@@ -134,8 +146,9 @@ function parseRawKey(rawKey) {
         i += 1;
     }
 
-    sublevels.push(current);
-    return { sublevels, keyContent: '' };
+    throw new Error(
+        `Invalid database key '${rawKey}': expected a '!' separator before key content.`
+    );
 }
 
 /**

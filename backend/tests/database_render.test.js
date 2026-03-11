@@ -185,6 +185,24 @@ describe('keyToRelativePath()', () => {
             'expected NodeKey JSON'
         );
     });
+
+    test('throws for raw keys without the required leading "!"', () => {
+        expect(() => keyToRelativePath('x!!values!{"head":"event","args":[]}')).toThrow(
+            "expected raw LevelDB keys to start with '!'"
+        );
+    });
+
+    test('throws for raw keys missing the separator before key content', () => {
+        expect(() => keyToRelativePath('!x!!values')).toThrow(
+            "expected a '!' separator before key content"
+        );
+    });
+
+    test('throws for raw keys with empty sublevel names', () => {
+        expect(() => keyToRelativePath('!x!!!!values!{"head":"event","args":[]}')).toThrow(
+            'sublevel names must not be empty'
+        );
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -486,6 +504,31 @@ describe('renderToFilesystem()', () => {
             await expect(
                 renderToFilesystem(capabilities, db, outputDir)
             ).rejects.toThrow('expected NodeKey JSON');
+            const files = collectFiles(outputDir);
+            expect(files).toEqual([
+                { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
+            ]);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('rejects malformed raw key structure without deleting an existing snapshot', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const outputDir = path.join(tmpDir, 'render-malformed-raw-key');
+        await capabilities.creator.createDirectory(path.join(outputDir, '_meta'));
+        const existingFile = await capabilities.creator.createFile(
+            path.join(outputDir, '_meta', 'format')
+        );
+        await capabilities.writer.writeFile(existingFile, JSON.stringify('previous-snapshot'));
+
+        const db = await makeSeededDatabase(capabilities, [
+            ['!x!!values', { broken: true }],
+        ]);
+        try {
+            await expect(
+                renderToFilesystem(capabilities, db, outputDir)
+            ).rejects.toThrow("expected a '!' separator before key content");
             const files = collectFiles(outputDir);
             expect(files).toEqual([
                 { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
