@@ -240,6 +240,27 @@ function tryParseNodeKey(keyContent) {
 }
 
 /**
+ * Validates that a non-plain sublevel key is encoded as a NodeKey JSON object.
+ * Non-plain sublevels are always decoded back from filesystem paths as NodeKey
+ * JSON, so accepting arbitrary raw strings here would silently corrupt keys on
+ * round-trip.
+ *
+ * @param {string[]} sublevels
+ * @param {string} keyContent
+ * @returns {{ head: string, args: Array<*> }}
+ * @throws {Error} If keyContent is not valid NodeKey JSON for these sublevels.
+ */
+function requireNodeKey(sublevels, keyContent) {
+    const nodeKey = tryParseNodeKey(keyContent);
+    if (nodeKey !== null) {
+        return nodeKey;
+    }
+    throw new Error(
+        `Invalid database key content for sublevels '${sublevels.join('!!')}': expected NodeKey JSON, got ${keyContent}`
+    );
+}
+
+/**
  * Converts a raw LevelDB key to a relative filesystem path.
  *
  * For NodeKey JSON stored in data sublevels (values, freshness, inputs,
@@ -263,16 +284,13 @@ function keyToRelativePath(rawKey) {
     const lastSublevel = sublevels[sublevels.length - 1] ?? '';
     const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
 
-    if (!isPlainKey) {
-        const nodeKey = tryParseNodeKey(keyContent);
-        if (nodeKey !== null) {
-            const argSegments = nodeKey.args.map(encodeArg);
-            return [...sublevels, nodeKey.head, ...argSegments].join('/');
-        }
+    if (isPlainKey) {
+        return [...sublevels, encodeSegment(keyContent)].join('/');
     }
 
-    // Plain string key (or unrecognized format — treat as plain string)
-    return [...sublevels, encodeSegment(keyContent)].join('/');
+    const nodeKey = requireNodeKey(sublevels, keyContent);
+    const argSegments = nodeKey.args.map(encodeArg);
+    return [...sublevels, nodeKey.head, ...argSegments].join('/');
 }
 
 /**
@@ -393,17 +411,21 @@ async function walkFilesRecursively(capabilities, dir) {
  * @returns {Promise<void>}
  */
 async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
-    await clearRenderedSnapshot(capabilities, outputDir);
-    let count = 0;
+    /** @type {{ relPath: string, value: any }[]} */
+    const validatedEntries = [];
     for await (const [key, value] of rootDatabase._rawEntries()) {
         const relPath = keyToRelativePath(nodeKeyStringToString(key));
-        const absPath = path.join(outputDir, relPath);
+        validatedEntries.push({ relPath, value });
+    }
+
+    await clearRenderedSnapshot(capabilities, outputDir);
+    for (const entry of validatedEntries) {
+        const absPath = path.join(outputDir, entry.relPath);
         const file = await capabilities.creator.createFile(absPath);
-        await capabilities.writer.writeFile(file, JSON.stringify(value));
-        count++;
+        await capabilities.writer.writeFile(file, JSON.stringify(entry.value));
     }
     capabilities.logger.logInfo(
-        { outputDir, count },
+        { outputDir, count: validatedEntries.length },
         'Rendered database to filesystem'
     );
 }
@@ -434,7 +456,9 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
     // Phase 1: Walk, read, and parse all entries before mutating the database.
     const allFiles = await walkFilesRecursively(capabilities, inputDir);
 
-    /** @type {{ key: NodeKeyString, value: any }[]} */
+    // Use plain string keys here because relativePathToKey reconstructs raw
+    // root-level LevelDB keys, including sublevel prefixes such as `!x!!values!...`.
+    /** @type {{ key: string, value: any }[]} */
     const entries = [];
     let count = 0;
 

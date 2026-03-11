@@ -321,11 +321,11 @@ class RootDatabaseClass {
      * bypassing the sublevel abstraction. Used by scanFromFilesystem to
      * restore a snapshot produced by renderToFilesystem.
      *
-     * The `stringToNodeKeyString` cast is required to satisfy the TypeScript
-     * type checker: `this.db` is typed as `Level<NodeKeyString, ...>`, so its
-     * `put` method requires a `NodeKeyString`.  At runtime `stringToNodeKeyString`
-     * is a no-op (it always accepts any string), so the raw sublevel-prefixed
-     * key passes through unchanged.
+     * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
+     * static typing expectations: `this.db` is documented as using
+     * `NodeKeyString` keys, so its `put` method is typed to require a
+     * `NodeKeyString`. At runtime `stringToNodeKeyString` is effectively a
+     * no-op, so the raw sublevel-prefixed key passes through unchanged.
      *
      * @param {string} key
      * @param {*} value

@@ -171,6 +171,20 @@ describe('keyToRelativePath()', () => {
             'x/freshness/all_events'
         );
     });
+
+    test('mixed non-string args encode via JSON segments', () => {
+        expect(keyToRelativePath(
+            '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
+        )).toBe(
+            'x/values/event/~true/~null/~{"nested":["x",1]}/~["a",2]'
+        );
+    });
+
+    test('throws for non-plain sublevel key content that is not NodeKey JSON', () => {
+        expect(() => keyToRelativePath('!x!!values!not-json')).toThrow(
+            'expected NodeKey JSON'
+        );
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -237,6 +251,14 @@ describe('relativePathToKey()', () => {
     test('string arg with leading "~" remains a string', () => {
         expect(relativePathToKey('x/values/event/~~42')).toBe(
             '!x!!values!{"head":"event","args":["~42"]}'
+        );
+    });
+
+    test('mixed JSON-encoded arg segments decode back to original values', () => {
+        expect(relativePathToKey(
+            'x/values/event/~true/~null/~{"nested":["x",1]}/~["a",2]'
+        )).toBe(
+            '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
         );
     });
 
@@ -446,6 +468,32 @@ describe('renderToFilesystem()', () => {
             await db.close();
         }
     });
+
+    test('rejects non-NodeKey content in data sublevels without deleting an existing snapshot', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const outputDir = path.join(tmpDir, 'render-invalid-raw-key');
+        await capabilities.creator.createDirectory(path.join(outputDir, '_meta'));
+        const existingFile = await capabilities.creator.createFile(
+            path.join(outputDir, '_meta', 'format')
+        );
+        await capabilities.writer.writeFile(existingFile, JSON.stringify('previous-snapshot'));
+
+        const db = await makeSeededDatabase(capabilities, [
+            ['!x!!values!{"head":"all_events","args":[]}', { ok: true }],
+            ['!x!!values!not-json', { broken: true }],
+        ]);
+        try {
+            await expect(
+                renderToFilesystem(capabilities, db, outputDir)
+            ).rejects.toThrow('expected NodeKey JSON');
+            const files = collectFiles(outputDir);
+            expect(files).toEqual([
+                { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
+            ]);
+        } finally {
+            await db.close();
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -526,6 +574,89 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
                 expect.objectContaining({ inputDir, count: 1 }),
                 'Scanned database from filesystem'
             );
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('invalid JSON snapshot leaves existing database unchanged', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'scan-invalid-json');
+        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
+        const invalidFile = await capabilities.creator.createFile(
+            path.join(inputDir, '_meta', 'format')
+        );
+        await capabilities.writer.writeFile(invalidFile, '{"broken":');
+
+        const db = await makeSeededDatabase(capabilities, [
+            ['!_meta!format', 'keep-me'],
+            ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
+        ]);
+        try {
+            const before = await collectRawEntries(db);
+            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow();
+            const after = await collectRawEntries(db);
+            expect(after).toEqual(before);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('partially valid snapshot leaves existing database unchanged when one file path is malformed', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'scan-partial-invalid-path');
+        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, '_meta', 'format'));
+
+        const validFile = await capabilities.creator.createFile(
+            path.join(inputDir, '_meta', 'version')
+        );
+        await capabilities.writer.writeFile(validFile, JSON.stringify('v1'));
+        const invalidFile = await capabilities.creator.createFile(
+            path.join(inputDir, '_meta', 'format', 'extra')
+        );
+        await capabilities.writer.writeFile(invalidFile, JSON.stringify('broken'));
+
+        const db = await makeSeededDatabase(capabilities, [
+            ['!_meta!format', 'keep-me'],
+            ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
+        ]);
+        try {
+            const before = await collectRawEntries(db);
+            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow(
+                'plain-key sublevels require exactly one key segment'
+            );
+            const after = await collectRawEntries(db);
+            expect(after).toEqual(before);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('partially valid snapshot leaves existing database unchanged when one file has invalid JSON', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'scan-partial-invalid-json');
+        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'x', 'values', 'event'));
+
+        const validFile = await capabilities.creator.createFile(
+            path.join(inputDir, '_meta', 'format')
+        );
+        await capabilities.writer.writeFile(validFile, JSON.stringify('xy-v1'));
+        const invalidFile = await capabilities.creator.createFile(
+            path.join(inputDir, 'x', 'values', 'event', 'bad')
+        );
+        await capabilities.writer.writeFile(invalidFile, '{not valid json');
+
+        const db = await makeSeededDatabase(capabilities, [
+            ['!_meta!format', 'keep-me'],
+            ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
+        ]);
+        try {
+            const before = await collectRawEntries(db);
+            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow();
+            const after = await collectRawEntries(db);
+            expect(after).toEqual(before);
         } finally {
             await db.close();
         }
@@ -707,6 +838,20 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         expect(dbBEntries.size).toBeGreaterThanOrEqual(seed.length);
         assertAllEntriesPresent(dbAEntries, dbBEntries);
     });
+
+    test('mixed non-string arguments round-trip across render and scan', async () => {
+        const seed = [
+            [
+                '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}',
+                { type: 'event', value: 'mixed-args' },
+            ],
+        ];
+        const { dbAEntries, dbBEntries } = await renderAndScan(seed);
+        expect(dbBEntries.has(
+            '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
+        )).toBe(true);
+        assertAllEntriesPresent(dbAEntries, dbBEntries);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -797,6 +942,18 @@ describe('additional reliability tests', () => {
         } finally {
             await db.close();
         }
+    });
+
+    test('key paths for every rendered file stay unique after encoding special arguments', async () => {
+        const relPaths = [
+            keyToRelativePath('!x!!values!{"head":"event","args":["~42"]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":[42]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":["a!b"]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":["a!!b"]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":["a/b"]}'),
+            keyToRelativePath('!x!!values!{"head":"event","args":["a%b"]}'),
+        ];
+        expect(new Set(relPaths).size).toBe(relPaths.length);
     });
 
     test('empty Level instance has no entries', async () => {
