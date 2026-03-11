@@ -179,10 +179,11 @@ describe("generators/interface", () => {
 
             await iface.synchronizeDatabase();
 
-            expect(rawDatabases).toHaveLength(2);
-            expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(2);
+            expect(rawDatabases).toHaveLength(3);
+            expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(3);
             expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
-            expect(rawDatabases[1].open).toHaveBeenCalled();
+            expect(rawDatabases[1].close).toHaveBeenCalledTimes(1);
+            expect(rawDatabases[2].open).toHaveBeenCalled();
             expect(iface.isInitialized()).toBe(true);
             await expect(iface._incrementalGraph.pull("all_events")).resolves.toMatchObject({
                 type: "all_events",

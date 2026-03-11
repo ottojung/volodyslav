@@ -227,6 +227,7 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(gitDir)).toBe(2);
             expect(topLevelEntries(gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(allTrackedFiles(gitDir)).toEqual([`${DATABASE_SUBPATH}/_meta/format`]);
         } finally {
             await db.close();
         }
