@@ -1,5 +1,4 @@
 const path = require("path");
-const { execFileSync } = require("child_process");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const {
@@ -19,17 +18,19 @@ function getTestCapabilities() {
 }
 
 /**
+ * @param {object} capabilities
  * @param {string} repositoryPath
  * @param {string} filePath
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function fileContentAtHead(repositoryPath, filePath) {
-    return execFileSync("git", [
+async function fileContentAtHead(capabilities, repositoryPath, filePath) {
+    const result = await capabilities.git.call(
         "-C",
         repositoryPath,
         "show",
         `HEAD:${filePath}`,
-    ]).toString();
+    );
+    return result.stdout;
 }
 
 describe("working_repository", () => {
@@ -304,7 +305,7 @@ describe("working_repository", () => {
 
             expect(await capabilities.reader.readFileAsText(path.join(localWorkDir, "data.json")))
                 .not.toBe('{"events":["stale-head-update"]}');
-            expect(fileContentAtHead(localWorkDir, "data.json"))
+            expect(await fileContentAtHead(capabilities, localWorkDir, "data.json"))
                 .toBe('{"events":["stale-head-update"]}');
 
             await expect(
