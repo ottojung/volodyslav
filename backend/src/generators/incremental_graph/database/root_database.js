@@ -6,7 +6,7 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion } = require('./types');
+const { stringToVersion, stringToNodeKeyString } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -31,6 +31,7 @@ const { stringToVersion } = require('./types');
  * The format marker value that identifies a database using the x/y namespace layout.
  */
 const FORMAT_MARKER = 'xy-v1';
+const RAW_BATCH_CHUNK_SIZE = 500;
 
 /**
  * @template T
@@ -275,6 +276,95 @@ class RootDatabaseClass {
     }
 
     /**
+     * Deletes all raw key/value pairs from the root LevelDB instance.
+     * Used by scanFromFilesystem to ensure stale keys (present in the database
+     * but absent from the snapshot directory) do not survive the restore.
+     * @returns {Promise<void>}
+     */
+    async _rawDeleteAll() {
+        /**
+         * @param {NodeKeyString} key
+         * @returns {{ type: 'del', key: NodeKeyString }}
+         */
+        function makeDelOp(key) {
+            return { type: 'del', key };
+        }
+
+        /** @type {NodeKeyString[]} */
+        const pending = [];
+        for await (const key of this.db.keys()) {
+            pending.push(key);
+            if (pending.length === RAW_BATCH_CHUNK_SIZE) {
+                await this.db.batch(pending.map(makeDelOp));
+                pending.length = 0;
+            }
+        }
+        if (pending.length > 0) {
+            await this.db.batch(pending.map(makeDelOp));
+        }
+    }
+
+    /**
+     * Iterate over all raw key/value pairs in the root LevelDB instance.
+     * Yields every entry stored at the root level, including all sublevel-prefixed keys.
+     * Used by renderToFilesystem to produce a complete snapshot.
+     * @returns {AsyncIterable<[NodeKeyString, *]>}
+     */
+    async *_rawEntries() {
+        for await (const [key, value] of this.db.iterator()) {
+            yield [key, value];
+        }
+    }
+
+    /**
+     * Write a raw key/value pair directly into the root LevelDB instance,
+     * bypassing the sublevel abstraction. Used by scanFromFilesystem to
+     * restore a snapshot produced by renderToFilesystem.
+     *
+     * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
+     * static typing expectations: `this.db` is documented as using
+     * `NodeKeyString` keys, so its `put` method is typed to require a
+     * `NodeKeyString`. At runtime `stringToNodeKeyString` is effectively a
+     * no-op, so the raw sublevel-prefixed key passes through unchanged.
+     *
+     * @param {string} key
+     * @param {*} value
+     * @returns {Promise<void>}
+     */
+    async _rawPut(key, value) {
+        await this.db.put(stringToNodeKeyString(key), value);
+    }
+
+    /**
+     * Writes many raw key/value pairs directly into the root LevelDB instance
+     * using chunked batches. Chunking keeps large restores efficient without
+     * building one huge batch object in memory; an empty input array simply
+     * results in no batch writes.
+     * @param {Array<{ key: string, value: * }>} entries
+     * @returns {Promise<void>}
+     */
+    async _rawPutAll(entries) {
+        /**
+         * Converts a plain raw-entry object into a LevelDB batch put operation,
+         * applying the JSDoc-level NodeKeyString wrapper expected by this.db.
+         * @param {{ key: string, value: * }} entry
+         * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+         */
+        function makePutOp(entry) {
+            return {
+                type: 'put',
+                key: stringToNodeKeyString(entry.key),
+                value: entry.value,
+            };
+        }
+
+        for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
+            const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
+            await this.db.batch(chunk.map(makePutOp));
+        }
+    }
+
+    /**
      * Close the database connection.
      * @returns {Promise<void>}
      */
@@ -358,4 +448,5 @@ function isRootDatabase(object) {
 module.exports = {
     makeRootDatabase,
     isRootDatabase,
+    RAW_BATCH_CHUNK_SIZE,
 };
