@@ -6,7 +6,7 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion } = require('./types');
+const { stringToVersion, stringToNodeKeyString } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -272,6 +272,37 @@ class RootDatabaseClass {
         }
 
         await this.db.batch(ops);
+    }
+
+    /**
+     * Iterate over all raw key/value pairs in the root LevelDB instance.
+     * Yields every entry stored at the root level, including all sublevel-prefixed keys.
+     * Used by renderToFilesystem to produce a complete snapshot.
+     * @returns {AsyncIterable<[NodeKeyString, *]>}
+     */
+    async *_rawEntries() {
+        for await (const [key, value] of this.db.iterator()) {
+            yield [key, value];
+        }
+    }
+
+    /**
+     * Write a raw key/value pair directly into the root LevelDB instance,
+     * bypassing the sublevel abstraction. Used by scanFromFilesystem to
+     * restore a snapshot produced by renderToFilesystem.
+     *
+     * The `stringToNodeKeyString` cast is required to satisfy the TypeScript
+     * type checker: `this.db` is typed as `Level<NodeKeyString, ...>`, so its
+     * `put` method requires a `NodeKeyString`.  At runtime `stringToNodeKeyString`
+     * is a no-op (it always accepts any string), so the raw sublevel-prefixed
+     * key passes through unchanged.
+     *
+     * @param {string} key
+     * @param {*} value
+     * @returns {Promise<void>}
+     */
+    async _rawPut(key, value) {
+        await this.db.put(stringToNodeKeyString(key), value);
     }
 
     /**
