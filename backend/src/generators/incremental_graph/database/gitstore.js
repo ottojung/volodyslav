@@ -1,75 +1,209 @@
 /**
  * Gitstore integration for the incremental-graph database.
  *
- * The database directory (LevelDB files) lives INSIDE a dedicated local git
- * repository so that `git add --all && git commit` literally checkpoints the
- * raw database state:
+ * The live LevelDB now lives outside the Git repository.  The repository tracks
+ * a rendered filesystem snapshot of the database instead:
  *
  *   <workingDirectory>/
- *     generators-database/          ← git working tree (local-only repo)
+ *     generators-leveldb/           ← live LevelDB working directory
+ *     generators-database/          ← git working tree
  *       .git/
- *       leveldb/                    ← LevelDB database files (only top-level entry)
+ *       rendered/                   ← rendered filesystem snapshot tracked by git
  *
- * Callers create snapshots by calling `checkpointDatabase(capabilities, message)`.
- * If nothing has changed since the last commit, the call is a no-op.
- *
- * CHECKPOINT_WORKING_PATH and DATABASE_SUBPATH are exported so that
- * `database/index.js` can construct the correct absolute database path
- * without duplicating the path constants.
+ * Callers create snapshots by rendering the live database into the tracked
+ * snapshot directory inside a gitstore transaction. If nothing has changed
+ * since the last commit, the call is a no-op.
  *
  * ## Checkpoint policy
  *
- * Checkpoints are taken only at migration boundaries — once before and once
- * after every `runMigration` call (see `migration_runner.js`).  Normal
- * incremental-graph writes (i.e. `invalidate` + `pull` cycles) do NOT
- * produce checkpoints.  This is intentional: LevelDB writes many small
- * internal files at high frequency during normal operation, and snapshotting
- * every write would create an unbounded stream of near-identical commits with
- * little historical value.  Migration boundaries, by contrast, represent
- * discrete, application-level schema transitions that are worth preserving as
- * durable snapshots.
+ * Migration snapshots are taken only at migration boundaries. `runMigration`
+ * wraps the whole migration in a single gitstore transaction and records two
+ * commits in that transaction: one before the migration logic runs and one
+ * after it completes successfully. Normal incremental-graph writes (i.e.
+ * `invalidate` + `pull` cycles) do NOT produce checkpoints directly.
+ * Migration boundaries, by contrast, represent discrete, application-level
+ * schema transitions that are worth preserving as durable rendered snapshots.
  */
 
-const { checkpoint } = require('../../../gitstore');
+const path = require('path');
+const { transaction } = require('../../../gitstore');
+const { renderToFilesystem } = require('./render');
 
-/** @typedef {import('../../../gitstore/checkpoint').Capabilities} CheckpointCapabilities */
+/** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
+/** @typedef {import('./root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../../../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../../logger').Logger} Logger */
+/** @typedef {import('../../../environment').Environment} Environment */
+/** @typedef {import('../../../datetime').Datetime} Datetime */
+/** @typedef {import('../../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('../../../subprocess/command').Command} Command */
+/** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
+/** @typedef {import('../../../generators/interface').Interface} Interface */
 
 /**
- * Path (relative to `workingDirectory()`) of the git repository that wraps
- * the database.  This directory is both the git working tree and the parent
- * of the database directory — making the database the *only* top-level entry
- * tracked by the repository.
+ * @typedef {object} CheckpointCapabilities
+ * @property {Command} git
+ * @property {FileCreator} creator
+ * @property {FileDeleter} deleter
+ * @property {FileChecker} checker
+ * @property {FileWriter} writer
+ * @property {FileReader} reader
+ * @property {DirScanner} scanner
+ * @property {Environment} environment
+ * @property {Logger} logger
+ * @property {SleepCapability} sleeper
+ * @property {Datetime} datetime
+ * @property {Interface} interface
+ * @property {LevelDatabase} levelDatabase
+ */
+
+/**
+ * Path (relative to `workingDirectory()`) of the git repository that stores the
+ * rendered database snapshot.
  * @type {string}
  */
 const CHECKPOINT_WORKING_PATH = "generators-database";
 
 /**
- * Subdirectory name inside `CHECKPOINT_WORKING_PATH` where LevelDB stores
- * its files.  The resulting absolute path is:
- *   `<workingDirectory>/<CHECKPOINT_WORKING_PATH>/<DATABASE_SUBPATH>`
+ * Subdirectory name inside `CHECKPOINT_WORKING_PATH` where the rendered
+ * filesystem snapshot is written and tracked by git.
  * @type {string}
  */
-const DATABASE_SUBPATH = "leveldb";
+const DATABASE_SUBPATH = "rendered";
 
 /**
- * Record the current state of the database as a git commit.
+ * Path (relative to `workingDirectory()`) of the live LevelDB directory.
+ * @type {string}
+ */
+const LIVE_DATABASE_WORKING_PATH = "generators-leveldb";
+
+/**
+ * @param {{ environment: Environment }} capabilities
+ * @returns {string}
+ */
+function pathToRenderedDatabase(capabilities) {
+    return path.join(
+        capabilities.environment.workingDirectory(),
+        CHECKPOINT_WORKING_PATH,
+        DATABASE_SUBPATH
+    );
+}
+
+/**
+ * @param {{ environment: Environment }} capabilities
+ * @returns {string}
+ */
+function pathToLiveDatabase(capabilities) {
+    return path.join(
+        capabilities.environment.workingDirectory(),
+        LIVE_DATABASE_WORKING_PATH
+    );
+}
+
+/**
+ * Record the current rendered state of the database as a git commit.
  *
- * Stages all files in the git working tree (`generators-database/`) with
- * `git add --all` and commits them.  If no files have changed since the last
- * commit, the call is a no-op (no empty commit is created).
- *
- * The git repository is created automatically on the first call.
+ * The rendered snapshot is written into `generators-database/rendered/` inside
+ * a gitstore transaction. If no files have changed since the last commit, the
+ * call is a no-op (no empty commit is created). The git repository is created
+ * automatically on the first call.
  *
  * @param {CheckpointCapabilities} capabilities
  * @param {string} message - The git commit message.
+ * @param {RootDatabase} [rootDatabase] - Open live database to render. When
+ * omitted, the database is opened for the duration of this call.
+ * @param {RemoteLocation | "empty"} [initialState="empty"]
  * @returns {Promise<void>}
  */
-async function checkpointDatabase(capabilities, message) {
-    await checkpoint(capabilities, CHECKPOINT_WORKING_PATH, "empty", message);
+async function checkpointDatabase(
+    capabilities,
+    message,
+    rootDatabase,
+    initialState = "empty"
+) {
+    /** @type {RootDatabase | undefined} */
+    let ownedDatabase = undefined;
+    /** @type {RootDatabase} */
+    let database;
+
+    if (rootDatabase === undefined) {
+        const { getRootDatabase } = require('./index');
+        ownedDatabase = await getRootDatabase(capabilities);
+        database = ownedDatabase;
+    } else {
+        database = rootDatabase;
+    }
+
+    try {
+        await transaction(
+            capabilities,
+            CHECKPOINT_WORKING_PATH,
+            initialState,
+            async (store) => {
+                const workTree = await store.getWorkTree();
+                const renderedPath = path.join(workTree, DATABASE_SUBPATH);
+                await renderToFilesystem(capabilities, database, renderedPath);
+                await store.commit(message);
+            }
+        );
+    } finally {
+        if (ownedDatabase !== undefined) {
+            await ownedDatabase.close();
+        }
+    }
+}
+
+/**
+ * Run a migration inside a single gitstore transaction while recording two
+ * rendered snapshots of the live database: one before the migration callback
+ * runs and one after it completes successfully.
+ *
+ * Both commits happen in the same transaction worktree, so any failure aborts
+ * the overall transaction without pushing a partially checkpointed history.
+ *
+ * @template T
+ * @param {CheckpointCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
+ * @param {string} preMessage
+ * @param {string} postMessage
+ * @param {() => Promise<T>} callback
+ * @returns {Promise<T>}
+ */
+async function runMigrationInTransaction(
+    capabilities,
+    rootDatabase,
+    preMessage,
+    postMessage,
+    callback
+) {
+    return await transaction(
+        capabilities,
+        CHECKPOINT_WORKING_PATH,
+        "empty",
+        async (store) => {
+            const workTree = await store.getWorkTree();
+            const renderedPath = path.join(workTree, DATABASE_SUBPATH);
+            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await store.commit(preMessage);
+            const result = await callback();
+            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await store.commit(postMessage);
+            return result;
+        }
+    );
 }
 
 module.exports = {
     checkpointDatabase,
+    runMigrationInTransaction,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
+    pathToRenderedDatabase,
+    pathToLiveDatabase,
 };

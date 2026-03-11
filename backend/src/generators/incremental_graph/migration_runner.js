@@ -12,7 +12,7 @@ const { compileNodeDef } = require("./compiled_node");
 const { stringToNodeKeyString } = require("./database");
 const { withMutex } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
-const { checkpointDatabase } = require("./database");
+const { runMigrationInTransaction } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -37,6 +37,7 @@ const { checkpointDatabase } = require("./database");
  * @typedef {import("../../filesystem/checker").FileChecker} FileChecker
  * @typedef {import("../../filesystem/creator").FileCreator} FileCreator
  * @typedef {import("../../filesystem/deleter").FileDeleter} FileDeleter
+ * @typedef {import("../../filesystem/dirscanner").DirScanner} DirScanner
  * @typedef {import("../../filesystem/writer").FileWriter} FileWriter
  * @typedef {import("../../filesystem/copier").FileCopier} FileCopier
  * @typedef {import("../../filesystem/appender").FileAppender} FileAppender
@@ -54,8 +55,11 @@ const { checkpointDatabase } = require("./database");
  * @property {FileChecker} checker - A file checker instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileDeleter} deleter - A file deleter instance
+ * @property {DirScanner} scanner - A directory scanner instance
  * @property {Command} git - A command instance for Git operations.
+ * @property {FileReader} reader - A file reader instance
  * @property {FileWriter} writer - A file writer instance
+ * @property {LevelDatabase} levelDatabase - A level database instance
  * @property {Environment} environment - An environment instance
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Interface} interface - An interface instance with an update() method.
@@ -230,50 +234,52 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         prevVersion, currentVersion
     }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
 
-    // Snapshot the database state before migration starts.
-    await checkpointDatabase(capabilities, `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`);
+    await runMigrationInTransaction(
+        capabilities,
+        rootDatabase,
+        `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`,
+        `post-migration: ${String(currentVersion)}`,
+        async () => {
+            // Create the staging namespace ("y") from the same underlying database.
+            const nextDb = rootDatabase.withNamespace('y');
 
-    // Create the staging namespace ("y") from the same underlying database.
-    const nextDb = rootDatabase.withNamespace('y');
+            // Clear "y" before migration so a crash-retry starts clean.
+            await nextDb.clearStorage();
 
-    // Clear "y" before migration so a crash-retry starts clean.
-    await nextDb.clearStorage();
+            const prevStorage = rootDatabase.getSchemaStorage();
+            const newStorage = nextDb.getSchemaStorage();
 
-    const prevStorage = rootDatabase.getSchemaStorage();
-    const newStorage = nextDb.getSchemaStorage();
+            // Compile new schema and build head index for compatibility checks.
+            const compiledNodes = nodeDefs.map(compileNodeDef);
+            /** @type {Map<NodeName, CompiledNode>} */
+            const newHeadIndex = new Map(compiledNodes.map((n) => [n.head, n]));
 
-    // Compile new schema and build head index for compatibility checks.
-    const compiledNodes = nodeDefs.map(compileNodeDef);
-    /** @type {Map<NodeName, CompiledNode>} */
-    const newHeadIndex = new Map(compiledNodes.map((n) => [n.head, n]));
+            // Load previous-version materialized nodes.
+            const materializedNodes = await loadMaterializedNodes(prevStorage);
 
-    // Load previous-version materialized nodes.
-    const materializedNodes = await loadMaterializedNodes(prevStorage);
+            // Create the MigrationStorage for the user callback.
+            const migrationStorage = makeMigrationStorage(
+                prevStorage,
+                newHeadIndex,
+                materializedNodes
+            );
 
-    // Create the MigrationStorage for the user callback.
-    const migrationStorage = makeMigrationStorage(
-        prevStorage,
-        newHeadIndex,
-        materializedNodes
+            // Execute user migration callback.
+            await callback(migrationStorage);
+
+            // Finalize: propagate deletes, check fan-in, check completeness.
+            const decisions = await migrationStorage.finalize();
+
+            // Apply decisions atomically to the staging namespace ("y").
+            await applyDecisions(prevStorage, newStorage, decisions);
+
+            // Write the version into y's meta BEFORE the swap so it is included in the atomic copy.
+            await nextDb.setMetaVersion(rootDatabase.version);
+
+            // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
+            await rootDatabase.replaceContentsFrom(nextDb);
+        }
     );
-
-    // Execute user migration callback.
-    await callback(migrationStorage);
-
-    // Finalize: propagate deletes, check fan-in, check completeness.
-    const decisions = await migrationStorage.finalize();
-
-    // Apply decisions atomically to the staging namespace ("y").
-    await applyDecisions(prevStorage, newStorage, decisions);
-
-    // Write the version into y's meta BEFORE the swap so it is included in the atomic copy.
-    await nextDb.setMetaVersion(rootDatabase.version);
-
-    // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
-    await rootDatabase.replaceContentsFrom(nextDb);
-
-    // Snapshot the database state after migration completes successfully.
-    await checkpointDatabase(capabilities, `post-migration: ${String(currentVersion)}`);
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion

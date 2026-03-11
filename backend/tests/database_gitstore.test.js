@@ -9,7 +9,15 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { checkpointDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require("../src/generators/incremental_graph/database");
+const {
+    checkpointDatabase,
+    runMigrationInTransaction,
+    CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
+    getRootDatabase,
+    keyToRelativePath,
+} = require("../src/generators/incremental_graph/database");
 const defaultBranch = require("../src/gitstore/default_branch");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
@@ -67,6 +75,19 @@ function latestCommitMessage(gitDir) {
 }
 
 /**
+ * Subject lines of the most recent commits, newest first.
+ * @param {string} gitDir
+ * @param {number} count
+ * @returns {string[]}
+ */
+function latestCommitMessages(gitDir, count) {
+    return execFileSync("git", [
+        "--git-dir", gitDir,
+        "log", `-n${count}`, "--format=%s",
+    ]).toString().trim().split("\n").filter(Boolean);
+}
+
+/**
  * Top-level entry names of the current HEAD tree (non-recursive).
  * @param {string} gitDir
  * @returns {string[]}
@@ -104,22 +125,20 @@ function fileContentAtHead(gitDir, filePath) {
     ]).toString();
 }
 
-// ── Helpers to write fake LevelDB files ──────────────────────────────────────
+// ── Helpers to seed the live database ────────────────────────────────────────
 
 /**
- * Write fake "LevelDB" content into DATABASE_SUBPATH inside the checkpoint repo.
+ * Seed raw entries into the live incremental-graph database.
  * @param {object} capabilities
- * @param {string} filename   - name of the file to write (inside DATABASE_SUBPATH)
- * @param {string} content
+ * @param {Array<[string, *]>} entries
+ * @returns {Promise<import('../src/generators/incremental_graph/database/root_database').RootDatabase>}
  */
-async function writeDatabaseFile(capabilities, filename, content) {
-    const dir = path.join(
-        capabilities.environment.workingDirectory(),
-        CHECKPOINT_WORKING_PATH,
-        DATABASE_SUBPATH
-    );
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, filename), content);
+async function seedDatabase(capabilities, entries) {
+    const db = await getRootDatabase(capabilities);
+    for (const [key, value] of entries) {
+        await db._rawPut(key, value);
+    }
+    return db;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -130,179 +149,299 @@ describe("checkpointDatabase", () => {
 
     test("creates a commit when called for the first time", async () => {
         const capabilities = getTestCapabilities();
-        await writeDatabaseFile(capabilities, "MANIFEST-000001", "level db data");
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "initial checkpoint", db);
 
-        await checkpointDatabase(capabilities, "initial checkpoint");
-
-        const gitDir = checkpointGitDir(capabilities);
-        // +1 for the "Initial empty commit" created by getRepository on first use
-        expect(commitCount(gitDir)).toBe(2);
+            const gitDir = checkpointGitDir(capabilities);
+            // +1 for the "Initial empty commit" created by getRepository on first use
+            expect(commitCount(gitDir)).toBe(2);
+        } finally {
+            await db.close();
+        }
     });
 
     test("commit message matches the provided message", async () => {
         const capabilities = getTestCapabilities();
-        await writeDatabaseFile(capabilities, "MANIFEST-000001", "data");
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "my checkpoint message", db);
 
-        await checkpointDatabase(capabilities, "my checkpoint message");
-
-        const gitDir = checkpointGitDir(capabilities);
-        expect(latestCommitMessage(gitDir)).toBe("my checkpoint message");
+            const gitDir = checkpointGitDir(capabilities);
+            expect(latestCommitMessage(gitDir)).toBe("my checkpoint message");
+        } finally {
+            await db.close();
+        }
     });
 
     test("creates a new commit on every call", async () => {
         const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [
+            ["!_meta!format", "xy-v1"],
+            ['!x!!values!{"head":"event","args":["same"]}', { version: 1 }],
+        ]);
+        try {
+            await checkpointDatabase(capabilities, "first", db);
+            await db._rawPut('!x!!values!{"head":"event","args":["same"]}', { version: 2 });
+            await checkpointDatabase(capabilities, "second", db);
 
-        // First checkpoint
-        await writeDatabaseFile(capabilities, "000001.ldb", "v1");
-        await checkpointDatabase(capabilities, "first");
-
-        // Second checkpoint (updated file)
-        await writeDatabaseFile(capabilities, "000001.ldb", "v2");
-        await checkpointDatabase(capabilities, "second");
-
-        const gitDir = checkpointGitDir(capabilities);
-        // +1 for the "Initial empty commit" created by getRepository on first use
-        expect(commitCount(gitDir)).toBe(3);
+            const gitDir = checkpointGitDir(capabilities);
+            // +1 for the "Initial empty commit" created by getRepository on first use
+            expect(commitCount(gitDir)).toBe(3);
+        } finally {
+            await db.close();
+        }
     });
 
     test("commit messages are recorded in order", async () => {
         const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [
+            ["!_meta!format", "xy-v1"],
+            ['!x!!values!{"head":"event","args":["ordered"]}', { version: "a" }],
+        ]);
+        try {
+            await checkpointDatabase(capabilities, "checkpoint-alpha", db);
+            await db._rawPut('!x!!values!{"head":"event","args":["ordered"]}', { version: "b" });
+            await checkpointDatabase(capabilities, "checkpoint-beta", db);
 
-        await writeDatabaseFile(capabilities, "file.ldb", "a");
-        await checkpointDatabase(capabilities, "checkpoint-alpha");
-
-        await writeDatabaseFile(capabilities, "file.ldb", "b");
-        await checkpointDatabase(capabilities, "checkpoint-beta");
-
-        const gitDir = checkpointGitDir(capabilities);
-        // Most recent commit is beta
-        expect(latestCommitMessage(gitDir)).toBe("checkpoint-beta");
-        // +1 for the "Initial empty commit" created by getRepository on first use
-        expect(commitCount(gitDir)).toBe(3);
+            const gitDir = checkpointGitDir(capabilities);
+            // Most recent commit is beta
+            expect(latestCommitMessage(gitDir)).toBe("checkpoint-beta");
+            // +1 for the "Initial empty commit" created by getRepository on first use
+            expect(commitCount(gitDir)).toBe(3);
+        } finally {
+            await db.close();
+        }
     });
 
     // ── allow-empty ───────────────────────────────────────────────────────────
 
     test("does not commit when no files have changed", async () => {
         const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "first", db);
+            const gitDir = checkpointGitDir(capabilities);
+            const countAfterFirst = commitCount(gitDir);
 
-        await writeDatabaseFile(capabilities, "MANIFEST-000001", "static");
-        await checkpointDatabase(capabilities, "first");
-        const gitDir = checkpointGitDir(capabilities);
-        const countAfterFirst = commitCount(gitDir);
+            await checkpointDatabase(capabilities, "second – no change", db);
 
-        // No file changes – second checkpoint should be a no-op
-        await checkpointDatabase(capabilities, "second – no change");
-
-        // No new commit should have been created
-        expect(commitCount(gitDir)).toBe(countAfterFirst);
+            expect(commitCount(gitDir)).toBe(countAfterFirst);
+        } finally {
+            await db.close();
+        }
     });
 
     test("can be called before any database files have been written", async () => {
         const capabilities = getTestCapabilities();
-        // Call with an empty directory — no LevelDB files at all
-        await checkpointDatabase(capabilities, "empty repo checkpoint");
+        const db = await getRootDatabase(capabilities);
+        try {
+            await checkpointDatabase(capabilities, "empty repo checkpoint", db);
 
-        const gitDir = checkpointGitDir(capabilities);
-        // Only the "Initial empty commit" created by getRepository on first use;
-        // checkpointDatabase is a no-op when there is nothing to commit.
-        expect(commitCount(gitDir)).toBe(1);
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(gitDir)).toBe(2);
+            expect(topLevelEntries(gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(allTrackedFiles(gitDir)).toEqual([`${DATABASE_SUBPATH}/_meta/format`]);
+        } finally {
+            await db.close();
+        }
     });
 
     // ── Repository layout ─────────────────────────────────────────────────────
 
     test("database subdirectory is the only top-level entry in the repository", async () => {
         const capabilities = getTestCapabilities();
-        await writeDatabaseFile(capabilities, "000042.ldb", "data");
+        const db = await seedDatabase(capabilities, [
+            ["!_meta!format", "xy-v1"],
+            ['!x!!values!{"head":"event","args":["layout"]}', { ok: true }],
+        ]);
+        try {
+            await checkpointDatabase(capabilities, "layout check", db);
 
-        await checkpointDatabase(capabilities, "layout check");
-
-        const gitDir = checkpointGitDir(capabilities);
-        expect(topLevelEntries(gitDir)).toEqual([DATABASE_SUBPATH]);
+            const gitDir = checkpointGitDir(capabilities);
+            expect(topLevelEntries(gitDir)).toEqual([DATABASE_SUBPATH]);
+        } finally {
+            await db.close();
+        }
     });
 
-    test("database files are tracked inside DATABASE_SUBPATH in the commit tree", async () => {
+    test("rendered database files are tracked inside DATABASE_SUBPATH in the commit tree", async () => {
         const capabilities = getTestCapabilities();
-        await writeDatabaseFile(capabilities, "000001.ldb", "sst data");
-        await writeDatabaseFile(capabilities, "MANIFEST-000002", "manifest");
+        const db = await seedDatabase(capabilities, [
+            ["!_meta!format", "xy-v1"],
+            ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
+            ['!x!!meta!version', "1.2.3"],
+        ]);
+        try {
+            await checkpointDatabase(capabilities, "track files", db);
 
-        await checkpointDatabase(capabilities, "track files");
-
-        const gitDir = checkpointGitDir(capabilities);
-        const tracked = allTrackedFiles(gitDir);
-        expect(tracked).toContain(`${DATABASE_SUBPATH}/000001.ldb`);
-        expect(tracked).toContain(`${DATABASE_SUBPATH}/MANIFEST-000002`);
+            const gitDir = checkpointGitDir(capabilities);
+            const tracked = allTrackedFiles(gitDir);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/_meta/format`);
+            expect(tracked).toContain(
+                `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["one"]}')}`
+            );
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/x/meta/version`);
+        } finally {
+            await db.close();
+        }
     });
 
     test("file content is correctly recorded in the commit", async () => {
         const capabilities = getTestCapabilities();
-        await writeDatabaseFile(capabilities, "data.ldb", "hello-content");
+        const db = await seedDatabase(capabilities, [
+            ['!x!!values!{"head":"event","args":["hello"]}', { message: "hello-content" }],
+        ]);
+        try {
+            await checkpointDatabase(capabilities, "content check", db);
 
-        await checkpointDatabase(capabilities, "content check");
-
-        const gitDir = checkpointGitDir(capabilities);
-        expect(fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/data.ldb`)).toBe("hello-content");
+            const gitDir = checkpointGitDir(capabilities);
+            expect(
+                fileContentAtHead(
+                    gitDir,
+                    `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["hello"]}')}`
+                )
+            ).toBe(JSON.stringify({ message: "hello-content" }));
+        } finally {
+            await db.close();
+        }
     });
 
     test("git repository is located inside CHECKPOINT_WORKING_PATH", async () => {
         const capabilities = getTestCapabilities();
-        await checkpointDatabase(capabilities, "location check");
+        const db = await getRootDatabase(capabilities);
+        try {
+            await checkpointDatabase(capabilities, "location check", db);
 
-        // `.git` must exist at the expected path
-        const gitDir = checkpointGitDir(capabilities);
-        const stat = await fs.stat(gitDir);
-        expect(stat.isDirectory()).toBe(true);
+            const gitDir = checkpointGitDir(capabilities);
+            const stat = await fs.stat(gitDir);
+            expect(stat.isDirectory()).toBe(true);
+            const liveDbStat = await fs.stat(
+                path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
+            );
+            expect(liveDbStat.isDirectory()).toBe(true);
+        } finally {
+            await db.close();
+        }
     });
 
     // ── History preservation ──────────────────────────────────────────────────
 
     test("files written in earlier calls remain in git history", async () => {
         const capabilities = getTestCapabilities();
+        const oldKey = '!x!!values!{"head":"event","args":["old"]}';
+        const newKey = '!x!!values!{"head":"event","args":["new"]}';
+        const db = await seedDatabase(capabilities, [[oldKey, { value: "old content" }]]);
+        try {
+            await checkpointDatabase(capabilities, "first", db);
+            await db._rawPut(newKey, { value: "new content" });
+            await checkpointDatabase(capabilities, "second", db);
 
-        await writeDatabaseFile(capabilities, "old.ldb", "old content");
-        await checkpointDatabase(capabilities, "first");
-
-        await writeDatabaseFile(capabilities, "new.ldb", "new content");
-        await checkpointDatabase(capabilities, "second");
-
-        const gitDir = checkpointGitDir(capabilities);
-        // The latest commit must contain both files
-        const tracked = allTrackedFiles(gitDir);
-        expect(tracked).toContain(`${DATABASE_SUBPATH}/old.ldb`);
-        expect(tracked).toContain(`${DATABASE_SUBPATH}/new.ldb`);
+            const gitDir = checkpointGitDir(capabilities);
+            const tracked = allTrackedFiles(gitDir);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${keyToRelativePath(oldKey)}`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${keyToRelativePath(newKey)}`);
+        } finally {
+            await db.close();
+        }
     });
 
     test("updated file content is reflected in the latest commit", async () => {
         const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["db"]}';
+        const db = await seedDatabase(capabilities, [[key, { version: "version-1" }]]);
+        try {
+            await checkpointDatabase(capabilities, "v1", db);
+            await db._rawPut(key, { version: "version-2" });
+            await checkpointDatabase(capabilities, "v2", db);
 
-        await writeDatabaseFile(capabilities, "db.ldb", "version-1");
-        await checkpointDatabase(capabilities, "v1");
-
-        await writeDatabaseFile(capabilities, "db.ldb", "version-2");
-        await checkpointDatabase(capabilities, "v2");
-
-        const gitDir = checkpointGitDir(capabilities);
-        expect(fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/db.ldb`)).toBe("version-2");
+            const gitDir = checkpointGitDir(capabilities);
+            expect(
+                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+            ).toBe(JSON.stringify({ version: "version-2" }));
+        } finally {
+            await db.close();
+        }
     });
 
     // ── Concurrency ───────────────────────────────────────────────────────────
 
     test("concurrent calls are serialized: all changes are committed", async () => {
         const capabilities = getTestCapabilities();
-        // Write an initial file so the repo exists before the race
-        await writeDatabaseFile(capabilities, "base.ldb", "base");
+        const key = '!x!!values!{"head":"event","args":["base"]}';
+        const db = await seedDatabase(capabilities, [[key, { value: "base" }]]);
+        try {
+            await Promise.all([
+                checkpointDatabase(capabilities, "concurrent-1", db),
+                checkpointDatabase(capabilities, "concurrent-2", db),
+            ]);
 
-        await Promise.all([
-            checkpointDatabase(capabilities, "concurrent-1"),
-            checkpointDatabase(capabilities, "concurrent-2"),
-        ]);
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(gitDir)).toBeGreaterThanOrEqual(2);
+            expect(
+                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+            ).toBe(JSON.stringify({ value: "base" }));
+        } finally {
+            await db.close();
+        }
+    });
+});
 
-        const gitDir = checkpointGitDir(capabilities);
-        // The file must be committed; both concurrent calls must settle without error.
-        // +1 for the "Initial empty commit" created by getRepository on first use
-        // +1 for the actual commit (one or both concurrent calls may produce a commit)
-        expect(commitCount(gitDir)).toBeGreaterThanOrEqual(2);
-        // The file written before the race must be present at HEAD
-        expect(fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/base.ldb`)).toBe("base");
+describe("runMigrationInTransaction", () => {
+    test("records pre-migration and post-migration commits inside one transaction", async () => {
+        const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["migration"]}';
+        const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
+        try {
+            const result = await runMigrationInTransaction(
+                capabilities,
+                db,
+                "pre-migration: 1 → 2",
+                "post-migration: 2",
+                async () => {
+                    await db._rawPut(key, { version: "after" });
+                    return "done";
+                }
+            );
+
+            expect(result).toBe("done");
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(gitDir)).toBe(3);
+            expect(latestCommitMessages(gitDir, 2)).toEqual([
+                "post-migration: 2",
+                "pre-migration: 1 → 2",
+            ]);
+            expect(
+                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+            ).toBe(JSON.stringify({ version: "after" }));
+        } finally {
+            await db.close();
+        }
+    });
+
+    test("does not persist pre-migration commit if the migration callback fails", async () => {
+        const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["migration-fail"]}';
+        const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
+        try {
+            await expect(
+                runMigrationInTransaction(
+                    capabilities,
+                    db,
+                    "pre-migration: fail",
+                    "post-migration: fail",
+                    async () => {
+                        await db._rawPut(key, { version: "after" });
+                        throw new Error("migration failure");
+                    }
+                )
+            ).rejects.toThrow("migration failure");
+
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(gitDir)).toBe(1);
+            expect(allTrackedFiles(gitDir)).toEqual([]);
+        } finally {
+            await db.close();
+        }
     });
 });

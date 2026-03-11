@@ -3,11 +3,17 @@
  * Provides a LevelDB key-value store for storing generated values and event log mirrors.
  */
 
-const path = require('path');
 const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, versionToString, stringToVersion } = require('./types');
 const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
-const { checkpointDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('./gitstore');
+const {
+    checkpointDatabase,
+    runMigrationInTransaction,
+    CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
+    pathToLiveDatabase,
+} = require('./gitstore');
 const { synchronizeNoLock } = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
 
@@ -47,24 +53,22 @@ function isDatabaseInitializationError(object) {
  * @throws {DatabaseInitializationError} If database initialization fails
  */
 async function getRootDatabase(capabilities) {
-    const dataDir = capabilities.environment.workingDirectory();
-    const databaseParent = path.join(dataDir, CHECKPOINT_WORKING_PATH);
-    const databasePath = path.join(databaseParent, DATABASE_SUBPATH);
+    const databasePath = pathToLiveDatabase(capabilities);
 
-    if (await capabilities.checker.directoryExists(databaseParent)) {
-        capabilities.logger.logInfo({ databaseParent }, 'Database directory exists');
+    if (await capabilities.checker.directoryExists(databasePath)) {
+        capabilities.logger.logInfo({ databasePath }, 'Database directory exists');
     } else {
-        capabilities.logger.logInfo({ databaseParent }, 'Database directory does not exist, will be created');
+        capabilities.logger.logInfo({ databasePath }, 'Database directory does not exist, will be created');
     }
 
-    // Ensure the parent directory (the git working tree) exists before LevelDB opens.
+    // Ensure the LevelDB directory exists before LevelDB opens.
     try {
-        await capabilities.creator.createDirectory(databaseParent);
+        await capabilities.creator.createDirectory(databasePath);
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
             `Failed to create data directory: ${err.message}`,
-            databaseParent,
+            databasePath,
             err
         );
     }
@@ -92,8 +96,10 @@ module.exports = {
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,
+    runMigrationInTransaction,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
     stringToNodeKeyString,
     nodeNameToString,
     stringToNodeName,

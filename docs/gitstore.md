@@ -212,20 +212,21 @@ All three follow the project's error-as-value convention: use the corresponding 
 | `event_log_storage/synchronize.js` | `"working-git-repository"` | `{ url: environment.eventLogRepository() }` | Bi-directional sync with remote on startup / request |
 | `runtime_state_storage/transaction.js` | `"runtime-state-repository"` | `"empty"` | Writes transient runtime state; local-only, never pushed to a remote |
 | `runtime_state_storage/synchronize.js` | `"runtime-state-repository"` | `"empty"` | Ensures the local-only runtime state repo exists |
-| `generators/incremental_graph/database/gitstore.js` (`checkpointDatabase`) | `"generators-database"` | `"empty"` | Snapshots the incremental-graph LevelDB at migration boundaries |
+| `generators/incremental_graph/database/gitstore.js` (`checkpointDatabase`) | `"generators-database"` | `"empty"` | Records a single rendered snapshot commit of the live incremental-graph database |
+| `generators/incremental_graph/database/gitstore.js` (`runMigrationInTransaction`) | `"generators-database"` | `"empty"` | Runs a migration inside one gitstore transaction with pre/post rendered snapshot commits |
 
 ---
 
 ## Incremental-Graph Checkpoint Policy
 
-`checkpointDatabase` (in `generators/incremental_graph/database/gitstore.js`) is
-called exclusively from `runMigration` — once before the migration runs and once
-after it completes.  Normal incremental-graph writes (`invalidate` + `pull` cycles)
-do **not** trigger a checkpoint.
+`runMigrationInTransaction` (in `generators/incremental_graph/database/gitstore.js`)
+wraps each `runMigration` call in a single gitstore transaction and records two
+commits in that transaction — one before the migration callback runs and one
+after it completes successfully. Normal incremental-graph writes do **not**
+trigger migration snapshots.
 
 This is intentional.  LevelDB produces many small internal files at high frequency
 during ordinary operation, and checkpointing every write would create an unbounded
 stream of near-identical commits with little historical value.  Migration boundaries
 represent discrete, application-level schema transitions that are worth preserving
 as durable snapshots.
-

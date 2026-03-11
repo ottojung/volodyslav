@@ -5,7 +5,12 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { getRootDatabase, isRootDatabase, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH, isDatabaseInitializationError } = require('../src/generators/incremental_graph/database');
+const {
+    getRootDatabase,
+    isRootDatabase,
+    LIVE_DATABASE_WORKING_PATH,
+    isDatabaseInitializationError,
+} = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
 
@@ -61,7 +66,7 @@ describe('generators/database', () => {
             try {
                 const db = await getRootDatabase(capabilities);
                 const dataDir = capabilities.environment.workingDirectory();
-                const expectedPath = path.join(dataDir, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH);
+                const expectedPath = path.join(dataDir, LIVE_DATABASE_WORKING_PATH);
                 
                 expect(fs.existsSync(expectedPath)).toBe(true);
                 
@@ -409,7 +414,10 @@ describe('generators/database', () => {
             try {
                 // Write a wrong format marker directly into the DB to simulate an old/incompatible layout.
                 const rawDb = capabilities.levelDatabase.initialize(
-                    require('path').join(capabilities.environment.workingDirectory(), CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH)
+                    require('path').join(
+                        capabilities.environment.workingDirectory(),
+                        LIVE_DATABASE_WORKING_PATH
+                    )
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });

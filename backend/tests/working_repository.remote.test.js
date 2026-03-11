@@ -249,5 +249,5 @@ describe("working_repository", () => {
         ).then(() => true).catch(() => false);
         expect(hasOriginAfter).toBe(true);
     });
-});
 
+});

@@ -148,12 +148,20 @@ atomicity must arrange their own locking around these calls.
 
 ## Checkpointing and synchronisation
 
-The LevelDB files live inside a dedicated local git repository
-(`<workingDirectory>/generators-database/`).  Two higher-level operations are available:
+The live LevelDB now lives outside the git repository
+(`<workingDirectory>/generators-leveldb/`). The git repository stores a rendered
+filesystem snapshot under `<workingDirectory>/generators-database/rendered/`.
+Two higher-level operations are available:
 
-- **`checkpointDatabase(capabilities, message)`** – stages all files and creates a git commit
-  (no-op if nothing has changed).  Called at migration boundaries.
-- **`synchronizeNoLock(capabilities, options)`** – checkpoints and then synchronises with the
-  remote generators repository (`git pull` + `git push`).
+- **`checkpointDatabase(capabilities, message, rootDatabase)`** – renders the live
+  database into the tracked snapshot directory and commits it (no-op if nothing
+  has changed). Used for single rendered snapshots such as sync.
+- **`runMigrationInTransaction(capabilities, rootDatabase, preMessage, postMessage, callback)`** –
+  wraps the whole migration in one gitstore transaction, commits the rendered
+  snapshot before the migration body runs, executes the migration, then commits
+  the rendered post-migration snapshot in the same transaction.
+- **`synchronizeNoLock(capabilities, options)`** – renders the current database,
+  synchronises the rendered repository with the remote generators repository,
+  and then scans the updated rendered snapshot back into the live database.
 
 See [`docs/gitstore.md`](./gitstore.md) for the gitstore primitives that back these operations.
