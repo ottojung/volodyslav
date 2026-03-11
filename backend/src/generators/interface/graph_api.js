@@ -111,18 +111,6 @@ async function internalGetModificationTime(interfaceInstance, head, args = []) {
         .getModificationTime(head, args);
 }
 
-/**
- * @param {InterfaceGraphAccess} interfaceInstance
- * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
- * @returns {Promise<string>}
- */
-async function internalGetCreator(interfaceInstance, head, args = []) {
-    return await interfaceInstance
-        ._requireInitializedGraph()
-        .getCreator(head, args);
-}
-
 module.exports = {
     internalDebugGetFreshness,
     internalDebugGetSchemaByHead,
@@ -131,7 +119,6 @@ module.exports = {
     internalDebugListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
-    internalGetCreator,
     internalInvalidateGraphNode,
     internalPullGraphNode,
     internalUpdate,

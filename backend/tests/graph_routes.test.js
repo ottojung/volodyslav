@@ -46,7 +46,7 @@ function makeMockDateTime(iso) {
  * @param {Array<[string, Array<string>]>} [opts.materialized] - list of materialized nodes
  * @param {Map<string, string>} [opts.freshness] - freshness per serialized key
  * @param {Map<string, unknown>} [opts.values] - values per serialized key
- * @param {Map<string, {createdAt: string, modifiedAt: string, createdBy: string}>} [opts.timestamps] - timestamps per serialized key
+ * @param {Map<string, {createdAt: string, modifiedAt: string}>} [opts.timestamps] - timestamps per serialized key
  * @param {Map<string, unknown>} [opts.pulledValues] - pull results per serialized key
  * @returns {object}
  */
@@ -87,14 +87,6 @@ function makeMockInterface({
             }
             return makeMockDateTime(record.modifiedAt);
         }),
-        getCreator: jest.fn().mockImplementation(async (head, args) => {
-            const key = JSON.stringify({ head, args });
-            const record = timestamps.get(key);
-            if (record === undefined) {
-                throw makeMissingTimestampError(key);
-            }
-            return record.createdBy;
-        }),
         pull: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
             return pulledValues.get(key);
@@ -130,12 +122,6 @@ function makeTestApp(mockGraph) {
                     throw makeMissingTimestampError(JSON.stringify({ head, args }));
                 }
                 return await mockGraph.getModificationTime(head, args);
-            }),
-            getCreator: jest.fn(async (head, args) => {
-                if (mockGraph === null) {
-                    throw makeMissingTimestampError(JSON.stringify({ head, args }));
-                }
-                return await mockGraph.getCreator(head, args);
             }),
         },
     };
@@ -275,8 +261,8 @@ describe("GET /api/graph/nodes", () => {
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), "potentially-outdated"],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "host-a" }],
-            [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z", createdBy: "host-b" }],
+            [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+            [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ materialized, freshness, timestamps });
         const app = makeTestApp(graph);
@@ -286,11 +272,11 @@ describe("GET /api/graph/nodes", () => {
         expect(res.body).toHaveLength(2);
 
         const allEventsEntry = res.body.find((n) => n.head === "all_events");
-        expect(allEventsEntry).toEqual({ head: "all_events", args: [], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "host-a" });
+        expect(allEventsEntry).toEqual({ head: "all_events", args: [], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" });
         expect(allEventsEntry).not.toHaveProperty("value");
 
         const eventEntry = res.body.find((n) => n.head === "event");
-        expect(eventEntry).toEqual({ head: "event", args: ["evt-abc123"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z", createdBy: "host-b" });
+        expect(eventEntry).toEqual({ head: "event", args: ["evt-abc123"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" });
         expect(eventEntry).not.toHaveProperty("value");
     });
 
@@ -306,7 +292,7 @@ describe("GET /api/graph/nodes", () => {
         const res = await request(app).get("/api/graph/nodes");
         expect(res.status).toBe(200);
         expect(res.body).toHaveLength(1);
-        expect(res.body[0]).toEqual({ head: "all_events", args: [], freshness: "up-to-date", createdAt: null, modifiedAt: null, createdBy: null });
+        expect(res.body[0]).toEqual({ head: "all_events", args: [], freshness: "up-to-date", createdAt: null, modifiedAt: null });
     });
 
     it("excludes nodes with missing freshness", async () => {
@@ -360,7 +346,7 @@ describe("GET /api/graph/nodes/:head", () => {
                 [JSON.stringify({ head: "all_events", args: [] }), { type: "all_events", events: [] }],
             ]);
             const timestamps = new Map([
-                [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "test-host" }],
+                [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
             ]);
             const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
             const app = makeTestApp(graph);
@@ -374,7 +360,6 @@ describe("GET /api/graph/nodes/:head", () => {
                 value: { type: "all_events", events: [] },
                 createdAt: "2024-01-01T00:00:00.000Z",
                 modifiedAt: "2024-01-02T00:00:00.000Z",
-                createdBy: "test-host",
             });
         });
     });
@@ -401,8 +386,8 @@ describe("GET /api/graph/nodes/:head", () => {
                 [JSON.stringify({ head: "event", args: ["evt-def456"] }), "potentially-outdated"],
             ]);
             const timestamps = new Map([
-                [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "host-a" }],
-                [JSON.stringify({ head: "event", args: ["evt-def456"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z", createdBy: "host-b" }],
+                [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
+                [JSON.stringify({ head: "event", args: ["evt-def456"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
             ]);
             const graph = makeMockInterface({ headIndex, materialized, freshness, timestamps });
             const app = makeTestApp(graph);
@@ -413,8 +398,8 @@ describe("GET /api/graph/nodes/:head", () => {
             expect(res.body[0]).not.toHaveProperty("value");
             expect(res.body[1]).not.toHaveProperty("value");
             const sorted = [...res.body].sort((a, b) => a.args[0].localeCompare(b.args[0]));
-            expect(sorted[0]).toEqual({ head: "event", args: ["evt-abc123"], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "host-a" });
-            expect(sorted[1]).toEqual({ head: "event", args: ["evt-def456"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z", createdBy: "host-b" });
+            expect(sorted[0]).toEqual({ head: "event", args: ["evt-abc123"], freshness: "up-to-date", createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" });
+            expect(sorted[1]).toEqual({ head: "event", args: ["evt-def456"], freshness: "potentially-outdated", createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" });
         });
     });
 });
@@ -456,7 +441,7 @@ describe("POST /api/graph/nodes/:head", () => {
             [JSON.stringify({ head: "all_events", args: [] }), { type: "all_events", events: [] }],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "test-host" }],
+            [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
         const app = makeTestApp(graph);
@@ -471,7 +456,6 @@ describe("POST /api/graph/nodes/:head", () => {
             value: { type: "all_events", events: [] },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-02T00:00:00.000Z",
-            createdBy: "test-host",
         });
     });
 });
@@ -517,7 +501,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { result: "ok" }],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z", createdBy: "test-host" }],
+            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
         const app = makeTestApp(graph);
@@ -532,7 +516,6 @@ describe("POST /api/graph/nodes/:head/*", () => {
             value: { result: "ok" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-01T00:00:00.000Z",
-            createdBy: "test-host",
         });
     });
 
@@ -545,7 +528,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["foo/bar"] }), { type: "event", id: "foo/bar" }],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "test-host" }],
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
         const app = makeTestApp(graph);
@@ -560,7 +543,6 @@ describe("POST /api/graph/nodes/:head/*", () => {
             value: { type: "event", id: "foo/bar" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-02T00:00:00.000Z",
-            createdBy: "test-host",
         });
     });
 });
@@ -625,7 +607,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { type: "event", id: "evt-abc123" }],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "test-host" }],
+            [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
@@ -639,7 +621,6 @@ describe("GET /api/graph/nodes/:head/*", () => {
             value: { type: "event", id: "evt-abc123" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-02T00:00:00.000Z",
-            createdBy: "test-host",
         });
     });
 
@@ -654,7 +635,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { result: "ok" }],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z", createdBy: "test-host" }],
+            [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
@@ -668,7 +649,6 @@ describe("GET /api/graph/nodes/:head/*", () => {
             value: { result: "ok" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-01T00:00:00.000Z",
-            createdBy: "test-host",
         });
     });
 
@@ -681,7 +661,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["foo/bar"] }), { type: "event", id: "foo/bar" }],
         ]);
         const timestamps = new Map([
-            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z", createdBy: "test-host" }],
+            [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
         const app = makeTestApp(graph);
@@ -695,7 +675,6 @@ describe("GET /api/graph/nodes/:head/*", () => {
             value: { type: "event", id: "foo/bar" },
             createdAt: "2024-01-01T00:00:00.000Z",
             modifiedAt: "2024-01-02T00:00:00.000Z",
-            createdBy: "test-host",
         });
     });
 });

@@ -22,7 +22,6 @@ const {
  * @property {(head: string, args?: Array<ConstValue>) => Promise<void>} invalidateGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getModificationTime
- * @property {(head: string, args?: Array<ConstValue>) => Promise<string>} getCreator
  */
 
 /**
@@ -106,8 +105,8 @@ async function handleGetNodes(capabilities, _req, res) {
     for (const [head, args] of materialized) {
         const freshness = await capabilities.interface.debugGetFreshness(head, args);
         if (freshness !== "missing") {
-            const { createdAt, modifiedAt, createdBy } = await fetchTimestamps(capabilities.interface, head, args);
-            result.push({ head, args, freshness, createdAt, modifiedAt, createdBy });
+            const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
+            result.push({ head, args, freshness, createdAt, modifiedAt });
         }
     }
     res.json(result);
@@ -146,8 +145,8 @@ async function handleGetNodesByHead(capabilities, req, res) {
             return;
         }
         const value = await capabilities.interface.debugGetValue(head, []);
-        const { createdAt, modifiedAt, createdBy } = await fetchTimestamps(capabilities.interface, head, []);
-        res.json({ head, args: [], freshness, value, createdAt, modifiedAt, createdBy });
+        const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, []);
+        res.json({ head, args: [], freshness, value, createdAt, modifiedAt });
     } else {
         // Arity-N: return list of all materialized instances without values
         const materialized = await capabilities.interface.debugListMaterializedNodes();
@@ -156,8 +155,8 @@ async function handleGetNodesByHead(capabilities, req, res) {
             if (nodeHead === head) {
                 const freshness = await capabilities.interface.debugGetFreshness(nodeHead, args);
                 if (freshness !== "missing") {
-                    const { createdAt, modifiedAt, createdBy } = await fetchTimestamps(capabilities.interface, nodeHead, args);
-                    result.push({ head, args, freshness, createdAt, modifiedAt, createdBy });
+                    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, nodeHead, args);
+                    result.push({ head, args, freshness, createdAt, modifiedAt });
                 }
             }
         }
@@ -210,8 +209,8 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
     }
 
     const value = await capabilities.interface.debugGetValue(head, args);
-    const { createdAt, modifiedAt, createdBy } = await fetchTimestamps(capabilities.interface, head, args);
-    res.json({ head, args, freshness, value, createdAt, modifiedAt, createdBy });
+    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
+    res.json({ head, args, freshness, value, createdAt, modifiedAt });
 }
 
 /**

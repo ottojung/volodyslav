@@ -35,7 +35,6 @@ const {
     internalDebugListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
-    internalGetCreator,
 } = require("./inspection");
 const {
     internalInvalidate,
@@ -71,9 +70,6 @@ class IncrementalGraphClass {
     /** @type {Datetime} */
     datetime;
 
-    /** @type {import('../../environment').Environment} */
-    environment;
-
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -96,7 +92,6 @@ class IncrementalGraphClass {
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
-        this.environment = capabilities.environment;
     }
 
     /**
@@ -248,15 +243,6 @@ class IncrementalGraphClass {
      */
     async getModificationTime(nodeName, bindings = []) {
         return await internalGetModificationTime(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
-     * @returns {Promise<string>}
-     */
-    async getCreator(nodeName, bindings = []) {
-        return await internalGetCreator(this, nodeName, bindings);
     }
 }
 

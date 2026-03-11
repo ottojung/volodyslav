@@ -21,7 +21,6 @@ const {
     internalDebugListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
-    internalGetCreator,
     internalInvalidateGraphNode,
     internalPullGraphNode,
     internalUpdate,
@@ -168,15 +167,6 @@ class InterfaceClass {
      */
     async getModificationTime(head, args = []) {
         return await internalGetModificationTime(this, head, args);
-    }
-
-    /**
-     * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<string>}
-     */
-    async getCreator(head, args = []) {
-        return await internalGetCreator(this, head, args);
     }
 
     /**

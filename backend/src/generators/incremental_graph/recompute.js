@@ -9,7 +9,6 @@
  * @typedef {object} IncrementalGraphRecomputeAccess
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
- * @property {import('../../environment').Environment} environment
  * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatus
  */
 
@@ -159,13 +158,10 @@ async function internalMaybeRecalculate(
     batch.counters.put(nodeKey, newCounter);
 
     const nowIso = incrementalGraph.datetime.now().toISOString();
-    const hostnameStr = incrementalGraph.environment.hostname();
     if (oldCounter === undefined) {
-        // Node is being computed for the first time: record creation timestamp and creator.
         batch.timestamps.put(nodeKey, {
             createdAt: nowIso,
             modifiedAt: nowIso,
-            createdBy: hostnameStr,
         });
     } else {
         const existingTimestamp = await batch.timestamps.get(nodeKey);
@@ -173,13 +169,7 @@ async function internalMaybeRecalculate(
             existingTimestamp !== undefined
                 ? existingTimestamp.createdAt
                 : nowIso;
-        // createdBy must never change once set (REQ-IFACE-11).
-        // existingTimestamp.createdBy is always present for any valid TimestampRecord.
-        const createdBy =
-            existingTimestamp !== undefined
-                ? existingTimestamp.createdBy
-                : hostnameStr;
-        batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso, createdBy });
+        batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso });
     }
 
     batch.values.put(nodeKey, computedValue);

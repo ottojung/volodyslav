@@ -9,7 +9,6 @@ const GRAPH_NODE_PATH_PREFIX = "/graph/nodes/";
  * @typedef {object} TimestampReader
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getCreationTime
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getModificationTime
- * @property {(head: string, args?: Array<ConstValue>) => Promise<string>} getCreator
  */
 /**
  * @typedef {object} PullInterface
@@ -17,7 +16,6 @@ const GRAPH_NODE_PATH_PREFIX = "/graph/nodes/";
  * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getCreationTime
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getModificationTime
- * @property {(head: string, args?: Array<ConstValue>) => Promise<string>} getCreator
  */
 
 /**
@@ -35,17 +33,16 @@ function formatArityMismatchMessage(head, expected, received) {
  * @param {TimestampReader} graph
  * @param {string} head
  * @param {Array<ConstValue>} args
- * @returns {Promise<{createdAt: string | null, modifiedAt: string | null, createdBy: string | null}>}
+ * @returns {Promise<{createdAt: string | null, modifiedAt: string | null}>}
  */
 async function fetchTimestamps(graph, head, args) {
     try {
         const createdAt = (await graph.getCreationTime(head, args)).toISOString();
         const modifiedAt = (await graph.getModificationTime(head, args)).toISOString();
-        const createdBy = await graph.getCreator(head, args);
-        return { createdAt, modifiedAt, createdBy };
+        return { createdAt, modifiedAt };
     } catch (err) {
         if (isMissingTimestamp(err)) {
-            return { createdAt: null, modifiedAt: null, createdBy: null };
+            return { createdAt: null, modifiedAt: null };
         }
         throw err;
     }
@@ -111,8 +108,8 @@ function getArgsFromRequest(req) {
 async function pullNode(capabilities, head, args) {
     const value = await capabilities.interface.pullGraphNode(head, args);
     const freshness = await capabilities.interface.debugGetFreshness(head, args);
-    const { createdAt, modifiedAt, createdBy } = await fetchTimestamps(capabilities.interface, head, args);
-    return { head, args, freshness, value, createdAt, modifiedAt, createdBy };
+    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
+    return { head, args, freshness, value, createdAt, modifiedAt };
 }
 
 module.exports = {

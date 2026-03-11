@@ -166,35 +166,6 @@ async function internalGetModificationTime(
     return fromISOString(record.modifiedAt);
 }
 
-/**
- * @param {IncrementalGraphInspectionAccess} incrementalGraph
- * @param {string} nodeName
- * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<string>}
- */
-async function internalGetCreator(
-    incrementalGraph,
-    nodeName,
-    bindings = []
-) {
-    ensureNodeNameIsHead(nodeName);
-    const nodeNameTyped = stringToNodeName(nodeName);
-    const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);
-    if (!compiledNode) {
-        throw makeInvalidNodeError(nodeNameTyped);
-    }
-
-    checkArity(compiledNode, bindings);
-
-    const nodeKey = { head: nodeNameTyped, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
-    const record = await incrementalGraph.storage.timestamps.get(concreteKey);
-    if (record === undefined) {
-        throw makeMissingTimestampError(concreteKey);
-    }
-    return record.createdBy;
-}
-
 module.exports = {
     internalDebugGetDbVersion,
     internalDebugGetFreshness,
@@ -204,5 +175,4 @@ module.exports = {
     internalDebugListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
-    internalGetCreator,
 };
