@@ -143,7 +143,6 @@ async function synchronize(capabilities, workingPath, origin, options) {
         try {
             if (resetToTheirs || (exists && needsRemoteSetup)) {
                 if (exists) {
-                    await gitmethod.resetWorkTreeToHead(capabilities, workDir);
                     // fetchAndResetHard reconciles the local repo with the remote,
                     // including the case where they have unrelated histories.
                     await gitmethod.fetchAndResetHard(capabilities, workDir);
@@ -153,11 +152,6 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 }
             } else {
                 if (exists) {
-                    // A gitstore transaction can push new commits into this local
-                    // repository without updating its checked-out work tree.
-                    // Refresh the work tree before pull/push so synchronize always
-                    // operates on a clean checkout of the repository's current HEAD.
-                    await gitmethod.resetWorkTreeToHead(capabilities, workDir);
                     await gitmethod.pull(capabilities, workDir);
                     await gitmethod.push(capabilities, workDir);
                 } else {

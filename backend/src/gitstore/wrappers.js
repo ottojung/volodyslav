@@ -247,44 +247,6 @@ async function fetchAndResetHard(capabilities, workDirectory) {
 }
 
 /**
- * Reset the checked-out work tree to the repository's current HEAD and remove
- * untracked files. This is used when some other process has already advanced the
- * repository object database (for example via a push into the local repository),
- * leaving the persistent checked-out work tree stale.
- *
- * @param {Capabilities} capabilities - The capabilities object containing the git command.
- * @param {string} workDirectory - The repository directory to refresh
- * @returns {Promise<void>}
- */
-async function resetWorkTreeToHead(capabilities, workDirectory) {
-    await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=volodyslav",
-        "-c",
-        "user.email=volodyslav",
-        "reset",
-        "--hard",
-        "HEAD"
-    );
-    await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=volodyslav",
-        "-c",
-        "user.email=volodyslav",
-        "clean",
-        "-fd"
-    );
-}
-
-/**
  * Initialize a new git repository.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The directory to initialize as a git repository
@@ -316,7 +278,6 @@ module.exports = {
     pull,
     push,
     fetchAndResetHard,
-    resetWorkTreeToHead,
     init,
     PushError,
     isPushError,
