@@ -275,6 +275,36 @@ class RootDatabaseClass {
     }
 
     /**
+     * Deletes all raw key/value pairs from the root LevelDB instance.
+     * Used by scanFromFilesystem to ensure stale keys (present in the database
+     * but absent from the snapshot directory) do not survive the restore.
+     * @returns {Promise<void>}
+     */
+    async _rawDeleteAll() {
+        /**
+         * @param {NodeKeyString} key
+         * @returns {{ type: 'del', key: NodeKeyString }}
+         */
+        function makeDelOp(key) {
+            return { type: 'del', key };
+        }
+
+        /** @type {NodeKeyString[]} */
+        const pending = [];
+        const CHUNK_SIZE = 500;
+        for await (const key of this.db.keys()) {
+            pending.push(key);
+            if (pending.length === CHUNK_SIZE) {
+                await this.db.batch(pending.map(makeDelOp));
+                pending.length = 0;
+            }
+        }
+        if (pending.length > 0) {
+            await this.db.batch(pending.map(makeDelOp));
+        }
+    }
+
+    /**
      * Iterate over all raw key/value pairs in the root LevelDB instance.
      * Yields every entry stored at the root level, including all sublevel-prefixed keys.
      * Used by renderToFilesystem to produce a complete snapshot.
