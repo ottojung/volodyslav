@@ -38,25 +38,45 @@ import {
 const COLLAPSED_FIELD_VALUE_LENGTH = 100;
 
 /**
- * Flattens an entry into a list of key-value pairs for display.
+ * Converts an entry field value into a display string.
+ * @param {string|object} value
+ * @returns {string}
+ */
+function stringifyFieldValue(value) {
+    if (typeof value === "string") {
+        return value;
+    }
+
+    return JSON.stringify(value);
+}
+
+/**
+ * Splits an entry into summary and derived key-value pairs for display.
  * @param {Entry} entry
- * @returns {Array<{key: string, value: string}>}
+ * @returns {{primaryFields: Array<{key: string, value: string}>, derivedFields: Array<{key: string, value: string}>}}
  */
 function entryToFields(entry) {
-    const fields = [
-        { key: "id", value: entry.id },
+    const primaryFields = [
+        { key: "original", value: entry.original },
         { key: "date", value: entry.date },
+        { key: "id", value: entry.id },
+    ];
+
+    const derivedFields = [
         { key: "type", value: entry.type },
         { key: "description", value: entry.description },
         { key: "input", value: entry.input },
-        { key: "original", value: entry.original },
     ];
 
-    for (const [k, v] of Object.entries(entry.modifiers)) {
-        fields.push({ key: `modifiers.${k}`, value: v });
+    for (const [k, v] of Object.entries(entry.creator)) {
+        derivedFields.push({ key: `creator.${k}`, value: stringifyFieldValue(v) });
     }
 
-    return fields;
+    for (const [k, v] of Object.entries(entry.modifiers)) {
+        derivedFields.push({ key: `modifiers.${k}`, value: v });
+    }
+
+    return { primaryFields, derivedFields };
 }
 
 /**
@@ -173,6 +193,7 @@ export default function EntryDetail() {
     const [isLoading, setIsLoading] = useState(stateEntry === null);
     const [notFound, setNotFound] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [showDerivedFields, setShowDerivedFields] = useState(false);
 
     /** @type {[import('../Search/api.js').AdditionalProperties | null, Function]} */
     const [additionalProperties, setAdditionalProperties] = useState({});
@@ -249,6 +270,10 @@ export default function EntryDetail() {
         };
     }, [id]);
 
+    useEffect(() => {
+        setShowDerivedFields(false);
+    }, [entry]);
+
     async function handleDelete() {
         if (entry === null) return;
         setIsDeleting(true);
@@ -282,7 +307,7 @@ export default function EntryDetail() {
         );
     }
 
-    const fields = entryToFields(entry);
+    const { primaryFields, derivedFields } = entryToFields(entry);
 
     const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && hasAdditionalPropertyValue(value));
 
@@ -311,7 +336,22 @@ export default function EntryDetail() {
                             </Button>
                         </HStack>
                         <VStack spacing={SPACING.sm} align="stretch">
-                            {fields.map((field) => (
+                            {primaryFields.map((field) => (
+                                <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
+                            ))}
+                            {derivedFields.length > 0 && (
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    justifyContent="flex-start"
+                                    alignSelf="flex-start"
+                                    onClick={() => setShowDerivedFields((currentValue) => !currentValue)}
+                                    aria-expanded={showDerivedFields}
+                                >
+                                    {showDerivedFields ? "Hide derived" : "Show derived"}
+                                </Button>
+                            )}
+                            {showDerivedFields && derivedFields.map((field) => (
                                 <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
                             ))}
                         </VStack>

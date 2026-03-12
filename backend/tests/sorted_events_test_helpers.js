@@ -49,6 +49,7 @@ function makeEvent(id, dateIso, type = "text", description = `Event ${id}`) {
             name: "test",
             uuid: "00000000-0000-0000-0000-000000000001",
             version: "0.0.0",
+            hostname: "test-host",
         },
     };
 }
