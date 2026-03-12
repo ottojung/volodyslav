@@ -152,9 +152,25 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
         return;
     }
 
+    // The cache is exactly full.  Before paying for a full sorted-list read,
+    // check the cheap `events_count` node.  If the total number of events is
+    // at most SORTED_EVENTS_CACHE_SIZE, the cache already holds everything and
+    // we can return early (handles the "exactly 100 events" boundary case).
+    const countEntry = await graph.pull("events_count");
+    if (countEntry.type !== "events_count") {
+        throw new Error(
+            `Expected events_count entry but got type: ${countEntry.type}`
+        );
+    }
+    if (countEntry.count <= SORTED_EVENTS_CACHE_SIZE) {
+        return;
+    }
+
     // ── Phase 2: continue from the full sorted list ───────────────────────────
     // We already yielded the first SORTED_EVENTS_CACHE_SIZE events from the
-    // cache, so we start at index SORTED_EVENTS_CACHE_SIZE here.
+    // cache, so we skip them here using slice().
+    // Using slice() instead of index-based access avoids the TypeScript
+    // `T | undefined` widening that occurs with bracket notation on arrays.
     const fullNodeName =
         order === "dateAscending"
             ? "sorted_events_ascending"
@@ -167,9 +183,9 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
         );
     }
 
-    const allEvents = fullEntry.events;
-    for (let i = SORTED_EVENTS_CACHE_SIZE; i < allEvents.length; i++) {
-        yield deserialize(allEvents[i]);
+    const remaining = fullEntry.events.slice(SORTED_EVENTS_CACHE_SIZE);
+    for (const serialized of remaining) {
+        yield deserialize(serialized);
     }
 }
 

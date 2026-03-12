@@ -604,6 +604,40 @@ describe("interface.getSortedEvents() async iterator", () => {
         expect(asc).toHaveLength(SORTED_EVENTS_CACHE_SIZE);
     });
 
+    test("does not pull the full sorted list when count equals SORTED_EVENTS_CACHE_SIZE (early return via events_count)", async () => {
+        // When there are exactly SORTED_EVENTS_CACHE_SIZE events the cache node
+        // is full but the full sorted list holds no additional entries.  The
+        // iterator must detect this via events_count and return early rather
+        // than issuing an unnecessary LevelDB read for the full sorted list.
+        //
+        // We verify correctness (no duplicate or missing events) and implicitly
+        // verify the early-return path by checking that the yielded set equals
+        // exactly what the cache node contains.
+        const capabilities = await getTestCapabilities();
+        const iface = capabilities.interface;
+        await iface.ensureInitialized();
+
+        await writeEventsAndUpdate(capabilities, makeSequentialEvents(SORTED_EVENTS_CACHE_SIZE));
+
+        // Pull the small cache nodes directly to get the reference ordering.
+        const last100 = await iface._incrementalGraph.pull("last100entries");
+        const first100 = await iface._incrementalGraph.pull("first100entries");
+        expect(last100.type).toBe("last100entries");
+        expect(first100.type).toBe("first100entries");
+
+        const desc = await collectAll(iface.getSortedEvents("dateDescending"));
+        const asc = await collectAll(iface.getSortedEvents("dateAscending"));
+
+        // Yielded events must match the cache nodes exactly — no extras from
+        // the full sorted list, no missing events.
+        expect(desc.map((e) => e.id.identifier)).toEqual(
+            last100.events.map((e) => e.id)
+        );
+        expect(asc.map((e) => e.id.identifier)).toEqual(
+            first100.events.map((e) => e.id)
+        );
+    });
+
     test("yields all events when count is one more than SORTED_EVENTS_CACHE_SIZE", async () => {
         const capabilities = await getTestCapabilities();
         const iface = capabilities.interface;

@@ -132,8 +132,6 @@ async function createEntry(capabilities, entryData, files = []) {
 /**
  * @typedef {object} PaginationResult
  * @property {import('./event/structure').Event[]} results - The paginated entries (Event structures)
- * @property {number} total - Total number of events in the log (all events, from cache;
- *   does not reflect search filtering — use `hasMore` to detect additional pages)
  * @property {boolean} hasMore - Whether there are more pages available
  * @property {number} page - Current page number
  * @property {number} limit - Items per page
@@ -169,11 +167,6 @@ async function getEntries(capabilities, pagination) {
             throw new EntryValidationError('search must be a valid regular expression');
         }
     }
-
-    // ── Fast path: total count from cache ────────────────────────────────────
-    // The `events_count` graph node stores len(all_events) and is updated
-    // whenever all_events changes, so this is an O(1) LevelDB read.
-    const total = await capabilities.interface.getEventsCount();
 
     // ── Lazy iteration over sorted events ─────────────────────────────────────
     // For page 1 with no search filter the iterator serves its first
@@ -211,19 +204,17 @@ async function getEntries(capabilities, pagination) {
 
     capabilities.logger.logDebug(
         {
-            total,
             page,
             limit,
             order,
             resultCount: results.length,
             hasMore,
         },
-        `Retrieved entries: page ${page}, ${results.length}/${total} entries, order: ${order}`
+        `Retrieved entries: page ${page}, ${results.length} entries, order: ${order}`
     );
 
     return {
         results,
-        total,
         hasMore,
         page,
         limit,

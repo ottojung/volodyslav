@@ -213,7 +213,6 @@ describe("getEntries ordering functionality", () => {
 
         expect(result.results).toHaveLength(2);
         expect(result.hasMore).toBe(true);
-        expect(result.total).toBe(5);
         // Should get entries 5 and 4 (newest first)
         expect(result.results[0].description).toBe("Entry 5 description");
         expect(result.results[1].description).toBe("Entry 4 description");
