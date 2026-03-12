@@ -5,6 +5,8 @@ const termuxWifiCommand = registerCommand('termux-wifi-connectioninfo');
 const git = registerCommand('git');
 const rsync = registerCommand('rsync');
 const volodyslavDailyTasks = registerCommand('volodyslav-daily-tasks');
+const ffprobe = registerCommand('ffprobe');
+const ffmpeg = registerCommand('ffmpeg');
 
 module.exports = {
     termuxNotification,
@@ -12,4 +14,6 @@ module.exports = {
     git,
     rsync,
     volodyslavDailyTasks,
+    ffprobe,
+    ffmpeg,
 };

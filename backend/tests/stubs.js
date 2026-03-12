@@ -90,6 +90,42 @@ function stubAiTranscriber(capabilities) {
     capabilities.aiTranscription.transcribeStream = jest
         .fn()
         .mockResolvedValue("mocked transcription result");
+    capabilities.aiTranscription.transcribeStreamDetailed = jest
+        .fn()
+        .mockResolvedValue({
+            text: "mocked transcription result",
+            provider: "OpenAI",
+            model: "gpt-4o-transcribe",
+            usage: null,
+            logprobs: null,
+            chunks: [
+                {
+                    index: 0,
+                    startMs: 0,
+                    endMs: 1000,
+                    overlapBeforeMs: 0,
+                    prompt: null,
+                    text: "mocked transcription result",
+                    usage: null,
+                    logprobs: null,
+                },
+            ],
+            raw: null,
+        });
+    capabilities.aiTranscription.transcribeStreamStructured = jest
+        .fn()
+        .mockResolvedValue({
+            result: {
+                text: "mocked transcription result",
+                provider: "OpenAI",
+                model: "gpt-4o-transcribe",
+                usage: null,
+                logprobs: null,
+                chunks: [],
+                raw: null,
+            },
+            structured: {},
+        });
     capabilities.aiTranscription.getTranscriberInfo = jest.fn().mockReturnValue({
         name: "mocked-transcriber",
         creator: "Mocked Creator",

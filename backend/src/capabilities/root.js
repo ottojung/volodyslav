@@ -43,6 +43,8 @@
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Command} rsync - A command instance for rsync operations.
+ * @property {Command} ffprobe - A command instance for ffprobe.
+ * @property {Command} ffmpeg - A command instance for ffmpeg.
  * @property {Environment} environment - An environment instance.
  * @property {Exiter} exiter - A process exit instance.
  * @property {Logger} logger - A logger instance.
@@ -71,6 +73,8 @@ const appendCapability = filesystem.appender;
 const checkerCapability = filesystem.checker;
 const gitCapability = require("../executables").git;
 const rsyncCapability = require("../executables").rsync;
+const ffprobeCapability = require("../executables").ffprobe;
+const ffmpegCapability = require("../executables").ffmpeg;
 const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
 const exiterCapability = require("../exiter");
@@ -116,6 +120,8 @@ const make = () => {
         checker: checkerCapability.make(() => ret),
         git: gitCapability,
         rsync: rsyncCapability,
+        ffprobe: ffprobeCapability,
+        ffmpeg: ffmpegCapability,
         environment,
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
