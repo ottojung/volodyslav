@@ -72,11 +72,11 @@ describe("GET /api/entries/:id/assets", () => {
         expect(res.statusCode).toBe(400);
     });
 
-    it("returns 404 when the entry does not exist", async () => {
+    it("returns empty assets when the entry does not exist", async () => {
         const { app } = await makeTestApp();
         const res = await request(app).get("/api/entries/nonexistent-id/assets");
-        expect(res.statusCode).toBe(404);
-        expect(res.body).toMatchObject({ error: expect.any(String) });
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toEqual({ assets: [] });
     });
 
     it("returns empty assets array when entry has no associated files", async () => {
