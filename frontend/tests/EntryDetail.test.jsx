@@ -49,6 +49,7 @@ const mockEntryNoModifiers = {
 
 const longFieldValue = `Long field ${"x".repeat(120)} ending`;
 const collapsedLongFieldValue = `${longFieldValue.slice(0, 100)}…`;
+const creatorValue = JSON.stringify(mockEntry.creator);
 
 function makeDeferred() {
     /** @type {(value: import("../src/Search/api").AdditionalProperties) => void} */
@@ -89,29 +90,49 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         expect(screen.getAllByText("entry-123").length).toBeGreaterThan(0);
-        expect(screen.getAllByText("- Ate pizza").length).toBeGreaterThan(0);
         expect(screen.getAllByText("food - Ate pizza").length).toBeGreaterThan(0);
     });
 
-    it("shows all standard field keys", () => {
+    it("shows summary field keys by default and hides derived fields", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        expect(screen.getByText("id")).toBeInTheDocument();
-        expect(screen.getByText("date")).toBeInTheDocument();
-        expect(screen.getByText("type")).toBeInTheDocument();
-        expect(screen.getByText("description")).toBeInTheDocument();
-        expect(screen.getByText("input")).toBeInTheDocument();
         expect(screen.getByText("original")).toBeInTheDocument();
+        expect(screen.getByText("date")).toBeInTheDocument();
+        expect(screen.getByText("id")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Show derived" })).toBeInTheDocument();
+        expect(screen.queryByText("type")).not.toBeInTheDocument();
+        expect(screen.queryByText("description")).not.toBeInTheDocument();
+        expect(screen.queryByText("input")).not.toBeInTheDocument();
+        expect(screen.queryByText("creator")).not.toBeInTheDocument();
     });
 
-    it("shows modifier field keys with 'modifiers.' prefix", () => {
+    it("shows summary fields in the requested order", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        const originalField = screen.getByText("original");
+        const dateField = screen.getByText("date");
+        const idField = screen.getByText("id");
+
+        expect(originalField.compareDocumentPosition(dateField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(dateField.compareDocumentPosition(idField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("shows modifier field keys with 'modifiers.' prefix after expanding derived fields", async () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
+        });
 
         expect(screen.getByText("modifiers.certainty")).toBeInTheDocument();
     });
 
-    it("shows modifier value", () => {
+    it("shows modifier value after expanding derived fields", async () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
+        });
 
         expect(screen.getByText("9")).toBeInTheDocument();
     });
@@ -129,31 +150,50 @@ describe("EntryDetail page", () => {
         expect(screen.queryByText(/modifiers\./)).not.toBeInTheDocument();
     });
 
-    it("shows exactly 7 fields for an entry with 1 modifier", () => {
+    it("shows creator after expanding derived fields", async () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        // id, date, type, description, input, original, modifiers.certainty
-        const fieldLabels = ["id", "date", "type", "description", "input", "original", "modifiers.certainty"];
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
+        });
+
+        expect(screen.getByText("creator")).toBeInTheDocument();
+        expect(screen.getByText(creatorValue)).toBeInTheDocument();
+    });
+
+    it("shows exactly 8 fields for an entry with 1 modifier after expanding derived fields", async () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
+        });
+
+        const fieldLabels = ["original", "date", "id", "type", "description", "input", "creator", "modifiers.certainty"];
         for (const label of fieldLabels) {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
 
-    it("shows exactly 6 fields for an entry with no modifiers", () => {
+    it("shows exactly 7 fields for an entry with no modifiers after expanding derived fields", async () => {
         renderWithRoute("/entry/entry-456", { entry: mockEntryNoModifiers });
 
-        const fieldLabels = ["id", "date", "type", "description", "input", "original"];
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
+        });
+
+        const fieldLabels = ["original", "date", "id", "type", "description", "input", "creator"];
         for (const label of fieldLabels) {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
 
-    it("renders copy buttons for each field", () => {
+    it("renders copy buttons for the visible summary fields by default", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        const copyButtons = screen.getAllByRole("button");
-        // id, date, type, description, input, original, modifiers.certainty = 7 copy buttons + 1 delete button
-        expect(copyButtons.length).toBeGreaterThanOrEqual(8);
+        expect(screen.getByRole("button", { name: "Copy original" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Copy date" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Copy id" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Copy type" })).not.toBeInTheDocument();
     });
 
     it("does not fetch from API when entry is in state", () => {
@@ -168,12 +208,16 @@ describe("EntryDetail page", () => {
         expect(screen.getAllByText("2023-01-01T10:00:00.000Z").length).toBeGreaterThan(0);
     });
 
-    it("shows multiple modifier fields when entry has multiple modifiers", () => {
+    it("shows multiple modifier fields when entry has multiple modifiers", async () => {
         const entryWithMultipleModifiers = {
             ...mockEntry,
             modifiers: { certainty: "9", when: "yesterday" },
         };
         renderWithRoute("/entry/entry-123", { entry: entryWithMultipleModifiers });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
+        });
 
         expect(screen.getByText("modifiers.certainty")).toBeInTheDocument();
         expect(screen.getByText("modifiers.when")).toBeInTheDocument();
@@ -187,6 +231,10 @@ describe("EntryDetail page", () => {
                 ...mockEntry,
                 description: longFieldValue,
             },
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
         });
 
         expect(screen.getByText(collapsedLongFieldValue)).toBeInTheDocument();
@@ -250,7 +298,7 @@ describe("EntryDetail page", () => {
 
         await waitFor(() => {
             expect(screen.getByText("id")).toBeInTheDocument();
-            expect(screen.getByText("description")).toBeInTheDocument();
+            expect(screen.getByText("original")).toBeInTheDocument();
         });
     });
 
