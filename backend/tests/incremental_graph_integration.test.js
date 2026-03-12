@@ -13,7 +13,7 @@ const {
 const {
     computeMetaEvents,
 } = require("../src/generators/individual/meta_events");
-const eventId = require("../src/event/id");
+const { deserialize } = require("../src/event");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -39,24 +39,24 @@ describe("IncrementalGraph integration with meta_events", () => {
         // Define the graph - need to include all_events as a node
         const testEvents = [
             {
-                id: eventId.fromString("1"),
+                id: "1",
                 type: "test",
                 description: "Event 1",
                 date: "2024-01-01",
                 original: "test1",
                 input: "test1",
                 modifiers: {},
-                creator: { type: "user", name: "test" },
+                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
             },
             {
-                id: eventId.fromString("2"),
+                id: "2",
                 type: "test",
                 description: "Event 2",
                 date: "2024-01-02",
                 original: "test2",
                 input: "test2",
                 modifiers: {},
-                creator: { type: "user", name: "test" },
+                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000002", version: "0.0.0" },
             },
         ];
 
@@ -80,7 +80,7 @@ describe("IncrementalGraph integration with meta_events", () => {
                         return { type: "meta_events", meta_events: [] };
                     }
 
-                    const allEvents = allEventsEntry.events;
+                    const allEvents = allEventsEntry.events.map(deserialize);
                     
                     // If no previous value, compute from scratch
                     if (!oldValue) {
@@ -128,13 +128,9 @@ describe("IncrementalGraph integration with meta_events", () => {
         expect(metaEventsEntry).toBeDefined();
         expect(metaEventsEntry.meta_events).toHaveLength(2);
         expect(metaEventsEntry.meta_events[0].action).toBe("add");
-        expect(eventId.toString(metaEventsEntry.meta_events[0].event.id)).toBe(
-            "1"
-        );
+        expect(metaEventsEntry.meta_events[0].event.id.identifier).toBe("1");
         expect(metaEventsEntry.meta_events[1].action).toBe("add");
-        expect(eventId.toString(metaEventsEntry.meta_events[1].event.id)).toBe(
-            "2"
-        );
+        expect(metaEventsEntry.meta_events[1].event.id.identifier).toBe("2");
 
         await db.close();
     });

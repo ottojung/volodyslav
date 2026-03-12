@@ -83,7 +83,7 @@ describe("event(e) node", () => {
         const result = await iface._incrementalGraph.pull("event", ["1"]);
         expect(result).toMatchObject({
             type: "event",
-            value: { id: { identifier: "1" }, input: "food: a slice of bread" },
+            value: { id: "1", input: "food: a slice of bread" },
         });
     });
 
@@ -108,12 +108,12 @@ describe("event(e) node", () => {
         await writeEventsToStore(capabilities, [makeEvent("1", "sleep 8 hours")]);
         await iface.update();
         const first = await iface._incrementalGraph.pull("event", ["1"]);
-        expect(first).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "sleep 8 hours" } });
+        expect(first).toMatchObject({ type: "event", value: { id: "1", input: "sleep 8 hours" } });
 
         await replaceEventInStore(capabilities, makeEvent("1", "food: two eggs"));
         await iface.update();
         const second = await iface._incrementalGraph.pull("event", ["1"]);
-        expect(second).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "food: two eggs" } });
+        expect(second).toMatchObject({ type: "event", value: { id: "1", input: "food: two eggs" } });
     });
 
     test("handles event whose input field is empty string", async () => {
@@ -125,7 +125,7 @@ describe("event(e) node", () => {
         await iface.update();
 
         const result = await iface._incrementalGraph.pull("event", ["1"]);
-        expect(result).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "" } });
+        expect(result).toMatchObject({ type: "event", value: { id: "1", input: "" } });
     });
 
     test("handles multiple events and returns the correct one", async () => {
@@ -144,9 +144,9 @@ describe("event(e) node", () => {
         const r2 = await iface._incrementalGraph.pull("event", ["2"]);
         const r3 = await iface._incrementalGraph.pull("event", ["3"]);
 
-        expect(r1).toMatchObject({ type: "event", value: { id: { identifier: "1" }, input: "food: pasta" } });
-        expect(r2).toMatchObject({ type: "event", value: { id: { identifier: "2" }, input: "sleep 7 hours" } });
-        expect(r3).toMatchObject({ type: "event", value: { id: { identifier: "3" }, input: "food: apple" } });
+        expect(r1).toMatchObject({ type: "event", value: { id: "1", input: "food: pasta" } });
+        expect(r2).toMatchObject({ type: "event", value: { id: "2", input: "sleep 7 hours" } });
+        expect(r3).toMatchObject({ type: "event", value: { id: "3", input: "food: apple" } });
     });
 });
 
