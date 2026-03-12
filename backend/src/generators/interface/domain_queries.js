@@ -170,9 +170,7 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
 
     // ── Phase 2: continue from the full sorted list ───────────────────────────
     // We already yielded the first SORTED_EVENTS_CACHE_SIZE events from the
-    // cache, so we skip them here using slice().
-    // Using slice() instead of index-based access avoids the TypeScript
-    // `T | undefined` widening that occurs with bracket notation on arrays.
+    // cache, so we skip them here by slicing the full list of events.
     const fullNodeName =
         order === "dateAscending"
             ? "sorted_events_ascending"
