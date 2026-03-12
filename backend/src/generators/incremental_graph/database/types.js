@@ -120,7 +120,6 @@ function versionToString(Version) {
 
 /**
  * Full structure of a single event, indexed by event ID.
- * Value is null when no event with that ID exists in the current all_events set.
  * @typedef {object} EventEntry
  * @property {'event'} type - The type of the entry
  * @property {SerializedEvent} value - The serialized event object

@@ -46,7 +46,7 @@ describe("IncrementalGraph integration with meta_events", () => {
                 original: "test1",
                 input: "test1",
                 modifiers: {},
-                creator: { type: "user", name: "test" },
+                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
             },
             {
                 id: "2",
@@ -56,7 +56,7 @@ describe("IncrementalGraph integration with meta_events", () => {
                 original: "test2",
                 input: "test2",
                 modifiers: {},
-                creator: { type: "user", name: "test" },
+                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000002", version: "0.0.0" },
             },
         ];
 
