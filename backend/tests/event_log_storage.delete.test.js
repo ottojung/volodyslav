@@ -32,7 +32,7 @@ describe("event_log_storage deletion", () => {
             input: "first",
             type: "test",
             description: "first",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
         const e2 = {
             id: { identifier: "delete2" },
@@ -41,7 +41,7 @@ describe("event_log_storage deletion", () => {
             input: "second",
             type: "test",
             description: "second",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (s) => {
@@ -74,7 +74,7 @@ describe("event_log_storage deletion", () => {
             input: "one",
             type: "test",
             description: "one",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
         const e2 = {
             id: { identifier: "todel2" },
@@ -83,7 +83,7 @@ describe("event_log_storage deletion", () => {
             input: "two",
             type: "test",
             description: "two",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (s) => {
@@ -113,7 +113,7 @@ describe("event_log_storage deletion", () => {
             input: "solo",
             type: "test",
             description: "solo",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (s) => {
@@ -144,7 +144,7 @@ describe("event_log_storage deletion", () => {
             input: "i",
             type: "test",
             description: "iter",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (s) => {
@@ -172,7 +172,7 @@ describe("event_log_storage deletion", () => {
             input: "m1",
             type: "test",
             description: "m1",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
         const e2 = {
             id: { identifier: "multi2" },
@@ -181,7 +181,7 @@ describe("event_log_storage deletion", () => {
             input: "m2",
             type: "test",
             description: "m2",
-            creator: { name: "t", uuid: "u", version: "1" },
+            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (s) => {

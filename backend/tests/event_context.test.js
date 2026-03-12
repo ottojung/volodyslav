@@ -10,7 +10,7 @@ describe("getEventBasicContext", () => {
         original: input,
         modifiers: {},
         description: input,
-        creator: { name: "test", uuid: "test-uuid", version: "1.0" },
+        creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
     });
 
     it("returns empty array when event has no hashtags", () => {

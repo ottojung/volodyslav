@@ -62,6 +62,9 @@ function stubEnvironment(capabilities) {
         .fn()
         .mockReturnValue("mocked-gemini-key");
     capabilities.environment.myServerPort = jest.fn().mockReturnValue(1234);
+    capabilities.environment.hostname = jest
+        .fn()
+        .mockReturnValue("test-host");
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn();
 }
 

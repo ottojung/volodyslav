@@ -4,6 +4,7 @@ const runtime_identifier = require("./runtime_identifier");
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./logger').Logger} Logger */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -12,6 +13,7 @@ const runtime_identifier = require("./runtime_identifier");
  * @property {Command} git - A command instance for Git operations.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('./filesystem/checker').FileChecker} checker - A file checker instance.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -20,6 +22,7 @@ const runtime_identifier = require("./runtime_identifier");
  * @property {string} name - The name of the creator.
  * @property {string} uuid - The UUID of the creator.
  * @property {string} version - The version of the creator.
+ * @property {string} hostname - The hostname of the machine that created this entry.
  */
 
 /**
@@ -33,6 +36,7 @@ async function creator(capabilities) {
         name: "Volodyslav",
         uuid: '81c3188c-d2cc-4879-a237-cdd0f1121346',
         version: version,
+        hostname: capabilities.environment.hostname(),
     };
 }
 

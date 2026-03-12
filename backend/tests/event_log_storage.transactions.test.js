@@ -34,7 +34,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "modifier" },
             type: "test_event",
             description: "Test event description",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await transaction(capabilities, async (eventLogStorage) => {
@@ -65,7 +65,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "modifier" },
             type: "test_event",
             description: "Test event description",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         await expect(

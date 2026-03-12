@@ -132,7 +132,7 @@ describe("event_log_storage", () => {
             input: "test with config",
             type: "config_test",
             description: "Test event with config",
-            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
         };
 
         const testConfig = {
