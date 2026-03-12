@@ -234,7 +234,10 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123");
 
         expect(screen.queryByText("id")).not.toBeInTheDocument();
-        expect(screen.getAllByText("Loading...")).toHaveLength(1);
+        // Additional properties and media sections are visible and loading concurrently
+        expect(screen.getByText("Additional Properties")).toBeInTheDocument();
+        expect(screen.getByText("Media")).toBeInTheDocument();
+        expect(screen.getAllByText("Loading...").length).toBeGreaterThan(1);
 
         await act(async () => { resolveEntry(mockEntry); });
 

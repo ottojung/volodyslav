@@ -260,17 +260,7 @@ export default function EntryDetail() {
         }
     }
 
-    if (isLoading) {
-        return (
-            <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
-                <Box textAlign="center" py={SPACING.xxl}>
-                    <Spinner size="md" color="blue.400" />
-                </Box>
-            </Container>
-        );
-    }
-
-    if (notFound || entry === null) {
+    if (notFound) {
         return (
             <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
                 <Card {...CARD_STYLES.secondary}>
@@ -282,7 +272,7 @@ export default function EntryDetail() {
         );
     }
 
-    const fields = entryToFields(entry);
+    const fields = entry !== null ? entryToFields(entry) : [];
 
     const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && hasAdditionalPropertyValue(value));
 
@@ -297,24 +287,32 @@ export default function EntryDetail() {
             <VStack spacing={SPACING.xxl} align="stretch" justify="flex-start">
                 <Card {...CARD_STYLES.main}>
                     <CardBody p={SPACING.lg}>
-                        <HStack spacing={2} mb={SPACING.md} justify="space-between">
-                            <Badge {...BADGE_STYLES}>{entry.type}</Badge>
-                            <Button
-                                colorScheme="red"
-                                size="sm"
-                                variant="outline"
-                                onClick={handleDelete}
-                                isLoading={isDeleting}
-                                loadingText="Deleting..."
-                            >
-                                Delete
-                            </Button>
-                        </HStack>
-                        <VStack spacing={SPACING.sm} align="stretch">
-                            {fields.map((field) => (
-                                <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
-                            ))}
-                        </VStack>
+                        {isLoading ? (
+                            <Box textAlign="center" py={SPACING.xxl}>
+                                <Spinner size="md" color="blue.400" />
+                            </Box>
+                        ) : (
+                            <>
+                                <HStack spacing={2} mb={SPACING.md} justify="space-between">
+                                    <Badge {...BADGE_STYLES}>{entry.type}</Badge>
+                                    <Button
+                                        colorScheme="red"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleDelete}
+                                        isLoading={isDeleting}
+                                        loadingText="Deleting..."
+                                    >
+                                        Delete
+                                    </Button>
+                                </HStack>
+                                <VStack spacing={SPACING.sm} align="stretch">
+                                    {fields.map((field) => (
+                                        <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
+                                    ))}
+                                </VStack>
+                            </>
+                        )}
                     </CardBody>
                 </Card>
 
