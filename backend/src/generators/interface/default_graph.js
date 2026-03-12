@@ -9,6 +9,7 @@ const {
     eventTranscription,
 } = require("../individual");
 const { transaction } = require("../../event_log_storage");
+const { serialize, deserialize } = require("../../event");
 
 /**
  * @typedef {object} Capabilities
@@ -71,7 +72,7 @@ function createDefaultGraphDefinition(capabilities) {
                 const events = await transaction(capabilities, async (storage) => {
                     return await storage.getExistingEntries();
                 });
-                return { type: "all_events", events };
+                return { type: "all_events", events: events.map((e) => serialize(capabilities, e)) };
             },
             isDeterministic: false,
             hasSideEffects: false,
@@ -89,7 +90,7 @@ function createDefaultGraphDefinition(capabilities) {
                     return { type: "meta_events", meta_events: [] };
                 }
 
-                const allEvents = allEventsEntry.events;
+                const allEvents = allEventsEntry.events.map(deserialize);
 
                 /** @type {Array<import('../individual/meta_events').MetaEvent>} */
                 let currentMetaEvents = [];
@@ -168,7 +169,7 @@ function createDefaultGraphDefinition(capabilities) {
                 if (!firstInput || firstInput.type !== "event") {
                     throw new Error("Expected input of type event for calories(e) computor");
                 }
-                const ev = firstInput.value;
+                const ev = deserialize(firstInput.value);
                 return calories.computeCaloriesForEvent(ev, capabilities);
             },
             isDeterministic: false,
@@ -207,7 +208,7 @@ function createDefaultGraphDefinition(capabilities) {
                     throw new Error("Expected audio path binding at position 1 for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
                 }
                 return eventTranscription.computeEventTranscription(
-                    eventEntry.value,
+                    deserialize(eventEntry.value),
                     transcriptionEntry.value,
                     audioPath,
                 );

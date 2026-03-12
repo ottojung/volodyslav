@@ -4,7 +4,7 @@
 
 const { makeUnchanged } = require('../../incremental_graph');
 
-/** @typedef {import('../../../event').Event} Event */
+/** @typedef {import('../../../event').SerializedEvent} SerializedEvent */
 /** @typedef {import('../../incremental_graph/database/types').EventEntry} EventEntry */
 /** @typedef {import('../../incremental_graph/unchanged').Unchanged} Unchanged */
 
@@ -31,18 +31,16 @@ function isEventNotFoundError(object) {
 }
 
 /**
- * Finds and returns the full event with the given ID from the events array.
+ * Finds and returns the serialized event with the given ID from the events array.
  *
  * @param {string} eventId - The event ID to look up
- * @param {Array<Event>} events - The current set of all events
  * @param {EventEntry | undefined} oldValue - The previous value of the event entry, used for optimization
+ * @param {Array<SerializedEvent>} events - The current set of all serialized events
  * @returns {EventEntry | Unchanged}
  * @throws {EventNotFoundError} when no event with that ID exists
  */
 function computeEventForId(eventId, oldValue, events) {
-    const value = events.find(
-        (e) => String(e.id && e.id.identifier !== undefined ? e.id.identifier : e.id) === eventId
-    );
+    const value = events.find((e) => e.id === eventId);
     if (value === undefined) {
         throw new EventNotFoundError(eventId);
     }

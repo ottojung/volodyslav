@@ -99,8 +99,8 @@ describe("generators/interface", () => {
             const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
             expect(result.events).toHaveLength(2);
-            expect(result.events[0].id.identifier).toBe("event-1");
-            expect(result.events[1].id.identifier).toBe("event-2");
+            expect(result.events[0].id).toBe("event-1");
+            expect(result.events[1].id).toBe("event-2");
 
             const freshness = await iface.debugGetFreshness("all_events");
             expect(freshness).toBe("up-to-date");
@@ -118,7 +118,7 @@ describe("generators/interface", () => {
 
             let result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(1);
-            expect(result.events[0].id.identifier).toBe("event-1");
+            expect(result.events[0].id).toBe("event-1");
 
             // Replace event-1 with new content and add event-2
             await replaceEventInStore(capabilities, makeEvent("event-1", "updated text"));
@@ -127,10 +127,10 @@ describe("generators/interface", () => {
 
             result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(2);
-            const ids = result.events.map((e) => e.id.identifier);
+            const ids = result.events.map((e) => e.id);
             expect(ids).toContain("event-1");
             expect(ids).toContain("event-2");
-            const e1 = result.events.find((e) => e.id.identifier === "event-1");
+            const e1 = result.events.find((e) => e.id === "event-1");
             expect(e1).toBeDefined();
             expect(e1.input).toBe("updated text");
         });

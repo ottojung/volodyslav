@@ -12,43 +12,7 @@
  */
 
 const { isEventNotFoundError } = require('../individual').event;
-const { isDateTime, fromISOString } = require('../../datetime');
-const { id: eventIdModule } = require('../../event');
-
-/**
- * Reconstructs a proper Event object from a potentially JSON-deserialized event.
- *
- * Events stored in the incremental graph database are serialized as plain JSON.
- * When read back from the DB cache, custom class instances (DateTime, EventId) become
- * plain objects. This function restores them to their proper types.
- *
- * @param {Event} ev - The potentially plain-JSON event object
- * @returns {Event}
- */
-function rehydrateEvent(ev) {
-    // Rehydrate the date field if it is not already a proper DateTime instance.
-    // When a DateTimeClass is stored in the DB, JSON.stringify serializes the internal
-    // Luxon DateTime (via its toJSON()) as an ISO string under the _luxonDateTime key.
-    let date = ev.date;
-    if (!isDateTime(date)) {
-        const rawDate = ev.date;
-        if (!rawDate || typeof rawDate !== 'object' || typeof rawDate._luxonDateTime !== 'string') {
-            throw new Error(`Cannot rehydrate event date: ${JSON.stringify(ev.date)}`);
-        }
-        date = fromISOString(rawDate._luxonDateTime);
-    }
-
-    // Always rehydrate the id field to ensure we have a proper EventId instance.
-    // When an EventIdClass is stored in the DB, JSON.stringify serializes it as a
-    // plain object with an identifier string property.
-    const rawId = ev.id;
-    if (!rawId || typeof rawId.identifier !== 'string') {
-        throw new Error(`Cannot rehydrate event id: ${JSON.stringify(ev.id)}`);
-    }
-    const id = eventIdModule.fromString(rawId.identifier);
-
-    return { ...ev, date, id };
-}
+const { deserialize } = require('../../event');
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
@@ -141,7 +105,7 @@ async function internalGetAllEvents(interfaceInstance) {
     if (result.type !== "all_events") {
         throw new Error(`Expected all_events entry but got type: ${result.type}`);
     }
-    return result.events.map(rehydrateEvent);
+    return result.events.map(deserialize);
 }
 
 /**
@@ -158,7 +122,7 @@ async function internalGetEvent(interfaceInstance, eventId) {
         if (result.type !== "event") {
             throw new Error(`Expected event entry but got type: ${result.type}`);
         }
-        return rehydrateEvent(result.value);
+        return deserialize(result.value);
     } catch (error) {
         if (isEventNotFoundError(error)) {
             return null;

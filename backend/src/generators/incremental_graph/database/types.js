@@ -79,6 +79,10 @@ function versionToString(Version) {
  */
 
 /**
+ * @typedef {import('../../../event').SerializedEvent} SerializedEvent
+ */
+
+/**
  * @typedef {import('../../../transcribe').Transcription} Transcription
  */
 
@@ -93,7 +97,7 @@ function versionToString(Version) {
 /**
  * @typedef {object} AllEventsEntry
  * @property {'all_events'} type - The type of the entry
- * @property {Array<Event>} events - Array of events
+ * @property {Array<SerializedEvent>} events - Array of serialized events
  */
 
 /**
@@ -119,7 +123,7 @@ function versionToString(Version) {
  * Value is null when no event with that ID exists in the current all_events set.
  * @typedef {object} EventEntry
  * @property {'event'} type - The type of the entry
- * @property {Event} value - The full event object
+ * @property {SerializedEvent} value - The serialized event object
  */
 
 /**
