@@ -10,6 +10,7 @@ const {
 } = require("../individual");
 const { transaction } = require("../../event_log_storage");
 const { serialize, deserialize } = require("../../event");
+const { fromISOString } = require("../../datetime");
 
 /**
  * @typedef {object} Capabilities
@@ -43,6 +44,11 @@ const { serialize, deserialize } = require("../../event");
  * causes the next pull to re-read from disk.
  *
  * Graph adjacency:
+ *   all_events -> sorted_events_descending
+ *   sorted_events_descending -> sorted_events_ascending   (O(n) reverse)
+ *   sorted_events_descending -> last_entries(n)            (O(1) slice, parameterised by n)
+ *   sorted_events_ascending  -> first_entries(n)           (O(1) slice, parameterised by n)
+ *   all_events -> events_count                            (O(1) length)
  *   all_events -> event(e)
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e), transcription(a) -> event_transcription(e, a)
@@ -75,6 +81,130 @@ function createDefaultGraphDefinition(capabilities) {
                 return { type: "all_events", events: events.map((e) => serialize(capabilities, e)) };
             },
             isDeterministic: false,
+            hasSideEffects: false,
+        },
+        {
+            output: "sorted_events_descending",
+            inputs: ["all_events"],
+            /**
+             * Sorts all events by date descending (most recent first) using a
+             * Schwartzian transform: parse each date string once, sort by the
+             * parsed values, then extract the serialized events.  This avoids
+             * repeated fromISOString() calls inside the sort comparator.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const allEventsEntry = inputs[0];
+                if (!allEventsEntry || allEventsEntry.type !== "all_events") {
+                    return { type: "sorted_events_descending", events: [] };
+                }
+
+                const eventsWithDates = allEventsEntry.events.map(event => ({
+                    event,
+                    date: fromISOString(event.date),
+                }));
+                eventsWithDates.sort((a, b) => b.date.compare(a.date));
+                const sorted = eventsWithDates.map(({ event }) => event);
+                return { type: "sorted_events_descending", events: sorted };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "sorted_events_ascending",
+            inputs: ["sorted_events_descending"],
+            /**
+             * Derives ascending order from the already-sorted descending list
+             * with a simple O(n) reverse, avoiding a second O(n log n) sort.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const descEntry = inputs[0];
+                if (!descEntry || descEntry.type !== "sorted_events_descending") {
+                    return { type: "sorted_events_ascending", events: [] };
+                }
+                return {
+                    type: "sorted_events_ascending",
+                    events: descEntry.events.slice().reverse(),
+                };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "last_entries(n)",
+            inputs: ["sorted_events_descending"],
+            /**
+             * Parameterised cache node: caches the first `n` events from the
+             * descending-sorted list (i.e. the most-recent n events).  The
+             * binding value `n` is passed at pull time; the iterator always
+             * uses n = SORTED_EVENTS_CACHE_SIZE.  A small entry can be read
+             * from LevelDB very quickly, enabling the common first-page
+             * request to bypass the full sorted list entirely.
+             */
+            computor: async (inputs, _oldValue, bindings) => {
+                const n = bindings[0];
+                if (typeof n !== "number" || !Number.isInteger(n) || n < 0) {
+                    throw new Error(
+                        `Expected non-negative integer binding n for last_entries(n) but got: ${JSON.stringify(n)}`
+                    );
+                }
+                const descEntry = inputs[0];
+                if (!descEntry || descEntry.type !== "sorted_events_descending") {
+                    return { type: "last_entries", n, events: [] };
+                }
+                return {
+                    type: "last_entries",
+                    n,
+                    events: descEntry.events.slice(0, n),
+                };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "first_entries(n)",
+            inputs: ["sorted_events_ascending"],
+            /**
+             * Parameterised cache node: caches the first `n` events from the
+             * ascending-sorted list (i.e. the oldest n events).  Mirrors
+             * last_entries(n) for the ascending-order case.
+             */
+            computor: async (inputs, _oldValue, bindings) => {
+                const n = bindings[0];
+                if (typeof n !== "number" || !Number.isInteger(n) || n < 0) {
+                    throw new Error(
+                        `Expected non-negative integer binding n for first_entries(n) but got: ${JSON.stringify(n)}`
+                    );
+                }
+                const ascEntry = inputs[0];
+                if (!ascEntry || ascEntry.type !== "sorted_events_ascending") {
+                    return { type: "first_entries", n, events: [] };
+                }
+                return {
+                    type: "first_entries",
+                    n,
+                    events: ascEntry.events.slice(0, n),
+                };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "events_count",
+            inputs: ["all_events"],
+            /**
+             * Caches the total number of events so consumers can access the
+             * count without iterating all events.  Currently used by the
+             * event iterator to perform cache boundary checks when serving
+             * paginated results.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const allEventsEntry = inputs[0];
+                if (!allEventsEntry || allEventsEntry.type !== "all_events") {
+                    return { type: "events_count", count: 0 };
+                }
+                return { type: "events_count", count: allEventsEntry.events.length };
+            },
+            isDeterministic: true,
             hasSideEffects: false,
         },
         {

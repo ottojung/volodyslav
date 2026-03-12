@@ -27,6 +27,8 @@ const {
 } = require("./graph_api");
 const {
     internalGetAllEvents,
+    internalGetSortedEvents,
+    internalGetEventsCount,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,
@@ -177,6 +179,36 @@ class InterfaceClass {
      */
     async getConfig() {
         return await internalGetConfig(this);
+    }
+
+    /**
+     * Returns an async iterator over events in sorted date order.
+     *
+     * The first up to SORTED_EVENTS_CACHE_SIZE events are yielded from a small
+     * dedicated cache node (`last_entries(n)` for descending, `first_entries(n)`
+     * for ascending; both pulled with n = SORTED_EVENTS_CACHE_SIZE) which can
+     * be read from LevelDB much faster than the full sorted list.  Only if more
+     * events exist does the iterator fall through to the complete
+     * `sorted_events_descending` / `sorted_events_ascending` node.
+     *
+     * Events are deserialized lazily — one at a time as the caller advances the
+     * iterator — so callers that stop early (e.g. after collecting a single
+     * page) never pay to deserialize entries they will not use.
+     *
+     * @param {'dateAscending'|'dateDescending'} order
+     * @returns {AsyncGenerator<Event>}
+     */
+    async* getSortedEvents(order) {
+        yield* internalGetSortedEvents(this, order);
+    }
+
+    /**
+     * Returns the total number of events from the cached `events_count` graph
+     * node.  This is O(1) and does not require iterating all events.
+     * @returns {Promise<number>}
+     */
+    async getEventsCount() {
+        return await internalGetEventsCount(this);
     }
 
     /**

@@ -158,8 +158,52 @@ function versionToString(Version) {
  */
 
 /**
+ * Events sorted by date in descending order (most recent first).
+ * @typedef {object} SortedEventsDescendingEntry
+ * @property {'sorted_events_descending'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - All serialized events sorted by date descending
+ */
+
+/**
+ * Events sorted by date in ascending order (oldest first).
+ * @typedef {object} SortedEventsAscendingEntry
+ * @property {'sorted_events_ascending'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - All serialized events sorted by date ascending
+ */
+
+/**
+ * The first `n` events in descending date order (newest first).
+ * A small, fast-to-read subset used to serve the first page of results
+ * without pulling the full sorted list from the database.
+ * `n` is stored alongside the events so callers can assert the binding.
+ * @typedef {object} LastNEntriesEntry
+ * @property {'last_entries'} type - The type of the entry
+ * @property {number} n - The number of entries requested (binding value)
+ * @property {Array<SerializedEvent>} events - At most n events, newest first
+ */
+
+/**
+ * The first `n` events in ascending date order (oldest first).
+ * A small, fast-to-read subset used to serve the first page of results
+ * when ascending order is requested, without pulling the full sorted list.
+ * `n` is stored alongside the events so callers can assert the binding.
+ * @typedef {object} FirstNEntriesEntry
+ * @property {'first_entries'} type - The type of the entry
+ * @property {number} n - The number of entries requested (binding value)
+ * @property {Array<SerializedEvent>} events - At most n events, oldest first
+ */
+
+/**
+ * The total count of all events in the event log.
+ * Derived directly from `all_events` so it is always in sync.
+ * @typedef {object} EventsCountEntry
+ * @property {'events_count'} type - The type of the entry
+ * @property {number} count - Total number of events
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
  */
 
 /**

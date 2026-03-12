@@ -132,7 +132,6 @@ async function createEntry(capabilities, entryData, files = []) {
 /**
  * @typedef {object} PaginationResult
  * @property {import('./event/structure').Event[]} results - The paginated entries (Event structures)
- * @property {number} total - Total number of entries
  * @property {boolean} hasMore - Whether there are more pages available
  * @property {number} page - Current page number
  * @property {number} limit - Items per page
@@ -169,44 +168,53 @@ async function getEntries(capabilities, pagination) {
         }
     }
 
-    // Fetch all events from the incremental graph (fast path, no git transaction needed)
-    const entries = await capabilities.interface.getAllEvents();
+    // ── Lazy iteration over sorted events ─────────────────────────────────────
+    // For page 1 with no search filter the iterator serves its first
+    // SORTED_EVENTS_CACHE_SIZE results from a small cache node, avoiding a
+    // full read of the potentially-large sorted list.
+    const entriesToSkip = (page - 1) * limit;
+    let skipped = 0;
 
-    // Filter entries by search regex if provided
-    const filteredEntries = searchRegex === null
-        ? entries
-        : entries.filter(entry =>
-            searchRegex.test(entry.type) || searchRegex.test(entry.description)
-        );
+    /** @type {import('./event/structure').Event[]} */
+    const results = [];
 
-    // Sort entries by date
-    const sortedEntries = [...filteredEntries].sort((a, b) => {
-        const comparison = a.date.compare(b.date);
-        return order === 'dateAscending' ? comparison : -comparison;
-    });
+    for await (const entry of capabilities.interface.getSortedEvents(order)) {
+        if (searchRegex !== null) {
+            if (!searchRegex.test(entry.type) && !searchRegex.test(entry.description)) {
+                continue;
+            }
+        }
 
-    // Apply pagination
-    const total = sortedEntries.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
-    const results = sortedEntries.slice(start, end);
-    const hasMore = end < total;
+        if (skipped < entriesToSkip) {
+            skipped++;
+            continue;
+        }
+
+        results.push(entry);
+        // Collect one extra entry to cheaply detect whether a next page exists.
+        if (results.length >= limit + 1) {
+            break;
+        }
+    }
+
+    const hasMore = results.length > limit;
+    if (hasMore) {
+        results.pop();
+    }
 
     capabilities.logger.logDebug(
         {
-            total,
             page,
             limit,
             order,
             resultCount: results.length,
             hasMore,
         },
-        `Retrieved entries: page ${page}, ${results.length}/${total} entries, order: ${order}`
+        `Retrieved entries: page ${page}, ${results.length} entries, order: ${order}`
     );
 
     return {
         results,
-        total,
         hasMore,
         page,
         limit,
