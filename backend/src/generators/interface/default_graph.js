@@ -177,8 +177,10 @@ function createDefaultGraphDefinition(capabilities) {
             output: "events_count",
             inputs: ["all_events"],
             /**
-             * Caches the total number of events.  Used by getEntries() to
-             * return the `total` field without having to iterate all events.
+             * Caches the total number of events so consumers can access the
+             * count without iterating all events.  Currently used by the
+             * event iterator to perform cache boundary checks when serving
+             * paginated results.
              */
             computor: async (inputs, _oldValue, _bindings) => {
                 const allEventsEntry = inputs[0];
