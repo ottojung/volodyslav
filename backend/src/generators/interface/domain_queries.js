@@ -127,6 +127,12 @@ async function internalGetConfig(interfaceInstance) {
  * @returns {AsyncGenerator<Event>}
  */
 async function* internalGetSortedEvents(interfaceInstance, order) {
+    if (order !== "dateAscending" && order !== "dateDescending") {
+        throw new Error(
+            `internalGetSortedEvents: unsupported order value: ${JSON.stringify(order)}. ` +
+            `Expected 'dateAscending' or 'dateDescending'.`
+        );
+    }
     await interfaceInstance.ensureInitialized();
     const graph = interfaceInstance._requireInitializedGraph();
 
@@ -170,7 +176,10 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
 
     // ── Phase 2: continue from the full sorted list ───────────────────────────
     // We already yielded the first SORTED_EVENTS_CACHE_SIZE events from the
-    // cache, so we skip them here by slicing the full list of events.
+    // cache, so iterate the remaining events by index via Array.entries().
+    // Using entries() means each element is typed as SerializedEvent (not
+    // SerializedEvent | undefined), avoiding both a slice() copy and an
+    // index-access type widening.
     const fullNodeName =
         order === "dateAscending"
             ? "sorted_events_ascending"
@@ -183,9 +192,10 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
         );
     }
 
-    const remaining = fullEntry.events.slice(SORTED_EVENTS_CACHE_SIZE);
-    for (const serialized of remaining) {
-        yield deserialize(serialized);
+    for (const [i, serialized] of fullEntry.events.entries()) {
+        if (i >= SORTED_EVENTS_CACHE_SIZE) {
+            yield deserialize(serialized);
+        }
     }
 }
 

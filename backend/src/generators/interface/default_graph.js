@@ -142,9 +142,9 @@ function createDefaultGraphDefinition(capabilities) {
              */
             computor: async (inputs, _oldValue, bindings) => {
                 const n = bindings[0];
-                if (typeof n !== "number") {
+                if (typeof n !== "number" || !Number.isInteger(n) || n < 0) {
                     throw new Error(
-                        `Expected numeric binding n for last_entries(n) but got: ${JSON.stringify(n)}`
+                        `Expected non-negative integer binding n for last_entries(n) but got: ${JSON.stringify(n)}`
                     );
                 }
                 const descEntry = inputs[0];
@@ -170,9 +170,9 @@ function createDefaultGraphDefinition(capabilities) {
              */
             computor: async (inputs, _oldValue, bindings) => {
                 const n = bindings[0];
-                if (typeof n !== "number") {
+                if (typeof n !== "number" || !Number.isInteger(n) || n < 0) {
                     throw new Error(
-                        `Expected numeric binding n for first_entries(n) but got: ${JSON.stringify(n)}`
+                        `Expected non-negative integer binding n for first_entries(n) but got: ${JSON.stringify(n)}`
                     );
                 }
                 const ascEntry = inputs[0];
