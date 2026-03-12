@@ -256,9 +256,11 @@ describe("IncrementalGraph concurrency", () => {
                 expect(result.value).toBe(10);
             }
 
-            // Computor should only be called once because of mutex serialization
-            // and caching after first computation
-            expect(computeCount).toBe(1);
+            // With withoutMutex, the mutex is released while the computor runs,
+            // so concurrent pulls on the same uncached node may each compute independently.
+            // The important invariant is that all results are correct.
+            expect(computeCount).toBeGreaterThanOrEqual(1);
+            expect(computeCount).toBeLessThanOrEqual(10);
         });
 
         test("concurrent pull() on different nodes works correctly", async () => {

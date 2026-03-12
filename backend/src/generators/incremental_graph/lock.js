@@ -22,6 +22,25 @@ function withMutex(sleeper, procedure) {
     return sleeper.withMutex(MUTEX_KEY, procedure);
 }
 
+/**
+ * Temporarily releases the incremental-graph mutex, runs a procedure without
+ * the lock, then re-acquires the mutex before returning.
+ *
+ * This MUST be called from within a `withMutex` callback (i.e., while the
+ * incremental-graph mutex is currently held).  It is only safe to use for
+ * the computor function inside `recompute.js` — the computor receives
+ * already-fetched input values and does not interact with the in-memory graph.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper - The sleeper capability.
+ * @param {() => Promise<T>} procedure - The procedure to run without the mutex.
+ * @returns {Promise<T>}
+ */
+function withoutMutex(sleeper, procedure) {
+    return sleeper.withoutMutex(MUTEX_KEY, procedure);
+}
+
 module.exports = {
     withMutex,
+    withoutMutex,
 };

@@ -4,14 +4,10 @@
  * Returns the list of asset files associated with an entry.
  * Files are stored in the assets directory at:
  *   $assetsDir/${year}-${month}/${day}/${entryId}/
- *
- * The entry's assets directory is located by scanning the assets root for a
- * subdirectory matching the entry ID, which avoids acquiring the incremental
- * graph mutex (used by the additional-properties route for AI computation) and
- * allows both routes to run concurrently.
  */
 
 const path = require("path");
+const { getEntryById } = require("../../entry");
 const { isDirScannerError } = require("../../filesystem").dirscanner;
 
 /** @typedef {import('../../environment').Environment} Environment */
@@ -26,6 +22,17 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  * @property {Logger} logger - A logger instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {DirScanner} scanner - A directory scanner instance.
+ * @property {import('../../filesystem/appender').FileAppender} appender - A file appender instance.
+ * @property {import('../../filesystem/creator').FileCreator} creator - A directory creator instance.
+ * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
+ * @property {import('../../subprocess/command').Command} git - A command instance for Git operations.
+ * @property {import('../../random/seed').NonDeterministicSeed} seed - A random number generator.
+ * @property {import('../../filesystem/deleter').FileDeleter} deleter - A file deleter instance.
+ * @property {import('../../filesystem/copier').FileCopier} copier - A file copier instance.
+ * @property {import('../../filesystem/writer').FileWriter} writer - A file writer instance.
+ * @property {import('../../sleeper').SleepCapability} sleeper - A sleeper instance.
+ * @property {import('../../generators').Interface} interface - The incremental graph interface.
  */
 
 /**
@@ -54,65 +61,32 @@ function mediaTypeFromFilename(filename) {
 }
 
 /**
- * Computes the URL path for an asset file (relative to /api).
- * @param {string} assetsDir - The assets root directory.
- * @param {string} assetsDirPath - The full path to the entry's assets directory.
- * @param {string} filename
+ * Computes the directory path where an entry's assets are stored.
+ * @param {string} assetsDir
+ * @param {import('../../event/structure').Event} entry
  * @returns {string}
  */
-function assetUrlPath(assetsDir, assetsDirPath, filename) {
-    const relDir = path.relative(assetsDir, assetsDirPath);
-    const encodedFilename = encodeURIComponent(filename);
-    // relDir uses the OS path separator; normalise to forward slashes for the URL.
-    const urlDir = relDir.split(path.sep).join("/");
-    return `/assets/${urlDir}/${encodedFilename}`;
+function entryAssetsDir(assetsDir, entry) {
+    const date = entry.date;
+    const year = date.year;
+    const month = date.month.toString().padStart(2, "0");
+    const day = date.day.toString().padStart(2, "0");
+    return path.join(assetsDir, `${year}-${month}`, day, entry.id.identifier);
 }
 
 /**
- * Searches the assets root directory for the subdirectory belonging to the
- * given entry ID.  The layout is `<assetsDir>/<YYYY-MM>/<DD>/<entryId>/`.
- * Scanning instead of looking up the entry's date avoids acquiring the
- * incremental-graph mutex, allowing this endpoint to run concurrently with
- * additional-properties requests.
- * @param {string} assetsDir
- * @param {string} entryId
- * @param {Capabilities} capabilities
- * @returns {Promise<string | null>} Full path to the entry's asset directory, or null if not found.
+ * Computes the URL path for an asset file (relative to /api).
+ * @param {import('../../event/structure').Event} entry
+ * @param {string} filename
+ * @returns {string}
  */
-async function findEntryAssetsDir(assetsDir, entryId, capabilities) {
-    const assetsDirProof = await capabilities.checker.directoryExists(assetsDir);
-    if (assetsDirProof === null) return null;
-
-    let yearMonthEntries;
-    try {
-        yearMonthEntries = await capabilities.scanner.scanDirectory(assetsDir);
-    } catch (error) {
-        if (isDirScannerError(error)) return null;
-        throw error;
-    }
-
-    for (const yearMonthEntry of yearMonthEntries) {
-        const ymProof = await capabilities.checker.directoryExists(yearMonthEntry.path);
-        if (ymProof === null) continue;
-
-        let dayEntries;
-        try {
-            dayEntries = await capabilities.scanner.scanDirectory(yearMonthEntry.path);
-        } catch (error) {
-            if (isDirScannerError(error)) continue;
-            throw error;
-        }
-
-        for (const dayEntry of dayEntries) {
-            const entryDir = path.join(dayEntry.path, entryId);
-            const entryDirProof = await capabilities.checker.directoryExists(entryDir);
-            if (entryDirProof !== null) {
-                return entryDir;
-            }
-        }
-    }
-
-    return null;
+function assetUrlPath(entry, filename) {
+    const date = entry.date;
+    const year = date.year;
+    const month = date.month.toString().padStart(2, "0");
+    const day = date.day.toString().padStart(2, "0");
+    const encodedFilename = encodeURIComponent(filename);
+    return `/assets/${year}-${month}/${day}/${entry.id.identifier}/${encodedFilename}`;
 }
 
 /**
@@ -132,10 +106,19 @@ async function handleEntryAssets(req, res, capabilities, reqId) {
     }
 
     try {
-        const assetsDir = capabilities.environment.eventLogAssetsDirectory();
-        const dirPath = await findEntryAssetsDir(assetsDir, id, capabilities);
+        const entry = await getEntryById(capabilities, id);
 
-        if (dirPath === null) {
+        if (entry === null) {
+            res.status(404).json({ error: "Entry not found" });
+            return;
+        }
+
+        const assetsDir = capabilities.environment.eventLogAssetsDirectory();
+        const dirPath = entryAssetsDir(assetsDir, entry);
+
+        const dirProof = await capabilities.checker.directoryExists(dirPath);
+
+        if (dirProof === null) {
             res.json({ assets: [] });
             return;
         }
@@ -155,7 +138,7 @@ async function handleEntryAssets(req, res, capabilities, reqId) {
             const filename = path.basename(file.path);
             assets.push({
                 filename,
-                url: assetUrlPath(assetsDir, dirPath, filename),
+                url: assetUrlPath(entry, filename),
                 mediaType: mediaTypeFromFilename(filename),
             });
         }

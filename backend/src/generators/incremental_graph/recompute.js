@@ -9,6 +9,7 @@
  * @typedef {object} IncrementalGraphRecomputeAccess
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
+ * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatus
  */
 
@@ -16,6 +17,7 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { deserializeNodeKey } = require("./node_key");
 const { isUnchanged } = require("./unchanged");
 const { nodeKeyStringToString } = require("./database");
+const { withoutMutex } = require("./lock");
 
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
@@ -108,7 +110,11 @@ async function internalMaybeRecalculate(
         }
     }
 
-    const computedValue = await nodeDefinition.computor(inputValues, oldValue);
+    // Release the mutex during the (potentially expensive) computor call so
+    // that other graph operations (e.g. cheap event reads) can proceed concurrently.
+    const computedValue = await withoutMutex(incrementalGraph.sleeper, () =>
+        nodeDefinition.computor(inputValues, oldValue)
+    );
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
             throw makeInvalidUnchangedError(nodeKey);
