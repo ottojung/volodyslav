@@ -11,6 +11,7 @@ const {
 const { transaction } = require("../../event_log_storage");
 const { serialize, deserialize } = require("../../event");
 const { fromISOString } = require("../../datetime");
+const { SORTED_EVENTS_CACHE_SIZE } = require("./constants");
 
 /**
  * @typedef {object} Capabilities
@@ -44,8 +45,12 @@ const { fromISOString } = require("../../datetime");
  * causes the next pull to re-read from disk.
  *
  * Graph adjacency:
+ *   all_events -> sorted_events_descending
+ *   sorted_events_descending -> sorted_events_ascending   (O(n) reverse)
+ *   sorted_events_descending -> last100entries            (O(1) slice)
+ *   sorted_events_ascending  -> first100entries           (O(1) slice)
+ *   all_events -> events_count                            (O(1) length)
  *   all_events -> event(e)
- *   all_events -> sorted_events
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e), transcription(a) -> event_transcription(e, a)
  *   config                                      [standalone, no graph inputs]
@@ -80,12 +85,18 @@ function createDefaultGraphDefinition(capabilities) {
             hasSideEffects: false,
         },
         {
-            output: "sorted_events",
+            output: "sorted_events_descending",
             inputs: ["all_events"],
+            /**
+             * Sorts all events by date descending (most recent first) using a
+             * Schwartzian transform: parse each date string once, sort by the
+             * parsed values, then extract the serialized events.  This avoids
+             * repeated fromISOString() calls inside the sort comparator.
+             */
             computor: async (inputs, _oldValue, _bindings) => {
                 const allEventsEntry = inputs[0];
                 if (!allEventsEntry || allEventsEntry.type !== "all_events") {
-                    return { type: "sorted_events", events: [] };
+                    return { type: "sorted_events_descending", events: [] };
                 }
 
                 const eventsWithDates = allEventsEntry.events.map(event => ({
@@ -94,7 +105,87 @@ function createDefaultGraphDefinition(capabilities) {
                 }));
                 eventsWithDates.sort((a, b) => b.date.compare(a.date));
                 const sorted = eventsWithDates.map(({ event }) => event);
-                return { type: "sorted_events", events: sorted };
+                return { type: "sorted_events_descending", events: sorted };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "sorted_events_ascending",
+            inputs: ["sorted_events_descending"],
+            /**
+             * Derives ascending order from the already-sorted descending list
+             * with a simple O(n) reverse, avoiding a second O(n log n) sort.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const descEntry = inputs[0];
+                if (!descEntry || descEntry.type !== "sorted_events_descending") {
+                    return { type: "sorted_events_ascending", events: [] };
+                }
+                return {
+                    type: "sorted_events_ascending",
+                    events: descEntry.events.slice().reverse(),
+                };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "last100entries",
+            inputs: ["sorted_events_descending"],
+            /**
+             * Caches only the first SORTED_EVENTS_CACHE_SIZE events from the
+             * descending-sorted list (i.e. the most-recent N events).  This
+             * small entry can be read from LevelDB very quickly, enabling the
+             * common first-page request to bypass the full sorted list entirely.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const descEntry = inputs[0];
+                if (!descEntry || descEntry.type !== "sorted_events_descending") {
+                    return { type: "last100entries", events: [] };
+                }
+                return {
+                    type: "last100entries",
+                    events: descEntry.events.slice(0, SORTED_EVENTS_CACHE_SIZE),
+                };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "first100entries",
+            inputs: ["sorted_events_ascending"],
+            /**
+             * Caches only the first SORTED_EVENTS_CACHE_SIZE events from the
+             * ascending-sorted list (i.e. the oldest N events).  Mirrors
+             * last100entries for the ascending-order case.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const ascEntry = inputs[0];
+                if (!ascEntry || ascEntry.type !== "sorted_events_ascending") {
+                    return { type: "first100entries", events: [] };
+                }
+                return {
+                    type: "first100entries",
+                    events: ascEntry.events.slice(0, SORTED_EVENTS_CACHE_SIZE),
+                };
+            },
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "events_count",
+            inputs: ["all_events"],
+            /**
+             * Caches the total number of events.  Used by getEntries() to
+             * return the `total` field without having to iterate all events.
+             */
+            computor: async (inputs, _oldValue, _bindings) => {
+                const allEventsEntry = inputs[0];
+                if (!allEventsEntry || allEventsEntry.type !== "all_events") {
+                    return { type: "events_count", count: 0 };
+                }
+                return { type: "events_count", count: allEventsEntry.events.length };
             },
             isDeterministic: true,
             hasSideEffects: false,

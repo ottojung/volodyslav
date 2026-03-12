@@ -38,7 +38,11 @@ function migrationCallback(capabilities) {
     return async (storage) => {
         capabilities.logger.logInfo({}, "Migration tries to keep everything.");
         await keepNodeType("all_events", storage);
-        await keepNodeType("sorted_events", storage);
+        await keepNodeType("sorted_events_descending", storage);
+        await keepNodeType("sorted_events_ascending", storage);
+        await keepNodeType("last100entries", storage);
+        await keepNodeType("first100entries", storage);
+        await keepNodeType("events_count", storage);
         await keepNodeType("config", storage);
         await keepNodeType("meta_events", storage);
         await keepNodeType("event", storage);

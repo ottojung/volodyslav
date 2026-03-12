@@ -28,6 +28,7 @@ const {
 const {
     internalGetAllEvents,
     internalGetSortedEvents,
+    internalGetEventsCount,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,
@@ -181,15 +182,32 @@ class InterfaceClass {
     }
 
     /**
-     * Returns all events from the incremental graph sorted by date descending
-     * (most recent first). Reads from the cached `sorted_events` graph node
-     * instead of performing a full gitstore transaction, making reads
-     * significantly faster. The sort is computed once and cached; it is only
-     * recomputed when the underlying `all_events` node changes.
-     * @returns {Promise<Array<Event>>}
+     * Returns an async iterator over events in sorted date order.
+     *
+     * The first up to SORTED_EVENTS_CACHE_SIZE events are yielded from a small
+     * dedicated cache node (`last100entries` for descending, `first100entries`
+     * for ascending) which can be read from LevelDB much faster than the full
+     * sorted list.  Only if more events exist does the iterator fall through to
+     * the complete `sorted_events_descending` / `sorted_events_ascending` node.
+     *
+     * Events are deserialized lazily — one at a time as the caller advances the
+     * iterator — so callers that stop early (e.g. after collecting a single
+     * page) never pay to deserialize entries they will not use.
+     *
+     * @param {'dateAscending'|'dateDescending'} order
+     * @returns {AsyncGenerator<Event>}
      */
-    async getSortedEvents() {
-        return await internalGetSortedEvents(this);
+    async* getSortedEvents(order) {
+        yield* internalGetSortedEvents(this, order);
+    }
+
+    /**
+     * Returns the total number of events from the cached `events_count` graph
+     * node.  This is O(1) and does not require iterating all events.
+     * @returns {Promise<number>}
+     */
+    async getEventsCount() {
+        return await internalGetEventsCount(this);
     }
 
     /**

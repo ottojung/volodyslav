@@ -159,14 +159,47 @@ function versionToString(Version) {
 
 /**
  * Events sorted by date in descending order (most recent first).
- * @typedef {object} SortedEventsEntry
- * @property {'sorted_events'} type - The type of the entry
- * @property {Array<SerializedEvent>} events - Array of serialized events sorted by date descending
+ * @typedef {object} SortedEventsDescendingEntry
+ * @property {'sorted_events_descending'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - All serialized events sorted by date descending
+ */
+
+/**
+ * Events sorted by date in ascending order (oldest first).
+ * @typedef {object} SortedEventsAscendingEntry
+ * @property {'sorted_events_ascending'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - All serialized events sorted by date ascending
+ */
+
+/**
+ * The first SORTED_EVENTS_CACHE_SIZE events in descending date order (newest first).
+ * This is a small, fast-to-read subset used to serve the first page of results
+ * without pulling the full sorted list from the database.
+ * @typedef {object} Last100EntriesEntry
+ * @property {'last100entries'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - At most SORTED_EVENTS_CACHE_SIZE events, newest first
+ */
+
+/**
+ * The first SORTED_EVENTS_CACHE_SIZE events in ascending date order (oldest first).
+ * This is a small, fast-to-read subset used to serve the first page of results
+ * when ascending order is requested, without pulling the full sorted list.
+ * @typedef {object} First100EntriesEntry
+ * @property {'first100entries'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - At most SORTED_EVENTS_CACHE_SIZE events, oldest first
+ */
+
+/**
+ * The total count of all events in the event log.
+ * Derived directly from `all_events` so it is always in sync.
+ * @typedef {object} EventsCountEntry
+ * @property {'events_count'} type - The type of the entry
+ * @property {number} count - Total number of events
  */
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | Last100EntriesEntry | First100EntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
  */
 
 /**

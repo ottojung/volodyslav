@@ -13,6 +13,7 @@
 
 const { isEventNotFoundError } = require('../individual').event;
 const { deserialize } = require('../../event');
+const { SORTED_EVENTS_CACHE_SIZE } = require('./constants');
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
@@ -94,18 +95,100 @@ async function internalGetConfig(interfaceInstance) {
 }
 
 /**
+ * Returns an async iterator over events in sorted date order.
+ *
+ * ## Two-phase iteration for speed
+ *
+ * For the common case (first page, small result set) the iterator avoids
+ * reading the potentially-large full sorted list from LevelDB by first
+ * yielding from one of two dedicated small-cache nodes:
+ *
+ *   - `last100entries`  – most-recent SORTED_EVENTS_CACHE_SIZE events
+ *                         (used for `'dateDescending'` order)
+ *   - `first100entries` – oldest SORTED_EVENTS_CACHE_SIZE events
+ *                         (used for `'dateAscending'` order)
+ *
+ * If and only if more than SORTED_EVENTS_CACHE_SIZE events exist (i.e. the
+ * cache was filled to capacity) does the iterator fall through to the full
+ * sorted list (`sorted_events_descending` / `sorted_events_ascending`),
+ * skipping the first SORTED_EVENTS_CACHE_SIZE entries that were already
+ * yielded from the cache.
+ *
+ * ## Lazy deserialization
+ *
+ * Each event is deserialized from its stored `SerializedEvent` form only when
+ * the caller advances the iterator (i.e. pulls the next value).  This avoids
+ * allocating full Event objects for entries the caller never consumes.
+ *
  * @param {InterfaceQueryAccess} interfaceInstance
- * @returns {Promise<Array<Event>>}
+ * @param {'dateAscending'|'dateDescending'} order
+ * @returns {AsyncGenerator<Event>}
  */
-async function internalGetSortedEvents(interfaceInstance) {
+async function* internalGetSortedEvents(interfaceInstance, order) {
+    await interfaceInstance.ensureInitialized();
+    const graph = interfaceInstance._requireInitializedGraph();
+
+    // ── Phase 1: yield from the small cache node ─────────────────────────────
+    // Pulling a small entry (≤ SORTED_EVENTS_CACHE_SIZE events) from LevelDB
+    // is much faster than pulling the full sorted list.
+    const cacheNodeName =
+        order === "dateAscending" ? "first100entries" : "last100entries";
+
+    const cacheEntry = await graph.pull(cacheNodeName);
+    if (cacheEntry.type !== cacheNodeName) {
+        throw new Error(
+            `Expected ${cacheNodeName} entry but got type: ${cacheEntry.type}`
+        );
+    }
+
+    const cachedEvents = cacheEntry.events;
+    for (const serialized of cachedEvents) {
+        yield deserialize(serialized);
+    }
+
+    // If the cache held fewer than SORTED_EVENTS_CACHE_SIZE events then all
+    // events have been yielded — there is no full list to fall through to.
+    if (cachedEvents.length < SORTED_EVENTS_CACHE_SIZE) {
+        return;
+    }
+
+    // ── Phase 2: continue from the full sorted list ───────────────────────────
+    // We already yielded the first SORTED_EVENTS_CACHE_SIZE events from the
+    // cache, so we start at index SORTED_EVENTS_CACHE_SIZE here.
+    const fullNodeName =
+        order === "dateAscending"
+            ? "sorted_events_ascending"
+            : "sorted_events_descending";
+
+    const fullEntry = await graph.pull(fullNodeName);
+    if (fullEntry.type !== fullNodeName) {
+        throw new Error(
+            `Expected ${fullNodeName} entry but got type: ${fullEntry.type}`
+        );
+    }
+
+    const allEvents = fullEntry.events;
+    for (let i = SORTED_EVENTS_CACHE_SIZE; i < allEvents.length; i++) {
+        yield deserialize(allEvents[i]);
+    }
+}
+
+/**
+ * Returns the total number of events from the cached `events_count` graph
+ * node.  This is O(1) and does not require iterating all events.
+ *
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @returns {Promise<number>}
+ */
+async function internalGetEventsCount(interfaceInstance) {
     await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
-        .pull("sorted_events");
-    if (result.type !== "sorted_events") {
-        throw new Error(`Expected sorted_events entry but got type: ${result.type}`);
+        .pull("events_count");
+    if (result.type !== "events_count") {
+        throw new Error(`Expected events_count entry but got type: ${result.type}`);
     }
-    return result.events.map(deserialize);
+    return result.count;
 }
 
 /**
@@ -149,6 +232,7 @@ async function internalGetEvent(interfaceInstance, eventId) {
 module.exports = {
     internalGetAllEvents,
     internalGetSortedEvents,
+    internalGetEventsCount,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,

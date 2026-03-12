@@ -132,7 +132,8 @@ async function createEntry(capabilities, entryData, files = []) {
 /**
  * @typedef {object} PaginationResult
  * @property {import('./event/structure').Event[]} results - The paginated entries (Event structures)
- * @property {number} total - Total number of entries
+ * @property {number} total - Total number of events in the log (all events, from cache;
+ *   does not reflect search filtering — use `hasMore` to detect additional pages)
  * @property {boolean} hasMore - Whether there are more pages available
  * @property {number} page - Current page number
  * @property {number} limit - Items per page
@@ -169,29 +170,44 @@ async function getEntries(capabilities, pagination) {
         }
     }
 
-    // Fetch events pre-sorted by date descending from the incremental graph cache.
-    // The sort is computed once and cached by the graph; only recomputed when
-    // all_events changes, avoiding an O(n log n) sort on every request.
-    const sortedDesc = await capabilities.interface.getSortedEvents();
+    // ── Fast path: total count from cache ────────────────────────────────────
+    // The `events_count` graph node stores len(all_events) and is updated
+    // whenever all_events changes, so this is an O(1) LevelDB read.
+    const total = await capabilities.interface.getEventsCount();
 
-    // For ascending order, reverse the pre-sorted list (O(n)).
-    const entriesInOrder = order === 'dateAscending'
-        ? sortedDesc.slice().reverse()
-        : sortedDesc;
+    // ── Lazy iteration over sorted events ─────────────────────────────────────
+    // For page 1 with no search filter the iterator serves its first
+    // SORTED_EVENTS_CACHE_SIZE results from a small cache node, avoiding a
+    // full read of the potentially-large sorted list.
+    const entriesToSkip = (page - 1) * limit;
+    let skipped = 0;
 
-    // Filter entries by search regex if provided
-    const filteredEntries = searchRegex === null
-        ? entriesInOrder
-        : entriesInOrder.filter(entry =>
-            searchRegex.test(entry.type) || searchRegex.test(entry.description)
-        );
+    /** @type {import('./event/structure').Event[]} */
+    const results = [];
 
-    // Apply pagination
-    const total = filteredEntries.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
-    const results = filteredEntries.slice(start, end);
-    const hasMore = end < total;
+    for await (const entry of capabilities.interface.getSortedEvents(order)) {
+        if (searchRegex !== null) {
+            if (!searchRegex.test(entry.type) && !searchRegex.test(entry.description)) {
+                continue;
+            }
+        }
+
+        if (skipped < entriesToSkip) {
+            skipped++;
+            continue;
+        }
+
+        results.push(entry);
+        // Collect one extra entry to cheaply detect whether a next page exists.
+        if (results.length >= limit + 1) {
+            break;
+        }
+    }
+
+    const hasMore = results.length > limit;
+    if (hasMore) {
+        results.pop();
+    }
 
     capabilities.logger.logDebug(
         {
