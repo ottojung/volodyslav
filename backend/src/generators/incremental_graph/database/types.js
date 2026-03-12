@@ -158,8 +158,15 @@ function versionToString(Version) {
  */
 
 /**
+ * Events sorted by date in descending order (most recent first).
+ * @typedef {object} SortedEventsEntry
+ * @property {'sorted_events'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - Array of serialized events sorted by date descending
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
  */
 
 /**

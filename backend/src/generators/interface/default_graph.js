@@ -10,6 +10,7 @@ const {
 } = require("../individual");
 const { transaction } = require("../../event_log_storage");
 const { serialize, deserialize } = require("../../event");
+const { fromISOString } = require("../../datetime");
 
 /**
  * @typedef {object} Capabilities
@@ -44,6 +45,7 @@ const { serialize, deserialize } = require("../../event");
  *
  * Graph adjacency:
  *   all_events -> event(e)
+ *   all_events -> sorted_events
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e), transcription(a) -> event_transcription(e, a)
  *   config                                      [standalone, no graph inputs]
@@ -75,6 +77,26 @@ function createDefaultGraphDefinition(capabilities) {
                 return { type: "all_events", events: events.map((e) => serialize(capabilities, e)) };
             },
             isDeterministic: false,
+            hasSideEffects: false,
+        },
+        {
+            output: "sorted_events",
+            inputs: ["all_events"],
+            computor: async (inputs, _oldValue, _bindings) => {
+                const allEventsEntry = inputs[0];
+                if (!allEventsEntry || allEventsEntry.type !== "all_events") {
+                    return { type: "sorted_events", events: [] };
+                }
+
+                const eventsWithDates = allEventsEntry.events.map(event => ({
+                    event,
+                    date: fromISOString(event.date),
+                }));
+                eventsWithDates.sort((a, b) => b.date.compare(a.date));
+                const sorted = eventsWithDates.map(({ event }) => event);
+                return { type: "sorted_events", events: sorted };
+            },
+            isDeterministic: true,
             hasSideEffects: false,
         },
         {

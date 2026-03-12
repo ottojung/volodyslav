@@ -169,27 +169,28 @@ async function getEntries(capabilities, pagination) {
         }
     }
 
-    // Fetch all events from the incremental graph (fast path, no git transaction needed)
-    const entries = await capabilities.interface.getAllEvents();
+    // Fetch events pre-sorted by date descending from the incremental graph cache.
+    // The sort is computed once and cached by the graph; only recomputed when
+    // all_events changes, avoiding an O(n log n) sort on every request.
+    const sortedDesc = await capabilities.interface.getSortedEvents();
+
+    // For ascending order, reverse the pre-sorted list (O(n)).
+    const entriesInOrder = order === 'dateAscending'
+        ? sortedDesc.slice().reverse()
+        : sortedDesc;
 
     // Filter entries by search regex if provided
     const filteredEntries = searchRegex === null
-        ? entries
-        : entries.filter(entry =>
+        ? entriesInOrder
+        : entriesInOrder.filter(entry =>
             searchRegex.test(entry.type) || searchRegex.test(entry.description)
         );
 
-    // Sort entries by date
-    const sortedEntries = [...filteredEntries].sort((a, b) => {
-        const comparison = a.date.compare(b.date);
-        return order === 'dateAscending' ? comparison : -comparison;
-    });
-
     // Apply pagination
-    const total = sortedEntries.length;
+    const total = filteredEntries.length;
     const start = (page - 1) * limit;
     const end = start + limit;
-    const results = sortedEntries.slice(start, end);
+    const results = filteredEntries.slice(start, end);
     const hasMore = end < total;
 
     capabilities.logger.logDebug(

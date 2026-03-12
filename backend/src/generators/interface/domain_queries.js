@@ -97,6 +97,21 @@ async function internalGetConfig(interfaceInstance) {
  * @param {InterfaceQueryAccess} interfaceInstance
  * @returns {Promise<Array<Event>>}
  */
+async function internalGetSortedEvents(interfaceInstance) {
+    await interfaceInstance.ensureInitialized();
+    const result = await interfaceInstance
+        ._requireInitializedGraph()
+        .pull("sorted_events");
+    if (result.type !== "sorted_events") {
+        throw new Error(`Expected sorted_events entry but got type: ${result.type}`);
+    }
+    return result.events.map(deserialize);
+}
+
+/**
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @returns {Promise<Array<Event>>}
+ */
 async function internalGetAllEvents(interfaceInstance) {
     await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
@@ -133,6 +148,7 @@ async function internalGetEvent(interfaceInstance, eventId) {
 
 module.exports = {
     internalGetAllEvents,
+    internalGetSortedEvents,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,

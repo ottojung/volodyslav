@@ -27,6 +27,7 @@ const {
 } = require("./graph_api");
 const {
     internalGetAllEvents,
+    internalGetSortedEvents,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,
@@ -177,6 +178,18 @@ class InterfaceClass {
      */
     async getConfig() {
         return await internalGetConfig(this);
+    }
+
+    /**
+     * Returns all events from the incremental graph sorted by date descending
+     * (most recent first). Reads from the cached `sorted_events` graph node
+     * instead of performing a full gitstore transaction, making reads
+     * significantly faster. The sort is computed once and cached; it is only
+     * recomputed when the underlying `all_events` node changes.
+     * @returns {Promise<Array<Event>>}
+     */
+    async getSortedEvents() {
+        return await internalGetSortedEvents(this);
     }
 
     /**
