@@ -33,6 +33,7 @@ async function internalMaybeRecalculate(
     const nodeKey = nodeDefinition.output;
     const oldValue = await batch.values.get(nodeKey);
 
+    /** @type {Array<import('./database/types').ComputedValue>} */
     const inputValues = [];
     const currentInputCounters = [];
 

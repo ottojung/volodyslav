@@ -47,12 +47,9 @@ function make() {
         /** @type {{ fn: () => void }} */
         const releaseRef = { fn: () => undefined };
 
-        /** @type {() => void} */
-        let r = () => undefined;
         const promise = new Promise((resolve) => {
-            r = resolve;
+            releaseRef.fn = () => resolve(undefined);
         });
-        releaseRef.fn = r;
         mutexes.set(stringKey, { promise, releaseRef });
 
         try {
@@ -109,12 +106,9 @@ function make() {
 
             // Create a new lock promise and update releaseRef so the outer
             // withMutex finally block releases this new lock (not the original).
-            /** @type {() => void} */
-            let r = () => undefined;
             const promise = new Promise((resolve) => {
-                r = resolve;
+                releaseRef.fn = () => resolve(undefined);
             });
-            releaseRef.fn = r;
             mutexes.set(stringKey, { promise, releaseRef });
         }
     }
