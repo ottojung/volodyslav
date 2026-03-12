@@ -16,11 +16,16 @@
  * @property {(name: string, duration: Duration) => Promise<void>} sleep - Pause for the given duration.
  * @property {(name: string) => Sleeper} makeSleeper - Create a sleeper instance with its own wake method.
  * @property {<T>(key: UniqueTerm, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
+ * @property {<T>(key: UniqueTerm, procedure: () => Promise<T>) => Promise<T>} withoutMutex - Temporarily release a held mutex, run a procedure, then re-acquire. Must be called from within a withMutex callback for the same key.
+ */
+
+/**
+ * @typedef {{ promise: Promise<void>, releaseRef: { fn: () => void } }} MutexEntry
  */
 
 function make() {
 
-    /** @type {Map<string, Promise<void>>} */
+    /** @type {Map<string, MutexEntry>} */
     const mutexes = new Map();
 
     /**
@@ -36,21 +41,75 @@ function make() {
             if (existing === undefined) {
                 break;
             }
-            await existing;
+            await existing.promise;
         }
 
-        /** @type {(value: void) => void} */
-        let release = () => undefined;
-        const lock = new Promise((resolve) => {
-            release = resolve;
+        /** @type {{ fn: () => void }} */
+        const releaseRef = { fn: () => undefined };
+
+        const promise = new Promise((resolve) => {
+            releaseRef.fn = () => resolve(undefined);
         });
-        mutexes.set(stringKey, lock);
+        mutexes.set(stringKey, { promise, releaseRef });
 
         try {
             return await procedure();
         } finally {
             mutexes.delete(stringKey);
-            release();
+            releaseRef.fn();
+        }
+    }
+
+    /**
+     * Temporarily releases a mutex that is currently held, runs a procedure
+     * without the mutex, then re-acquires it before returning.
+     *
+     * This MUST be called from within a `withMutex` callback for the same key.
+     * Calling it when the mutex is not held throws immediately.
+     *
+     * The mutex is always re-acquired before any result or error propagates to
+     * the caller, even if the procedure throws.
+     *
+     * @template T
+     * @param {UniqueTerm} key - The mutex key, matching the enclosing withMutex call.
+     * @param {() => Promise<T>} procedure - The procedure to run without the mutex.
+     * @returns {Promise<T>}
+     */
+    async function withoutMutex(key, procedure) {
+        const stringKey = key.serialize();
+        const entry = mutexes.get(stringKey);
+
+        if (entry === undefined) {
+            throw new Error(
+                `withoutMutex: mutex is not currently held for key "${stringKey}". ` +
+                `withoutMutex must be called from within a withMutex callback.`
+            );
+        }
+
+        const { releaseRef } = entry;
+
+        // Temporarily release the mutex so other waiters can proceed.
+        mutexes.delete(stringKey);
+        releaseRef.fn();
+
+        try {
+            return await procedure();
+        } finally {
+            // Re-acquire the mutex, waiting like any new withMutex caller would.
+            for (;;) {
+                const existing = mutexes.get(stringKey);
+                if (existing === undefined) {
+                    break;
+                }
+                await existing.promise;
+            }
+
+            // Create a new lock promise and update releaseRef so the outer
+            // withMutex finally block releases this new lock (not the original).
+            const promise = new Promise((resolve) => {
+                releaseRef.fn = () => resolve(undefined);
+            });
+            mutexes.set(stringKey, { promise, releaseRef });
         }
     }
 
@@ -93,7 +152,7 @@ function make() {
         return { sleep, wake };
     }
 
-    return { sleep, makeSleeper, withMutex };
+    return { sleep, makeSleeper, withMutex, withoutMutex };
 }
 
 module.exports = {
