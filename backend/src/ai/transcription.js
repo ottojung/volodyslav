@@ -3,7 +3,7 @@
  *
  * Purpose:
  *   This module provides a unified abstraction for AI-powered transcription services,
- *   decoupling direct Gemini API calls from application logic.
+ *   decoupling direct OpenAI API calls from application logic.
  *
  * Why this Module Exists:
  *   Direct API calls can scatter configuration and error handling throughout the codebase.
@@ -17,8 +17,7 @@
  *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
  */
 
-const { GoogleGenAI, createUserContent, createPartFromUri } = require("@google/genai");
-const path = require("path");
+const { OpenAI } = require("openai");
 const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
 
@@ -55,28 +54,7 @@ function isAITranscriptionError(object) {
     return object instanceof AITranscriptionError;
 }
 
-const TRANSCRIBER_MODEL = "gemini-3-flash-preview";
-
-/** @type {Record<string, string>} */
-const MIME_TYPE_BY_EXTENSION = {
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-    ".m4a": "audio/mp4",
-    ".ogg": "audio/ogg",
-    ".flac": "audio/flac",
-    ".webm": "audio/webm",
-};
-
-/**
- * Returns the MIME type for the given file path based on its extension,
- * defaulting to "audio/mpeg" for unknown extensions.
- * @param {string} filePath
- * @returns {string}
- */
-function mimeTypeForPath(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    return MIME_TYPE_BY_EXTENSION[ext] ?? "audio/mpeg";
-}
+const TRANSCRIBER_MODEL = "gpt-4o-transcribe";
 
 /**
  * @typedef {object} AITranscription
@@ -85,52 +63,22 @@ function mimeTypeForPath(filePath) {
  */
 
 /**
- * Transcribes audio from a readable stream using the Gemini API.
- * @param {function(string): GoogleGenAI} makeClient - A memoized function to create a Gemini client.
+ * Transcribes audio from a readable stream.
+ * @param {function(string): OpenAI} openai - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
  * @returns {Promise<string>} - The transcribed text.
  */
-async function transcribeStream(makeClient, capabilities, fileStream) {
+async function transcribeStream(openai, capabilities, fileStream) {
     try {
-        const apiKey = capabilities.environment.geminiApiKey();
-        const ai = makeClient(apiKey);
-
-        const filePath = String(fileStream.path);
-        if (!filePath) {
-            throw new AITranscriptionError("Audio file stream has no path", undefined);
-        }
-
-        const audioFile = await ai.files.upload({
-            file: filePath,
-            config: { mimeType: mimeTypeForPath(filePath) },
-        });
-
-        if (!audioFile.uri) {
-            throw new AITranscriptionError("Uploaded file has no URI", undefined);
-        }
-
-        if (!audioFile.mimeType) {
-            throw new AITranscriptionError("Uploaded file has no MIME type", undefined);
-        }
-
-        const result = await ai.models.generateContent({
+        const apiKey = capabilities.environment.openaiAPIKey();
+        const responseText = await openai(apiKey).audio.transcriptions.create({
+            file: fileStream,
             model: TRANSCRIBER_MODEL,
-            contents: createUserContent([
-                createPartFromUri(audioFile.uri, audioFile.mimeType),
-                "Generate a transcript of the speech. Preserve line breaks where natural.",
-            ]),
+            response_format: "text",
         });
-
-        if (!result.text) {
-            throw new AITranscriptionError("Transcription result has no text", undefined);
-        }
-
-        return result.text;
+        return responseText;
     } catch (error) {
-        if (isAITranscriptionError(error)) {
-            throw error;
-        }
         throw new AITranscriptionError(
             `Failed to transcribe audio: ${error instanceof Error ? error.message : String(error)}`,
             error
@@ -145,7 +93,7 @@ async function transcribeStream(makeClient, capabilities, fileStream) {
 function getTranscriberInfo() {
     return {
         name: TRANSCRIBER_MODEL,
-        creator: "Google",
+        creator: "OpenAI",
     };
 }
 
@@ -156,9 +104,9 @@ function getTranscriberInfo() {
  */
 function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
-    const makeClient = memoize((apiKey) => new GoogleGenAI({ apiKey }));
+    const openai = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        transcribeStream: (fileStream) => transcribeStream(makeClient, getCapabilitiesMemo(), fileStream),
+        transcribeStream: (fileStream) => transcribeStream(openai, getCapabilitiesMemo(), fileStream),
         getTranscriberInfo,
     };
 }
