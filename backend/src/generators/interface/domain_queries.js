@@ -103,10 +103,12 @@ async function internalGetConfig(interfaceInstance) {
  * reading the potentially-large full sorted list from LevelDB by first
  * yielding from one of two dedicated small-cache nodes:
  *
- *   - `last100entries`  – most-recent SORTED_EVENTS_CACHE_SIZE events
- *                         (used for `'dateDescending'` order)
- *   - `first100entries` – oldest SORTED_EVENTS_CACHE_SIZE events
- *                         (used for `'dateAscending'` order)
+ *   - `last_entries(n)` – most-recent SORTED_EVENTS_CACHE_SIZE events
+ *                         (used for `'dateDescending'` order; pulled with
+ *                         n = SORTED_EVENTS_CACHE_SIZE)
+ *   - `first_entries(n)` – oldest SORTED_EVENTS_CACHE_SIZE events
+ *                         (used for `'dateAscending'` order; pulled with
+ *                         n = SORTED_EVENTS_CACHE_SIZE)
  *
  * If and only if more than SORTED_EVENTS_CACHE_SIZE events exist (i.e. the
  * cache was filled to capacity) does the iterator fall through to the full
@@ -131,13 +133,13 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
     // ── Phase 1: yield from the small cache node ─────────────────────────────
     // Pulling a small entry (≤ SORTED_EVENTS_CACHE_SIZE events) from LevelDB
     // is much faster than pulling the full sorted list.
-    const cacheNodeName =
-        order === "dateAscending" ? "first100entries" : "last100entries";
+    const cacheNodeHead =
+        order === "dateAscending" ? "first_entries" : "last_entries";
 
-    const cacheEntry = await graph.pull(cacheNodeName);
-    if (cacheEntry.type !== cacheNodeName) {
+    const cacheEntry = await graph.pull(cacheNodeHead, [SORTED_EVENTS_CACHE_SIZE]);
+    if (cacheEntry.type !== cacheNodeHead) {
         throw new Error(
-            `Expected ${cacheNodeName} entry but got type: ${cacheEntry.type}`
+            `Expected ${cacheNodeHead} entry but got type: ${cacheEntry.type}`
         );
     }
 

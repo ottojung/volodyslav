@@ -11,7 +11,6 @@ const {
 const { transaction } = require("../../event_log_storage");
 const { serialize, deserialize } = require("../../event");
 const { fromISOString } = require("../../datetime");
-const { SORTED_EVENTS_CACHE_SIZE } = require("./constants");
 
 /**
  * @typedef {object} Capabilities
@@ -47,8 +46,8 @@ const { SORTED_EVENTS_CACHE_SIZE } = require("./constants");
  * Graph adjacency:
  *   all_events -> sorted_events_descending
  *   sorted_events_descending -> sorted_events_ascending   (O(n) reverse)
- *   sorted_events_descending -> last100entries            (O(1) slice)
- *   sorted_events_ascending  -> first100entries           (O(1) slice)
+ *   sorted_events_descending -> last_entries(n)            (O(1) slice, parameterised by n)
+ *   sorted_events_ascending  -> first_entries(n)           (O(1) slice, parameterised by n)
  *   all_events -> events_count                            (O(1) length)
  *   all_events -> event(e)
  *   transcription(a)                            [standalone, no graph inputs]
@@ -131,43 +130,59 @@ function createDefaultGraphDefinition(capabilities) {
             hasSideEffects: false,
         },
         {
-            output: "last100entries",
+            output: "last_entries(n)",
             inputs: ["sorted_events_descending"],
             /**
-             * Caches only the first SORTED_EVENTS_CACHE_SIZE events from the
-             * descending-sorted list (i.e. the most-recent N events).  This
-             * small entry can be read from LevelDB very quickly, enabling the
-             * common first-page request to bypass the full sorted list entirely.
+             * Parameterised cache node: caches the first `n` events from the
+             * descending-sorted list (i.e. the most-recent n events).  The
+             * binding value `n` is passed at pull time; the iterator always
+             * uses n = SORTED_EVENTS_CACHE_SIZE.  A small entry can be read
+             * from LevelDB very quickly, enabling the common first-page
+             * request to bypass the full sorted list entirely.
              */
-            computor: async (inputs, _oldValue, _bindings) => {
+            computor: async (inputs, _oldValue, bindings) => {
+                const n = bindings[0];
+                if (typeof n !== "number") {
+                    throw new Error(
+                        `Expected numeric binding n for last_entries(n) but got: ${JSON.stringify(n)}`
+                    );
+                }
                 const descEntry = inputs[0];
                 if (!descEntry || descEntry.type !== "sorted_events_descending") {
-                    return { type: "last100entries", events: [] };
+                    return { type: "last_entries", n, events: [] };
                 }
                 return {
-                    type: "last100entries",
-                    events: descEntry.events.slice(0, SORTED_EVENTS_CACHE_SIZE),
+                    type: "last_entries",
+                    n,
+                    events: descEntry.events.slice(0, n),
                 };
             },
             isDeterministic: true,
             hasSideEffects: false,
         },
         {
-            output: "first100entries",
+            output: "first_entries(n)",
             inputs: ["sorted_events_ascending"],
             /**
-             * Caches only the first SORTED_EVENTS_CACHE_SIZE events from the
-             * ascending-sorted list (i.e. the oldest N events).  Mirrors
-             * last100entries for the ascending-order case.
+             * Parameterised cache node: caches the first `n` events from the
+             * ascending-sorted list (i.e. the oldest n events).  Mirrors
+             * last_entries(n) for the ascending-order case.
              */
-            computor: async (inputs, _oldValue, _bindings) => {
+            computor: async (inputs, _oldValue, bindings) => {
+                const n = bindings[0];
+                if (typeof n !== "number") {
+                    throw new Error(
+                        `Expected numeric binding n for first_entries(n) but got: ${JSON.stringify(n)}`
+                    );
+                }
                 const ascEntry = inputs[0];
                 if (!ascEntry || ascEntry.type !== "sorted_events_ascending") {
-                    return { type: "first100entries", events: [] };
+                    return { type: "first_entries", n, events: [] };
                 }
                 return {
-                    type: "first100entries",
-                    events: ascEntry.events.slice(0, SORTED_EVENTS_CACHE_SIZE),
+                    type: "first_entries",
+                    n,
+                    events: ascEntry.events.slice(0, n),
                 };
             },
             isDeterministic: true,

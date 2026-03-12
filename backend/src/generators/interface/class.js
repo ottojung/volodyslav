@@ -185,10 +185,11 @@ class InterfaceClass {
      * Returns an async iterator over events in sorted date order.
      *
      * The first up to SORTED_EVENTS_CACHE_SIZE events are yielded from a small
-     * dedicated cache node (`last100entries` for descending, `first100entries`
-     * for ascending) which can be read from LevelDB much faster than the full
-     * sorted list.  Only if more events exist does the iterator fall through to
-     * the complete `sorted_events_descending` / `sorted_events_ascending` node.
+     * dedicated cache node (`last_entries(n)` for descending, `first_entries(n)`
+     * for ascending; both pulled with n = SORTED_EVENTS_CACHE_SIZE) which can
+     * be read from LevelDB much faster than the full sorted list.  Only if more
+     * events exist does the iterator fall through to the complete
+     * `sorted_events_descending` / `sorted_events_ascending` node.
      *
      * Events are deserialized lazily — one at a time as the caller advances the
      * iterator — so callers that stop early (e.g. after collecting a single
