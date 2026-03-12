@@ -106,6 +106,32 @@ function pathToLiveDatabase(capabilities) {
 }
 
 /**
+ * Removes all non-.git entries from a git work tree.
+ *
+ * This prevents stale files from a previous repository state (for example an
+ * old `leveldb/` directory committed by a previous version of the code) from
+ * surviving into the next rendered-snapshot commit.  Only the freshly rendered
+ * `DATABASE_SUBPATH` directory should be tracked after each checkpoint.
+ *
+ * @param {CheckpointCapabilities} capabilities
+ * @param {string} workTree
+ * @returns {Promise<void>}
+ */
+async function clearWorkTreeContent(capabilities, workTree) {
+    const children = await capabilities.scanner.scanDirectory(workTree);
+    for (const child of children) {
+        if (path.basename(child.path) === ".git") {
+            continue;
+        }
+        if (await capabilities.checker.directoryExists(child.path)) {
+            await capabilities.deleter.deleteDirectory(child.path);
+        } else {
+            await capabilities.deleter.deleteFile(child.path);
+        }
+    }
+}
+
+/**
  * Record the current rendered state of the database as a git commit.
  *
  * The rendered snapshot is written into `generators-database/rendered/` inside
@@ -146,6 +172,7 @@ async function checkpointDatabase(
             initialState,
             async (store) => {
                 const workTree = await store.getWorkTree();
+                await clearWorkTreeContent(capabilities, workTree);
                 const renderedPath = path.join(workTree, DATABASE_SUBPATH);
                 await renderToFilesystem(capabilities, database, renderedPath);
                 await store.commit(message);
@@ -188,9 +215,11 @@ async function runMigrationInTransaction(
         async (store) => {
             const workTree = await store.getWorkTree();
             const renderedPath = path.join(workTree, DATABASE_SUBPATH);
+            await clearWorkTreeContent(capabilities, workTree);
             await renderToFilesystem(capabilities, rootDatabase, renderedPath);
             await store.commit(preMessage);
             const result = await callback();
+            await clearWorkTreeContent(capabilities, workTree);
             await renderToFilesystem(capabilities, rootDatabase, renderedPath);
             await store.commit(postMessage);
             return result;

@@ -114,8 +114,9 @@ async function synchronize(capabilities, workingPath, origin, options) {
 
     // Determine once, before any retry, whether the local repo exists without
     // a remote configured.  Repos initialised via initializeEmptyRepository
-    // have no remote; we must add origin and accept the remote state via
-    // fetchAndResetHard to reconcile the otherwise unrelated local history.
+    // (e.g. by a local migration checkpoint) have no remote; when this flag is
+    // true and resetToTheirs is false we force-push local state to the remote
+    // rather than overwriting it with fetchAndResetHard.
     // Computing this flag here (rather than lazily inside the retry loop)
     // keeps the retry logic simple and free of nullable state.
     const localExists = (await capabilities.checker.fileExists(headFile)) !== null;
@@ -141,7 +142,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
         }
 
         try {
-            if (resetToTheirs || (exists && needsRemoteSetup)) {
+            if (resetToTheirs) {
                 if (exists) {
                     // fetchAndResetHard reconciles the local repo with the remote,
                     // including the case where they have unrelated histories.
@@ -150,6 +151,12 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     await gitmethod.clone(capabilities, remotePath, workDir);
                     await gitmethod.makePushable(capabilities, workDir);
                 }
+            } else if (exists && needsRemoteSetup) {
+                // Local repo has no remote configured (e.g. created by a local-only
+                // migration checkpoint).  Push local state to the remote rather than
+                // overwriting it with fetchAndResetHard: using --force handles both
+                // an empty remote and one with an unrelated history.
+                await gitmethod.pushForce(capabilities, workDir);
             } else {
                 if (exists) {
                     await gitmethod.pull(capabilities, workDir);
