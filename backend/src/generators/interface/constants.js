@@ -3,8 +3,8 @@
  */
 
 /**
- * Number of events pre-cached in the `first100entries` and `last100entries`
- * graph nodes.
+ * Number of events pre-cached in the `first_entries(n)` and `last_entries(n)`
+ * graph nodes, where `n` is SORTED_EVENTS_CACHE_SIZE.
  *
  * When iterating sorted events via `getSortedEvents(order)`, the first
  * SORTED_EVENTS_CACHE_SIZE events are served from one of those small,
