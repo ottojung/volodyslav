@@ -66,8 +66,11 @@ function entryToFields(entry) {
         { key: "type", value: entry.type },
         { key: "description", value: entry.description },
         { key: "input", value: entry.input },
-        { key: "creator", value: stringifyFieldValue(entry.creator) },
     ];
+
+    for (const [k, v] of Object.entries(entry.creator)) {
+        derivedFields.push({ key: `creator.${k}`, value: stringifyFieldValue(v) });
+    }
 
     for (const [k, v] of Object.entries(entry.modifiers)) {
         derivedFields.push({ key: `modifiers.${k}`, value: v });

@@ -49,7 +49,6 @@ const mockEntryNoModifiers = {
 
 const longFieldValue = `Long field ${"x".repeat(120)} ending`;
 const collapsedLongFieldValue = `${longFieldValue.slice(0, 100)}…`;
-const creatorValue = JSON.stringify(mockEntry.creator);
 
 function makeDeferred() {
     /** @type {(value: import("../src/Search/api").AdditionalProperties) => void} */
@@ -150,38 +149,42 @@ describe("EntryDetail page", () => {
         expect(screen.queryByText(/modifiers\./)).not.toBeInTheDocument();
     });
 
-    it("shows creator after expanding derived fields", async () => {
+    it("shows creator fields with 'creator.' prefix after expanding derived fields", async () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await act(async () => {
             fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
         });
 
-        expect(screen.getByText("creator")).toBeInTheDocument();
-        expect(screen.getByText(creatorValue)).toBeInTheDocument();
+        expect(screen.getByText("creator.name")).toBeInTheDocument();
+        expect(screen.getByText("creator.uuid")).toBeInTheDocument();
+        expect(screen.getByText("creator.version")).toBeInTheDocument();
+        expect(screen.getByText("test")).toBeInTheDocument();
+        expect(screen.getByText("test-uuid")).toBeInTheDocument();
+        expect(screen.getByText("1.0")).toBeInTheDocument();
     });
 
-    it("shows exactly 8 fields for an entry with 1 modifier after expanding derived fields", async () => {
+    it("shows exactly 10 fields for an entry with 1 modifier after expanding derived fields", async () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await act(async () => {
             fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
         });
 
-        const fieldLabels = ["original", "date", "id", "type", "description", "input", "creator", "modifiers.certainty"];
+        const fieldLabels = ["original", "date", "id", "type", "description", "input", "creator.name", "creator.uuid", "creator.version", "modifiers.certainty"];
         for (const label of fieldLabels) {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
 
-    it("shows exactly 7 fields for an entry with no modifiers after expanding derived fields", async () => {
+    it("shows exactly 9 fields for an entry with no modifiers after expanding derived fields", async () => {
         renderWithRoute("/entry/entry-456", { entry: mockEntryNoModifiers });
 
         await act(async () => {
             fireEvent.click(screen.getByRole("button", { name: "Show derived" }));
         });
 
-        const fieldLabels = ["original", "date", "id", "type", "description", "input", "creator"];
+        const fieldLabels = ["original", "date", "id", "type", "description", "input", "creator.name", "creator.uuid", "creator.version"];
         for (const label of fieldLabels) {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
