@@ -247,6 +247,55 @@ describe("checkpointDatabase", () => {
         }
     });
 
+    // ── Stale legacy-file cleanup ─────────────────────────────────────────────
+
+    test("old non-rendered top-level directories (e.g. legacy leveldb/) are not included in the next checkpoint", async () => {
+        // Simulate the upgrade scenario: old code committed a `leveldb/`
+        // directory directly inside generators-database.  The new checkpoint
+        // must not carry those files forward — only `rendered/` should remain.
+        const capabilities = getTestCapabilities();
+
+        // Manually create a commit that has a legacy `leveldb/` subtree.
+        const wd = capabilities.environment.workingDirectory();
+        const checkpointDir = path.join(wd, CHECKPOINT_WORKING_PATH);
+        await capabilities.creator.createDirectory(checkpointDir);
+        await capabilities.git.call(
+            "init", "--initial-branch", defaultBranch, "--", checkpointDir
+        );
+        await capabilities.git.call(
+            "-C", checkpointDir, "-c", "safe.directory=*",
+            "config", "receive.denyCurrentBranch", "ignore"
+        );
+        // Write a legacy file under `leveldb/` and commit it.
+        const legacyFile = path.join(checkpointDir, "leveldb", "legacy.ldb");
+        const legacyFileCreated = await capabilities.creator.createFile(legacyFile);
+        await capabilities.writer.writeFile(legacyFileCreated, "legacy content");
+        await capabilities.git.call(
+            "-C", checkpointDir, "-c", "safe.directory=*",
+            "-c", "user.name=volodyslav", "-c", "user.email=volodyslav",
+            "add", "--all"
+        );
+        await capabilities.git.call(
+            "-C", checkpointDir, "-c", "safe.directory=*",
+            "-c", "user.name=volodyslav", "-c", "user.email=volodyslav",
+            "commit", "-m", "legacy: commit leveldb files"
+        );
+
+        // Now run a fresh checkpoint — it should strip the legacy `leveldb/`
+        // directory and commit only the `rendered/` snapshot.
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "post-upgrade checkpoint", db);
+
+            const gitDir = checkpointGitDir(capabilities);
+            const topLevel = topLevelEntries(gitDir);
+            expect(topLevel).toEqual([DATABASE_SUBPATH]);
+            expect(topLevel).not.toContain("leveldb");
+        } finally {
+            await db.close();
+        }
+    });
+
     // ── Repository layout ─────────────────────────────────────────────────────
 
     test("database subdirectory is the only top-level entry in the repository", async () => {

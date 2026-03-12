@@ -8,6 +8,7 @@ const path = require("path");
 const gitmethod = require("./wrappers");
 const { git } = require("../executables");
 const { withRetry } = require("../retryer");
+const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -114,9 +115,10 @@ async function synchronize(capabilities, workingPath, origin, options) {
 
     // Determine once, before any retry, whether the local repo exists without
     // a remote configured.  Repos initialised via initializeEmptyRepository
-    // (e.g. by a local migration checkpoint) have no remote; when this flag is
-    // true and resetToTheirs is false we force-push local state to the remote
-    // rather than overwriting it with fetchAndResetHard.
+    // (e.g. by a local-only migration checkpoint) have no remote.  When this
+    // flag is true and resetToTheirs is false, we push our local rendered state
+    // to the remote rather than accepting the remote state via fetchAndResetHard,
+    // which would destroy the freshly rendered snapshot.
     // Computing this flag here (rather than lazily inside the retry loop)
     // keeps the retry logic simple and free of nullable state.
     const localExists = (await capabilities.checker.fileExists(headFile)) !== null;
@@ -152,11 +154,42 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     await gitmethod.makePushable(capabilities, workDir);
                 }
             } else if (exists && needsRemoteSetup) {
-                // Local repo has no remote configured (e.g. created by a local-only
-                // migration checkpoint).  Push local state to the remote rather than
-                // overwriting it with fetchAndResetHard: using --force handles both
-                // an empty remote and one with an unrelated history.
-                await gitmethod.pushForce(capabilities, workDir);
+                // Local repo has no remote configured (created locally by a
+                // migration checkpoint).  Our local rendered state IS correct and
+                // authoritative, so push it rather than overwriting it with the
+                // remote's (potentially stale) content.
+                //
+                // If the remote already has commits that are unrelated to our
+                // local history (e.g. content from a previous sync), a straight
+                // push would be rejected as non-fast-forward.  In that case we
+                // merge the remote into our local history with
+                // --allow-unrelated-histories (keeping our rendered files where
+                // there are conflicts) and then push the resulting merge commit.
+                // Any legacy files in the remote (e.g. old `leveldb/` directories)
+                // will be cleaned up by clearWorkTreeContent on the next render.
+                try {
+                    await gitmethod.push(capabilities, workDir);
+                } catch (pushErr) {
+                    if (!gitmethod.isPushError(pushErr)) {
+                        throw pushErr;
+                    }
+                    // Remote has content with an unrelated history — merge it in.
+                    await capabilities.git.call(
+                        "-C", workDir, "-c", "safe.directory=*",
+                        "fetch", "origin"
+                    );
+                    await capabilities.git.call(
+                        "-C", workDir,
+                        "-c", "safe.directory=*",
+                        "-c", "user.name=volodyslav",
+                        "-c", "user.email=volodyslav",
+                        "merge", `origin/${defaultBranch}`,
+                        "--allow-unrelated-histories",
+                        "--no-edit",
+                        "-Xours"
+                    );
+                    await gitmethod.push(capabilities, workDir);
+                }
             } else {
                 if (exists) {
                     await gitmethod.pull(capabilities, workDir);

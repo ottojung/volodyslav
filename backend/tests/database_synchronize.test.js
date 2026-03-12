@@ -1,4 +1,5 @@
 const path = require("path");
+const { execFileSync } = require("child_process");
 const {
     synchronizeNoLock,
     getRootDatabase,
@@ -199,6 +200,155 @@ describe("synchronizeNoLock", () => {
             expect(entries.get(secondKey)).toEqual({ source: "second-sync" });
         } finally {
             await reopened.close();
+        }
+    });
+
+    test("rendered/ files are not deleted when local repo was created before remote connection (regression: fetchAndResetHard bug)", async () => {
+        // Regression test for the bug introduced in PR #882:
+        // `runMigrationInTransaction` creates generators-database as a local-only
+        // repo (no origin).  When synchronizeNoLock ran, workingRepository.synchronize
+        // detected needsRemoteSetup=true and called fetchAndResetHard, which reset
+        // the local HEAD to the remote's content — destroying the freshly rendered
+        // `rendered/` directory and leaving only old `leveldb/` files.
+        //
+        // The fix: when needsRemoteSetup=true and resetToTheirs=false, push our
+        // local state to the remote instead of overwriting it.
+        const capabilities = getTestCapabilities();
+
+        // Seed the remote with old-style content (e.g. a committed `leveldb/` dir)
+        // that has a completely different history from the local repo.
+        const remotePath = capabilities.environment.generatorsRepository();
+        await capabilities.git.call("init", "--bare", "--", remotePath);
+
+        const legacyWorkTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+        try {
+            await capabilities.git.call(
+                "init", "--initial-branch", defaultBranch, "--", legacyWorkTree
+            );
+            // Create a legacy `leveldb/` file (simulating old code)
+            const legacyFile = path.join(legacyWorkTree, "leveldb", "legacy.ldb");
+            const legacyFileCreated = await capabilities.creator.createFile(legacyFile);
+            await capabilities.writer.writeFile(legacyFileCreated, "old-style binary");
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "-c", "safe.directory=*",
+                "-c", "user.name=volodyslav", "-c", "user.email=volodyslav",
+                "add", "--all"
+            );
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "-c", "safe.directory=*",
+                "-c", "user.name=volodyslav", "-c", "user.email=volodyslav",
+                "commit", "-m", "legacy: old leveldb content"
+            );
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "remote", "add", "origin", "--", remotePath
+            );
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "push", "origin", defaultBranch
+            );
+        } finally {
+            await capabilities.deleter.deleteDirectory(legacyWorkTree);
+        }
+
+        // Write data to the live database — this is what should end up in remote.
+        const eventKey = '!x!!values!{"head":"event","args":["after-migration"]}';
+        const db = await getRootDatabase(capabilities);
+        try {
+            await db._rawPut(eventKey, { source: "migration-result" });
+        } finally {
+            await db.close();
+        }
+
+        // Sync: the local repo is created locally (no origin), so needsRemoteSetup=true.
+        // With the fix, it should push our rendered state — NOT reset to the old remote.
+        await synchronizeNoLock(capabilities);
+
+        // The live database should still have our event.
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(eventKey)).toEqual({ source: "migration-result" });
+        } finally {
+            await reopened.close();
+        }
+
+        // The remote should now have our rendered/ content (not the old leveldb/).
+        const clonedRemote = await capabilities.creator.createTemporaryDirectory(capabilities);
+        try {
+            await capabilities.git.call(
+                "clone", `--branch=${defaultBranch}`, remotePath, clonedRemote
+            );
+            const topLevel = execFileSync("git", [
+                "-C", clonedRemote, "ls-tree", "--name-only", "HEAD",
+            ]).toString().trim().split("\n").filter(Boolean);
+            // After the fix, only rendered/ should be in the remote, not leveldb/.
+            expect(topLevel).toContain(DATABASE_SUBPATH);
+            expect(topLevel).not.toContain("leveldb");
+        } finally {
+            await capabilities.deleter.deleteDirectory(clonedRemote);
+        }
+    });
+
+    test("legacy leveldb/ directories in git history are not re-committed after sync", async () => {
+        // Regression test for Bug 1: old code committed LevelDB files under
+        // `leveldb/` inside generators-database.  After the fix, checkpointDatabase
+        // clears the work tree before rendering so only `rendered/` is committed —
+        // even when the previous HEAD contained `leveldb/` files.
+        const capabilities = getTestCapabilities();
+
+        // Seed remote with content that has `leveldb/` at the top level.
+        const remotePath = capabilities.environment.generatorsRepository();
+        await capabilities.git.call("init", "--bare", "--", remotePath);
+
+        const legacyWorkTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+        try {
+            await capabilities.git.call(
+                "init", "--initial-branch", defaultBranch, "--", legacyWorkTree
+            );
+            const legacyFile = path.join(legacyWorkTree, "leveldb", "CURRENT");
+            const legacyFileCreated = await capabilities.creator.createFile(legacyFile);
+            await capabilities.writer.writeFile(legacyFileCreated, "MANIFEST-000001\n");
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "-c", "safe.directory=*",
+                "-c", "user.name=volodyslav", "-c", "user.email=volodyslav",
+                "add", "--all"
+            );
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "-c", "safe.directory=*",
+                "-c", "user.name=volodyslav", "-c", "user.email=volodyslav",
+                "commit", "-m", "legacy: generators-database before migration"
+            );
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "remote", "add", "origin", "--", remotePath
+            );
+            await capabilities.git.call(
+                "-C", legacyWorkTree, "push", "origin", defaultBranch
+            );
+        } finally {
+            await capabilities.deleter.deleteDirectory(legacyWorkTree);
+        }
+
+        const db = await getRootDatabase(capabilities);
+        try {
+            await db._rawPut("!_meta!format", "xy-v1");
+        } finally {
+            await db.close();
+        }
+
+        await synchronizeNoLock(capabilities);
+
+        // Verify remote no longer contains `leveldb/` — only `rendered/`.
+        const clonedRemote = await capabilities.creator.createTemporaryDirectory(capabilities);
+        try {
+            await capabilities.git.call(
+                "clone", `--branch=${defaultBranch}`, remotePath, clonedRemote
+            );
+            const topLevel = execFileSync("git", [
+                "-C", clonedRemote, "ls-tree", "--name-only", "HEAD",
+            ]).toString().trim().split("\n").filter(Boolean);
+            expect(topLevel).toContain(DATABASE_SUBPATH);
+            expect(topLevel).not.toContain("leveldb");
+        } finally {
+            await capabilities.deleter.deleteDirectory(clonedRemote);
         }
     });
 });

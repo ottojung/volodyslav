@@ -95,19 +95,6 @@ async function executeTransactionAttempt(capabilities, workingPath, initial_stat
         await clone(capabilities, git_directory, workTree);
         const result = await transformation(store);
         await push(capabilities, workTree);
-        // Synchronise the persistent working tree with the HEAD just pushed.
-        // After git-push to a non-bare repository the ref is updated but the
-        // index and working tree are not.  Keeping them in sync is required so
-        // that subsequent git operations (e.g. git-pull) on the same directory
-        // see a clean working tree and can proceed without errors.
-        const workDir = path.dirname(git_directory);
-        await capabilities.git.call(
-            "-C", workDir,
-            "-c", "safe.directory=*",
-            "reset",
-            "--hard",
-            "HEAD"
-        );
         return result;
     } finally {
         await capabilities.deleter.deleteDirectory(workTree);
