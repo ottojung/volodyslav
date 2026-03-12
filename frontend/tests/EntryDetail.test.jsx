@@ -716,6 +716,19 @@ describe("EntryDetail page", () => {
         });
     });
 
+    it("renders image link without target=_blank so it opens in the same tab", async () => {
+        fetchEntryAssets.mockResolvedValue([
+            { filename: "photo.jpg", url: "/assets/2024-01/01/entry-123/photo.jpg", mediaType: "image" },
+        ]);
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            const link = screen.getByRole("link", { name: /photo\.jpg/i });
+            expect(link).not.toHaveAttribute("target", "_blank");
+        });
+    });
+
     it("shows Audio section when audio assets are present", async () => {
         fetchEntryAssets.mockResolvedValue([
             { filename: "recording.m4a", url: "/assets/2024-01/01/entry-123/recording.m4a", mediaType: "audio" },

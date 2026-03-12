@@ -422,7 +422,6 @@ export default function EntryDetail() {
                                                 <Link
                                                     key={asset.filename}
                                                     href={`${API_BASE_URL}${asset.url}`}
-                                                    isExternal
                                                 >
                                                     <Image
                                                         src={`${API_BASE_URL}${asset.url}`}
