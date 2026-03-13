@@ -20,6 +20,7 @@ function getTestCapabilities() {
 describe("working_repository", () => {
     test("synchronize updates remote repository with local changes", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await capabilities.logger.setup(capabilities);
         const localRepoPath = path.join(
             capabilities.environment.workingDirectory(),
@@ -73,7 +74,7 @@ describe("working_repository", () => {
             await capabilities.creator.createTemporaryDirectory(capabilities);
         await capabilities.git.call(
             "clone",
-            `--branch=${defaultBranch}`,
+            `--branch=${branch}`,
             remoteRepoPath,
             clonedRepoPath
         );
@@ -139,6 +140,7 @@ describe("working_repository", () => {
 
     test("push changes to remote repository", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await capabilities.logger.setup(capabilities);
         const localRepoPath = path.join(
             capabilities.environment.workingDirectory(),
@@ -190,7 +192,7 @@ describe("working_repository", () => {
             await capabilities.creator.createTemporaryDirectory(capabilities);
         await capabilities.git.call(
             "clone",
-            `--branch=${defaultBranch}`,
+            `--branch=${branch}`,
             remoteRepoPath,
             clonedRepoPath
         );

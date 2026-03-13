@@ -3,10 +3,12 @@ const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - Environment access including hostname.
  */
 
 class GitUnavailable extends Error {
@@ -140,6 +142,7 @@ async function makePushable(capabilities, workDirectory) {
  * @returns {Promise<void>}
  */
 async function clone(capabilities, remote_uri, work_directory) {
+    const branch = defaultBranch(capabilities);
     await capabilities.git.call(
         "-c",
         "safe.directory=*",
@@ -150,7 +153,7 @@ async function clone(capabilities, remote_uri, work_directory) {
         "clone",
         "--depth=1",
         "--single-branch",
-        `--branch=${defaultBranch}`,
+        `--branch=${branch}`,
         "--",
         remote_uri,
         work_directory
@@ -164,6 +167,7 @@ async function clone(capabilities, remote_uri, work_directory) {
  * @returns {Promise<void>}
  */
 async function pull(capabilities, workDirectory) {
+    const branch = defaultBranch(capabilities);
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -175,7 +179,7 @@ async function pull(capabilities, workDirectory) {
         "user.email=volodyslav",
         "pull",
         "origin",
-        defaultBranch
+        branch
     );
 }
 
@@ -187,6 +191,7 @@ async function pull(capabilities, workDirectory) {
  * @throws {PushError} When push operation fails
  */
 async function push(capabilities, workDirectory) {
+    const branch = defaultBranch(capabilities);
     try {
         await capabilities.git.call(
             "-C",
@@ -199,7 +204,7 @@ async function push(capabilities, workDirectory) {
             "user.email=volodyslav",
             "push",
             "origin",
-            defaultBranch
+            branch
         );
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -219,6 +224,7 @@ async function push(capabilities, workDirectory) {
  * @throws {Error} When git fetch or reset operation fails
  */
 async function fetchAndResetHard(capabilities, workDirectory) {
+    const branch = defaultBranch(capabilities);
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -242,7 +248,7 @@ async function fetchAndResetHard(capabilities, workDirectory) {
         "user.email=volodyslav",
         "reset",
         "--hard",
-        `origin/${defaultBranch}`
+        `origin/${branch}`
     );
 }
 
@@ -253,6 +259,7 @@ async function fetchAndResetHard(capabilities, workDirectory) {
  * @returns {Promise<void>}
  */
 async function init(capabilities, workDirectory) {
+    const branch = defaultBranch(capabilities);
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -266,7 +273,7 @@ async function init(capabilities, workDirectory) {
         "--template",
         "/proc/some/non/existant/path",
         "--initial-branch",
-        defaultBranch
+        branch
     );
 }
 

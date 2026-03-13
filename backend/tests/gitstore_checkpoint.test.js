@@ -29,11 +29,11 @@ function latestCommitMessage(gitDir) {
 /**
  * Reads the commit count on the default branch.
  */
-function commitCount(gitDir) {
+function commitCount(capabilities, gitDir) {
     return parseInt(
         execFileSync("git", [
             "--git-dir", gitDir,
-            "rev-list", "--count", defaultBranch,
+            "rev-list", "--count", defaultBranch(capabilities),
         ]).toString().trim(),
         10
     );
@@ -42,11 +42,11 @@ function commitCount(gitDir) {
 /**
  * Reads the content of a file from the latest commit.
  */
-function fileContentAtHead(gitDir, filename) {
+function fileContentAtHead(capabilities, gitDir, filename) {
     return execFileSync("git", [
         "--git-dir", gitDir,
         "cat-file", "-p",
-        `${defaultBranch}:${filename}`,
+        `${defaultBranch(capabilities)}:${filename}`,
     ]).toString();
 }
 
@@ -74,7 +74,7 @@ describe("gitstore checkpoint", () => {
         );
 
         // Verify the file was committed
-        const content = fileContentAtHead(gitDir, "checkpoint-test.txt");
+        const content = fileContentAtHead(capabilities, gitDir, "checkpoint-test.txt");
         expect(content).toBe("checkpoint content");
     });
 
@@ -108,7 +108,7 @@ describe("gitstore checkpoint", () => {
             { url: capabilities.environment.eventLogRepository() }
         );
         const workDir = path.dirname(gitDir);
-        const initialCount = commitCount(gitDir);
+        const initialCount = commitCount(capabilities, gitDir);
 
         await fs.writeFile(path.join(workDir, "a.txt"), "first");
         await checkpoint(
@@ -124,7 +124,7 @@ describe("gitstore checkpoint", () => {
             "second"
         );
 
-        expect(commitCount(gitDir)).toBe(initialCount + 2);
+        expect(commitCount(capabilities, gitDir)).toBe(initialCount + 2);
         expect(latestCommitMessage(gitDir)).toBe("second");
     });
 
@@ -146,7 +146,7 @@ describe("gitstore checkpoint", () => {
             "add brand new file"
         );
 
-        const content = fileContentAtHead(gitDir, "brand-new.txt");
+        const content = fileContentAtHead(capabilities, gitDir, "brand-new.txt");
         expect(content).toBe("brand new file");
     });
 
@@ -169,7 +169,7 @@ describe("gitstore checkpoint", () => {
             "modify tracked file"
         );
 
-        const content = fileContentAtHead(gitDir, "test.txt");
+        const content = fileContentAtHead(capabilities, gitDir, "test.txt");
         expect(content).toBe("modified by checkpoint");
     });
 
@@ -183,7 +183,7 @@ describe("gitstore checkpoint", () => {
             capabilities, "working-git-repository",
             { url: capabilities.environment.eventLogRepository() }
         );
-        const before = commitCount(gitDir);
+        const before = commitCount(capabilities, gitDir);
 
         // No file changes – working tree is clean
         await checkpoint(
@@ -193,7 +193,7 @@ describe("gitstore checkpoint", () => {
         );
 
         // No new commit should be created when there is nothing to commit
-        expect(commitCount(gitDir)).toBe(before);
+        expect(commitCount(capabilities, gitDir)).toBe(before);
     });
 
     // ── "empty" initial_state ───────────────────────────────────────────────
@@ -222,7 +222,7 @@ describe("gitstore checkpoint", () => {
 
         await checkpoint(capabilities, "local-only-repo", "empty", "local checkpoint");
 
-        const content = fileContentAtHead(gitDir, "state.txt");
+        const content = fileContentAtHead(capabilities, gitDir, "state.txt");
         expect(content).toBe("local snapshot");
     });
 
@@ -235,12 +235,12 @@ describe("gitstore checkpoint", () => {
             "local-only-repo2", ".git"
         );
         await workingRepository.getRepository(capabilities, "local-only-repo2", "empty");
-        const before = commitCount(gitDir);
+        const before = commitCount(capabilities, gitDir);
 
         // No new files – working tree is clean, no commit should be created
         await checkpoint(capabilities, "local-only-repo2", "empty", "empty repo checkpoint");
 
-        expect(commitCount(gitDir)).toBe(before);
+        expect(commitCount(capabilities, gitDir)).toBe(before);
     });
 
     // ── Mutex (serialisation) ───────────────────────────────────────────────
@@ -286,8 +286,8 @@ describe("gitstore checkpoint", () => {
         expect(order).toContain("B");
 
         // Both files must be committed (in one or two commits, depending on timing).
-        const content_a = fileContentAtHead(gitDir, "concurrent-a.txt");
-        const content_b = fileContentAtHead(gitDir, "concurrent-b.txt");
+        const content_a = fileContentAtHead(capabilities, gitDir, "concurrent-a.txt");
+        const content_b = fileContentAtHead(capabilities, gitDir, "concurrent-b.txt");
         expect(content_a).toBe("from a");
         expect(content_b).toBe("from b");
     });
@@ -351,7 +351,7 @@ describe("gitstore checkpoint", () => {
         );
 
         expect(latestCommitMessage(gitDir)).toBe("checkpoint commit");
-        const cpContent = fileContentAtHead(gitDir, "cp-file.txt");
+        const cpContent = fileContentAtHead(capabilities, gitDir, "cp-file.txt");
         expect(cpContent).toBe("from checkpoint");
     });
 
@@ -390,7 +390,7 @@ describe("gitstore checkpoint", () => {
             }
         );
 
-        const finalContent = fileContentAtHead(gitDir, "baseline.txt");
+        const finalContent = fileContentAtHead(capabilities, gitDir, "baseline.txt");
         expect(finalContent).toBe("updated by tx");
     });
 });

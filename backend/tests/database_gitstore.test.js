@@ -52,11 +52,11 @@ function checkpointGitDir(capabilities) {
  * @param {string} gitDir
  * @returns {number}
  */
-function commitCount(gitDir) {
+function commitCount(capabilities, gitDir) {
     return parseInt(
         execFileSync("git", [
             "--git-dir", gitDir,
-            "rev-list", "--count", defaultBranch,
+            "rev-list", "--count", defaultBranch(capabilities),
         ]).toString().trim(),
         10
     );
@@ -92,10 +92,10 @@ function latestCommitMessages(gitDir, count) {
  * @param {string} gitDir
  * @returns {string[]}
  */
-function topLevelEntries(gitDir) {
+function topLevelEntries(capabilities, gitDir) {
     return execFileSync("git", [
         "--git-dir", gitDir,
-        "ls-tree", "--name-only", defaultBranch,
+        "ls-tree", "--name-only", defaultBranch(capabilities),
     ]).toString().trim().split("\n").filter(Boolean);
 }
 
@@ -104,10 +104,10 @@ function topLevelEntries(gitDir) {
  * @param {string} gitDir
  * @returns {string[]}
  */
-function allTrackedFiles(gitDir) {
+function allTrackedFiles(capabilities, gitDir) {
     return execFileSync("git", [
         "--git-dir", gitDir,
-        "ls-tree", "-r", "--name-only", defaultBranch,
+        "ls-tree", "-r", "--name-only", defaultBranch(capabilities),
     ]).toString().trim().split("\n").filter(Boolean);
 }
 
@@ -117,11 +117,11 @@ function allTrackedFiles(gitDir) {
  * @param {string} filePath - path relative to the working tree root
  * @returns {string}
  */
-function fileContentAtHead(gitDir, filePath) {
+function fileContentAtHead(capabilities, gitDir, filePath) {
     return execFileSync("git", [
         "--git-dir", gitDir,
         "cat-file", "-p",
-        `${defaultBranch}:${filePath}`,
+        `${defaultBranch(capabilities)}:${filePath}`,
     ]).toString();
 }
 
@@ -155,7 +155,7 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             // +1 for the "Initial empty commit" created by getRepository on first use
-            expect(commitCount(gitDir)).toBe(2);
+            expect(commitCount(capabilities, gitDir)).toBe(2);
         } finally {
             await db.close();
         }
@@ -187,7 +187,7 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             // +1 for the "Initial empty commit" created by getRepository on first use
-            expect(commitCount(gitDir)).toBe(3);
+            expect(commitCount(capabilities, gitDir)).toBe(3);
         } finally {
             await db.close();
         }
@@ -208,7 +208,7 @@ describe("checkpointDatabase", () => {
             // Most recent commit is beta
             expect(latestCommitMessage(gitDir)).toBe("checkpoint-beta");
             // +1 for the "Initial empty commit" created by getRepository on first use
-            expect(commitCount(gitDir)).toBe(3);
+            expect(commitCount(capabilities, gitDir)).toBe(3);
         } finally {
             await db.close();
         }
@@ -222,11 +222,11 @@ describe("checkpointDatabase", () => {
         try {
             await checkpointDatabase(capabilities, "first", db);
             const gitDir = checkpointGitDir(capabilities);
-            const countAfterFirst = commitCount(gitDir);
+            const countAfterFirst = commitCount(capabilities, gitDir);
 
             await checkpointDatabase(capabilities, "second – no change", db);
 
-            expect(commitCount(gitDir)).toBe(countAfterFirst);
+            expect(commitCount(capabilities, gitDir)).toBe(countAfterFirst);
         } finally {
             await db.close();
         }
@@ -239,9 +239,9 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "empty repo checkpoint", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(gitDir)).toBe(2);
-            expect(topLevelEntries(gitDir)).toEqual([DATABASE_SUBPATH]);
-            expect(allTrackedFiles(gitDir)).toEqual([`${DATABASE_SUBPATH}/_meta/format`]);
+            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(allTrackedFiles(capabilities, gitDir)).toEqual([`${DATABASE_SUBPATH}/_meta/format`]);
         } finally {
             await db.close();
         }
@@ -259,7 +259,7 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "layout check", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(topLevelEntries(gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
         } finally {
             await db.close();
         }
@@ -276,7 +276,7 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "track files", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            const tracked = allTrackedFiles(gitDir);
+            const tracked = allTrackedFiles(capabilities, gitDir);
             expect(tracked).toContain(`${DATABASE_SUBPATH}/_meta/format`);
             expect(tracked).toContain(
                 `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["one"]}')}`
@@ -298,6 +298,7 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             expect(
                 fileContentAtHead(
+                    capabilities,
                     gitDir,
                     `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["hello"]}')}`
                 )
@@ -338,7 +339,7 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "second", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            const tracked = allTrackedFiles(gitDir);
+            const tracked = allTrackedFiles(capabilities, gitDir);
             expect(tracked).toContain(`${DATABASE_SUBPATH}/${keyToRelativePath(oldKey)}`);
             expect(tracked).toContain(`${DATABASE_SUBPATH}/${keyToRelativePath(newKey)}`);
         } finally {
@@ -357,7 +358,7 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(
-                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
             ).toBe(JSON.stringify({ version: "version-2" }));
         } finally {
             await db.close();
@@ -377,9 +378,9 @@ describe("checkpointDatabase", () => {
             ]);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(gitDir)).toBeGreaterThanOrEqual(2);
+            expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(2);
             expect(
-                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
             ).toBe(JSON.stringify({ value: "base" }));
         } finally {
             await db.close();
@@ -406,13 +407,13 @@ describe("runMigrationInTransaction", () => {
 
             expect(result).toBe("done");
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(gitDir)).toBe(3);
+            expect(commitCount(capabilities, gitDir)).toBe(3);
             expect(latestCommitMessages(gitDir, 2)).toEqual([
                 "post-migration: 2",
                 "pre-migration: 1 → 2",
             ]);
             expect(
-                fileContentAtHead(gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
             ).toBe(JSON.stringify({ version: "after" }));
         } finally {
             await db.close();
@@ -438,8 +439,8 @@ describe("runMigrationInTransaction", () => {
             ).rejects.toThrow("migration failure");
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(gitDir)).toBe(1);
-            expect(allTrackedFiles(gitDir)).toEqual([]);
+            expect(commitCount(capabilities, gitDir)).toBe(1);
+            expect(allTrackedFiles(capabilities, gitDir)).toEqual([]);
         } finally {
             await db.close();
         }

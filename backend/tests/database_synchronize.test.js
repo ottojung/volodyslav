@@ -25,6 +25,7 @@ function getTestCapabilities() {
  * @returns {Promise<void>}
  */
 async function seedRemoteRepository(capabilities, entries) {
+    const branch = defaultBranch(capabilities);
     const remotePath = capabilities.environment.generatorsRepository();
     await capabilities.git.call("init", "--bare", "--", remotePath);
 
@@ -33,7 +34,7 @@ async function seedRemoteRepository(capabilities, entries) {
         await capabilities.git.call(
             "init",
             "--initial-branch",
-            defaultBranch,
+            branch,
             "--",
             workTree
         );
@@ -59,7 +60,7 @@ async function seedRemoteRepository(capabilities, entries) {
             "Initial rendered snapshot"
         );
         await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
-        await capabilities.git.call("-C", workTree, "push", "origin", defaultBranch);
+        await capabilities.git.call("-C", workTree, "push", "origin", branch);
     } finally {
         await capabilities.deleter.deleteDirectory(workTree);
     }
@@ -80,6 +81,7 @@ async function collectRawEntries(db) {
 describe("synchronizeNoLock", () => {
     test("renders the live database into the tracked repository and pushes it to remote", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v1"]]);
 
         const db = await getRootDatabase(capabilities);
@@ -104,7 +106,7 @@ describe("synchronizeNoLock", () => {
         try {
             await capabilities.git.call(
                 "clone",
-                `--branch=${defaultBranch}`,
+                `--branch=${branch}`,
                 capabilities.environment.generatorsRepository(),
                 clonedRemote
             );

@@ -19,6 +19,7 @@ const fs = require("fs").promises;
  * @returns {Promise<void>} A promise that resolves when the repository is created.
  */
 async function stubEventLogRepository(capabilities) {
+    const branch = defaultBranch(capabilities);
     // Let eventLogRepository be our test repository
     const gitDir = capabilities.environment.eventLogRepository();
 
@@ -31,7 +32,7 @@ async function stubEventLogRepository(capabilities) {
     await capabilities.git.call(
         "init",
         "--initial-branch",
-        defaultBranch,
+        branch,
         "--",
         workTree
     );
@@ -73,7 +74,7 @@ async function stubEventLogRepository(capabilities) {
         workTree,
         "push",
         "origin",
-        defaultBranch
+        branch
     );
 
     await capabilities.deleter.deleteDirectory(workTree);
