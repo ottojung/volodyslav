@@ -3,10 +3,12 @@ const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - Environment access including hostname.
  */
 
 class GitUnavailable extends Error {
