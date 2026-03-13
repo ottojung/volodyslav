@@ -417,7 +417,23 @@ async function makeRootDatabase(capabilities, databasePath) {
     const version = stringToVersion(await getVersion(capabilities));
     /** @type {RootLevelType} */
     const db = capabilities.levelDatabase.initialize(databasePath);
-    await db.open();
+
+    // Try several times to open the database.
+    for (const attempt of [1, 2, 3, 4, 5]) {
+        try {
+            await db.open();
+            break; // Success, exit the retry loop
+        } catch (error) {
+            if (attempt === 5) {
+                // Final attempt failed, rethrow the error
+                throw error instanceof Error ? error : new Error(String(error));
+            }
+            capabilities.logger.logDebug(
+                { databasePath, attempt, error, message: error instanceof Error ? error.message : String(error) },
+                `Attempt ${attempt} to open database failed. Retrying...`
+            );
+        }
+    }
 
     // Check the root-level format marker to ensure we are using the x/y namespace layout.
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
