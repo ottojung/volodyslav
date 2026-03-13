@@ -236,6 +236,9 @@ describe("transcribeStreamDetailed: request construction", () => {
 
         // Verify generateContent was called
         expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+        const call = mockGenerateContent.mock.calls[0][0];
+        // Ensure the strict transcription prompt is actually wired into the request payload
+        expect(JSON.stringify(call.contents)).toContain(TRANSCRIPTION_PROMPT);
         // The prompt constant must forbid paraphrasing and require verbatim transcript
         expect(TRANSCRIPTION_PROMPT).toMatch(/verbatim/i);
         expect(TRANSCRIPTION_PROMPT).toMatch(/paraphrase/i);
