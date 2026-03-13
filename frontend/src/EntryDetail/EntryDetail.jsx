@@ -361,7 +361,7 @@ export default function EntryDetail() {
                 <Card {...CARD_STYLES.secondary}>
                     <CardBody p={SPACING.lg}>
                         <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
-                            Additional Properties
+                            Computed Properties
                         </Text>
                         {additionalFields.length > 0 && (
                             <VStack spacing={SPACING.sm} align="stretch" mb={loadingAdditionalProperties.length > 0 ? SPACING.md : 0}>
