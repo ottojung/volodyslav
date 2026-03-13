@@ -261,6 +261,9 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
             throw new AITranscriptionError(coverageMsg, rawResponse);
         }
 
+        const normalizedWarnings = Array.isArray(structured.warnings) ? structured.warnings : [];
+        const normalizedUnclearAudio = typeof structured.unclearAudio === "boolean" ? structured.unclearAudio : false;
+
         return {
             text: structured.transcript,
             provider: "Google",
@@ -271,7 +274,12 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
             usageMetadata,
             modelVersion,
             responseId,
-            structured,
+            structured: {
+                transcript: structured.transcript,
+                coverage: structured.coverage,
+                warnings: normalizedWarnings,
+                unclearAudio: normalizedUnclearAudio,
+            },
             rawResponse,
         };
     } finally {

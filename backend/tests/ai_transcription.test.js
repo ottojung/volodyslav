@@ -11,7 +11,13 @@
 
 /* eslint jest/expect-expect: ["error", { "assertFunctionNames": ["expect", "expectAITranscriptionError"] }] */
 
-jest.mock("@google/genai");
+jest.mock("@google/genai", () => {
+    const actual = jest.requireActual("@google/genai");
+    return {
+        ...actual,
+        GoogleGenAI: jest.fn(),
+    };
+});
 
 const { GoogleGenAI } = require("@google/genai");
 const {
@@ -238,7 +244,9 @@ describe("transcribeStreamDetailed: request construction", () => {
         expect(mockGenerateContent).toHaveBeenCalledTimes(1);
         const call = mockGenerateContent.mock.calls[0][0];
         // Ensure the strict transcription prompt is actually wired into the request payload
-        expect(JSON.stringify(call.contents)).toContain(TRANSCRIPTION_PROMPT);
+        expect(call.contents.parts).toContainEqual(
+            expect.objectContaining({ text: TRANSCRIPTION_PROMPT })
+        );
         // The prompt constant must forbid paraphrasing and require verbatim transcript
         expect(TRANSCRIPTION_PROMPT).toMatch(/verbatim/i);
         expect(TRANSCRIPTION_PROMPT).toMatch(/paraphrase/i);
@@ -442,6 +450,87 @@ describe("transcribeStreamDetailed: response validation", () => {
         const ai = make(() => caps);
         const err = await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
         expect(err.message).toMatch(/network error/);
+    });
+
+    test("normalizes missing warnings field to empty array", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", unclearAudio: false }),
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.structured.warnings).toEqual([]);
+    });
+
+    test("normalizes non-array warnings field to empty array", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", warnings: "not an array", unclearAudio: false }),
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.structured.warnings).toEqual([]);
+    });
+
+    test("normalizes missing unclearAudio field to false", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", warnings: [] }),
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.structured.unclearAudio).toBe(false);
+    });
+
+    test("normalizes non-boolean unclearAudio field to false", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", warnings: [], unclearAudio: "yes" }),
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.structured.unclearAudio).toBe(false);
+    });
+
+    test("preserves valid warnings array in structured result", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                structuredJson: JSON.stringify({
+                    transcript: "Hello",
+                    coverage: "full",
+                    warnings: ["Some audio was low quality"],
+                    unclearAudio: true,
+                }),
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.structured.warnings).toEqual(["Some audio was low quality"]);
+        expect(result.structured.unclearAudio).toBe(true);
     });
 });
 
