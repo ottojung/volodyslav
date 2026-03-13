@@ -361,49 +361,6 @@ export default function EntryDetail() {
                 <Card {...CARD_STYLES.secondary}>
                     <CardBody p={SPACING.lg}>
                         <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
-                            Computed Properties
-                        </Text>
-                        {additionalFields.length > 0 && (
-                            <VStack spacing={SPACING.sm} align="stretch" mb={loadingAdditionalProperties.length > 0 ? SPACING.md : 0}>
-                                {additionalFields.map(([key, value]) => (
-                                    <FieldRow key={key} fieldKey={key} value={String(value)} />
-                                ))}
-                            </VStack>
-                        )}
-                        {loadingAdditionalProperties.length > 0 ? (
-                            <Box py={SPACING.md}>
-                                <HStack align="flex-start" spacing={SPACING.sm}>
-                                    <Spinner size="sm" color="blue.400" mt="2px" />
-                                    <VStack align="flex-start" spacing={1}>
-                                        {loadingAdditionalProperties.map((propertyName) => (
-                                            <Text key={propertyName} {...TEXT_STYLES.helper}>
-                                                Loading {propertyName}...
-                                            </Text>
-                                        ))}
-                                    </VStack>
-                                </HStack>
-                            </Box>
-                        ) : additionalFields.length === 0 && Object.keys(additionalPropertyErrors).length === 0 ? (
-                            <Text {...TEXT_STYLES.helper}>None</Text>
-                        ) : null}
-                        {Object.keys(additionalPropertyErrors).length > 0 && loadingAdditionalProperties.length === 0 && (
-                            <VStack spacing={SPACING.sm} align="stretch" mt={additionalFields.length > 0 ? SPACING.sm : 0}>
-                                {Object.entries(additionalPropertyErrors).map(([key, message]) => (
-                                    <Box key={key} px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
-                                        <Text fontSize="xs" fontWeight="semibold" color="red.600" textTransform="uppercase" mb={1}>
-                                            {key} error
-                                        </Text>
-                                        <Text fontSize="sm" color="red.700">{message}</Text>
-                                    </Box>
-                                ))}
-                            </VStack>
-                        )}
-                    </CardBody>
-                </Card>
-
-                <Card {...CARD_STYLES.secondary}>
-                    <CardBody p={SPACING.lg}>
-                        <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
                             Media
                         </Text>
                         {imageAssets === null || audioAssets === null || otherAssets === null ? (
@@ -465,6 +422,49 @@ export default function EntryDetail() {
                                         </VStack>
                                     </Box>
                                 )}
+                            </VStack>
+                        )}
+                    </CardBody>
+                </Card>
+
+                <Card {...CARD_STYLES.secondary}>
+                    <CardBody p={SPACING.lg}>
+                        <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
+                            Computed Properties
+                        </Text>
+                        {additionalFields.length > 0 && (
+                            <VStack spacing={SPACING.sm} align="stretch" mb={loadingAdditionalProperties.length > 0 ? SPACING.md : 0}>
+                                {additionalFields.map(([key, value]) => (
+                                    <FieldRow key={key} fieldKey={key} value={String(value)} />
+                                ))}
+                            </VStack>
+                        )}
+                        {loadingAdditionalProperties.length > 0 ? (
+                            <Box py={SPACING.md}>
+                                <HStack align="flex-start" spacing={SPACING.sm}>
+                                    <Spinner size="sm" color="blue.400" mt="2px" />
+                                    <VStack align="flex-start" spacing={1}>
+                                        {loadingAdditionalProperties.map((propertyName) => (
+                                            <Text key={propertyName} {...TEXT_STYLES.helper}>
+                                                Loading {propertyName}...
+                                            </Text>
+                                        ))}
+                                    </VStack>
+                                </HStack>
+                            </Box>
+                        ) : additionalFields.length === 0 && Object.keys(additionalPropertyErrors).length === 0 ? (
+                            <Text {...TEXT_STYLES.helper}>None</Text>
+                        ) : null}
+                        {Object.keys(additionalPropertyErrors).length > 0 && loadingAdditionalProperties.length === 0 && (
+                            <VStack spacing={SPACING.sm} align="stretch" mt={additionalFields.length > 0 ? SPACING.sm : 0}>
+                                {Object.entries(additionalPropertyErrors).map(([key, message]) => (
+                                    <Box key={key} px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
+                                        <Text fontSize="xs" fontWeight="semibold" color="red.600" textTransform="uppercase" mb={1}>
+                                            {key} error
+                                        </Text>
+                                        <Text fontSize="sm" color="red.700">{message}</Text>
+                                    </Box>
+                                ))}
                             </VStack>
                         )}
                     </CardBody>
