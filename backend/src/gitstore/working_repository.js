@@ -205,7 +205,7 @@ async function initializeEmptyRepository(capabilities, workingPath) {
             // Configure the repository to allow pushing to the current branch
             await gitmethod.makePushable(capabilities, workDir);
 
-            // Create an empty initial commit so the repository has a master branch
+            // Create an empty initial commit so the repository has an initial branch
             // This is required for the transaction system to work (clone operations need a branch)
             await git.call(
                 "-C", workDir,

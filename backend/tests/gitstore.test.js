@@ -18,6 +18,7 @@ function getTestCapabilities() {
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await stubEventLogRepository(capabilities);
         await transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
             const workTree = await store.getWorkTree();
@@ -39,13 +40,14 @@ describe("gitstore", () => {
             gitDir,
             "cat-file",
             "-p",
-            `${defaultBranch}:test.txt`,
+            `${branch}:test.txt`,
         ]);
         expect(output.toString().trim()).toBe("modified content");
     });
 
     test("transaction allows multiple commits", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await stubEventLogRepository(capabilities);
         await transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
             const workTree = await store.getWorkTree();
@@ -67,7 +69,7 @@ describe("gitstore", () => {
             gitDir,
             "rev-list",
             "--count",
-            defaultBranch,
+            branch,
         ]);
         expect(parseInt(commitCount)).toBe(3); // Initial + 2 modifications
 
@@ -77,7 +79,7 @@ describe("gitstore", () => {
             gitDir,
             "cat-file",
             "-p",
-            `${defaultBranch}:test.txt`,
+            `${branch}:test.txt`,
         ]);
         expect(output.toString().trim()).toBe("second modification");
     });

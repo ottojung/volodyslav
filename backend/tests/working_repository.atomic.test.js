@@ -2,6 +2,7 @@ const path = require("path");
 const fsp = require("fs/promises");
 const { execFileSync } = require("child_process");
 const workingRepository = require("../src/gitstore/working_repository");
+const defaultBranch = require("../src/gitstore/default_branch");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubEventLogRepository } = require("./stubs");
 
@@ -16,6 +17,7 @@ function getTestCapabilities() {
 describe("working_repository (atomic initialize)", () => {
     test("initializeEmptyRepository remains atomic under parallel calls", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await capabilities.logger.setup(capabilities);
 
         const repoName = "atomic-working-git-repository";
@@ -58,12 +60,13 @@ describe("working_repository (atomic initialize)", () => {
         expect(indexExists).toBe(true);
 
         // Verify repository has at least the initial commit
-        const commitCount = execFileSync("git", ["--git-dir", gitDir, "rev-list", "--count", "master"]).toString().trim();
+        const commitCount = execFileSync("git", ["--git-dir", gitDir, "rev-list", "--count", branch]).toString().trim();
         expect(parseInt(commitCount, 10)).toBeGreaterThanOrEqual(1);
     });
 
     test("initializeRemoteRepository remains atomic under parallel calls", async () => {
         const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
         await capabilities.logger.setup(capabilities);
 
         // Prepare a real remote repository to clone from
@@ -99,7 +102,7 @@ describe("working_repository (atomic initialize)", () => {
         expect(indexExists).toBe(true);
 
         // Verify repository has at least the initial commit
-        const commitCount = execFileSync("git", ["--git-dir", gitDir, "rev-list", "--count", "master"]).toString().trim();
+        const commitCount = execFileSync("git", ["--git-dir", gitDir, "rev-list", "--count", branch]).toString().trim();
         expect(parseInt(commitCount, 10)).toBeGreaterThanOrEqual(1);
     });
 });

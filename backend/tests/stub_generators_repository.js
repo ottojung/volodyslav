@@ -14,6 +14,7 @@ const defaultBranch = require("../src/gitstore/default_branch");
  * @returns {Promise<void>}
  */
 async function stubGeneratorsRepository(capabilities) {
+    const branch = defaultBranch(capabilities);
     const gitDir = capabilities.environment.generatorsRepository();
 
     await capabilities.git.call("init", "--bare", "--", gitDir);
@@ -29,7 +30,7 @@ async function stubGeneratorsRepository(capabilities) {
     await capabilities.git.call(
         "init",
         "--initial-branch",
-        defaultBranch,
+        branch,
         "--",
         workTree
     );
@@ -65,7 +66,7 @@ async function stubGeneratorsRepository(capabilities) {
         workTree,
         "push",
         "origin",
-        defaultBranch
+        branch
     );
 
     await capabilities.deleter.deleteDirectory(workTree);
