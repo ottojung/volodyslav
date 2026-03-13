@@ -335,7 +335,7 @@ describe("transcribeStreamDetailed: response validation", () => {
         await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
     });
 
-    test("throws AITranscriptionError when coverage is 'partial'", async () => {
+    test("does not throw AITranscriptionError when coverage is 'partial'", async () => {
         setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse({
@@ -345,7 +345,7 @@ describe("transcribeStreamDetailed: response validation", () => {
 
         const caps = makeMockCapabilities();
         const ai = make(() => caps);
-        await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
+        await expect(ai.transcribeStreamDetailed(makeFileStream())).resolves.not.toThrow();
     });
 
     test("throws AITranscriptionError when finishReason is MAX_TOKENS", async () => {
@@ -710,7 +710,7 @@ describe("transcribeStreamDetailed: file cleanup", () => {
         const { mockDelete } = setupMockClient(
             makeUploadedFile({ name: "files/validation-fail" }),
             makeValidGeminiResponse({
-                structuredJson: makeValidStructuredJson({ coverage: "partial" }),
+                structuredJson: makeValidStructuredJson({ finishReason: "MAX_TOKENS" }),
             })
         );
 
@@ -801,7 +801,7 @@ describe("transcribeStream: compatibility", () => {
     test("throws AITranscriptionError on invalid response instead of returning silently", async () => {
         setupMockClient(
             makeUploadedFile(),
-            makeValidGeminiResponse({ structuredJson: makeValidStructuredJson({ coverage: "partial" }) })
+            makeValidGeminiResponse({ structuredJson: makeValidStructuredJson({ finishReason: "MAX_TOKENS" }) })
         );
 
         const caps = makeMockCapabilities();
