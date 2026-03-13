@@ -710,7 +710,7 @@ describe("transcribeStreamDetailed: file cleanup", () => {
         const { mockDelete } = setupMockClient(
             makeUploadedFile({ name: "files/validation-fail" }),
             makeValidGeminiResponse({
-                structuredJson: makeValidStructuredJson({ finishReason: "MAX_TOKENS" }),
+                candidate: { finishReason: "MAX_TOKENS" },
             })
         );
 
@@ -801,7 +801,7 @@ describe("transcribeStream: compatibility", () => {
     test("throws AITranscriptionError on invalid response instead of returning silently", async () => {
         setupMockClient(
             makeUploadedFile(),
-            makeValidGeminiResponse({ structuredJson: makeValidStructuredJson({ finishReason: "MAX_TOKENS" }) })
+            makeValidGeminiResponse({ candidate: { finishReason: "MAX_TOKENS" } })
         );
 
         const caps = makeMockCapabilities();
