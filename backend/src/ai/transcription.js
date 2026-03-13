@@ -298,6 +298,14 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
  */
 async function transcribeStream(makeClient, capabilities, fileStream) {
     const result = await transcribeStreamDetailed(makeClient, capabilities, fileStream);
+    capabilities.logger.logInfo(
+        {
+            file: fileStream.path,
+            candidateTokenCount: result.candidateTokenCount,
+            finishReason: result.finishReason,
+        },
+        "Transcription completed"
+    );
     return result.text;
 }
 
