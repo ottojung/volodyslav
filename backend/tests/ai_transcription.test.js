@@ -40,6 +40,9 @@ function makeMockCapabilities() {
         environment: {
             geminiApiKey: jest.fn().mockReturnValue("test-api-key"),
         },
+        sleeper: {
+            sleep: jest.fn().mockResolvedValue(undefined),
+        },
         logger: {
             logWarning: jest.fn(),
             logError: jest.fn(),
@@ -94,18 +97,21 @@ function makeUploadedFile(overrides = {}) {
         uri: "https://generativelanguage.googleapis.com/v1beta/files/test-file-id",
         mimeType: "audio/mpeg",
         name: "files/test-file-id",
+        state: "ACTIVE",
         ...overrides,
     };
 }
 
 function setupMockClient(uploadResult, generateResult) {
     const mockUpload = jest.fn().mockResolvedValue(uploadResult);
+    const mockGet = jest.fn().mockResolvedValue(uploadResult);
     const mockGenerateContent = jest.fn().mockResolvedValue(generateResult);
     const mockDelete = jest.fn().mockResolvedValue({});
 
     GoogleGenAI.mockImplementation(() => ({
         files: {
             upload: mockUpload,
+            get: mockGet,
             delete: mockDelete,
         },
         models: {
@@ -113,7 +119,7 @@ function setupMockClient(uploadResult, generateResult) {
         },
     }));
 
-    return { mockUpload, mockGenerateContent, mockDelete };
+    return { mockUpload, mockGet, mockGenerateContent, mockDelete };
 }
 
 /**
@@ -283,6 +289,16 @@ describe("transcribeStreamDetailed: request construction", () => {
 
         const uploadCall = mockUpload.mock.calls[0][0];
         expect(uploadCall.config.mimeType).toBe("audio/wav");
+    });
+
+    test("throws AITranscriptionError for unsupported file extension", async () => {
+        setupMockClient(makeUploadedFile(), makeValidGeminiResponse());
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const err = await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream("/tmp/audio.unknown")));
+
+        expect(err.message).toMatch(/Unsupported audio file extension/);
     });
 });
 
@@ -531,6 +547,123 @@ describe("transcribeStreamDetailed: response validation", () => {
 
         expect(result.structured.warnings).toEqual(["Some audio was low quality"]);
         expect(result.structured.unclearAudio).toBe(true);
+    });
+});
+
+describe("transcribeStreamDetailed: upload/generation resilience", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    test("waits for uploaded file to become ACTIVE before generation", async () => {
+        const uploadFile = makeUploadedFile({ state: "PROCESSING", name: "files/poll-me" });
+        const activeFile = makeUploadedFile({ state: "ACTIVE", name: "files/poll-me" });
+        const mockUpload = jest.fn().mockResolvedValue(uploadFile);
+        const mockGet = jest
+            .fn()
+            .mockResolvedValueOnce(makeUploadedFile({ state: "PROCESSING", name: "files/poll-me" }))
+            .mockResolvedValueOnce(activeFile);
+        const mockGenerateContent = jest.fn().mockResolvedValue(makeValidGeminiResponse());
+        const mockDelete = jest.fn().mockResolvedValue({});
+
+        GoogleGenAI.mockImplementation(() => ({
+            files: { upload: mockUpload, get: mockGet, delete: mockDelete },
+            models: { generateContent: mockGenerateContent },
+        }));
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(mockGet).toHaveBeenCalledTimes(2);
+        expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    });
+
+    test("fails clearly when uploaded file reaches FAILED state", async () => {
+        const uploadFile = makeUploadedFile({ state: "PROCESSING", name: "files/fail-me" });
+        const mockUpload = jest.fn().mockResolvedValue(uploadFile);
+        const mockGet = jest.fn().mockResolvedValue(makeUploadedFile({ state: "FAILED", name: "files/fail-me" }));
+        const mockGenerateContent = jest.fn().mockResolvedValue(makeValidGeminiResponse());
+        const mockDelete = jest.fn().mockResolvedValue({});
+
+        GoogleGenAI.mockImplementation(() => ({
+            files: { upload: mockUpload, get: mockGet, delete: mockDelete },
+            models: { generateContent: mockGenerateContent },
+        }));
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const err = await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
+
+        expect(err.message).toMatch(/File activation failed/);
+        expect(mockGenerateContent).not.toHaveBeenCalled();
+    });
+
+    test("retries transient upload failures with warning logs", async () => {
+        const mockUpload = jest
+            .fn()
+            .mockRejectedValueOnce(Object.assign(new Error("UNAVAILABLE"), { status: 503, code: "UNAVAILABLE" }))
+            .mockResolvedValue(makeUploadedFile());
+        const mockGet = jest.fn().mockResolvedValue(makeUploadedFile());
+        const mockGenerateContent = jest.fn().mockResolvedValue(makeValidGeminiResponse());
+        const mockDelete = jest.fn().mockResolvedValue({});
+
+        GoogleGenAI.mockImplementation(() => ({
+            files: { upload: mockUpload, get: mockGet, delete: mockDelete },
+            models: { generateContent: mockGenerateContent },
+        }));
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(mockUpload).toHaveBeenCalledTimes(2);
+        expect(caps.logger.logWarning).toHaveBeenCalledWith(
+            expect.objectContaining({ stage: "upload" }),
+            expect.stringMatching(/retrying/)
+        );
+    });
+
+    test("does not retry non-transient upload failures", async () => {
+        const mockUpload = jest
+            .fn()
+            .mockRejectedValue(Object.assign(new Error("bad request"), { status: 400, code: "INVALID_ARGUMENT" }));
+        const mockGet = jest.fn();
+        const mockGenerateContent = jest.fn();
+        const mockDelete = jest.fn();
+
+        GoogleGenAI.mockImplementation(() => ({
+            files: { upload: mockUpload, get: mockGet, delete: mockDelete },
+            models: { generateContent: mockGenerateContent },
+        }));
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
+
+        expect(mockUpload).toHaveBeenCalledTimes(1);
+        expect(mockGenerateContent).not.toHaveBeenCalled();
+    });
+
+    test("retries transient generation failures", async () => {
+        const { mockUpload, mockGet } = setupMockClient(makeUploadedFile(), makeValidGeminiResponse());
+        const mockGenerateContent = jest
+            .fn()
+            .mockRejectedValueOnce(Object.assign(new Error("RESOURCE_EXHAUSTED"), { status: 429, code: "RESOURCE_EXHAUSTED" }))
+            .mockResolvedValue(makeValidGeminiResponse());
+        const mockDelete = jest.fn().mockResolvedValue({});
+
+        GoogleGenAI.mockImplementation(() => ({
+            files: { upload: mockUpload, get: mockGet, delete: mockDelete },
+            models: { generateContent: mockGenerateContent },
+        }));
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.text).toBe("Hello world");
+        expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     });
 });
 
