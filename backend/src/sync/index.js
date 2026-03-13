@@ -48,26 +48,12 @@ function isGeneratorsSyncError(object) {
     return object instanceof GeneratorsSyncError;
 }
 
-class InterfaceUpdateError extends Error {
-    /** @param {unknown} cause */
-    constructor(cause) {
-        super(`Interface update failed: ${cause}`);
-        this.name = "InterfaceUpdateError";
-        this.cause = cause;
-    }
-}
-
-/** @param {unknown} object @returns {object is InterfaceUpdateError} */
-function isInterfaceUpdateError(object) {
-    return object instanceof InterfaceUpdateError;
-}
-
 // ---------------------------------------------------------------------------
 // Aggregate error
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {EventLogSyncError | AssetsSyncError | GeneratorsSyncError | InterfaceUpdateError} SyncDestinationError
+ * @typedef {EventLogSyncError | AssetsSyncError | GeneratorsSyncError} SyncDestinationError
  */
 
 class SynchronizeAllError extends Error {
@@ -147,5 +133,4 @@ module.exports = {
     isEventLogSyncError,
     isAssetsSyncError,
     isGeneratorsSyncError,
-    isInterfaceUpdateError,
 };
