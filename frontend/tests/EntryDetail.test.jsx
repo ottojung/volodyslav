@@ -410,7 +410,7 @@ describe("EntryDetail page", () => {
     it("shows the Additional Properties section header", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
-        expect(screen.getByText("Additional Properties")).toBeInTheDocument();
+        expect(screen.getByText("Computed Properties")).toBeInTheDocument();
     });
 
     it("shows an optimistic loading list while additional properties are still loading", () => {
