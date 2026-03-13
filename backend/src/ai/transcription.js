@@ -63,6 +63,14 @@ const { fromMilliseconds } = require("../datetime");
  * @property {unknown} rawResponse - The raw Gemini response for debugging.
  */
 
+/**
+ * @typedef {object} UploadedGeminiFile
+ * @property {string | undefined} [uri]
+ * @property {string | undefined} [mimeType]
+ * @property {string | undefined} [name]
+ * @property {string | { name?: string } | undefined} [state]
+ */
+
 class AITranscriptionError extends Error {
     /**
      * @param {string} message
@@ -270,10 +278,11 @@ function fileStateName(file) {
 /**
  * @param {Capabilities} capabilities
  * @param {GoogleGenAI} ai
- * @param {any} uploadedFile
- * @returns {Promise<any>}
+ * @param {UploadedGeminiFile} uploadedFile
+ * @returns {Promise<UploadedGeminiFile>}
  */
 async function waitForUploadedFileToBeActive(capabilities, ai, uploadedFile) {
+    /** @type {UploadedGeminiFile} */
     let currentFile = uploadedFile;
     for (let attempt = 1; attempt <= FILE_ACTIVATION_MAX_ATTEMPTS; attempt++) {
         const state = fileStateName(currentFile);
@@ -297,7 +306,11 @@ async function waitForUploadedFileToBeActive(capabilities, ai, uploadedFile) {
             fromMilliseconds(FILE_ACTIVATION_POLL_DELAY_MS)
         );
         try {
-            currentFile = await ai.files.get({ name: currentFile.name });
+            const file = await ai.files.get({ name: currentFile.name });
+            if (!file || typeof file !== "object") {
+                throw new AITranscriptionError("File activation failed: Gemini status check returned an invalid file object", file);
+            }
+            currentFile = file;
         } catch (error) {
             if (!isRetryableGeminiError(error)) {
                 throw new AITranscriptionError("File activation failed while checking Gemini file status", error);
@@ -348,7 +361,8 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
         );
     }
 
-    let audioFile;
+    /** @type {UploadedGeminiFile} */
+    let audioFile = {};
     try {
         audioFile = await withGeminiTransientRetry(capabilities, "upload", async () => {
             return await ai.files.upload({
@@ -370,11 +384,13 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
             throw new AITranscriptionError("Failed to activate uploaded audio file for transcription", error);
         }
 
-        if (!audioFile.uri) {
+        const audioFileUri = audioFile.uri;
+        if (!audioFileUri) {
             throw new AITranscriptionError("Uploaded file has no URI", undefined);
         }
 
-        if (!audioFile.mimeType) {
+        const audioFileMimeType = audioFile.mimeType;
+        if (!audioFileMimeType) {
             throw new AITranscriptionError("Uploaded file has no MIME type", undefined);
         }
 
@@ -384,7 +400,7 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
                 return await ai.models.generateContent({
                     model: TRANSCRIBER_MODEL,
                     contents: createUserContent([
-                        createPartFromUri(audioFile.uri, audioFile.mimeType),
+                        createPartFromUri(audioFileUri, audioFileMimeType),
                         TRANSCRIPTION_PROMPT,
                     ]),
                     config: {
