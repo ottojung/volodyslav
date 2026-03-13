@@ -32,14 +32,6 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-/**
- * @param {object} capabilities
- * @returns {string}
- */
-function branchName(capabilities) {
-    return defaultBranch(capabilities);
-}
-
 // ── Git inspection helpers ────────────────────────────────────────────────────
 
 /**
@@ -64,7 +56,7 @@ function commitCount(capabilities, gitDir) {
     return parseInt(
         execFileSync("git", [
             "--git-dir", gitDir,
-            "rev-list", "--count", branchName(capabilities),
+            "rev-list", "--count", defaultBranch(capabilities),
         ]).toString().trim(),
         10
     );
@@ -103,7 +95,7 @@ function latestCommitMessages(gitDir, count) {
 function topLevelEntries(capabilities, gitDir) {
     return execFileSync("git", [
         "--git-dir", gitDir,
-        "ls-tree", "--name-only", branchName(capabilities),
+        "ls-tree", "--name-only", defaultBranch(capabilities),
     ]).toString().trim().split("\n").filter(Boolean);
 }
 
@@ -115,7 +107,7 @@ function topLevelEntries(capabilities, gitDir) {
 function allTrackedFiles(capabilities, gitDir) {
     return execFileSync("git", [
         "--git-dir", gitDir,
-        "ls-tree", "-r", "--name-only", branchName(capabilities),
+        "ls-tree", "-r", "--name-only", defaultBranch(capabilities),
     ]).toString().trim().split("\n").filter(Boolean);
 }
 
@@ -129,7 +121,7 @@ function fileContentAtHead(capabilities, gitDir, filePath) {
     return execFileSync("git", [
         "--git-dir", gitDir,
         "cat-file", "-p",
-        `${branchName(capabilities)}:${filePath}`,
+        `${defaultBranch(capabilities)}:${filePath}`,
     ]).toString();
 }
 

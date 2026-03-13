@@ -17,14 +17,6 @@ function getTestCapabilities() {
 }
 
 /**
- * @param {object} capabilities
- * @returns {string}
- */
-function branchName(capabilities) {
-    return defaultBranch(capabilities);
-}
-
-/**
  * Reads the latest commit message from a bare or non-bare git directory.
  */
 function latestCommitMessage(gitDir) {
@@ -41,7 +33,7 @@ function commitCount(capabilities, gitDir) {
     return parseInt(
         execFileSync("git", [
             "--git-dir", gitDir,
-            "rev-list", "--count", branchName(capabilities),
+            "rev-list", "--count", defaultBranch(capabilities),
         ]).toString().trim(),
         10
     );
@@ -54,7 +46,7 @@ function fileContentAtHead(capabilities, gitDir, filename) {
     return execFileSync("git", [
         "--git-dir", gitDir,
         "cat-file", "-p",
-        `${branchName(capabilities)}:${filename}`,
+        `${defaultBranch(capabilities)}:${filename}`,
     ]).toString();
 }
 
