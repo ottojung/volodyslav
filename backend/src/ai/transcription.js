@@ -154,10 +154,11 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
     const apiKey = capabilities.environment.geminiApiKey();
     const ai = makeClient(apiKey);
 
-    const filePath = String(fileStream.path);
-    if (!filePath) {
+    const rawPath = fileStream.path;
+    if (typeof rawPath !== "string" || rawPath.length === 0) {
         throw new AITranscriptionError("Audio file stream has no path", undefined);
     }
+    const filePath = rawPath;
 
     const audioFile = await ai.files.upload({
         file: filePath,
