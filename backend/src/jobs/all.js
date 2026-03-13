@@ -1,7 +1,7 @@
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
 const { fromObject: Duration } = require("../datetime");
-const { synchronizeAll, isSynchronizeAllError, isEventLogSyncError, isAssetsSyncError, isGeneratorsSyncError, isInterfaceUpdateError } = require("../sync");
+const { synchronizeAll, isSynchronizeAllError, isEventLogSyncError, isAssetsSyncError, isGeneratorsSyncError } = require("../sync");
 
 /** @typedef {import('../scheduler').Registration} Registration */
 
@@ -32,8 +32,6 @@ async function everyHour(capabilities) {
                 capabilities.logger.logError({ error: e }, "Error during assets directory synchronization");
             } else if (isGeneratorsSyncError(e)) {
                 capabilities.logger.logError({ error: e }, "Error during generators database synchronization");
-            } else if (isInterfaceUpdateError(e)) {
-                capabilities.logger.logError({ error: e }, "Error invalidating interface after synchronization");
             } else {
                 capabilities.logger.logError({ error: e }, "Error during synchronization");
             }
