@@ -254,13 +254,6 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
             throw new AITranscriptionError("Transcription response is missing 'transcript'", rawResponse);
         }
 
-        if (structured.coverage !== "full") {
-            const coverageMsg = finishMessage
-                ? `Transcription coverage is not full (${structured.coverage}): ${finishMessage}`
-                : `Transcription coverage is not full (${structured.coverage})`;
-            throw new AITranscriptionError(coverageMsg, rawResponse);
-        }
-
         const normalizedWarnings = Array.isArray(structured.warnings) ? structured.warnings : [];
         const normalizedUnclearAudio = typeof structured.unclearAudio === "boolean" ? structured.unclearAudio : false;
 
