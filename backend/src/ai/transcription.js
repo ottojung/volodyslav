@@ -160,10 +160,15 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
     }
     const filePath = rawPath;
 
-    const audioFile = await ai.files.upload({
-        file: filePath,
-        config: { mimeType: mimeTypeForPath(filePath) },
-    });
+    let audioFile;
+    try {
+        audioFile = await ai.files.upload({
+            file: filePath,
+            config: { mimeType: mimeTypeForPath(filePath) },
+        });
+    } catch (error) {
+        throw new AITranscriptionError("Failed to upload audio file for transcription", error);
+    }
 
     try {
         if (!audioFile.uri) {
