@@ -141,10 +141,9 @@ function parseSilenceEvents(stderr) {
  * Finds silence events in the audio near the given target time.
  * @param {SplitterCapabilities} capabilities
  * @param {string} filePath
- * @param {number} searchWindowMs - Window size around target to search.
  * @returns {Promise<SilenceEvent[]>}
  */
-async function findSilenceEvents(capabilities, filePath, searchWindowMs) {
+async function findSilenceEvents(capabilities, filePath) {
     // silencedetect filter threshold: -30dB, minimum duration 0.3s
     const noiseTolerance = "-30dB";
     const minSilenceDuration = "0.3";
@@ -168,7 +167,6 @@ async function findSilenceEvents(capabilities, filePath, searchWindowMs) {
             );
         }
     }
-    void searchWindowMs;
     return parseSilenceEvents(stderr || "");
 }
 
@@ -231,13 +229,13 @@ async function extractSegment(capabilities, inputPath, startMs, endMs, outputPat
 
 /**
  * Splits an audio file into segments according to the given chunk specs.
- * Returns an array of ExistingFile handles in chunk order.
+ * Returns an array of file paths in chunk order.
  *
  * @param {SplitterCapabilities} capabilities
  * @param {string} inputPath
  * @param {ChunkSpec[]} specs
  * @param {string} tempDir - Directory to write chunk files into.
- * @returns {Promise<string[]>} - Paths to the chunk files in order.
+ * @returns {Promise<string[]>} - Paths to the extracted chunk files in order.
  */
 async function splitIntoChunks(capabilities, inputPath, specs, tempDir) {
     const ext = inputPath.includes(".") ? inputPath.slice(inputPath.lastIndexOf(".")) : ".mp3";

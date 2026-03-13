@@ -29,6 +29,7 @@ function makeCaps({ durationMs = 60_000, sizeBytes = 1024 } = {}) {
     return {
         environment: {
             openaiAPIKey: jest.fn().mockReturnValue("test-key"),
+            workingDirectory: jest.fn().mockReturnValue("/tmp"),
         },
         ffprobe: {
             call: jest.fn().mockResolvedValue({
@@ -48,7 +49,17 @@ function makeCaps({ durationMs = 60_000, sizeBytes = 1024 } = {}) {
             createTemporaryDirectory: jest.fn().mockResolvedValue("/tmp/fake"),
         },
         checker: {
-            fileExists: jest.fn().mockResolvedValue({}),
+            fileExists: jest.fn().mockImplementation((p) => Promise.resolve({ path: p })),
+            instantiate: jest.fn().mockImplementation((p) => Promise.resolve({ path: p })),
+        },
+        reader: {
+            createReadStream: jest.fn().mockReturnValue({
+                on: jest.fn(),
+                destroy: jest.fn(),
+            }),
+        },
+        deleter: {
+            deleteDirectory: jest.fn().mockResolvedValue(undefined),
         },
     };
 }
@@ -68,17 +79,19 @@ function makeMockOpenAI(transcripts) {
         audio: {
             transcriptions: {
                 create: jest.fn().mockImplementation((params) => {
-                    // Suppress stream errors that occur when file is cleaned up after test
+                    // Suppress any stream errors from mock streams
                     if (params && params.file) {
                         const stream = params.file;
-                        stream.on("error", () => {});
+                        if (typeof stream.on === "function") {
+                            stream.on("error", () => {});
+                        }
                         if (typeof stream.destroy === "function") {
                             stream.destroy();
                         }
                     }
                     const text = list[callIndex % list.length];
                     callIndex++;
-                    return Promise.resolve({ text, usage: { total_tokens: 100 }, logprobs: null });
+                    return Promise.resolve({ text, logprobs: null });
                 }),
             },
         },

@@ -10,9 +10,6 @@
  *   6. Return a rich TranscriptionResult.
  */
 
-const os = require("os");
-const path = require("path");
-const fs = require("fs");
 const { planChunks, buildContinuityPrompt } = require("./transcription_chunk_plan");
 const { glueTranscripts } = require("./transcription_glue");
 const { getAudioInfo, splitIntoChunks } = require("./transcription_splitter");
@@ -22,6 +19,8 @@ const { transcribeChunk, extractStructured, TRANSCRIPTION_MODEL } = require("./t
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} OrchestrateCapabilities
@@ -30,6 +29,8 @@ const { transcribeChunk, extractStructured, TRANSCRIPTION_MODEL } = require("./t
  * @property {Command} ffmpeg  - ffmpeg command.
  * @property {FileCreator} creator - File creator.
  * @property {FileChecker} checker - File checker.
+ * @property {FileReader} reader - File reader.
+ * @property {FileDeleter} deleter - File deleter.
  */
 
 /**
@@ -104,7 +105,7 @@ async function orchestrateTranscription(makeOpenAI, capabilities, filePath) {
     // 3. Split audio if needed (skip when only one chunk spanning the whole file)
     const needsSplit = specs.length > 1;
     const tempDir = needsSplit
-        ? fs.mkdtempSync(path.join(os.tmpdir(), "volodyslav-chunks-"))
+        ? await capabilities.creator.createTemporaryDirectory(capabilities)
         : null;
 
     /** @type {string[]} */
@@ -125,7 +126,10 @@ async function orchestrateTranscription(makeOpenAI, capabilities, filePath) {
         if (!spec) {
             continue;
         }
-        const chunkPath = chunkPaths[i] ?? filePath;
+        const chunkPath = chunkPaths[i];
+        if (!chunkPath) {
+            continue;
+        }
         const continuityPrompt = i === 0 ? null : buildContinuityPrompt(stitchedText);
 
         const chunkResult = await transcribeChunk(
@@ -149,12 +153,12 @@ async function orchestrateTranscription(makeOpenAI, capabilities, filePath) {
         }
     }
 
-    // Clean up temp directory
+    // Clean up temp directory (best-effort)
     if (tempDir) {
         try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
+            await capabilities.deleter.deleteDirectory(tempDir);
         } catch (_) {
-            // best-effort cleanup
+            // best-effort cleanup; do not fail transcription if cleanup fails
         }
     }
 

@@ -12,6 +12,9 @@ const {
     OVERLAP_MS,
 } = require("../src/ai/transcription_chunk_plan");
 
+/** A file size that always triggers chunking. */
+const BIG_FILE = MAX_SAFE_FILE_SIZE_BYTES + 1024;
+
 // ---------------------------------------------------------------------------
 // shouldChunk
 // ---------------------------------------------------------------------------
@@ -62,7 +65,6 @@ describe("planChunks – no split needed", () => {
 describe("planChunks – split needed", () => {
     /** 10-minute audio with a large file */
     const LONG_DURATION = 10 * 60 * 1000;
-    const BIG_FILE = MAX_SAFE_FILE_SIZE_BYTES + 1024;
 
     test("produces more than one chunk for long audio", () => {
         const specs = planChunks(BIG_FILE, LONG_DURATION);
@@ -145,8 +147,6 @@ describe("planChunks – edge cases", () => {
         expect(specs.length).toBeGreaterThan(5);
     });
 });
-
-const BIG_FILE = MAX_SAFE_FILE_SIZE_BYTES + 1024;
 
 // ---------------------------------------------------------------------------
 // buildContinuityPrompt

@@ -3,20 +3,23 @@
  *
  * OpenAI audio transcription for a single audio segment.
  *
- * Uses the gpt-4o-transcribe model with JSON (verbose_json) output and
+ * Uses the gpt-4o-transcribe model with JSON output and
  * requests logprobs where the API supports it.
  */
 
-const fs = require("fs");
 const { OpenAI } = require("openai");
 const memoize = require("@emotion/memoize").default;
 const memconst = require("../memconst");
 
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 
 /**
  * @typedef {object} OpenAITranscriptionCapabilities
  * @property {Environment} environment - An environment instance.
+ * @property {FileReader} reader - File reader for creating streams.
+ * @property {FileChecker} checker - File checker for verifying file existence.
  */
 
 /** Model to use for transcription. */
@@ -83,10 +86,21 @@ async function transcribeChunk(
     const apiKey = capabilities.environment.openaiAPIKey();
     const openai = makeOpenAI(apiKey);
 
+    // Obtain a typed ExistingFile via instantiate (throws if the file is not found)
+    let existingFile;
+    try {
+        existingFile = await capabilities.checker.instantiate(filePath);
+    } catch (err) {
+        throw new OpenAITranscriptionError(
+            `Chunk file not found: ${filePath}`,
+            err
+        );
+    }
+
     /** @type {import('openai').OpenAI.Audio.TranscriptionCreateParamsNonStreaming} */
     const params = {
         model: TRANSCRIPTION_MODEL,
-        file: fs.createReadStream(filePath),
+        file: capabilities.reader.createReadStream(existingFile),
         // "json" response format supports logprobs; "verbose_json" does not
         response_format: "json",
         include: ["logprobs"],

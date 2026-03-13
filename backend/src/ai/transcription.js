@@ -22,6 +22,8 @@ const { TRANSCRIPTION_MODEL } = require("./transcription_openai");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
@@ -30,6 +32,8 @@ const { TRANSCRIPTION_MODEL } = require("./transcription_openai");
  * @property {Command} ffmpeg  - ffmpeg command.
  * @property {FileCreator} creator - File creator.
  * @property {FileChecker} checker - File checker.
+ * @property {FileReader} reader - File reader.
+ * @property {FileDeleter} deleter - File deleter.
  */
 
 /**

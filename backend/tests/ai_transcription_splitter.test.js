@@ -39,7 +39,8 @@ function makeCaps(overrides = {}) {
             createTemporaryDirectory: jest.fn().mockResolvedValue("/tmp/fake"),
         },
         checker: {
-            fileExists: jest.fn().mockResolvedValue({}),
+            // Simulate successful file existence check, returning a minimal ExistingFile-like object
+            fileExists: jest.fn().mockImplementation((p) => Promise.resolve({ path: p })),
         },
         ...overrides,
     };
