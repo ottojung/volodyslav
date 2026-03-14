@@ -24,6 +24,9 @@ const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
+ * Pull implementation that assumes the caller has already acquired the global
+ * pull-mode lock.
+ *
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
@@ -61,6 +64,9 @@ async function internalPull(
 }
 
 /**
+ * Pull-with-status implementation that assumes the caller has already acquired
+ * the global pull-mode lock.
+ *
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeName} nodeName
  * @param {Array<ConstValue>} [bindings=[]]

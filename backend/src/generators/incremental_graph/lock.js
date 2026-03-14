@@ -1,8 +1,10 @@
 const { makeUniqueFunctor } = require("../../unique_functor");
+const { nodeKeyStringToString } = require("./database");
 
 /**
  * Mutex key for operations that must exclude all incremental-graph activity
- * (for example, migration).
+ * (for example, migration). Regular pull/invalidate/inspection paths should use
+ * GRAPH_ACTIVITY_KEY mode locking instead.
  */
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
@@ -54,7 +56,10 @@ function withPullMode(sleeper, procedure) {
  * @returns {Promise<T>}
  */
 function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
-    return sleeper.withMutex(PULL_NODE_KEY.instantiate([nodeKeyStr]), procedure);
+    return sleeper.withMutex(
+        PULL_NODE_KEY.instantiate([nodeKeyStringToString(nodeKeyStr)]),
+        procedure
+    );
 }
 
 module.exports = {
