@@ -16,9 +16,9 @@ const {
 
 /**
  * Creates test capabilities.
- * @param {number} [defaultCalories=0] - calorie value to return from the mocked AI
+ * @param {number | 'N/A'} [defaultCalories='N/A'] - calorie value to return from the mocked AI, or 'N/A' for unavailable
  */
-async function getTestCapabilities(defaultCalories = 0) {
+async function getTestCapabilities(defaultCalories = "N/A") {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
@@ -184,8 +184,8 @@ describe("calories(e) node", () => {
         expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
     });
 
-    test("returns 0 calories for a non-food entry", async () => {
-        const capabilities = await getTestCapabilities(0);
+    test("returns N/A for a non-food entry", async () => {
+        const capabilities = await getTestCapabilities("N/A");
         const iface = capabilities.interface;
         await iface.ensureInitialized();
 
@@ -193,9 +193,24 @@ describe("calories(e) node", () => {
         await iface.update();
         const result = await iface._incrementalGraph.pull("calories", ["1"]);
 
-        expect(result).toEqual({ type: "calories", value: 0 });
+        expect(result).toEqual({ type: "calories", value: "N/A" });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
             "sleep 8 hours"
+        );
+    });
+
+    test("returns 0 calories for a food entry with no caloric content (e.g. tea)", async () => {
+        const capabilities = await getTestCapabilities(0);
+        const iface = capabilities.interface;
+        await iface.ensureInitialized();
+
+        await writeEventsToStore(capabilities, [makeEvent("1", "a cup of plain tea")]);
+        await iface.update();
+        const result = await iface._incrementalGraph.pull("calories", ["1"]);
+
+        expect(result).toEqual({ type: "calories", value: 0 });
+        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
+            "a cup of plain tea"
         );
     });
 
@@ -251,7 +266,7 @@ describe("calories(e) node", () => {
         capabilities.aiCalories.estimateCalories = jest
             .fn()
             .mockResolvedValueOnce(150)
-            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce("N/A")
             .mockResolvedValueOnce(400);
         const iface = capabilities.interface;
         await iface.ensureInitialized();
@@ -268,7 +283,7 @@ describe("calories(e) node", () => {
         const c3 = await iface._incrementalGraph.pull("calories", ["3"]);
 
         expect(c1).toEqual({ type: "calories", value: 150 });
-        expect(c2).toEqual({ type: "calories", value: 0 });
+        expect(c2).toEqual({ type: "calories", value: "N/A" });
         expect(c3).toEqual({ type: "calories", value: 400 });
     });
 });

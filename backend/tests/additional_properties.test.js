@@ -94,7 +94,7 @@ async function writeDiaryEventWithAudioAssets(capabilities, entryId, filenames) 
 /**
  * Creates a full Express app with routes, but does NOT initialize the interface.
  */
-async function makeUninitializedApp(defaultCalories = 0) {
+async function makeUninitializedApp(defaultCalories = "N/A") {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
@@ -111,7 +111,7 @@ async function makeUninitializedApp(defaultCalories = 0) {
 /**
  * Creates a full Express app with routes AND initializes the incremental graph.
  */
-async function makeInitializedApp(defaultCalories = 0) {
+async function makeInitializedApp(defaultCalories = "N/A") {
     const { app, capabilities } = await makeUninitializedApp(defaultCalories);
     await capabilities.interface.ensureInitialized();
     return { app, capabilities };
@@ -143,7 +143,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("returns empty object when entry has no input text", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "")]);
             await capabilities.interface.update();
@@ -155,8 +155,8 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(res.body).toEqual({});
         });
 
-        it("returns empty object when AI estimates 0 calories", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+        it("returns empty object for a non-food entry", async () => {
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "ran 5km")]);
             await capabilities.interface.update();
@@ -166,6 +166,19 @@ describe("GET /api/entries/:id/additional-properties", () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body).toEqual({});
+        });
+
+        it("returns { calories: 0 } for a 0-calorie food entry", async () => {
+            const { app, capabilities } = await makeInitializedApp(0);
+
+            await writeEventsToStore(capabilities, [makeEvent("entry-1", "a cup of plain tea")]);
+            await capabilities.interface.update();
+
+            const res = await request(app)
+                .get("/api/entries/entry-1/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toEqual({ calories: 0 });
         });
 
         it("returns { calories } when AI estimates non-zero calories", async () => {
@@ -244,7 +257,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("returns empty object for entry with no audio assets", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "ran 5km")]);
             await capabilities.interface.update();
@@ -258,7 +271,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("returns { transcription } for a diary entry with an audio asset", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-1", ["memo.mp3"]);
             await capabilities.interface.update();
@@ -286,7 +299,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("returns transcription from the first audio asset only", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-2", ["first.mp3", "second.mp3"]);
             await capabilities.interface.update();
@@ -299,7 +312,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("ignores non-audio assets when looking for transcription", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             const diaryEvent = makeDiaryEvent("diary-3");
             const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
@@ -322,7 +335,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("uses cached transcription on repeated requests", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-4", ["memo.mp3"]);
             await capabilities.interface.update();
@@ -350,7 +363,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("returns 400 for an invalid requested additional property", async () => {
-            const { app } = await makeInitializedApp(0);
+            const { app } = await makeInitializedApp("N/A");
 
             const res = await request(app)
                 .get("/api/entries/entry-1/additional-properties?property=unknown");
@@ -360,7 +373,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("includes transcription error in response when transcription AI fails", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-error", ["memo.mp3"]);
             await capabilities.interface.update();
@@ -383,7 +396,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
         });
 
         it("includes calories error in response when calories AI fails", async () => {
-            const { app, capabilities } = await makeInitializedApp(0);
+            const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-calories-error", "food: a pizza")]);
             await capabilities.interface.update();
