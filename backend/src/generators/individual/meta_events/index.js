@@ -4,6 +4,7 @@
  */
 
 const { computeMetaEvents, reconstructFromMetaEvents } = require('./compute');
+const { computor } = require('./wrapper');
 
 /** @typedef {import('./compute').MetaEvent} MetaEvent */
 /** @typedef {import('./compute').MetaEventAdd} MetaEventAdd */
@@ -13,4 +14,5 @@ const { computeMetaEvents, reconstructFromMetaEvents } = require('./compute');
 module.exports = {
     computeMetaEvents,
     reconstructFromMetaEvents,
+    computor,
 };
