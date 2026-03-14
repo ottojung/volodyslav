@@ -64,8 +64,8 @@ async function internalPull(
 }
 
 /**
- * Pull-with-status implementation that assumes the caller has already acquired
- * the global pull-mode lock.
+ * Pull-with-status implementation that acquires the global pull-mode lock
+ * and then delegates to internalPullWithStatus.
  *
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeName} nodeName
