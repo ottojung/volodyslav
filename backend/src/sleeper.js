@@ -107,7 +107,7 @@ function make() {
             entry = modeMutexes.get(stringKey);
             if (entry === undefined) {
                 throw new Error(
-                    `withModeMutex: internal state corruption detected for key "${stringKey}" after waiting`
+                    `withModeMutex: internal state corruption detected for key "${stringKey}" in mode "${mode}" after waiting`
                 );
             }
         }
