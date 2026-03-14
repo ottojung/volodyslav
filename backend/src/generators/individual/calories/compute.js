@@ -16,7 +16,7 @@
  * Estimates the calorie count for the given event.
  *
  * Extracts the raw input text from the event and delegates to the AI estimator
- * via capabilities. Returns null (N/A) when the event is null or when the AI
+ * via capabilities. Returns 'N/A' when the event is null or when the AI
  * determines the entry has no meaningful calorie assignment (e.g. sleep, exercise).
  *
  * @param {Event | null} event - The full event object, or null if not found
@@ -26,7 +26,7 @@
 async function computeCaloriesForEvent(event, capabilities) {
     if (event === null) {
         capabilities.logger.logDebug({}, "computeCaloriesForEvent: event is null, returning N/A");
-        return { type: "calories", value: null };
+        return { type: "calories", value: "N/A" };
     }
 
     const inputText = event.input ?? "";

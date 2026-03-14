@@ -60,7 +60,7 @@ Rules:
 
 /**
  * @typedef {object} AICalories
- * @property {(entry: string) => Promise<number | null>} estimateCalories
+ * @property {(entry: string) => Promise<number | 'N/A'>} estimateCalories
  */
 
 /**
@@ -68,11 +68,11 @@ Rules:
  * @param {function(string): OpenAI} openai - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {string} entry - The log entry to analyse.
- * @returns {Promise<number | null>} - The estimated calorie count, or null when not applicable.
+ * @returns {Promise<number | 'N/A'>} - The estimated calorie count, or 'N/A' when not applicable.
  */
 async function estimateCalories(openai, capabilities, entry) {
     if (entry.trim() === "") {
-        return null;
+        return "N/A";
     }
 
     try {
@@ -86,7 +86,7 @@ async function estimateCalories(openai, capabilities, entry) {
         });
         const text = response.choices[0]?.message?.content?.trim() ?? "N/A";
         if (text === "N/A") {
-            return null;
+            return "N/A";
         }
         const calories = parseInt(text, 10);
         if (isNaN(calories)) {

@@ -129,7 +129,7 @@ function versionToString(Version) {
  * Estimated calorie count for a single event.
  * @typedef {object} CaloriesEntry
  * @property {'calories'} type - The type of the entry
- * @property {number | null} value - The estimated number of calories, or null when not applicable (N/A)
+ * @property {number | 'N/A'} value - The estimated number of calories, or 'N/A' when not applicable
  */
 
 
