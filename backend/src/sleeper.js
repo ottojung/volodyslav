@@ -24,7 +24,7 @@
  */
 
 /**
- * @typedef {{ mode: string, resolve: () => void }} ModeMutexWaiter
+ * @typedef {{ mode: string, resolve: (value?: void) => void }} ModeMutexWaiter
  */
 
 /**
@@ -100,36 +100,44 @@ function make() {
             entry.activeMode = mode;
             entry.activeCount += 1;
         } else {
+            const waitingEntry = entry;
             await new Promise((resolve) => {
-                entry.queue.push({ mode, resolve });
+                waitingEntry.queue.push({ mode, resolve });
             });
             entry = modeMutexes.get(stringKey);
             if (entry === undefined) {
-                throw new Error(`withModeMutex: missing state for key "${stringKey}"`);
+                throw new Error(
+                    `withModeMutex: internal state corruption detected for key "${stringKey}" after waiting`
+                );
             }
         }
+        const activeEntry = entry;
 
         try {
             return await procedure();
         } finally {
-            entry.activeCount -= 1;
-            if (entry.activeCount === 0) {
-                entry.activeMode = undefined;
-                if (entry.queue.length === 0) {
+            activeEntry.activeCount -= 1;
+            if (activeEntry.activeCount === 0) {
+                activeEntry.activeMode = undefined;
+                if (activeEntry.queue.length === 0) {
                     modeMutexes.delete(stringKey);
                 } else {
-                    const nextMode = entry.queue[0].mode;
-                    entry.activeMode = nextMode;
-                    while (
-                        entry.queue.length > 0 &&
-                        entry.queue[0].mode === nextMode
-                    ) {
-                        const waiter = entry.queue.shift();
-                        if (waiter === undefined) {
-                            break;
+                    const firstWaiter = activeEntry.queue.shift();
+                    if (firstWaiter === undefined) {
+                        modeMutexes.delete(stringKey);
+                    } else {
+                        const nextMode = firstWaiter.mode;
+                        activeEntry.activeMode = nextMode;
+                        activeEntry.activeCount += 1;
+                        firstWaiter.resolve();
+                        while (activeEntry.queue[0]?.mode === nextMode) {
+                            const waiter = activeEntry.queue.shift();
+                            if (waiter === undefined) {
+                                break;
+                            }
+                            activeEntry.activeCount += 1;
+                            waiter.resolve();
                         }
-                        entry.activeCount += 1;
-                        waiter.resolve();
                     }
                 }
             }
