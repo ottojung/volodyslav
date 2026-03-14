@@ -4,7 +4,9 @@
  */
 
 const { computeCaloriesForEvent } = require("./compute");
+const { makeComputor } = require("./wrapper");
 
 module.exports = {
     computeCaloriesForEvent,
+    makeComputor,
 };
