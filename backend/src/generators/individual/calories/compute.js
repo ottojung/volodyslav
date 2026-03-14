@@ -12,6 +12,9 @@
  * @property {import('../../../logger').Logger} logger - Logger for debugging and informational messages.
  */
 
+/**
+ * Sentinel token used when calories cannot be meaningfully assigned.
+ */
 const UNAVAILABLE_CALORIES = "N/A";
 
 /**

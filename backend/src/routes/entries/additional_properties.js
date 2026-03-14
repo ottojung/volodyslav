@@ -215,6 +215,7 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
             if (
                 caloriesEntry &&
                 caloriesEntry.type === "calories" &&
+                typeof caloriesEntry.value === "number" &&
                 caloriesEntry.value > 0
             ) {
                 properties.calories = caloriesEntry.value;
