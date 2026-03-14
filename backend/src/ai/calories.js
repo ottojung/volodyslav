@@ -54,13 +54,13 @@ const CALORIES_MODEL = "gpt-5.2";
 const SYSTEM_PROMPT = `You are a nutrition assistant. Given a personal log entry, estimate the number of calories consumed.
 
 Rules:
-- If the entry describes food or drink consumption, return your best integer estimate of the total calories.
-- If the entry contains no food or drink consumption (e.g. sleep, exercise, mood, tasks), return 0.
-- Respond with a single integer and nothing else. No units, no explanation.`;
+- If the entry describes food or drink consumption, return your best integer estimate of the total calories. Use 0 for items with no caloric content (e.g. water, plain tea, black coffee).
+- If the entry contains no food or drink consumption (e.g. sleep, exercise, mood, tasks), return N/A.
+- Respond with a single integer or the token N/A and nothing else. No units, no explanation.`;
 
 /**
  * @typedef {object} AICalories
- * @property {(entry: string) => Promise<number>} estimateCalories
+ * @property {(entry: string) => Promise<number | null>} estimateCalories
  */
 
 /**
@@ -68,11 +68,11 @@ Rules:
  * @param {function(string): OpenAI} openai - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {string} entry - The log entry to analyse.
- * @returns {Promise<number>} - The estimated calorie count.
+ * @returns {Promise<number | null>} - The estimated calorie count, or null when not applicable.
  */
 async function estimateCalories(openai, capabilities, entry) {
     if (entry.trim() === "") {
-        return 0;
+        return null;
     }
 
     try {
@@ -84,7 +84,10 @@ async function estimateCalories(openai, capabilities, entry) {
                 { role: "user", content: entry },
             ],
         });
-        const text = response.choices[0]?.message?.content?.trim() ?? "0";
+        const text = response.choices[0]?.message?.content?.trim() ?? "N/A";
+        if (text === "N/A") {
+            return null;
+        }
         const calories = parseInt(text, 10);
         if (isNaN(calories)) {
             throw new AICaloriesError(

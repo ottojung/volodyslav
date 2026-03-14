@@ -35,7 +35,7 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
 
 /**
  * @typedef {object} AdditionalProperties
- * @property {number} [calories] - Estimated calorie count; omitted when 0 or unknown.
+ * @property {number} [calories] - Estimated calorie count; omitted when N/A (non-food entry) or unknown.
  * @property {string} [transcription] - Transcription text; omitted when unavailable.
  * @property {Object<string, string>} [errors] - Per-property error messages; omitted when no errors.
  */
@@ -215,7 +215,7 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
             if (
                 caloriesEntry &&
                 caloriesEntry.type === "calories" &&
-                caloriesEntry.value > 0
+                caloriesEntry.value !== null
             ) {
                 properties.calories = caloriesEntry.value;
             }

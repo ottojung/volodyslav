@@ -119,9 +119,9 @@ function stubAiTranscriber(capabilities) {
 /**
  * Stubs the AI calories capabilities for testing.
  * @param {object} capabilities
- * @param {number} [defaultCalories=0] - The default calorie count to return for any input
+ * @param {number | null} [defaultCalories=null] - The default calorie count to return for any input, or null for N/A
  */
-function stubAiCalories(capabilities, defaultCalories = 0) {
+function stubAiCalories(capabilities, defaultCalories = null) {
     capabilities.aiCalories.estimateCalories = jest
         .fn()
         .mockResolvedValue(defaultCalories);
