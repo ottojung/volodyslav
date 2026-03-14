@@ -108,202 +108,119 @@ describe('sleeper.withMutex', () => {
     });
 });
 
-describe('sleeper.withoutMutex', () => {
-    it('throws when called outside a withMutex callback', async () => {
-        const sleeper = make();
-        const key = makeKey();
-
-        await expect(
-            sleeper.withoutMutex(key, async () => 'nope')
-        ).rejects.toThrow('withoutMutex');
-    });
-
-    it('allows another withMutex caller to run while the procedure executes', async () => {
+describe('sleeper.withModeMutex', () => {
+    it('allows concurrent calls with the same key and mode', async () => {
         const sleeper = make();
         const key = makeKey();
 
         /** @type {Array<string>} */
         const trace = [];
 
-        // Start a waiter before the outer withMutex acquires, so it is queued.
-        // We need a way to synchronise: start the outer first, let it release,
-        // then the waiter should run concurrently with the procedure.
+        const first = sleeper.withModeMutex(key, 'pull', async () => {
+            trace.push('first-start');
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            trace.push('first-end');
+        });
+
+        const second = sleeper.withModeMutex(key, 'pull', async () => {
+            trace.push('second-start');
+            trace.push('second-end');
+        });
+
+        await Promise.all([first, second]);
+
+        expect(trace).toEqual([
+            'first-start',
+            'second-start',
+            'second-end',
+            'first-end',
+        ]);
+    });
+
+    it('serializes calls with the same key and different modes', async () => {
+        const sleeper = make();
+        const key = makeKey();
+
+        /** @type {Array<string>} */
+        const trace = [];
+
+        const first = sleeper.withModeMutex(key, 'pull', async () => {
+            trace.push('pull-start');
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            trace.push('pull-end');
+        });
+
+        const second = sleeper.withModeMutex(key, 'inspect', async () => {
+            trace.push('inspect-start');
+            trace.push('inspect-end');
+        });
+
+        await Promise.all([first, second]);
+
+        expect(trace).toEqual([
+            'pull-start',
+            'pull-end',
+            'inspect-start',
+            'inspect-end',
+        ]);
+    });
+
+    it('does not let same-mode callers bypass an earlier queued different mode', async () => {
+        const sleeper = make();
+        const key = makeKey();
+
+        /** @type {Array<string>} */
+        const trace = [];
+
         let resolveBarrier = () => undefined;
         const barrier = new Promise((resolve) => { resolveBarrier = resolve; });
 
-        const outer = sleeper.withMutex(key, async () => {
-            trace.push('outer-start');
-            // Let the second caller queue itself now that we hold the mutex.
+        const firstPull = sleeper.withModeMutex(key, 'pull', async () => {
+            trace.push('pull-1-start');
             resolveBarrier();
-            await sleeper.withoutMutex(key, async () => {
-                trace.push('procedure-start');
-                // Give the second caller a tick to run.
-                await new Promise((resolve) => setTimeout(resolve, 20));
-                trace.push('procedure-end');
-            });
-            trace.push('outer-end');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            trace.push('pull-1-end');
         });
 
-        // Wait until the outer has the mutex, then queue the second caller.
         await barrier;
-        const inner = sleeper.withMutex(key, async () => {
-            trace.push('inner-start');
-            trace.push('inner-end');
+
+        const inspect = sleeper.withModeMutex(key, 'inspect', async () => {
+            trace.push('inspect-start');
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            trace.push('inspect-end');
+        });
+        const secondPull = sleeper.withModeMutex(key, 'pull', async () => {
+            trace.push('pull-2-start');
+            trace.push('pull-2-end');
         });
 
-        await Promise.all([outer, inner]);
+        await Promise.all([firstPull, inspect, secondPull]);
 
-        // The inner caller runs while the procedure is executing (mutex released).
         expect(trace).toEqual([
-            'outer-start',
-            'procedure-start',
-            'inner-start',
-            'inner-end',
-            'procedure-end',
-            'outer-end',
+            'pull-1-start',
+            'pull-1-end',
+            'inspect-start',
+            'inspect-end',
+            'pull-2-start',
+            'pull-2-end',
         ]);
     });
 
-    it('re-acquires the mutex before returning, blocking further callers', async () => {
+    it('releases queued callers even when the procedure throws', async () => {
         const sleeper = make();
         const key = makeKey();
-
-        /** @type {Array<string>} */
-        const trace = [];
-
-        await sleeper.withMutex(key, async () => {
-            trace.push('before-withoutMutex');
-            await sleeper.withoutMutex(key, async () => {
-                trace.push('inside-procedure');
-            });
-            // Back inside withMutex — the following code has the mutex.
-            trace.push('after-withoutMutex');
-        });
-
-        expect(trace).toEqual([
-            'before-withoutMutex',
-            'inside-procedure',
-            'after-withoutMutex',
-        ]);
-    });
-
-    it('propagates the return value from the procedure', async () => {
-        const sleeper = make();
-        const key = makeKey();
-
-        const result = await sleeper.withMutex(key, async () => {
-            return sleeper.withoutMutex(key, async () => 99);
-        });
-
-        expect(result).toBe(99);
-    });
-
-    it('re-acquires the mutex even when the procedure throws', async () => {
-        const sleeper = make();
-        const key = makeKey();
-
-        /** @type {Array<string>} */
-        const trace = [];
 
         await expect(
-            sleeper.withMutex(key, async () => {
-                trace.push('before');
-                await sleeper.withoutMutex(key, async () => {
-                    throw new Error('procedure error');
-                });
-                trace.push('after'); // should not reach
+            sleeper.withModeMutex(key, 'pull', async () => {
+                throw new Error('mode failure');
             })
-        ).rejects.toThrow('procedure error');
+        ).rejects.toThrow('mode failure');
 
-        // The mutex must have been released.
-        const result = await sleeper.withMutex(key, async () => 'unlocked');
-        expect(result).toBe('unlocked');
-
-        // 'after' was never pushed
-        expect(trace).toEqual(['before']);
+        const result = await sleeper.withModeMutex(key, 'inspect', async () => 'ok');
+        expect(result).toBe('ok');
     });
 
-    it('releases the outer mutex when withMutex finishes after withoutMutex', async () => {
-        const sleeper = make();
-        const key = makeKey();
-
-        /** @type {Array<string>} */
-        const trace = [];
-
-        let resolveBarrier = () => undefined;
-        const barrier = new Promise((resolve) => { resolveBarrier = resolve; });
-        let resolveWaitersQueued = () => undefined;
-        const waitersQueued = new Promise((resolve) => { resolveWaitersQueued = resolve; });
-
-        const outer = sleeper.withMutex(key, async () => {
-            // Signal that we hold the mutex.
-            resolveBarrier();
-            // Wait for `after` to be queued before we release via withoutMutex.
-            await waitersQueued;
-            await sleeper.withoutMutex(key, async () => {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-            });
-            trace.push('outer-done');
-        });
-
-        // Queue `after` while outer holds the mutex.
-        await barrier;
-        const after = sleeper.withMutex(key, async () => {
-            trace.push('after-done');
-        });
-        resolveWaitersQueued();
-
-        await Promise.all([outer, after]);
-
-        // `after` runs while the 10 ms procedure executes (mutex temporarily released).
-        // withoutMutex then re-acquires; outer-done is pushed.
-        // The outer finally block releases the mutex — outer-done comes last.
-        expect(trace).toEqual(['after-done', 'outer-done']);
-    });
-
-    it('multiple concurrent withMutex waiters are queued while procedure runs', async () => {
-        const sleeper = make();
-        const key = makeKey();
-
-        /** @type {Array<string>} */
-        const trace = [];
-
-        let resolveBarrier = () => undefined;
-        const barrier = new Promise((resolve) => { resolveBarrier = resolve; });
-        let resolveWaitersQueued = () => undefined;
-        const waitersQueued = new Promise((resolve) => { resolveWaitersQueued = resolve; });
-
-        const outer = sleeper.withMutex(key, async () => {
-            resolveBarrier();
-            // Wait for all waiters to be queued before we release via withoutMutex.
-            await waitersQueued;
-            await sleeper.withoutMutex(key, async () => {
-                // long enough for all three waiters to run during this period
-                await new Promise((resolve) => setTimeout(resolve, 40));
-                trace.push('procedure');
-            });
-            trace.push('outer-end');
-        });
-
-        await barrier;
-
-        const waiter1 = sleeper.withMutex(key, async () => { trace.push('w1'); });
-        const waiter2 = sleeper.withMutex(key, async () => { trace.push('w2'); });
-        const waiter3 = sleeper.withMutex(key, async () => { trace.push('w3'); });
-
-        resolveWaitersQueued();
-
-        await Promise.all([outer, waiter1, waiter2, waiter3]);
-
-        // w1, w2, w3 run while the 40 ms procedure executes (mutex released).
-        // Then procedure fires, withoutMutex re-acquires, outer-end is pushed.
-        const waiters = new Set(trace.slice(0, 3));
-        expect(waiters).toEqual(new Set(['w1', 'w2', 'w3']));
-        expect(trace[3]).toBe('procedure');
-        expect(trace[4]).toBe('outer-end');
-    });
-
-    it('does not interfere with a different key', async () => {
+    it('allows different keys to proceed independently even with different modes', async () => {
         const sleeper = make();
         const key1 = makeKey();
         const key2 = makeKey();
@@ -311,53 +228,24 @@ describe('sleeper.withoutMutex', () => {
         /** @type {Array<string>} */
         const trace = [];
 
-        let resolveBarrier = () => undefined;
-        const barrier = new Promise((resolve) => { resolveBarrier = resolve; });
-
-        const outer = sleeper.withMutex(key1, async () => {
-            resolveBarrier();
-            await sleeper.withoutMutex(key1, async () => {
-                await new Promise((resolve) => setTimeout(resolve, 20));
-                trace.push('outer-procedure');
-            });
+        const first = sleeper.withModeMutex(key1, 'pull', async () => {
+            trace.push('key1-start');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            trace.push('key1-end');
         });
 
-        await barrier;
-        // key2 should run independently of key1's withoutMutex
-        const unrelated = sleeper.withMutex(key2, async () => {
-            trace.push('unrelated');
+        const second = sleeper.withModeMutex(key2, 'inspect', async () => {
+            trace.push('key2-start');
+            trace.push('key2-end');
         });
 
-        await Promise.all([outer, unrelated]);
+        await Promise.all([first, second]);
 
-        // Both run — unrelated finishes first because key2 is uncontested
-        expect(trace).toContain('outer-procedure');
-        expect(trace).toContain('unrelated');
-        expect(trace[0]).toBe('unrelated');
-    });
-
-    it('withoutMutex called after the mutex is not held throws', async () => {
-        const sleeper = make();
-        const key = makeKey();
-
-        // Acquire and release, then try withoutMutex outside
-        await sleeper.withMutex(key, async () => { /* done */ });
-
-        await expect(
-            sleeper.withoutMutex(key, async () => 'bad')
-        ).rejects.toThrow('withoutMutex');
-    });
-
-    it('withMutex on a different key from withoutMutex is independent', async () => {
-        const sleeper = make();
-        const key1 = makeKey();
-        const key2 = makeKey();
-
-        // withoutMutex on key2 while holding key1 should throw
-        await expect(
-            sleeper.withMutex(key1, async () => {
-                await sleeper.withoutMutex(key2, async () => 'nope');
-            })
-        ).rejects.toThrow('withoutMutex');
+        expect(trace).toEqual([
+            'key1-start',
+            'key2-start',
+            'key2-end',
+            'key1-end',
+        ]);
     });
 });

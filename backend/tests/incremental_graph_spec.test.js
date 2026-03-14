@@ -1966,10 +1966,6 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
             expect(result1).toEqual({ n: 11 });
             expect(result2).toEqual({ n: 11 });
 
-            // With withoutMutex, the mutex is released while the computor runs.
-            // Concurrent pulls on the same uncached node may each compute independently
-            // rather than deduplicate in-flight. Both calls return correct results.
-            expect(counter.calls).toBeGreaterThanOrEqual(1);
-            expect(counter.calls).toBeLessThanOrEqual(2);
+            expect(counter.calls).toBe(1);
         });
 });

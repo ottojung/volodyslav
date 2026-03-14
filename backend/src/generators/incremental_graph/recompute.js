@@ -17,8 +17,6 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { deserializeNodeKey } = require("./node_key");
 const { isUnchanged } = require("./unchanged");
 const { nodeKeyStringToString } = require("./database");
-const { withoutMutex } = require("./lock");
-
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ConcreteNode} nodeDefinition
@@ -111,11 +109,7 @@ async function internalMaybeRecalculate(
         }
     }
 
-    // Release the mutex during the (potentially expensive) computor call so
-    // that other graph operations (e.g. cheap event reads) can proceed concurrently.
-    const computedValue = await withoutMutex(incrementalGraph.sleeper, () =>
-        nodeDefinition.computor(inputValues, oldValue)
-    );
+    const computedValue = await nodeDefinition.computor(inputValues, oldValue);
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
             throw makeInvalidUnchangedError(nodeKey);

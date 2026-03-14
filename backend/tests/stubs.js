@@ -144,7 +144,7 @@ function stubDailyTasksExecutable(capabilities) {
 function stubSleeper(capabilities) {
     const original = capabilities.sleeper;   
     const withMutex = original.withMutex; 
-    const withoutMutex = original.withoutMutex;
+    const withModeMutex = original.withModeMutex;
 
     const sleep = jest.fn().mockImplementation(async (_name, _duration) => {
         await new Promise((resolve) => setTimeout(resolve, 1));
@@ -178,7 +178,7 @@ function stubSleeper(capabilities) {
         sleep,
         makeSleeper,
         withMutex,
-        withoutMutex,
+        withModeMutex,
     };
 }
 
