@@ -8,6 +8,7 @@
 /**
  * @typedef {object} IncrementalGraphInspectionAccess
  * @property {Map<import('./types').NodeName, CompiledNode>} headIndex
+ * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('./types').Version} dbVersion
  */
@@ -20,6 +21,7 @@ const {
 const { makeInvalidNodeError, makeMissingTimestampError } = require("./errors");
 const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
 const { fromISOString } = require("../../datetime");
+const { withObserveMode } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
@@ -33,21 +35,23 @@ async function internalDebugGetFreshness(
     head,
     bindings = []
 ) {
-    const nodeName = stringToNodeName(head);
-    const compiledNode = incrementalGraph.headIndex.get(nodeName);
-    if (!compiledNode) {
-        throw makeInvalidNodeError(nodeName);
-    }
+    return withObserveMode(incrementalGraph.sleeper, async () => {
+        const nodeName = stringToNodeName(head);
+        const compiledNode = incrementalGraph.headIndex.get(nodeName);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeName);
+        }
 
-    checkArity(compiledNode, bindings);
+        checkArity(compiledNode, bindings);
 
-    const nodeKey = { head: nodeName, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
-    const freshness = await incrementalGraph.storage.freshness.get(concreteKey);
-    if (freshness === undefined) {
-        return "missing";
-    }
-    return freshness;
+        const nodeKey = { head: nodeName, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+        const freshness = await incrementalGraph.storage.freshness.get(concreteKey);
+        if (freshness === undefined) {
+            return "missing";
+        }
+        return freshness;
+    });
 }
 
 /**
@@ -57,17 +61,19 @@ async function internalDebugGetFreshness(
  * @returns {Promise<import('./types').ComputedValue | undefined>}
  */
 async function internalDebugGetValue(incrementalGraph, head, bindings = []) {
-    const nodeName = stringToNodeName(head);
-    const compiledNode = incrementalGraph.headIndex.get(nodeName);
-    if (!compiledNode) {
-        throw makeInvalidNodeError(nodeName);
-    }
+    return withObserveMode(incrementalGraph.sleeper, async () => {
+        const nodeName = stringToNodeName(head);
+        const compiledNode = incrementalGraph.headIndex.get(nodeName);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeName);
+        }
 
-    checkArity(compiledNode, bindings);
+        checkArity(compiledNode, bindings);
 
-    const nodeKey = { head: nodeName, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
-    return await incrementalGraph.storage.values.get(concreteKey);
+        const nodeKey = { head: nodeName, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+        return await incrementalGraph.storage.values.get(concreteKey);
+    });
 }
 
 /**
@@ -93,10 +99,12 @@ function internalDebugGetSchemaByHead(incrementalGraph, head) {
  * @returns {Promise<Array<[string, Array<ConstValue>]>>}
  */
 async function internalDebugListMaterializedNodes(incrementalGraph) {
-    const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
-    return materializedNodes.map((nodeKey) => {
-        const parsed = deserializeNodeKey(nodeKey);
-        return [nodeNameToString(parsed.head), parsed.args];
+    return withObserveMode(incrementalGraph.sleeper, async () => {
+        const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
+        return materializedNodes.map((nodeKey) => {
+            const parsed = deserializeNodeKey(nodeKey);
+            return [nodeNameToString(parsed.head), parsed.args];
+        });
     });
 }
 
@@ -119,22 +127,24 @@ async function internalGetCreationTime(
     nodeName,
     bindings = []
 ) {
-    ensureNodeNameIsHead(nodeName);
-    const nodeNameTyped = stringToNodeName(nodeName);
-    const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);
-    if (!compiledNode) {
-        throw makeInvalidNodeError(nodeNameTyped);
-    }
+    return withObserveMode(incrementalGraph.sleeper, async () => {
+        ensureNodeNameIsHead(nodeName);
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeNameTyped);
+        }
 
-    checkArity(compiledNode, bindings);
+        checkArity(compiledNode, bindings);
 
-    const nodeKey = { head: nodeNameTyped, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
-    const record = await incrementalGraph.storage.timestamps.get(concreteKey);
-    if (record === undefined) {
-        throw makeMissingTimestampError(concreteKey);
-    }
-    return fromISOString(record.createdAt);
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+        const record = await incrementalGraph.storage.timestamps.get(concreteKey);
+        if (record === undefined) {
+            throw makeMissingTimestampError(concreteKey);
+        }
+        return fromISOString(record.createdAt);
+    });
 }
 
 /**
@@ -148,22 +158,24 @@ async function internalGetModificationTime(
     nodeName,
     bindings = []
 ) {
-    ensureNodeNameIsHead(nodeName);
-    const nodeNameTyped = stringToNodeName(nodeName);
-    const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);
-    if (!compiledNode) {
-        throw makeInvalidNodeError(nodeNameTyped);
-    }
+    return withObserveMode(incrementalGraph.sleeper, async () => {
+        ensureNodeNameIsHead(nodeName);
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeNameTyped);
+        }
 
-    checkArity(compiledNode, bindings);
+        checkArity(compiledNode, bindings);
 
-    const nodeKey = { head: nodeNameTyped, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
-    const record = await incrementalGraph.storage.timestamps.get(concreteKey);
-    if (record === undefined) {
-        throw makeMissingTimestampError(concreteKey);
-    }
-    return fromISOString(record.modifiedAt);
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+        const record = await incrementalGraph.storage.timestamps.get(concreteKey);
+        if (record === undefined) {
+            throw makeMissingTimestampError(concreteKey);
+        }
+        return fromISOString(record.modifiedAt);
+    });
 }
 
 module.exports = {

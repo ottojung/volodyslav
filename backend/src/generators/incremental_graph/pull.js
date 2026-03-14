@@ -19,11 +19,14 @@
 
 const { nodeKeyStringToString, stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withMutex } = require("./lock");
+const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
+ * Pull implementation that assumes the caller has already acquired the global
+ * pull-mode lock.
+ *
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
@@ -55,8 +58,27 @@ async function internalPull(
     nodeName,
     bindings = []
 ) {
-    return withMutex(incrementalGraph.sleeper, () =>
+    return withPullMode(incrementalGraph.sleeper, () =>
         internalUnsafePull(incrementalGraph, nodeName, bindings)
+    );
+}
+
+/**
+ * Pull-with-status implementation that acquires the global pull-mode lock
+ * and then delegates to internalPullWithStatus.
+ *
+ * @param {IncrementalGraphPullAccess} incrementalGraph
+ * @param {NodeName} nodeName
+ * @param {Array<ConstValue>} [bindings=[]]
+ * @returns {Promise<RecomputeResult>}
+ */
+async function internalSafePullWithStatus(
+    incrementalGraph,
+    nodeName,
+    bindings = []
+) {
+    return withPullMode(incrementalGraph.sleeper, () =>
+        internalPullWithStatus(incrementalGraph, nodeName, bindings)
     );
 }
 
@@ -73,7 +95,10 @@ async function internalPullWithStatus(
 ) {
     const nodeKey = { head: nodeName, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    return await internalPullByNodeKeyStringWithStatus(incrementalGraph, concreteKey);
+    return await internalPullByNodeKeyStringWithStatusDuringPull(
+        incrementalGraph,
+        concreteKey
+    );
 }
 
 /**
@@ -82,6 +107,23 @@ async function internalPullWithStatus(
  * @returns {Promise<RecomputeResult>}
  */
 async function internalPullByNodeKeyStringWithStatus(
+    incrementalGraph,
+    nodeKeyStr
+) {
+    return withPullMode(incrementalGraph.sleeper, () =>
+        internalPullByNodeKeyStringWithStatusDuringPull(
+            incrementalGraph,
+            nodeKeyStr
+        )
+    );
+}
+
+/**
+ * @param {IncrementalGraphPullAccess} incrementalGraph
+ * @param {NodeKeyString} nodeKeyStr
+ * @returns {Promise<RecomputeResult>}
+ */
+async function internalPullByNodeKeyStringWithStatusDuringPull(
     incrementalGraph,
     nodeKeyStr
 ) {
@@ -122,12 +164,16 @@ async function internalPullByNodeKeyStringWithStatus(
             batch
         );
     };
-    return incrementalGraph.storage.withBatch(run);
+    return withPullNodeMutex(incrementalGraph.sleeper, nodeKeyStr, () =>
+        incrementalGraph.storage.withBatch(run)
+    );
 }
 
 module.exports = {
     internalPull,
+    internalPullByNodeKeyStringWithStatusDuringPull,
     internalPullByNodeKeyStringWithStatus,
+    internalSafePullWithStatus,
     internalPullWithStatus,
     internalUnsafePull,
 };

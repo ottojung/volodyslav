@@ -15,7 +15,7 @@
 
 const { stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withMutex } = require("./lock");
+const { withObserveMode } = require("./lock");
 const { serializeNodeKey } = require("./node_key");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
@@ -136,7 +136,7 @@ async function internalInvalidate(
     nodeName,
     bindings = []
 ) {
-    return withMutex(incrementalGraph.sleeper, () =>
+    return withObserveMode(incrementalGraph.sleeper, () =>
         internalUnsafeInvalidate(incrementalGraph, nodeName, bindings)
     );
 }
