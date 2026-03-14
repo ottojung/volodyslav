@@ -1,11 +1,15 @@
 const { makeUniqueFunctor } = require("../../unique_functor");
 
 /**
- * Mutex key for serializing all invalidate() and pull() operations.
+ * Mutex key for operations that must exclude all incremental-graph activity
+ * (for example, migration).
  */
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
+const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
+const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
  * Executes a procedure with a mutex lock to ensure that only one operation that requires the lock is running at a time.
@@ -22,6 +26,40 @@ function withMutex(sleeper, procedure) {
     return sleeper.withMutex(MUTEX_KEY, procedure);
 }
 
+/**
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withObserveMode(sleeper, procedure) {
+    return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "observe", procedure);
+}
+
+/**
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withPullMode(sleeper, procedure) {
+    return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "pull", procedure);
+}
+
+/**
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {NodeKeyString} nodeKeyStr
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
+    return sleeper.withMutex(PULL_NODE_KEY.instantiate([nodeKeyStr]), procedure);
+}
+
 module.exports = {
     withMutex,
+    withObserveMode,
+    withPullMode,
+    withPullNodeMutex,
 };

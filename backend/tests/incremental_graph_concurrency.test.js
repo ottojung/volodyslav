@@ -540,4 +540,226 @@ describe("IncrementalGraph concurrency", () => {
             expect(finalD.value).toBe(30); // 15 * 2
         });
     });
+
+    describe("locking design semantics", () => {
+        /**
+         * @template T
+         * @returns {{ promise: Promise<T>, resolve: (value: T) => void }}
+         */
+        function makeDeferred() {
+            /** @type {(value: T) => void} */
+            let resolve = () => undefined;
+            const promise = new Promise((resolveCallback) => {
+                resolve = resolveCallback;
+            });
+            return { promise, resolve };
+        }
+
+        test("concurrent invalidates can overlap (observe mode is shared)", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const source1Cell = { value: { type: "test", value: 1 } };
+            const source2Cell = { value: { type: "test", value: 2 } };
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source1",
+                    inputs: [],
+                    computor: async () => source1Cell.value,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "source2",
+                    inputs: [],
+                    computor: async () => source2Cell.value,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            const releaseBoth = makeDeferred();
+            let active = 0;
+            let maxActive = 0;
+            const originalWithBatch = graph.storage.withBatch.bind(graph.storage);
+            graph.storage.withBatch = async (run) => {
+                active += 1;
+                maxActive = Math.max(maxActive, active);
+                await releaseBoth.promise;
+                try {
+                    return await originalWithBatch(run);
+                } finally {
+                    active -= 1;
+                }
+            };
+
+            const invalidate1 = graph.invalidate("source1");
+            const invalidate2 = graph.invalidate("source2");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(maxActive).toBe(2);
+
+            releaseBoth.resolve(undefined);
+            await Promise.all([invalidate1, invalidate2]);
+        });
+
+        test("inspection reads can run while invalidate is in progress", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const sourceCell = { value: { type: "test", value: 1 } };
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => sourceCell.value,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            const releaseInvalidate = makeDeferred();
+            const enteredInvalidate = makeDeferred();
+            const originalWithBatch = graph.storage.withBatch.bind(graph.storage);
+            graph.storage.withBatch = async (run) => {
+                enteredInvalidate.resolve(undefined);
+                await releaseInvalidate.promise;
+                return await originalWithBatch(run);
+            };
+
+            const invalidatePromise = graph.invalidate("source");
+            await enteredInvalidate.promise;
+
+            let inspectionCompleted = false;
+            const inspectionPromise = graph
+                .debugListMaterializedNodes()
+                .then(() => {
+                    inspectionCompleted = true;
+                });
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(inspectionCompleted).toBe(true);
+
+            releaseInvalidate.resolve(undefined);
+            await invalidatePromise;
+            await inspectionPromise;
+        });
+
+        test("pull blocks invalidate and inspection reads", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const sourceCell = { value: { type: "test", value: 1 } };
+            const pullStarted = makeDeferred();
+            const releasePull = makeDeferred();
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => {
+                        pullStarted.resolve(undefined);
+                        await releasePull.promise;
+                        return sourceCell.value;
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            const pullPromise = graph.pull("source");
+            await pullStarted.promise;
+
+            let invalidateDone = false;
+            let inspectDone = false;
+            const invalidatePromise = graph.invalidate("source").then(() => {
+                invalidateDone = true;
+            });
+            const inspectPromise = graph.debugGetValue("source").then(() => {
+                inspectDone = true;
+            });
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(invalidateDone).toBe(false);
+            expect(inspectDone).toBe(false);
+
+            releasePull.resolve(undefined);
+            await pullPromise;
+            await invalidatePromise;
+            await inspectPromise;
+        });
+
+        test("concurrent pulls on the same node are serialized", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const sourceCell = { value: { type: "test", value: 1 } };
+            let activeComputations = 0;
+            let maxActiveComputations = 0;
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => {
+                        activeComputations += 1;
+                        maxActiveComputations = Math.max(
+                            maxActiveComputations,
+                            activeComputations
+                        );
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                        activeComputations -= 1;
+                        return sourceCell.value;
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await Promise.all([
+                graph.pull("source"),
+                graph.pull("source"),
+                graph.pull("source"),
+            ]);
+
+            expect(maxActiveComputations).toBe(1);
+        });
+
+        test("concurrent pulls on different nodes can overlap", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const source1Cell = { value: { type: "test", value: 1 } };
+            const source2Cell = { value: { type: "test", value: 2 } };
+            const releaseBoth = makeDeferred();
+            const started = [];
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source1",
+                    inputs: [],
+                    computor: async () => {
+                        started.push("source1");
+                        await releaseBoth.promise;
+                        return source1Cell.value;
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "source2",
+                    inputs: [],
+                    computor: async () => {
+                        started.push("source2");
+                        await releaseBoth.promise;
+                        return source2Cell.value;
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            const pull1 = graph.pull("source1");
+            const pull2 = graph.pull("source2");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(started.sort()).toEqual(["source1", "source2"]);
+
+            releaseBoth.resolve(undefined);
+            await Promise.all([pull1, pull2]);
+        });
+    });
 });
