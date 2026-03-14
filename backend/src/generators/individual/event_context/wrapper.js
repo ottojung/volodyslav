@@ -14,8 +14,7 @@ const computor = async (inputs, _oldValue, _bindings) => {
     }
 
     const metaEventsArray = metaEventsEntry.meta_events;
-    const contexts =
-        computeEventContexts(metaEventsArray);
+    const contexts = computeEventContexts(metaEventsArray);
 
     return {
         type: "event_context",
