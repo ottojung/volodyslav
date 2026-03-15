@@ -1,5 +1,12 @@
 
 const {
+    config,
+    allEvents,
+    sortedEventsDescending,
+    sortedEventsAscending,
+    lastEntries,
+    firstEntries,
+    eventsCount,
     metaEvents,
     eventContext,
     event,
@@ -7,7 +14,6 @@ const {
     transcription,
     eventTranscription,
 } = require("../individual");
-const computors = require("./default_graph_computors");
 
 /**
  * @typedef {object} Capabilities
@@ -59,14 +65,14 @@ function createDefaultGraphDefinition(capabilities) {
         {
             output: "config",
             inputs: [],
-            computor: computors.makeConfigComputor(capabilities),
+            computor: config.makeComputor(capabilities),
             isDeterministic: false,
             hasSideEffects: false,
         },
         {
             output: "all_events",
             inputs: [],
-            computor: computors.makeAllEventsComputor(capabilities),
+            computor: allEvents.makeComputor(capabilities),
             isDeterministic: false,
             hasSideEffects: false,
         },
@@ -79,7 +85,7 @@ function createDefaultGraphDefinition(capabilities) {
              * parsed values, then extract the serialized events.  This avoids
              * repeated fromISOString() calls inside the sort comparator.
              */
-            computor: computors.sortedEventsDescendingComputor,
+            computor: sortedEventsDescending.computor,
             isDeterministic: true,
             hasSideEffects: false,
         },
@@ -90,7 +96,7 @@ function createDefaultGraphDefinition(capabilities) {
              * Derives ascending order from the already-sorted descending list
              * with a simple O(n) reverse, avoiding a second O(n log n) sort.
              */
-            computor: computors.sortedEventsAscendingComputor,
+            computor: sortedEventsAscending.computor,
             isDeterministic: true,
             hasSideEffects: false,
         },
@@ -105,7 +111,7 @@ function createDefaultGraphDefinition(capabilities) {
              * from LevelDB very quickly, enabling the common first-page
              * request to bypass the full sorted list entirely.
              */
-            computor: computors.lastEntriesComputor,
+            computor: lastEntries.computor,
             isDeterministic: true,
             hasSideEffects: false,
         },
@@ -117,7 +123,7 @@ function createDefaultGraphDefinition(capabilities) {
              * ascending-sorted list (i.e. the oldest n events).  Mirrors
              * last_entries(n) for the ascending-order case.
              */
-            computor: computors.firstEntriesComputor,
+            computor: firstEntries.computor,
             isDeterministic: true,
             hasSideEffects: false,
         },
@@ -130,7 +136,7 @@ function createDefaultGraphDefinition(capabilities) {
              * event iterator to perform cache boundary checks when serving
              * paginated results.
              */
-            computor: computors.eventsCountComputor,
+            computor: eventsCount.computor,
             isDeterministic: true,
             hasSideEffects: false,
         },

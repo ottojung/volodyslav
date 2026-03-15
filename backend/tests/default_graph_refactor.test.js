@@ -1,6 +1,5 @@
 const { createDefaultGraphDefinition } = require("../src/generators/interface/default_graph");
 const individual = require("../src/generators/individual");
-const computors = require("../src/generators/interface/default_graph_computors");
 
 /**
  * @param {Array<import("../src/generators/incremental_graph/types").NodeDef>} graph
@@ -18,11 +17,11 @@ describe("default graph computor wiring", () => {
     test("uses extracted computors for direct node mappings", () => {
         const graph = createDefaultGraphDefinition({});
 
-        expect(findNode(graph, "sorted_events_descending").computor).toBe(computors.sortedEventsDescendingComputor);
-        expect(findNode(graph, "sorted_events_ascending").computor).toBe(computors.sortedEventsAscendingComputor);
-        expect(findNode(graph, "last_entries(n)").computor).toBe(computors.lastEntriesComputor);
-        expect(findNode(graph, "first_entries(n)").computor).toBe(computors.firstEntriesComputor);
-        expect(findNode(graph, "events_count").computor).toBe(computors.eventsCountComputor);
+        expect(findNode(graph, "sorted_events_descending").computor).toBe(individual.sortedEventsDescending.computor);
+        expect(findNode(graph, "sorted_events_ascending").computor).toBe(individual.sortedEventsAscending.computor);
+        expect(findNode(graph, "last_entries(n)").computor).toBe(individual.lastEntries.computor);
+        expect(findNode(graph, "first_entries(n)").computor).toBe(individual.firstEntries.computor);
+        expect(findNode(graph, "events_count").computor).toBe(individual.eventsCount.computor);
         expect(findNode(graph, "meta_events").computor).toBe(individual.metaEvents.computor);
         expect(findNode(graph, "event_context").computor).toBe(individual.eventContext.computor);
         expect(findNode(graph, "event(e)").computor).toBe(individual.event.computor);
