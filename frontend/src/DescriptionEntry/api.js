@@ -4,12 +4,7 @@ import {
     makeEntrySubmissionError,
     isEntrySubmissionError,
 } from "./errors.js";
-
-/**
- * Number of events pre-cached in the `last_entries(n)` graph node.
- * Must match `SORTED_EVENTS_CACHE_SIZE` in the backend constants.
- */
-const SORTED_EVENTS_CACHE_SIZE = 100;
+import { SORTED_EVENTS_CACHE_SIZE } from "../../../backend/src/generators/interface/constants.js";
 
 /**
  * @typedef {Object} Entry
