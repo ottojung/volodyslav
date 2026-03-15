@@ -15,6 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { searchEntries } from "./api.js";
 import { formatRelativeDate } from "../DescriptionEntry/utils.js";
+import { getEntryType, getEntryDescription } from "../DescriptionEntry/entry.js";
 import {
     SPACING,
     SIZES,
@@ -199,12 +200,12 @@ export default function Search() {
                                             <HStack justify="space-between" align="flex-start">
                                                 <VStack align="flex-start" spacing={1} flex={1}>
                                                     <HStack spacing={2}>
-                                                        <Badge {...BADGE_STYLES}>{entry.type}</Badge>
+                                                        <Badge {...BADGE_STYLES}>{getEntryType(entry)}</Badge>
                                                         <Text {...TEXT_STYLES.entryMeta}>
                                                             {formatRelativeDate(entry.date)}
                                                         </Text>
                                                     </HStack>
-                                                    <Text {...TEXT_STYLES.entryText}>{entry.description}</Text>
+                                                    <Text {...TEXT_STYLES.entryText}>{getEntryDescription(entry)}</Text>
                                                 </VStack>
                                             </HStack>
                                         </Box>

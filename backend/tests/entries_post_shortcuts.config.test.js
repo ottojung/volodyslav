@@ -22,9 +22,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "WORK",
-            description: "- No shortcuts here",
-            modifiers: { loc: "office" },
             input: "WORK [loc office] - No shortcuts here",
             original: "WORK [loc office] - No shortcuts here"
         });
@@ -56,9 +53,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "EXERCISE",
-            description: "- Weightlifting session",
-            modifiers: { loc: "gym" },
             input: "EXERCISE [loc gym] - Weightlifting session",
             original: "EXERCISE [loc gym] - Weightlifting session"
         });
@@ -86,9 +80,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "MEETING",
-            description: "- Project discussion",
-            modifiers: { with: "John" },
             input: "MEETING [with John] - Project discussion",
             original: "MEETING [with John] - Project discussion"
         });
@@ -129,7 +120,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         // Without config, no transformation should happen
         expect(res.body.entry.original).toBe("w [loc o] - Should not be transformed");
         expect(res.body.entry.input).toBe("w [loc o] - Should not be transformed"); // Same as original
-        expect(res.body.entry.type).toBe("w"); // Not transformed
 
         // Test the config endpoint too
         const configRes = await request(app).get("/api/config");

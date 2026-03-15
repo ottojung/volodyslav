@@ -3,6 +3,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 const { fromISOString } = require("../src/datetime");
 const { fromDays } = require("../src/datetime/duration");
+const { getDescription } = require("../src/event/computed");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -18,9 +19,7 @@ describe("getEntries pagination validation", () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "orig",
-            input: "inp",
-            type: "t",
-            description: "d",
+            input: "t d",
         };
         await createEntry(capabilities, entryData);
         await expect(
@@ -43,10 +42,8 @@ describe("getEntries ordering functionality", () => {
             baseTime
         );
         const entry1Data = {
-            original: "First entry",
-            input: "First entry",
-            type: "test",
-            description: "First entry description",
+            original: "test First entry description",
+            input: "test First entry description",
         };
         await createEntry(capabilities, entry1Data);
 
@@ -54,10 +51,8 @@ describe("getEntries ordering functionality", () => {
             baseTime.advance(fromDays(1))
         ); // +1 day
         const entry2Data = {
-            original: "Second entry",
-            input: "Second entry",
-            type: "test",
-            description: "Second entry description",
+            original: "test Second entry description",
+            input: "test Second entry description",
         };
 
         await createEntry(capabilities, entry2Data);
@@ -66,10 +61,8 @@ describe("getEntries ordering functionality", () => {
             baseTime.advance(fromDays(2))
         ); // +2 days
         const entry3Data = {
-            original: "Third entry",
-            input: "Third entry",
-            type: "test",
-            description: "Third entry description",
+            original: "test Third entry description",
+            input: "test Third entry description",
         };
 
         await createEntry(capabilities, entry3Data);
@@ -79,9 +72,9 @@ describe("getEntries ordering functionality", () => {
         expect(result.results).toHaveLength(3);
         expect(result.order).toBe('dateDescending');
         // Most recent (third) should be first
-        expect(result.results[0].description).toBe("Third entry description");
-        expect(result.results[1].description).toBe("Second entry description");
-        expect(result.results[2].description).toBe("First entry description");
+        expect(getDescription(result.results[0])).toBe("Third entry description");
+        expect(getDescription(result.results[1])).toBe("Second entry description");
+        expect(getDescription(result.results[2])).toBe("First entry description");
     });
 
     it("sorts entries by date ascending when specified", async () => {
@@ -94,20 +87,16 @@ describe("getEntries ordering functionality", () => {
             baseTime
         );
         const entry1Data = {
-            original: "First entry",
-            input: "First entry",
-            type: "test",
-            description: "First entry description",
+            original: "test First entry description",
+            input: "test First entry description",
         };
 
         capabilities.datetime.now.mockReturnValueOnce(
             baseTime.advance(fromDays(1))
         ); // +1 day
         const entry2Data = {
-            original: "Second entry",
-            input: "Second entry",
-            type: "test",
-            description: "Second entry description",
+            original: "test Second entry description",
+            input: "test Second entry description",
         };
 
         await createEntry(capabilities, entry1Data);
@@ -122,8 +111,8 @@ describe("getEntries ordering functionality", () => {
         expect(result.results).toHaveLength(2);
         expect(result.order).toBe('dateAscending');
         // Oldest (first) should be first
-        expect(result.results[0].description).toBe("First entry description");
-        expect(result.results[1].description).toBe("Second entry description");
+        expect(getDescription(result.results[0])).toBe("First entry description");
+        expect(getDescription(result.results[1])).toBe("Second entry description");
     });
 
     it("sorts entries by date descending when explicitly specified", async () => {
@@ -135,10 +124,8 @@ describe("getEntries ordering functionality", () => {
             baseTime
         );
         const entry1Data = {
-            original: "First entry",
-            input: "First entry",
-            type: "test",
-            description: "First entry description",
+            original: "test First entry description",
+            input: "test First entry description",
         };
 
         await createEntry(capabilities, entry1Data);
@@ -147,10 +134,8 @@ describe("getEntries ordering functionality", () => {
             baseTime.advance(fromDays(1))
         ); // +1 day
         const entry2Data = {
-            original: "Second entry",
-            input: "Second entry",
-            type: "test",
-            description: "Second entry description",
+            original: "test Second entry description",
+            input: "test Second entry description",
         };
         await createEntry(capabilities, entry2Data);
 
@@ -163,18 +148,16 @@ describe("getEntries ordering functionality", () => {
         expect(result.results).toHaveLength(2);
         expect(result.order).toBe('dateDescending');
         // Most recent (second) should be first
-        expect(result.results[0].description).toBe("Second entry description");
-        expect(result.results[1].description).toBe("First entry description");
+        expect(getDescription(result.results[0])).toBe("Second entry description");
+        expect(getDescription(result.results[1])).toBe("First entry description");
     });
 
     it("throws error for invalid order parameter", async () => {
         const capabilities = await getTestCapabilities();
 
         const entryData = {
-            original: "Test entry",
-            input: "Test entry",
-            type: "test",
-            description: "Test entry description",
+            original: "test Test entry description",
+            input: "test Test entry description",
         };
         await createEntry(capabilities, entryData);
 
@@ -197,10 +180,8 @@ describe("getEntries ordering functionality", () => {
                 baseTime.advance(fromDays(i - 1))
             );
             await createEntry(capabilities, {
-                original: `Entry ${i}`,
-                input: `Entry ${i}`,
-                type: "test",
-                description: `Entry ${i} description`,
+                original: `test Entry ${i} description`,
+                input: `test Entry ${i} description`,
             });
         }
 
@@ -214,8 +195,8 @@ describe("getEntries ordering functionality", () => {
         expect(result.results).toHaveLength(2);
         expect(result.hasMore).toBe(true);
         // Should get entries 5 and 4 (newest first)
-        expect(result.results[0].description).toBe("Entry 5 description");
-        expect(result.results[1].description).toBe("Entry 4 description");
+        expect(getDescription(result.results[0])).toBe("Entry 5 description");
+        expect(getDescription(result.results[1])).toBe("Entry 4 description");
 
         // Get page 2
         const result2 = await getEntries(capabilities, {
@@ -226,7 +207,7 @@ describe("getEntries ordering functionality", () => {
 
         expect(result2.results).toHaveLength(2);
         // Should get entries 3 and 2
-        expect(result2.results[0].description).toBe("Entry 3 description");
-        expect(result2.results[1].description).toBe("Entry 2 description");
+        expect(getDescription(result2.results[0])).toBe("Entry 3 description");
+        expect(getDescription(result2.results[1])).toBe("Entry 2 description");
     });
 });

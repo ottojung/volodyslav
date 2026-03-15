@@ -7,37 +7,31 @@ const {
     reconstructEventsFromMetaEvents,
 } = require("../src/generators/individual/event_context");
 const eventId = require("../src/event/id");
+const { getDescription } = require("../src/event/computed");
+
+/**
+ * Helper to create a minimal Event object for testing.
+ * @param {string} id
+ * @param {string} input
+ * @param {string} [date]
+ * @returns {import('../src/event').Event}
+ */
+function makeEvent(id, input, date = "2024-01-01") {
+    return {
+        id: eventId.fromString(id),
+        date,
+        original: input,
+        input,
+        creator: { name: "test" },
+    };
+}
 
 describe("generators/individual/event_context", () => {
     describe("reconstructEventsFromMetaEvents()", () => {
         test("reconstructs events from add actions", () => {
             const metaEvents = [
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "note",
-                        description: "First #project event",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("2"),
-                        type: "note",
-                        description: "Second #project event",
-                        date: "2024-01-02",
-                        original: "test2",
-                        input: "test2",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
+                { action: "add", event: makeEvent("1", "note First #project event") },
+                { action: "add", event: makeEvent("2", "note Second #project event", "2024-01-02") },
             ];
 
             const events = reconstructEventsFromMetaEvents(metaEvents);
@@ -48,32 +42,8 @@ describe("generators/individual/event_context", () => {
 
         test("handles delete actions", () => {
             const metaEvents = [
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "note",
-                        description: "First event",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
-                {
-                    action: "delete",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "note",
-                        description: "First event",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
+                { action: "add", event: makeEvent("1", "note First event") },
+                { action: "delete", event: makeEvent("1", "note First event") },
             ];
 
             const events = reconstructEventsFromMetaEvents(metaEvents);
@@ -82,82 +52,22 @@ describe("generators/individual/event_context", () => {
 
         test("handles edit actions", () => {
             const metaEvents = [
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "Original",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
-                {
-                    action: "edit",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "Updated",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
+                { action: "add", event: makeEvent("1", "text Original") },
+                { action: "edit", event: makeEvent("1", "text Updated") },
             ];
 
             const events = reconstructEventsFromMetaEvents(metaEvents);
             expect(events).toHaveLength(1);
-            expect(events[0].description).toBe("Updated");
+            expect(getDescription(events[0])).toBe("Updated");
         });
     });
 
     describe("computeEventContexts()", () => {
         test("computes contexts for events with shared hashtags", () => {
             const metaEvents = [
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "First #project event",
-                        date: "2024-01-01",
-                        original: "First #project event",
-                        input: "First #project event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("2"),
-                        type: "text",
-                        description: "Second #project event",
-                        date: "2024-01-02",
-                        original: "Second #project event",
-                        input: "Second #project event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("3"),
-                        type: "text",
-                        description: "Unrelated #other event",
-                        date: "2024-01-03",
-                        original: "Unrelated #other event",
-                        input: "Unrelated #other event",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
+                { action: "add", event: makeEvent("1", "text First #project event") },
+                { action: "add", event: makeEvent("2", "text Second #project event", "2024-01-02") },
+                { action: "add", event: makeEvent("3", "text Unrelated #other event", "2024-01-03") },
             ];
 
             const contexts = computeEventContexts(metaEvents);
@@ -186,19 +96,7 @@ describe("generators/individual/event_context", () => {
 
         test("each event includes itself in context", () => {
             const metaEvents = [
-                {
-                    action: "add",
-                    event: {
-                        id: eventId.fromString("1"),
-                        type: "text",
-                        description: "Event without hashtags",
-                        date: "2024-01-01",
-                        original: "test1",
-                        input: "test1",
-                        modifiers: {},
-                        creator: { type: "user", name: "test" },
-                    },
-                },
+                { action: "add", event: makeEvent("1", "text Event without hashtags") },
             ];
 
             const contexts = computeEventContexts(metaEvents);

@@ -25,11 +25,8 @@ import { searchEntries } from "../src/Search/api";
 const mockEntry = (overrides = {}) => ({
     id: "entry-1",
     date: "2023-01-01T10:00:00.000Z",
-    type: "food",
-    description: "- Ate pizza",
     input: "food - Ate pizza",
     original: "food - Ate pizza",
-    modifiers: {},
     creator: { name: "test", uuid: "test-uuid", version: "1.0" },
     ...overrides,
 });
@@ -60,7 +57,7 @@ describe("Search page", () => {
     });
 
     it("shows recent entries on initial load", async () => {
-        searchEntries.mockResolvedValue({ results: [mockEntry({ description: "- Recent entry" })] });
+        searchEntries.mockResolvedValue({ results: [mockEntry({ input: "food - Recent entry" })] });
 
         render(
             <MemoryRouter>
@@ -178,8 +175,8 @@ describe("Search page", () => {
 
     it("shows multiple matching entries", async () => {
         const entries = [
-            mockEntry({ id: "1", description: "- Ate pizza" }),
-            mockEntry({ id: "2", description: "- Had salad", type: "food" }),
+            mockEntry({ id: "1", input: "food - Ate pizza" }),
+            mockEntry({ id: "2", input: "food - Had salad" }),
         ];
         searchEntries.mockResolvedValue({ results: entries });
 
@@ -493,11 +490,11 @@ describe("Search page", () => {
     it("clicking 'Load more' appends new results to existing ones", async () => {
         searchEntries
             .mockResolvedValueOnce({
-                results: [mockEntry({ id: "1", description: "- First entry" })],
+                results: [mockEntry({ id: "1", input: "food - First entry" })],
                 hasMore: true,
             })
             .mockResolvedValueOnce({
-                results: [mockEntry({ id: "2", description: "- Second entry" })],
+                results: [mockEntry({ id: "2", input: "food - Second entry" })],
                 hasMore: false,
             });
 
@@ -530,7 +527,7 @@ describe("Search page", () => {
         let resolveLoadMore;
         searchEntries
             .mockResolvedValueOnce({
-                results: [mockEntry({ id: "1", description: "- First entry" })],
+                results: [mockEntry({ id: "1", input: "food - First entry" })],
                 hasMore: true,
             })
             .mockImplementationOnce(() => new Promise(resolve => { resolveLoadMore = resolve; }));
@@ -560,7 +557,7 @@ describe("Search page", () => {
 
         // Resolve the pending load-more fetch
         await act(async () => {
-            resolveLoadMore({ results: [mockEntry({ id: "2", description: "- Second entry" })], hasMore: false });
+            resolveLoadMore({ results: [mockEntry({ id: "2", input: "food - Second entry" })], hasMore: false });
         });
 
         await waitFor(() => {
@@ -605,7 +602,7 @@ describe("Search page", () => {
 
         searchEntries
             .mockImplementationOnce(() => initialPromise)
-            .mockResolvedValueOnce({ results: [mockEntry({ description: "- Food entry" })], hasMore: false });
+            .mockResolvedValueOnce({ results: [mockEntry({ input: "food - Food entry" })], hasMore: false });
 
         render(
             <MemoryRouter>
@@ -628,7 +625,7 @@ describe("Search page", () => {
 
         // Resolve the stale initial fetch with different data
         await act(async () => {
-            resolveInitial({ results: [mockEntry({ description: "- Stale entry" })], hasMore: false });
+            resolveInitial({ results: [mockEntry({ input: "food - Stale entry" })], hasMore: false });
         });
 
         // Stale results must NOT replace the food results
@@ -699,7 +696,7 @@ describe("Search page", () => {
 
     it("saves search state to sessionStorage when an entry link is clicked", async () => {
         searchEntries.mockResolvedValue({
-            results: [mockEntry({ id: "entry-1", description: "- Ate pizza" })],
+            results: [mockEntry({ id: "entry-1", input: "food - Ate pizza" })],
             hasMore: false,
         });
 
@@ -730,7 +727,7 @@ describe("Search page", () => {
     });
 
     it("restores search results from sessionStorage on POP navigation without refetching", async () => {
-        const restoredEntry = mockEntry({ id: "restored-1", description: "- Restored entry" });
+        const restoredEntry = mockEntry({ id: "restored-1", input: "food - Restored entry" });
         sessionStorage.setItem("volodyslav_search_state", JSON.stringify({
             pattern: "food",
             results: [restoredEntry],
@@ -759,7 +756,7 @@ describe("Search page", () => {
     });
 
     it("does not show a spinner when state is restored from sessionStorage on POP navigation", async () => {
-        const restoredEntry = mockEntry({ id: "restored-1", description: "- Restored entry" });
+        const restoredEntry = mockEntry({ id: "restored-1", input: "food - Restored entry" });
         sessionStorage.setItem("volodyslav_search_state", JSON.stringify({
             pattern: "",
             results: [restoredEntry],

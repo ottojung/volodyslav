@@ -19,6 +19,7 @@ import {
 } from "@chakra-ui/react";
 import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../Search/api.js";
 import { API_BASE_URL } from "../api_base_url.js";
+import { getEntryType, getEntryDescription, getEntryModifiers } from "../DescriptionEntry/entry.js";
 import {
     SPACING,
     SIZES,
@@ -63,8 +64,8 @@ function entryToFields(entry) {
     ];
 
     const derivedFields = [
-        { key: "type", value: entry.type },
-        { key: "description", value: entry.description },
+        { key: "type", value: getEntryType(entry) },
+        { key: "description", value: getEntryDescription(entry) },
         { key: "input", value: entry.input },
     ];
 
@@ -72,7 +73,7 @@ function entryToFields(entry) {
         derivedFields.push({ key: `creator.${k}`, value: stringifyFieldValue(v) });
     }
 
-    for (const [k, v] of Object.entries(entry.modifiers)) {
+    for (const [k, v] of Object.entries(getEntryModifiers(entry))) {
         derivedFields.push({ key: `modifiers.${k}`, value: v });
     }
 
@@ -323,7 +324,7 @@ export default function EntryDetail() {
                 <Card {...CARD_STYLES.main}>
                     <CardBody p={SPACING.lg}>
                         <HStack spacing={2} mb={SPACING.md} justify="space-between">
-                            <Badge {...BADGE_STYLES}>{entry.type}</Badge>
+                            <Badge {...BADGE_STYLES}>{getEntryType(entry)}</Badge>
                             <Button
                                 colorScheme="red"
                                 size="sm"

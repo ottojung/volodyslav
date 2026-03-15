@@ -83,9 +83,6 @@ describe("processDiaryAudios", () => {
                     date: dateFormatter.format(capabilities, date),
                     original: "diary [when 0 hours ago] [audiorecording]",
                     input: "diary [when 0 hours ago] [audiorecording]",
-                    modifiers: { when: "0 hours ago", audiorecording: "" },
-                    type: "diary",
-                    description: "",
                     creator: expect.any(Object),
                 });
             });

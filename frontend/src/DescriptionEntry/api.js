@@ -15,11 +15,8 @@ const SORTED_EVENTS_CACHE_SIZE = 100;
  * @typedef {Object} Entry
  * @property {string} id - Unique identifier for the entry
  * @property {string} date - ISO date string
- * @property {string} type - Type of the entry
- * @property {string} description - Description of the entry
  * @property {string} input - Processed input
  * @property {string} original - Original input
- * @property {Object} modifiers - Entry modifiers
  * @property {Object} creator - Entry creator info
  */
 

@@ -3,6 +3,7 @@ const { serialize } = require("../../event");
 const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
+const { getType, getModifiers } = require("../../event/computed");
 
 /**
  * @typedef {import('../../environment').Environment} Environment
@@ -178,11 +179,8 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             throw error;
         }
 
-        const { original, input, parsed } = processed;
+        const { original, input } = processed;
         const entryData = {
-            type: parsed.type,
-            description: parsed.description,
-            modifiers: parsed.modifiers,
             original,
             input,
         };
@@ -193,9 +191,9 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         capabilities.logger.logDebug(
             {
                 request_identifier: reqId.identifier,
-                entry_type: event.type,
+                entry_type: getType(event),
                 file_count: fileObjects.length,
-                has_modifiers: Object.keys(parsed.modifiers || {}).length > 0,
+                has_modifiers: Object.keys(getModifiers(event) || {}).length > 0,
                 status_code: 201,
                 client_ip: req.ip
             },

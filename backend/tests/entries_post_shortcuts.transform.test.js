@@ -37,9 +37,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "WORK",
-            description: "- Fixed the parser",
-            modifiers: { loc: "office" },
             input: "WORK [loc office] - Fixed the parser",
             original: "w [loc o] - Fixed the parser"
         });
@@ -75,9 +72,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "WORK",
-            description: "- Fixed bug",
-            modifiers: { loc: "office" },
             input: "WORK [loc office] - Fixed bug",
             original: "wo - Fixed bug"
         });
@@ -111,9 +105,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "working",
-            description: "on project",
-            modifiers: {},
             input: "working on project",
             original: "working on project"
         });
@@ -149,12 +140,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "MEETING",
-            description: "- Weekly standup",
-            modifiers: {
-                loc: "headquarters",
-                with: "John Smith"
-            },
             input: "MEETING [loc headquarters] [with John Smith] - Weekly standup",
             original: "m [loc hq] [with j] - Weekly standup"
         });
@@ -177,9 +162,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "WORK",
-            description: "- Description with extra spaces",
-            modifiers: { loc: "office" },
             input: "WORK [loc office] - Description with extra spaces",
             original: "    WORK   [loc    office]    -    Description with  extra   spaces  "
         });

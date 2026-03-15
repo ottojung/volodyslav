@@ -10,13 +10,13 @@ import {
 } from "@chakra-ui/react";
 import { formatRelativeDate } from "./utils.js";
 import { CARD_STYLES, TEXT_STYLES, BADGE_STYLES } from "./styles.js";
+import { getEntryType, getEntryDescription } from "./entry.js";
 
 /**
  * @typedef {Object} Entry
  * @property {string} id - Unique identifier for the entry
  * @property {string} date - ISO date string
- * @property {string} type - Type of the entry
- * @property {string} description - Description of the entry
+ * @property {string} input - Processed input
  */
 
 /**
@@ -33,14 +33,14 @@ export const EntryItem = ({ entry, index, onDelete }) => (
             <VStack align="flex-start" spacing={1} flex={1}>
                 <HStack spacing={2}>
                     <Badge {...BADGE_STYLES}>
-                        {entry.type}
+                        {getEntryType(entry)}
                     </Badge>
                     <Text {...TEXT_STYLES.entryMeta}>
                         {formatRelativeDate(entry.date)}
                     </Text>
                 </HStack>
                 <Text {...TEXT_STYLES.entryText}>
-                    {entry.description}
+                    {getEntryDescription(entry)}
                 </Text>
             </VStack>
             {onDelete && (

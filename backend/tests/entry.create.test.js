@@ -1,6 +1,7 @@
 const { createEntry } = require("../src/entry");
 const { fromISOString } = require("../src/datetime");
 const eventId = require("../src/event/id");
+const { getType, getDescription, getModifiers } = require("../src/event/computed");
 
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
@@ -24,25 +25,22 @@ describe("createEntry (integration, with real capabilities)", () => {
         
         const entryData = {
             original: "Raw original text",
-            input: "Processed input text",
-            type: "test-type",
-            description: "This is a test description.",
-            modifiers: { custom: "value" },
+            input: "testtype [custom value] This is a test description.",
         };
 
         const event = await createEntry(capabilities, entryData);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
-        expect(event.type).toBe(entryData.type);
-        expect(event.description).toBe(entryData.description);
-        expect(event.modifiers).toEqual(entryData.modifiers);
+        expect(getType(event)).toBe("testtype");
+        expect(getDescription(event)).toBe("This is a test description.");
+        expect(getModifiers(event)).toEqual({ custom: "value" });
         expect(event.date).toEqual(fixedDateTime);
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
                 eventId: eventId.toString(event.id),
-                type: event.type,
+                type: getType(event),
                 fileCount: 0,
             }),
             expect.stringContaining("Entry created")
@@ -59,22 +57,20 @@ describe("createEntry (integration, with real capabilities)", () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "Original with file",
-            input: "Input with file",
-            type: "file-entry",
-            description: "Description for file entry.",
+            input: "fileentry Description for file entry.",
         };
         const mockFile = { path: tmpFilePath };
         const event = await createEntry(capabilities, entryData, [mockFile]);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
-        expect(event.type).toBe(entryData.type);
-        expect(event.description).toBe(entryData.description);
+        expect(getType(event)).toBe("fileentry");
+        expect(getDescription(event)).toBe("Description for file entry.");
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
                 eventId: eventId.toString(event.id),
-                type: event.type,
+                type: getType(event),
                 fileCount: 1,
             }),
             expect.stringContaining("Entry created")
@@ -97,22 +93,20 @@ describe("createEntry (integration, with real capabilities)", () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "Original with multiple files",
-            input: "Input with multiple files",
-            type: "multi-file-entry",
-            description: "Description for multi-file entry.",
+            input: "multifileentry Description for multi-file entry.",
         };
         const mockFiles = [{ path: tmpFilePath1 }, { path: tmpFilePath2 }];
         const event = await createEntry(capabilities, entryData, mockFiles);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
-        expect(event.type).toBe(entryData.type);
-        expect(event.description).toBe(entryData.description);
+        expect(getType(event)).toBe("multifileentry");
+        expect(getDescription(event)).toBe("Description for multi-file entry.");
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
                 eventId: eventId.toString(event.id),
-                type: event.type,
+                type: getType(event),
                 fileCount: 2,
             }),
             expect.stringContaining("Entry created")
@@ -126,9 +120,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "No date original",
-            input: "No date input",
-            type: "no-date-type",
-            description: "Entry without a specific date.",
+            input: "nodatetype Entry without a specific date.",
         };
 
         // Use datetime capability instead of Date.now() for consistent time
@@ -142,42 +134,35 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.date.isBeforeOrEqual(afterDateTime)).toBe(true);
     });
 
-    it("creates an event log entry with empty modifiers if not provided", async () => {
+    it("creates an event log entry with empty modifiers if not provided in input", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "No modifiers original",
-            input: "No modifiers input",
-            type: "no-modifiers-type",
-            description: "Entry without modifiers.",
-            // no modifiers field
+            input: "nomodifierstype Entry without modifiers.",
         };
         const event = await createEntry(capabilities, entryData);
-        expect(event.modifiers).toEqual({});
+        expect(getModifiers(event)).toEqual({});
     });
 
     it("allows empty descriptions", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "Empty description original",
-            input: "Empty description input", 
-            type: "empty-description-type",
-            description: "", // Empty but present
+            input: "emptydescriptiontype",
         };
         const event = await createEntry(capabilities, entryData);
-        expect(event.description).toBe("");
-        expect(event.type).toBe("empty-description-type");
+        expect(getDescription(event)).toBe("");
+        expect(getType(event)).toBe("emptydescriptiontype");
     });
 
     it("creates an event log entry with custom type and verifies type is set", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "Custom type original",
-            input: "Custom type input",
-            type: "custom-type-xyz",
-            description: "Entry with custom type.",
+            input: "customtypexyz Entry with custom type.",
         };
         const event = await createEntry(capabilities, entryData);
-        expect(event.type).toBe("custom-type-xyz");
+        expect(getType(event)).toBe("customtypexyz");
     });
 });
 

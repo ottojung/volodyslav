@@ -33,18 +33,16 @@ import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryA
 const mockEntry = {
     id: "entry-123",
     date: "2023-01-01T10:00:00.000Z",
-    type: "food",
-    description: "- Ate pizza",
-    input: "food - Ate pizza",
+    input: "food [certainty 9] - Ate pizza",
     original: "food - Ate pizza",
-    modifiers: { certainty: "9" },
     creator: { name: "test", uuid: "test-uuid", version: "1.0" },
 };
 
 const mockEntryNoModifiers = {
     ...mockEntry,
     id: "entry-456",
-    modifiers: {},
+    input: "food - Ate pizza",
+    original: "food - Ate pizza",
 };
 
 const longFieldValue = `Long field ${"x".repeat(120)} ending`;
@@ -214,7 +212,7 @@ describe("EntryDetail page", () => {
     it("shows multiple modifier fields when entry has multiple modifiers", async () => {
         const entryWithMultipleModifiers = {
             ...mockEntry,
-            modifiers: { certainty: "9", when: "yesterday" },
+            input: "food [certainty 9] [when yesterday] - Ate pizza",
         };
         renderWithRoute("/entry/entry-123", { entry: entryWithMultipleModifiers });
 
@@ -232,7 +230,7 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", {
             entry: {
                 ...mockEntry,
-                description: longFieldValue,
+                input: `food ${longFieldValue}`,
             },
         });
 

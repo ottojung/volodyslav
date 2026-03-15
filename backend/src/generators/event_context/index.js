@@ -1,6 +1,6 @@
 /** @typedef {import('../../event').Event} Event */
 
-const { extractHashtags, isContextEnhancing } = require("../../event");
+const { extractHashtags, isContextEnhancing, getType } = require("../../event");
 
 /**
  * This function extracts the basic context of a given event from a list of all events.
@@ -18,7 +18,7 @@ function getEventBasicContext(all_events, event) {
         }
 
         // Check if event type is context-enhancing
-        if (!isContextEnhancing(otherEvent.type)) {
+        if (!isContextEnhancing(getType(otherEvent))) {
             return false;
         }
 

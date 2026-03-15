@@ -22,9 +22,6 @@ const {
  * @property {import('../datetime').DateTime} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
- * @property {Modifiers} modifiers - Modifiers applied to the event.
- * @property {string} type - The type of the event.
- * @property {string} description - A description of the event (required).
  * @property {Creator} creator - Who created the event.
  */
 
@@ -35,9 +32,6 @@ const {
  * @property {string} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
- * @property {Modifiers} modifiers - Modifiers applied to the event.
- * @property {string} type - The type of the event.
- * @property {string} description - A description of the event (required).
  * @property {Creator} creator - Who created the event.
  */
 
@@ -53,9 +47,6 @@ function equal(event1, event2) {
         event1.date === event2.date &&
         event1.original === event2.original &&
         event1.input === event2.input &&
-        event1.type === event2.type &&
-        event1.description === event2.description &&
-        JSON.stringify(event1.modifiers) === JSON.stringify(event2.modifiers) &&
         JSON.stringify(event1.creator) === JSON.stringify(event2.creator)
     );
 }
