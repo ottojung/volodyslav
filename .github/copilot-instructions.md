@@ -1,7 +1,18 @@
 # GitHub Copilot Instructions
 
 ## Project Overview
-This is a JavaScript project with JSDoc typing for a personal event logging system. It consists of a Node.js backend and a React frontend.
+This is a JavaScript project with JSDoc typing for a personal event logging system. It consists of a Node.js backend and a React frontend in a monorepo structure.
+
+## Initial Setup (Required for Fresh Repository)
+
+**Mandatory workflow when working on a fresh clone:**
+
+```bash
+npm install   # install dependencies in root and all workspaces
+npm test      # run the full test suite to verify setup
+npm run static-analysis # type checking, linting, etc.
+npm run build # verify the project builds successfully
+```
 
 ## Core Programming Conventions
 
@@ -244,16 +255,31 @@ function isPathLike(object) {
 
 - **File size limit**: 300 lines of code per file.
 
-## Testing
+## Testing and Validation
 
 ### Running Tests
 - **Specific tests**: `npx jest --testNamePattern="test name"`
 - **Full test suite**: `npm test`
+- **Static analysis**: `npm run static-analysis`
 - **Build verification**: `npm run build`
+- **Docs build**: `npm run docs:build`
 
 ### Test Conventions
 - Test files are located in `backend/tests/` and `frontend/tests/`
+- Use descriptive test names
 - Mock external dependencies using the patterns established in `backend/tests/stubs.js`
+
+## Complete Workflow for Independent Agents
+
+Must follow this workflow when making changes:
+
+1. **Setup**: `npm install` (install all dependencies)
+2. **Understand**: Read relevant code and tests to understand the context
+3. **Implement**: Make changes following the capabilities pattern and JSDoc conventions
+4. **Test**: Run `npx jest path/to/specific/test.js` for focused testing
+5. **Validate**: Run full test suite with `npm test`
+6. **Static analysis**: Run `npm run static-analysis`
+7. **Build**: Run `npm run build` to ensure the project builds successfully
 
 ## Backwards compatibility
 
