@@ -19,7 +19,7 @@ import {
 } from "@chakra-ui/react";
 import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../Search/api.js";
 import { API_BASE_URL } from "../api_base_url.js";
-import { getEntryType, getEntryDescription, getEntryModifiers } from "../DescriptionEntry/entry.js";
+import { getEntryParsed } from "../DescriptionEntry/entry.js";
 import {
     SPACING,
     SIZES,
@@ -63,9 +63,10 @@ function entryToFields(entry) {
         { key: "id", value: entry.id },
     ];
 
+    const { type: entryType, description: entryDescription, modifiers: entryModifiers } = getEntryParsed(entry);
     const derivedFields = [
-        { key: "type", value: getEntryType(entry) },
-        { key: "description", value: getEntryDescription(entry) },
+        { key: "type", value: entryType },
+        { key: "description", value: entryDescription },
         { key: "input", value: entry.input },
     ];
 
@@ -73,7 +74,7 @@ function entryToFields(entry) {
         derivedFields.push({ key: `creator.${k}`, value: stringifyFieldValue(v) });
     }
 
-    for (const [k, v] of Object.entries(getEntryModifiers(entry))) {
+    for (const [k, v] of Object.entries(entryModifiers)) {
         derivedFields.push({ key: `modifiers.${k}`, value: v });
     }
 
@@ -309,6 +310,7 @@ export default function EntryDetail() {
     }
 
     const { primaryFields, derivedFields } = entryToFields(entry);
+    const { type: entryType } = getEntryParsed(entry);
 
     const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && hasAdditionalPropertyValue(value));
 
@@ -324,7 +326,7 @@ export default function EntryDetail() {
                 <Card {...CARD_STYLES.main}>
                     <CardBody p={SPACING.lg}>
                         <HStack spacing={2} mb={SPACING.md} justify="space-between">
-                            <Badge {...BADGE_STYLES}>{getEntryType(entry)}</Badge>
+                            <Badge {...BADGE_STYLES}>{entryType}</Badge>
                             <Button
                                 colorScheme="red"
                                 size="sm"

@@ -9,7 +9,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
-const { getType, getDescription } = require("../src/event");
+const { getType, getDescription, getModifiers } = require("../src/event");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -76,6 +76,7 @@ describe("POST /api/entries", () => {
         const { app } = await makeTestApp();
         const requestBody = {
             rawInput: "badmods bad",
+            modifiers: "notanobject",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -83,6 +84,7 @@ describe("POST /api/entries", () => {
             .set("Content-Type", "application/json");
         expect(res.statusCode).toBe(201);
         expect(res.body.entry.input).toBeDefined();
+        expect(Object.keys(getModifiers({ input: res.body.entry.input }))).toHaveLength(0);
     });
 
     it("creates an entry with an asset when a file is uploaded", async () => {

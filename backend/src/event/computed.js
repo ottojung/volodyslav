@@ -6,7 +6,7 @@
 const { parseStructuredInput } = require("./parsers");
 
 /**
- * @typedef {import('./serialization').Event} Event
+ * @typedef {import('./structure').Event} Event
  */
 
 /**
