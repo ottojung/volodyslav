@@ -237,8 +237,9 @@ indexes.
 The system SHOULD persist these exact artifacts:
 
 1. **`event_store[id] -> event`**
-2. **`date_index[(date, id)] -> id`**
-3. **`recent_window`** containing the newest `K` ids or events, where `K >= 50`
+2. **`date_index[(date, id)] -> present`**, where the value is only a presence
+   marker and the ordered key itself is the useful payload
+3. **`recent_window`** containing the newest `K` full events, where `K >= 50`
 4. **`events_delta`** as a monotonic sequence of operations with heights
 5. **periodic checkpoints** of the three read-side artifacts above
 
@@ -291,8 +292,8 @@ Rare complex edits stay exact, and the rare path is allowed to cost more.
 
 ### Fetch last 50 sorted events
 
-Read directly from `recent_window`, or from the tail of `date_index` if the
-window is absent or being repaired.
+Read directly from `recent_window`, or rebuild it from the tail of `date_index`
+plus `event_store` if the window is absent or being repaired.
 
 ### Fetch a particular event
 
