@@ -20,7 +20,6 @@ const {
     synchronizeNoLock,
     withMutex,
     migrationCallback,
-    runMigration,
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
@@ -43,7 +42,9 @@ function internalRequireInitializedGraph(interfaceInstance) {
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
 async function internalEnsureInitialized(interfaceInstance) {
-    await internalEnsureInitializedWithMigration(interfaceInstance, runMigration);
+    await withMutex(interfaceInstance._getCapabilities().sleeper, async () => {
+        await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
+    });
 }
 
 /**
