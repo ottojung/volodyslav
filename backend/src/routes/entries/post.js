@@ -3,7 +3,7 @@ const { serialize } = require("../../event");
 const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
-const { getType, getModifiers } = require("../../event/computed");
+const { getType, getModifiers } = require("../../event");
 
 /**
  * @typedef {import('../../environment').Environment} Environment

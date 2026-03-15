@@ -9,7 +9,7 @@ const {
     stubEventLogRepository,
 } = require("./stubs");
 const { getEntryById } = require("../src/entry");
-const { getType, getDescription } = require("../src/event/computed");
+const { getType, getDescription } = require("../src/event");
 
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();
@@ -29,25 +29,6 @@ async function createTestEntry(app, rawInput) {
         .send({ rawInput })
         .set("Content-Type", "application/json");
     return res;
-}
-
-/**
- * Parses the type from an entry's input field (for use in API response assertions).
- * @param {{ input: string }} entry
- * @returns {string}
- */
-function typeFromEntry(entry) {
-    const match = entry.input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
-    return match ? match[1] : '';
-}
-
-/**
- * Parses the description from an entry's input field (for use in API response assertions).
- * @param {{ input: string }} entry
- * @returns {string}
- */
-function descriptionFromEntry(entry) {
-    return entry.input.replace(/^\s*[A-Za-z][A-Za-z0-9]*\s*((?:\[[^\]]*\s+[^\]]*\]\s*)*)/, '').trim();
 }
 
 describe("GET /api/entries with search", () => {
@@ -75,7 +56,7 @@ describe("GET /api/entries with search", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(2);
         for (const result of res.body.results) {
-            expect(typeFromEntry(result)).toBe("food");
+            expect(getType(result)).toBe("food");
         }
     });
 
@@ -90,7 +71,7 @@ describe("GET /api/entries with search", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
-        expect(descriptionFromEntry(res.body.results[0])).toContain("pizza");
+        expect(getDescription(res.body.results[0])).toContain("pizza");
     });
 
     it("returns empty results when regex matches nothing", async () => {
@@ -153,7 +134,7 @@ describe("GET /api/entries with search", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
-        expect(typeFromEntry(res.body.results[0])).toBe("food");
+        expect(getType(res.body.results[0])).toBe("food");
     });
 
     it("search is case-insensitive for description", async () => {
@@ -166,7 +147,7 @@ describe("GET /api/entries with search", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
-        expect(descriptionFromEntry(res.body.results[0])).toContain("Pizza");
+        expect(getDescription(res.body.results[0])).toContain("Pizza");
     });
 
     it("empty search string returns all entries", async () => {
@@ -287,7 +268,7 @@ describe("GET /api/entries/:id", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.entry).toBeDefined();
         expect(res.body.entry.id).toBe(createdId);
-        expect(typeFromEntry(res.body.entry)).toBe("food");
+        expect(getType(res.body.entry)).toBe("food");
     });
 
     it("returns 404 for a non-existent entry id", async () => {
@@ -326,8 +307,8 @@ describe("GET /api/entries/:id", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.entry.id).toBe(createdEntry.id);
-        expect(typeFromEntry(res.body.entry)).toBe(typeFromEntry(createdEntry));
-        expect(descriptionFromEntry(res.body.entry)).toBe(descriptionFromEntry(createdEntry));
+        expect(getType(res.body.entry)).toBe(getType(createdEntry));
+        expect(getDescription(res.body.entry)).toBe(getDescription(createdEntry));
     });
 
     it("returns 404 error message string", async () => {
@@ -353,10 +334,10 @@ describe("GET /api/entries/:id", () => {
         const fetch2 = await request(app).get(`/api/entries/${id2}`);
 
         expect(fetch1.statusCode).toBe(200);
-        expect(typeFromEntry(fetch1.body.entry)).toBe("food");
+        expect(getType(fetch1.body.entry)).toBe("food");
 
         expect(fetch2.statusCode).toBe(200);
-        expect(typeFromEntry(fetch2.body.entry)).toBe("sleep");
+        expect(getType(fetch2.body.entry)).toBe("sleep");
     });
 });
 

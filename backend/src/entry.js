@@ -2,7 +2,7 @@ const { transaction } = require("./event_log_storage");
 const event = require("./event");
 const eventId = event.id;
 const asset = event.asset;
-const { getType, getDescription } = require("./event/computed");
+const { getType, getDescription } = require("./event");
 const creatorMake = require("./creator");
 
 /**

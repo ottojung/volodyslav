@@ -37,35 +37,43 @@ class EntryClass {
 
 /**
  * Parses an input string in the format: TYPE [MODIFIERS...] DESCRIPTION
+ * Uses an iterative approach to avoid ReDoS vulnerabilities.
  * @param {string} input
  * @returns {{ type: string, description: string, modifiers: Record<string, string> }}
  */
 function parseInput(input) {
-    const pattern = /^\s*([A-Za-z][A-Za-z0-9]*)\s*((?:\[[^\]]*\s+[^\]]*\]\s*)*)\s*(.*)$/;
-    const match = input.match(pattern);
-    if (!match) {
+    // Step 1: Extract the type (first word starting with a letter)
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    if (!typeMatch) {
         return { type: '', description: input.trim(), modifiers: {} };
     }
-    const type = match[1] || '';
-    const modifiersStr = (match[2] || '').trim();
-    const description = (match[3] || '').trim();
+    const type = typeMatch[1] ?? '';
+    let remainder = input.slice(typeMatch[0].length);
 
+    // Step 2: Extract zero or more [key value] modifier tokens from the front
     /** @type {Record<string, string>} */
     const modifiers = {};
-    const modifierMatches = modifiersStr.match(/\[[^\]]*\s+[^\]]*\]/g) || [];
-    for (const modifierMatch of modifierMatches) {
-        const content = modifierMatch.slice(1, -1);
-        const parts = content.match(/^\s*(\w+)(?:\s+(.+))?\s*$/);
-        if (parts && parts[1]) {
-            modifiers[parts[1]] = (parts[2] || '').trim();
+    // Match one modifier at a time - [key] or [key value] where key is a word
+    const modifierPattern = /^\s*\[(\w+)(?:\s+([^\]]*))?]/;
+    let modifierMatch = modifierPattern.exec(remainder);
+    while (modifierMatch !== null) {
+        const key = modifierMatch[1];
+        const value = (modifierMatch[2] || '').trim();
+        if (key !== undefined) {
+            modifiers[key] = value;
         }
+        remainder = remainder.slice(modifierMatch[0].length);
+        modifierMatch = modifierPattern.exec(remainder);
     }
+
+    // Step 3: Everything left is the description
+    const description = remainder.trim();
     return { type, description, modifiers };
 }
 
 /**
  * Computes the type of an entry from its input field.
- * @param {Entry} entry
+ * @param {{ input: string }} entry
  * @returns {string}
  */
 export function getEntryType(entry) {
@@ -74,7 +82,7 @@ export function getEntryType(entry) {
 
 /**
  * Computes the description of an entry from its input field.
- * @param {Entry} entry
+ * @param {{ input: string }} entry
  * @returns {string}
  */
 export function getEntryDescription(entry) {
@@ -83,7 +91,7 @@ export function getEntryDescription(entry) {
 
 /**
  * Computes the modifiers of an entry from its input field.
- * @param {Entry} entry
+ * @param {{ input: string }} entry
  * @returns {Record<string, string>}
  */
 export function getEntryModifiers(entry) {
