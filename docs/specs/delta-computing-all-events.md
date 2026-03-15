@@ -146,7 +146,8 @@ Maintain an exact secondary index keyed by `(date, id)` and update it on writes.
 
 #### O3. Small recent-window materialization
 
-Persist a tiny exact cache such as `recent_50` or `recent_100`.
+Persist a tiny exact materialized view such as `recent_50` or `recent_100`
+that always stores the newest `K` events.
 
 - Directly serves the dominant read.
 - Cheap to update on append/delete.
@@ -239,7 +240,7 @@ The system SHOULD persist these exact artifacts:
 1. **`event_store[id] -> event`**
 2. **`date_index[(date, id)] -> present`**, where the value is only a presence
    marker and the ordered key itself is the useful payload
-3. **`recent_window`** containing the newest `K` full events, where `K >= 50`
+3. **`recent_window`** containing the newest `K` full events, where `K = 100`
 4. **`events_delta`** as a monotonic sequence of operations with heights
 5. **periodic checkpoints** of the three read-side artifacts above
 
@@ -275,7 +276,8 @@ with good constant factors.
 1. append a delete op;
 2. remove from `event_store`;
 3. remove one index key from `date_index`;
-4. repair `recent_window` from nearby index entries.
+4. repair `recent_window` by reading backward from the tail of `date_index`
+   until it again contains the newest `K` full events from `event_store`.
 
 ### Mutate multiple entries
 
