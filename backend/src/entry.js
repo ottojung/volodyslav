@@ -2,7 +2,7 @@ const { transaction } = require("./event_log_storage");
 const event = require("./event");
 const eventId = event.id;
 const asset = event.asset;
-const { getType, getDescription } = require("./event");
+const { getParsed } = require("./event");
 const creatorMake = require("./creator");
 
 /**
@@ -104,13 +104,14 @@ async function createEntry(capabilities, entryData, files = []) {
         eventLogStorage.addEntry(event, assets);
     });
 
+    const parsed = getParsed(event);
     capabilities.logger.logInfo(
         {
             eventId: eventId.toString(event.id),
-            type: getType(event),
+            type: parsed.type,
             fileCount: files.length,
         },
-        `Entry created: ${getType(event)} with ${files.length} file(s)`
+        `Entry created: ${parsed.type} with ${files.length} file(s)`
     );
 
     return event;
@@ -175,7 +176,8 @@ async function getEntries(capabilities, pagination) {
 
     for await (const entry of capabilities.interface.getSortedEvents(order)) {
         if (searchRegex !== null) {
-            if (!searchRegex.test(getType(entry)) && !searchRegex.test(getDescription(entry))) {
+            const { type: entryType, description: entryDescription } = getParsed(entry);
+            if (!searchRegex.test(entryType) && !searchRegex.test(entryDescription)) {
                 continue;
             }
         }

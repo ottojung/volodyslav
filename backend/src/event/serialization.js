@@ -68,9 +68,11 @@ function serialize(capabilities, event) {
  */
 function deserialize(serializedEvent) {
     return {
-        ...serializedEvent,
         id: eventId.fromString(serializedEvent.id),
         date: fromISOString(serializedEvent.date),
+        original: serializedEvent.original,
+        input: serializedEvent.input,
+        creator: serializedEvent.creator,
     };
 }
 

@@ -50,11 +50,12 @@ function parseInput(input) {
     const type = typeMatch[1] ?? '';
     let remainder = input.slice(typeMatch[0].length);
 
-    // Step 2: Extract zero or more [key value] modifier tokens from the front
+    // Step 2: Extract zero or more [key value] modifier tokens from the front.
+    // A modifier must contain whitespace (e.g. "[key value]"); "[key]" is left as description,
+    // matching the backend parseStructuredInput() behavior.
     /** @type {Record<string, string>} */
     const modifiers = {};
-    // Match one modifier at a time - [key] or [key value] where key is a word
-    const modifierPattern = /^\s*\[(\w+)(?:\s+([^\]]*))?]/;
+    const modifierPattern = /^\s*\[(\w+)\s+([^\]]*)\]/;
     let modifierMatch = modifierPattern.exec(remainder);
     while (modifierMatch !== null) {
         const key = modifierMatch[1];
@@ -69,6 +70,17 @@ function parseInput(input) {
     // Step 3: Everything left is the description
     const description = remainder.trim();
     return { type, description, modifiers };
+}
+
+/**
+ * Computes type, description, and modifiers of an entry from its input field in one parse.
+ * Prefer this over calling getEntryType/getEntryDescription/getEntryModifiers individually
+ * when multiple derived fields are needed.
+ * @param {{ input: string }} entry
+ * @returns {{ type: string, description: string, modifiers: Record<string, string> }}
+ */
+export function getEntryParsed(entry) {
+    return parseInput(entry.input);
 }
 
 /**

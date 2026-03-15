@@ -10,12 +10,23 @@ const { parseStructuredInput } = require("./parsers");
  */
 
 /**
+ * Computes the type, description, and modifiers of an event by parsing its input field.
+ * Prefer this over calling getType/getDescription/getModifiers individually when multiple
+ * derived fields are needed, to avoid parsing the same string multiple times.
+ * @param {Event} event
+ * @returns {import('./parsers').ParsedInput}
+ */
+function getParsed(event) {
+    return parseStructuredInput(event.input);
+}
+
+/**
  * Computes the type of an event by parsing its input field.
  * @param {Event} event
  * @returns {string}
  */
 function getType(event) {
-    return parseStructuredInput(event.input).type;
+    return getParsed(event).type;
 }
 
 /**
@@ -24,7 +35,7 @@ function getType(event) {
  * @returns {string}
  */
 function getDescription(event) {
-    return parseStructuredInput(event.input).description;
+    return getParsed(event).description;
 }
 
 /**
@@ -33,10 +44,11 @@ function getDescription(event) {
  * @returns {import('./parsers').ParsedInput['modifiers']}
  */
 function getModifiers(event) {
-    return parseStructuredInput(event.input).modifiers;
+    return getParsed(event).modifiers;
 }
 
 module.exports = {
+    getParsed,
     getType,
     getDescription,
     getModifiers,
