@@ -826,19 +826,24 @@ describe("IncrementalGraph concurrency", () => {
 
             await exclusiveEntered.promise;
 
-            let pullDone = false;
-            const pull = withPullMode(sleeper, async () => {
-                pullDone = true;
+            const pullEntered = makeDeferred();
+            let pullEnteredResolved = false;
+            pullEntered.promise.then(() => {
+                pullEnteredResolved = true;
             });
 
-            // Give pull a chance to run (it should be blocked)
-            await new Promise((resolve) => setTimeout(resolve, 20));
-            expect(pullDone).toBe(false);
+            const pull = withPullMode(sleeper, async () => {
+                pullEntered.resolve(undefined);
+            });
+
+            // Give pull a chance to run if it were not blocked (single microtask turn)
+            await Promise.resolve();
+            expect(pullEnteredResolved).toBe(false);
 
             releaseExclusive.resolve(undefined);
             await exclusive;
             await pull;
-            expect(pullDone).toBe(true);
+            expect(pullEnteredResolved).toBe(true);
         });
 
         test("exclusive mode blocks concurrent observe operations", async () => {
@@ -855,19 +860,24 @@ describe("IncrementalGraph concurrency", () => {
 
             await exclusiveEntered.promise;
 
-            let observeDone = false;
-            const observe = withObserveMode(sleeper, async () => {
-                observeDone = true;
+            const observeEntered = makeDeferred();
+            let observeEnteredResolved = false;
+            observeEntered.promise.then(() => {
+                observeEnteredResolved = true;
             });
 
-            // Give observe a chance to run (it should be blocked)
-            await new Promise((resolve) => setTimeout(resolve, 20));
-            expect(observeDone).toBe(false);
+            const observe = withObserveMode(sleeper, async () => {
+                observeEntered.resolve(undefined);
+            });
+
+            // Give observe a chance to run if it were not blocked (single microtask turn)
+            await Promise.resolve();
+            expect(observeEnteredResolved).toBe(false);
 
             releaseExclusive.resolve(undefined);
             await exclusive;
             await observe;
-            expect(observeDone).toBe(true);
+            expect(observeEnteredResolved).toBe(true);
         });
 
         test("pull blocks a pending exclusive operation", async () => {
