@@ -34,7 +34,7 @@ const {
 const { makeRootDatabase, getRootDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration, runMigrationUnsafe } = require('./migration_runner');
-const { withMutex } = require('./lock');
+const { withMutex, withExclusiveMode } = require('./lock');
 const {
     makeDecisionConflictError,
     isDecisionConflict,
@@ -117,6 +117,7 @@ module.exports = {
     makeCreateExistingNodeError,
     isCreateExistingNode,
     withMutex,
+    withExclusiveMode,
     migrationCallback,
     synchronizeNoLock,
 };

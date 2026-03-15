@@ -18,9 +18,8 @@ const {
     getRootDatabase,
     runMigrationUnsafe,
     synchronizeNoLock,
-    withMutex,
+    withExclusiveMode,
     migrationCallback,
-    runMigration,
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
@@ -43,7 +42,13 @@ function internalRequireInitializedGraph(interfaceInstance) {
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
 async function internalEnsureInitialized(interfaceInstance) {
-    await internalEnsureInitializedWithMigration(interfaceInstance, runMigration);
+    if (interfaceInstance._incrementalGraph !== null) {
+        return;
+    }
+    const capabilities = interfaceInstance._getCapabilities();
+    await withExclusiveMode(capabilities.sleeper, async () => {
+        await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
+    });
 }
 
 /**
@@ -95,7 +100,7 @@ async function internalEnsureInitializedWithMigration(
  * @param {{ resetToTheirs?: boolean }} [options]
  */
 async function internalSynchronizeDatabase(interfaceInstance, options) {
-    await withMutex(interfaceInstance._getCapabilities().sleeper, async () => {
+    await withExclusiveMode(interfaceInstance._getCapabilities().sleeper, async () => {
         await internalSynchronizeDatabaseNoLock(interfaceInstance, options);
     });
 }

@@ -116,7 +116,38 @@ it keeps callers decoupled from the key and makes the lock easier to find.
 | Module | Lock scope | Protects |
 |---|---|---|
 | `backend/src/gitstore/mutex.js` | Per `workingPath` | `checkpoint()` and `transaction()` on the same local repository |
-| `backend/src/generators/incremental_graph/lock.js` | Global (per `IncrementalGraph` sleeper instance) | `invalidate()`, `pull()`, and `runMigration()` in the incremental graph engine |
+| `backend/src/generators/incremental_graph/lock.js` | Global (per `SleepCapability` instance) | database open, migration, `invalidate()`, `pull()`, and inspection reads |
+
+### Lock hierarchy
+
+The incremental-graph subsystem uses two cooperating primitives to implement
+three access levels:
+
+```
+withExclusiveMode (database open / migration / synchronize / DB reset)
+  ├─ acquires MUTEX_KEY       → serialises concurrent exclusive operations
+  └─ acquires GRAPH_ACTIVITY_KEY("exclusive") → blocks pulls and observes
+
+withPullMode (pull)
+  └─ acquires GRAPH_ACTIVITY_KEY("pull")    → concurrent pulls allowed;
+                                               blocks observes and exclusive
+
+withObserveMode (invalidate / inspection read)
+  └─ acquires GRAPH_ACTIVITY_KEY("observe") → concurrent observes allowed;
+                                               blocks pulls and exclusive
+```
+
+**Acquisition order:** `MUTEX_KEY` is always acquired before
+`GRAPH_ACTIVITY_KEY`.  Pull and observe operations never acquire `MUTEX_KEY`,
+so the ordering is acyclic and deadlock-free.
+
+**Exclusion matrix:**
+
+| | exclusive | pull | observe |
+|---|---|---|---|
+| **exclusive** | serialised (via MUTEX_KEY) | ✗ exclusive | ✗ exclusive |
+| **pull** | ✗ exclusive | ✓ concurrent | ✗ exclusive |
+| **observe** | ✗ exclusive | ✗ exclusive | ✓ concurrent |
 
 ---
 

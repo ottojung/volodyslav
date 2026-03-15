@@ -10,7 +10,7 @@
 
 const { compileNodeDef } = require("./compiled_node");
 const { stringToNodeKeyString } = require("./database");
-const { withMutex } = require("./lock");
+const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
 
@@ -196,7 +196,7 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * @returns {Promise<void>}
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
-    return await withMutex(capabilities.sleeper, async () => {
+    return await withExclusiveMode(capabilities.sleeper, async () => {
         await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }

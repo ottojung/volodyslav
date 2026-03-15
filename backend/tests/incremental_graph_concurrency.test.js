@@ -7,6 +7,7 @@
 const {
     makeIncrementalGraph,
 } = require("../src/generators/incremental_graph");
+const { withExclusiveMode, withPullMode, withObserveMode } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
 
 const testCapabilities = getMockedRootCapabilities();
@@ -760,6 +761,214 @@ describe("IncrementalGraph concurrency", () => {
 
             releaseBoth.resolve(undefined);
             await Promise.all([pull1, pull2]);
+        });
+    });
+
+    describe("exclusive mode locking semantics", () => {
+        /**
+         * @template T
+         * @returns {{ promise: Promise<T>, resolve: (value: T) => void }}
+         */
+        function makeDeferred() {
+            /** @type {(value: T) => void} */
+            let resolve = () => undefined;
+            const promise = new Promise((resolveCallback) => {
+                resolve = resolveCallback;
+            });
+            return { promise, resolve };
+        }
+
+        test("concurrent exclusive operations are serialized", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const trace = [];
+            const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
+
+            const first = withExclusiveMode(sleeper, async () => {
+                trace.push("first-start");
+                enteredFirst.resolve(undefined);
+                await releaseFirst.promise;
+                trace.push("first-end");
+            });
+
+            // Wait deterministically until the first operation has entered the exclusive section
+            await enteredFirst.promise;
+
+            const second = withExclusiveMode(sleeper, async () => {
+                trace.push("second-start");
+                trace.push("second-end");
+            });
+
+            releaseFirst.resolve(undefined);
+            await Promise.all([first, second]);
+
+            expect(trace).toEqual([
+                "first-start",
+                "first-end",
+                "second-start",
+                "second-end",
+            ]);
+        });
+
+        test("exclusive mode blocks concurrent pulls", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseExclusive = makeDeferred();
+            const exclusiveEntered = makeDeferred();
+
+            const exclusive = withExclusiveMode(sleeper, async () => {
+                exclusiveEntered.resolve(undefined);
+                await releaseExclusive.promise;
+            });
+
+            await exclusiveEntered.promise;
+
+            const pullEntered = makeDeferred();
+            let pullEnteredResolved = false;
+            pullEntered.promise.then(() => {
+                pullEnteredResolved = true;
+            });
+
+            const pull = withPullMode(sleeper, async () => {
+                pullEntered.resolve(undefined);
+            });
+
+            // Give pull a chance to run if it were not blocked (single microtask turn)
+            await Promise.resolve();
+            expect(pullEnteredResolved).toBe(false);
+
+            releaseExclusive.resolve(undefined);
+            await exclusive;
+            await pull;
+            expect(pullEnteredResolved).toBe(true);
+        });
+
+        test("exclusive mode blocks concurrent observe operations", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseExclusive = makeDeferred();
+            const exclusiveEntered = makeDeferred();
+
+            const exclusive = withExclusiveMode(sleeper, async () => {
+                exclusiveEntered.resolve(undefined);
+                await releaseExclusive.promise;
+            });
+
+            await exclusiveEntered.promise;
+
+            const observeEntered = makeDeferred();
+            let observeEnteredResolved = false;
+            observeEntered.promise.then(() => {
+                observeEnteredResolved = true;
+            });
+
+            const observe = withObserveMode(sleeper, async () => {
+                observeEntered.resolve(undefined);
+            });
+
+            // Give observe a chance to run if it were not blocked (single microtask turn)
+            await Promise.resolve();
+            expect(observeEnteredResolved).toBe(false);
+
+            releaseExclusive.resolve(undefined);
+            await exclusive;
+            await observe;
+            expect(observeEnteredResolved).toBe(true);
+        });
+
+        test("pull blocks a pending exclusive operation", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releasePull = makeDeferred();
+            const pullEntered = makeDeferred();
+
+            const pull = withPullMode(sleeper, async () => {
+                pullEntered.resolve(undefined);
+                await releasePull.promise;
+            });
+
+            await pullEntered.promise;
+
+            let exclusiveDone = false;
+            const exclusive = withExclusiveMode(sleeper, async () => {
+                exclusiveDone = true;
+            });
+
+            // Give exclusive a chance to run (it should be blocked)
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(exclusiveDone).toBe(false);
+
+            releasePull.resolve(undefined);
+            await pull;
+            await exclusive;
+            expect(exclusiveDone).toBe(true);
+        });
+
+        test("observe blocks a pending exclusive operation", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseObserve = makeDeferred();
+            const observeEntered = makeDeferred();
+
+            const observe = withObserveMode(sleeper, async () => {
+                observeEntered.resolve(undefined);
+                await releaseObserve.promise;
+            });
+
+            await observeEntered.promise;
+
+            let exclusiveDone = false;
+            const exclusive = withExclusiveMode(sleeper, async () => {
+                exclusiveDone = true;
+            });
+
+            // Give exclusive a chance to run (it should be blocked)
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(exclusiveDone).toBe(false);
+
+            releaseObserve.resolve(undefined);
+            await observe;
+            await exclusive;
+            expect(exclusiveDone).toBe(true);
+        });
+
+        test("exclusive blocks multiple queued pulls", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseExclusive = makeDeferred();
+            const exclusiveEntered = makeDeferred();
+
+            const exclusive = withExclusiveMode(sleeper, async () => {
+                exclusiveEntered.resolve(undefined);
+                await releaseExclusive.promise;
+            });
+
+            await exclusiveEntered.promise;
+
+            const trace = [];
+            const pull1 = withPullMode(sleeper, async () => {
+                trace.push("pull1");
+            });
+            const pull2 = withPullMode(sleeper, async () => {
+                trace.push("pull2");
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            // Neither pull should have started while exclusive holds
+            expect(trace).toEqual([]);
+
+            releaseExclusive.resolve(undefined);
+            await exclusive;
+            await Promise.all([pull1, pull2]);
+            // Both pulls ran after exclusive released
+            expect(trace.sort()).toEqual(["pull1", "pull2"]);
         });
     });
 });
