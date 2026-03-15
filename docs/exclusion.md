@@ -116,7 +116,7 @@ it keeps callers decoupled from the key and makes the lock easier to find.
 | Module | Lock scope | Protects |
 |---|---|---|
 | `backend/src/gitstore/mutex.js` | Per `workingPath` | `checkpoint()` and `transaction()` on the same local repository |
-| `backend/src/generators/incremental_graph/lock.js` | Global (per `IncrementalGraph` sleeper instance) | database open, migration, `invalidate()`, `pull()`, and inspection reads |
+| `backend/src/generators/incremental_graph/lock.js` | Global (per `SleepCapability` instance) | database open, migration, `invalidate()`, `pull()`, and inspection reads |
 
 ### Lock hierarchy
 
