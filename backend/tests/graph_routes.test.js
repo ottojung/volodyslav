@@ -545,6 +545,52 @@ describe("POST /api/graph/nodes/:head/*", () => {
             modifiedAt: "2024-01-02T00:00:00.000Z",
         });
     });
+
+    it("decodes ~-prefixed numeric arg as a number", async () => {
+        const headIndex = new Map([["last_entries", makeMockCompiledNode("last_entries", 1)]]);
+        const freshness = new Map([
+            [JSON.stringify({ head: "last_entries", args: [100] }), "up-to-date"],
+        ]);
+        const pulledValues = new Map([
+            [JSON.stringify({ head: "last_entries", args: [100] }), { type: "last_entries", n: 100, events: [] }],
+        ]);
+        const timestamps = new Map([
+            [JSON.stringify({ head: "last_entries", args: [100] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).post("/api/graph/nodes/last_entries/~100");
+        expect(res.status).toBe(200);
+        expect(graph.pull).toHaveBeenCalledWith("last_entries", [100]);
+        expect(res.body).toEqual({
+            head: "last_entries",
+            args: [100],
+            freshness: "up-to-date",
+            value: { type: "last_entries", n: 100, events: [] },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            modifiedAt: "2024-01-01T00:00:00.000Z",
+        });
+    });
+
+    it("decodes ~~-prefixed string arg starting with ~", async () => {
+        const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
+        const freshness = new Map([
+            [JSON.stringify({ head: "event", args: ["~tilde-id"] }), "up-to-date"],
+        ]);
+        const pulledValues = new Map([
+            [JSON.stringify({ head: "event", args: ["~tilde-id"] }), { type: "event", id: "~tilde-id" }],
+        ]);
+        const timestamps = new Map([
+            [JSON.stringify({ head: "event", args: ["~tilde-id"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+        ]);
+        const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
+        const app = makeTestApp(graph);
+
+        const res = await request(app).post("/api/graph/nodes/event/~~tilde-id");
+        expect(res.status).toBe(200);
+        expect(graph.pull).toHaveBeenCalledWith("event", ["~tilde-id"]);
+    });
 });
 
 // ---------------------------------------------------------------------------

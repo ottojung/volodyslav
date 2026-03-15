@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@chakra-ui/react";
 import {
     submitEntry,
+    triggerLastEntriesPrefetch,
 } from "./api";
 import { isValidDescription, createToastConfig } from "./utils.js";
 import { logger } from "./logger.js";
@@ -204,6 +205,7 @@ export const useDescriptionEntry = () => {
 
             const result = await submitEntry(descriptionToSubmit, pendingRequestIdentifier || undefined, files);
             handleSubmissionSuccess(result, descriptionToSubmit, files, setPendingRequestIdentifier, setPhotoCount, toast);
+            triggerLastEntriesPrefetch();
             navigate("/search");
         } catch (error) {
             handleSubmissionError(error, toast);
