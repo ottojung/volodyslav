@@ -124,7 +124,7 @@ The incremental-graph subsystem uses two cooperating primitives to implement
 three access levels:
 
 ```
-withExclusiveMode (database open / migration)
+withExclusiveMode (database open / migration / synchronize / DB reset)
   ├─ acquires MUTEX_KEY       → serialises concurrent exclusive operations
   └─ acquires GRAPH_ACTIVITY_KEY("exclusive") → blocks pulls and observes
 
