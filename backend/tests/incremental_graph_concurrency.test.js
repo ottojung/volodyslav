@@ -784,15 +784,17 @@ describe("IncrementalGraph concurrency", () => {
 
             const trace = [];
             const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
 
             const first = withExclusiveMode(sleeper, async () => {
                 trace.push("first-start");
+                enteredFirst.resolve(undefined);
                 await releaseFirst.promise;
                 trace.push("first-end");
             });
 
-            // Give first a moment to enter the exclusive section
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // Wait deterministically until the first operation has entered the exclusive section
+            await enteredFirst.promise;
 
             const second = withExclusiveMode(sleeper, async () => {
                 trace.push("second-start");
