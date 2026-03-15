@@ -1,5 +1,5 @@
 const path = require("path");
-const { transaction } = require("../src/event_log_storage");
+const { transaction, isMalformedEntryError } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const event = require("../src/event/structure");
@@ -244,5 +244,52 @@ describe("event_log_storage", () => {
                 await storage.getExistingEntries();
             })
         ).rejects.toThrow("simulated I/O failure checking data.json");
+    });
+
+    test("getExistingEntries throws MalformedEntryError when data.json contains an invalid entry", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // Write a valid entry first to create data.json
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(
+                {
+                    id: { identifier: "valid-entry" },
+                    date: fromISOString("2025-06-01"),
+                    original: "valid input",
+                    input: "valid input",
+                    type: "valid_type",
+                    description: "Valid entry",
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
+                },
+                []
+            );
+        });
+
+        // Inject a malformed (unparseable) object into data.json by mocking readObjects
+        const originalCreateReadStream =
+            capabilities.reader.createReadStream.getMockImplementation();
+        capabilities.reader.createReadStream.mockImplementation((file) => {
+            if (file.path.endsWith("data.json")) {
+                // Return a stream that emits an invalid object (missing required fields)
+                const { Readable } = require("stream");
+                const malformed = JSON.stringify({ not_a_valid_event: true }) + "\n";
+                return Readable.from([malformed]);
+            }
+            return originalCreateReadStream(file);
+        });
+
+        let thrownError;
+        try {
+            await transaction(capabilities, async (storage) => {
+                await storage.getExistingEntries();
+            });
+        } catch (err) {
+            thrownError = err;
+        }
+
+        expect(isMalformedEntryError(thrownError)).toBe(true);
+        expect(thrownError.message).toContain("Failed to read existing entries from");
+        expect(thrownError.invalidObject).toEqual({ not_a_valid_event: true });
     });
 });
