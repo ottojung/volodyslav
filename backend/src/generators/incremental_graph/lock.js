@@ -62,8 +62,33 @@ function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
     );
 }
 
+/**
+ * Acquires an exclusive lock that prevents all concurrent graph activity:
+ * pulls, observes, and other exclusive operations (database opens, migrations).
+ *
+ * Internally this acquires MUTEX_KEY first (to serialize concurrent exclusive
+ * callers with each other) and then acquires GRAPH_ACTIVITY_KEY in "exclusive"
+ * mode (to block any in-flight pulls or observe-mode operations from running
+ * concurrently with the critical section).
+ *
+ * Acquisition order: MUTEX_KEY → GRAPH_ACTIVITY_KEY("exclusive").
+ * Pull and observe operations only ever acquire GRAPH_ACTIVITY_KEY, so the
+ * ordering is acyclic and deadlock-free.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withExclusiveMode(sleeper, procedure) {
+    return sleeper.withMutex(MUTEX_KEY, () =>
+        sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "exclusive", procedure)
+    );
+}
+
 module.exports = {
     withMutex,
+    withExclusiveMode,
     withObserveMode,
     withPullMode,
     withPullNodeMutex,
