@@ -67,6 +67,15 @@ function resolveAssetPath(capabilities, relativeAssetPath) {
 async function computeTranscriptionForAssetPath(relativeAssetPath, capabilities) {
     const absoluteAssetPath = resolveAssetPath(capabilities, relativeAssetPath);
     const file = await capabilities.checker.instantiate(absoluteAssetPath).catch(() => null);
+
+    capabilities.logger.logDebug(
+        {
+            relative_asset_path: relativeAssetPath,
+            file,
+        },
+        "Checking transcription file existence",
+    );
+
     if (!file) {
         return { type: "transcription", value: { "message": `File not found: ${JSON.stringify(relativeAssetPath)}` } };
     }
