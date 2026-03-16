@@ -292,4 +292,54 @@ describe("event_log_storage", () => {
         expect(thrownError.message).toContain("Failed to read existing entries from");
         expect(thrownError.invalidObject).toEqual({ not_a_valid_event: true });
     });
+
+    test("getExistingEntries throws MalformedEntryError when data.json contains an entry with extra fields", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(
+                {
+                    id: { identifier: "valid-entry-for-extra-field-test" },
+                    date: fromISOString("2025-06-02"),
+                    original: "valid input",
+                    input: "valid input",
+                    type: "valid_type",
+                    description: "Valid entry",
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
+                },
+                []
+            );
+        });
+
+        const originalCreateReadStream =
+            capabilities.reader.createReadStream.getMockImplementation();
+        capabilities.reader.createReadStream.mockImplementation((file) => {
+            if (file.path.endsWith("data.json")) {
+                const { Readable } = require("stream");
+                const malformedWithExtraField = JSON.stringify({
+                    id: "valid-entry-with-extra-field",
+                    date: "2025-06-02T00:00:00.000Z",
+                    original: "original value",
+                    input: "input value",
+                    creator: { name: "test", uuid: "test-uuid", version: "1.0.0", hostname: "test-host" },
+                    extraField: "unexpected",
+                }) + "\n";
+                return Readable.from([malformedWithExtraField]);
+            }
+            return originalCreateReadStream(file);
+        });
+
+        let thrownError;
+        try {
+            await transaction(capabilities, async (storage) => {
+                await storage.getExistingEntries();
+            });
+        } catch (err) {
+            thrownError = err;
+        }
+
+        expect(isMalformedEntryError(thrownError)).toBe(true);
+        expect(thrownError.message).toContain("Unrecognized field: 'extraField'");
+    });
 });
