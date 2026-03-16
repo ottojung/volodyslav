@@ -9,6 +9,10 @@ function parseInput(input) {
 }
 
 describe("parseInput (frontend entry parsing)", () => {
+    // -------------------------------------------------------------------------
+    // Basic structure
+    // -------------------------------------------------------------------------
+
     test("parses minimal input (type only)", () => {
         expect(parseInput("WORK")).toEqual({
             type: "WORK",
@@ -17,11 +21,72 @@ describe("parseInput (frontend entry parsing)", () => {
         });
     });
 
+    test("parses lowercase type", () => {
+        expect(parseInput("diary")).toEqual({
+            type: "diary",
+            description: "",
+            modifiers: {},
+        });
+    });
+
+    test("parses mixed-case type", () => {
+        expect(parseInput("AudioNote")).toEqual({
+            type: "AudioNote",
+            description: "",
+            modifiers: {},
+        });
+    });
+
+    test("parses type that contains digits", () => {
+        expect(parseInput("NOTE2")).toEqual({
+            type: "NOTE2",
+            description: "",
+            modifiers: {},
+        });
+    });
+
+    test("returns empty type when input is empty", () => {
+        const result = parseInput("");
+        expect(result.type).toBe("");
+        expect(result.description).toBe("");
+        expect(result.modifiers).toEqual({});
+    });
+
+    test("returns empty type for whitespace-only input", () => {
+        const result = parseInput("   ");
+        expect(result.type).toBe("");
+    });
+
+    test("parses type with leading/trailing whitespace", () => {
+        const result = parseInput("  WORK  ");
+        expect(result.type).toBe("WORK");
+    });
+
     test("parses type with description", () => {
         expect(parseInput("MEAL - Had breakfast")).toEqual({
             type: "MEAL",
             description: "- Had breakfast",
             modifiers: {},
+        });
+    });
+
+    test("parses type with multi-word description", () => {
+        expect(parseInput("NOTE lots of words in the description here")).toEqual({
+            type: "NOTE",
+            description: "lots of words in the description here",
+            modifiers: {},
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Key-value modifiers
+    // -------------------------------------------------------------------------
+
+    test("parses type with a single key-value modifier", () => {
+        expect(parseInput("WORK [loc office]")).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: { loc: "office" },
         });
     });
 
@@ -36,7 +101,15 @@ describe("parseInput (frontend entry parsing)", () => {
         });
     });
 
-    test("parses type with description and modifiers", () => {
+    test("parses modifier with multi-word value", () => {
+        expect(parseInput("EVENT [when 0 hours ago]")).toEqual({
+            type: "EVENT",
+            description: "",
+            modifiers: { when: "0 hours ago" },
+        });
+    });
+
+    test("parses type with key-value modifier and description", () => {
         expect(parseInput("WORK [loc office] - Fixed the parser bug")).toEqual({
             type: "WORK",
             description: "- Fixed the parser bug",
@@ -46,18 +119,9 @@ describe("parseInput (frontend entry parsing)", () => {
         });
     });
 
-    test("parses flag modifiers (brackets without a value)", () => {
-        // Regression test: [audiorecording] should be a modifier with empty value,
-        // not description text.
-        expect(parseInput("diary [when 0 hours ago] [audiorecording]")).toEqual({
-            type: "diary",
-            description: "",
-            modifiers: {
-                when: "0 hours ago",
-                audiorecording: "",
-            },
-        });
-    });
+    // -------------------------------------------------------------------------
+    // Flag modifiers (single-word brackets, no value)
+    // -------------------------------------------------------------------------
 
     test("parses a single flag modifier", () => {
         expect(parseInput("TASK [done]")).toEqual({
@@ -69,9 +133,67 @@ describe("parseInput (frontend entry parsing)", () => {
         });
     });
 
+    test("parses multiple flag modifiers", () => {
+        expect(parseInput("TASK [done] [archived] [urgent]")).toEqual({
+            type: "TASK",
+            description: "",
+            modifiers: { done: "", archived: "", urgent: "" },
+        });
+    });
+
+    test("parses flag modifiers mixed with key-value modifiers (regression)", () => {
+        // Regression: [audiorecording] used to end up in description
+        expect(parseInput("diary [when 0 hours ago] [audiorecording]")).toEqual({
+            type: "diary",
+            description: "",
+            modifiers: {
+                when: "0 hours ago",
+                audiorecording: "",
+            },
+        });
+    });
+
+    test("parses flag modifier before key-value modifier", () => {
+        expect(parseInput("WORK [done] [loc office]")).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: { done: "", loc: "office" },
+        });
+    });
+
+    test("parses flag modifier followed by description", () => {
+        expect(parseInput("WORK [loc office] [done] some notes")).toEqual({
+            type: "WORK",
+            description: "some notes",
+            modifiers: { loc: "office", done: "" },
+        });
+    });
+
+    test("flag modifier with underscore key is treated as a modifier", () => {
+        expect(parseInput("WORK [flag_with_underscore]")).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: { flag_with_underscore: "" },
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Brackets that stay in the description
+    // -------------------------------------------------------------------------
+
     test("digit-starting brackets remain in description", () => {
         expect(parseInput("note [123] numbers in brackets").description).toBe(
             "[123] numbers in brackets"
+        );
+    });
+
+    test("bracket starting with underscore stays in description", () => {
+        expect(parseInput("TASK [_flag]").description).toBe("[_flag]");
+    });
+
+    test("unclosed bracket stays in description", () => {
+        expect(parseInput("work [unclosed bracket in description").description).toBe(
+            "[unclosed bracket in description"
         );
     });
 
@@ -79,5 +201,49 @@ describe("parseInput (frontend entry parsing)", () => {
         expect(
             parseInput("task description with [brackets] but no spaces").description
         ).toBe("description with [brackets] but no spaces");
+    });
+
+    // -------------------------------------------------------------------------
+    // Flag modifier after description text — stays in description, no error
+    // -------------------------------------------------------------------------
+
+    test("flag modifier [key] after description text stays in description", () => {
+        // Because [key] (no space) is ambiguous, only key-value modifiers after
+        // description text are errors. A bare [key] after text stays in the description.
+        expect(parseInput("WORK description [done]")).toEqual({
+            type: "WORK",
+            description: "description [done]",
+            modifiers: {},
+        });
+    });
+
+    test("multiple flag brackets after description text all stay in description", () => {
+        expect(parseInput("TASK some notes [flag1] [flag2]")).toEqual({
+            type: "TASK",
+            description: "some notes [flag1] [flag2]",
+            modifiers: {},
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Whitespace handling
+    // -------------------------------------------------------------------------
+
+    test("handles extra whitespace between type and modifier", () => {
+        const result = parseInput("WORK  [key]  description");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "description",
+            modifiers: { key: "" },
+        });
+    });
+
+    test("handles extra whitespace between modifiers", () => {
+        const result = parseInput("SOCIAL  [with John]   [loc cafe]  notes");
+        expect(result).toEqual({
+            type: "SOCIAL",
+            description: "notes",
+            modifiers: { with: "John", loc: "cafe" },
+        });
     });
 });
