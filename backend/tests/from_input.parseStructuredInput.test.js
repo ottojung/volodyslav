@@ -64,8 +64,31 @@ describe("parseStructuredInput", () => {
         expect(isInputParseError(err2)).toBe(true);
     });
 
+    test("parses flag modifiers (brackets without a value)", () => {
+        const result = parseStructuredInput("diary [when 0 hours ago] [audiorecording]");
+        expect(result).toEqual({
+            type: "diary",
+            description: "",
+            modifiers: {
+                when: "0 hours ago",
+                audiorecording: ""
+            }
+        });
+    });
+
+    test("parses a single flag modifier", () => {
+        const result = parseStructuredInput("TASK [done]");
+        expect(result).toEqual({
+            type: "TASK",
+            description: "",
+            modifiers: {
+                done: ""
+            }
+        });
+    });
+
     test("allows brackets in descriptions that don't look like modifiers", () => {
-        // Test cases that should be valid (brackets without modifier pattern)
+        // Brackets starting with a digit or appearing after description text are not modifiers
         const validInputs = [
             { input: "work [unclosed bracket in description", expectedDesc: "[unclosed bracket in description" },
             { input: "task description with [brackets] but no spaces", expectedDesc: "description with [brackets] but no spaces" },

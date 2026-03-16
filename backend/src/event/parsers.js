@@ -63,24 +63,36 @@ function parseModifier(modifier) {
  * @returns {ParsedInput} - The parsed input structure
  */
 function parseStructuredInput(input) {
-    // Match: TYPE [modifiers...] description
-    // TYPE must be a single word (letters and digits only, starting with a letter)
-    // modifiers are optional, description is optional
-    // Only capture brackets that contain spaces (valid modifiers) immediately after type
-    const pattern = /^\s*([A-Za-z][A-Za-z0-9]*)\s*((?:\[[^\]]*\s+[^\]]*\]\s*)*)\s*(.*)$/;
-    const match = input.match(pattern);
-
-    if (!match) {
+    // Step 1: Extract the type (first word starting with a letter)
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    if (!typeMatch) {
         throw makeInputParseError("Bad structure of input", input);
     }
-
-    const type = match[1];
-    const modifiersStr = (match[2] || "").trim();
-    const description = (match[3] || "").trim();
+    const type = typeMatch[1];
+    let remainder = input.slice(typeMatch[0].length);
 
     if (!type) {
         throw makeInputParseError("Type is required but not found in input", input);
     }
+
+    // Step 2: Iteratively extract modifier tokens from the front to avoid ReDoS.
+    // Modifier keys start with a letter and may contain word chars (letters, digits, underscores).
+    // [key] is a flag modifier with an empty value; [key value] carries a value.
+    // Brackets starting with a digit (e.g. [123]) are not modifiers.
+    /** @type {Record<string, string>} */
+    const modifiers = {};
+    const modifierPattern = /^\s*\[([A-Za-z]\w*)(?:\s+([^\]]*))?]/;
+    let modifierMatch = modifierPattern.exec(remainder);
+    while (modifierMatch !== null) {
+        const modifierContent = modifierMatch[0].trim().slice(1, -1); // strip brackets
+        const parsed = parseModifier(modifierContent);
+        modifiers[parsed.type] = parsed.description;
+        remainder = remainder.slice(modifierMatch[0].length);
+        modifierMatch = modifierPattern.exec(remainder);
+    }
+
+    // Step 3: Everything remaining is the description
+    const description = remainder.trim();
 
     // Check if description contains patterns that look like modifiers (e.g., [key value])
     // This prevents modifiers from appearing after the description has started
@@ -92,20 +104,8 @@ function parseStructuredInput(input) {
         );
     }
 
-    // Parse modifiers - only match those with spaces (valid modifier format)
-    const modifierMatches = modifiersStr.match(/\[[^\]]*\s+[^\]]*\]/g) || [];
-    /** @type {Record<string, string>} */
-    const modifiers = {};
-
-    for (const modifierMatch of modifierMatches) {
-        // Remove brackets
-        const modifierContent = modifierMatch.slice(1, -1);
-        const parsed = parseModifier(modifierContent);
-        modifiers[parsed.type] = parsed.description;
-    }
-
     return {
-        type: type,
+        type,
         description,
         modifiers,
     };
