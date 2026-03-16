@@ -48,9 +48,6 @@ describe("creator hostname in event tryDeserialize()", () => {
         date: "2025-01-01T00:00:00.000Z",
         original: "o",
         input: "i",
-        type: "t",
-        description: "d",
-        modifiers: {},
     };
 
     it("returns error when creator.hostname is missing", () => {

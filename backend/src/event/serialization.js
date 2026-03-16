@@ -7,6 +7,7 @@ const {
     makeInvalidValueError,
     makeInvalidStructureError,
     makeNestedFieldError,
+    makeUnrecognizedFieldError,
 } = require("./errors");
 
 /**
@@ -92,6 +93,13 @@ function tryDeserialize(obj) {
             );
         }
 
+        const knownFields = new Set(["id", "date", "original", "input", "creator"]);
+        for (const key of Object.keys(obj)) {
+            if (!knownFields.has(key)) {
+                return makeUnrecognizedFieldError(key, obj[key]);
+            }
+        }
+
         if (!("id" in obj)) return makeMissingFieldError("id");
         const id = obj.id;
         if (typeof id !== "string") {
@@ -122,14 +130,18 @@ function tryDeserialize(obj) {
             return makeInvalidTypeError("creator", creator, "object");
         }
 
+        const knownCreatorFields = new Set(["name", "uuid", "version", "hostname"]);
+        for (const key of Object.keys(creator)) {
+            if (!knownCreatorFields.has(key)) {
+                return makeUnrecognizedFieldError(`creator.${key}`, creator[key]);
+            }
+        }
+
         const dateObj = fromISOString(date);
         if (!dateObj.isValid) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 
-        if (!creator || typeof creator !== "object") {
-            return makeInvalidTypeError("creator", creator, "object");
-        }
         if (!("name" in creator)) {
             return makeNestedFieldError("creator", "name", creator, "missing required field");
         }

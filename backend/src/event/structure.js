@@ -6,6 +6,7 @@ const {
     isInvalidValueError,
     isInvalidStructureError,
     isNestedFieldError,
+    isUnrecognizedFieldError,
 } = require('./errors');
 
 /**
@@ -61,5 +62,6 @@ module.exports = {
     isInvalidValueError,
     isInvalidStructureError,
     isNestedFieldError,
+    isUnrecognizedFieldError,
     equal,
 };
