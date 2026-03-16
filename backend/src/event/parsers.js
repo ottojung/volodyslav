@@ -94,9 +94,9 @@ function parseStructuredInput(input) {
     // Step 3: Everything remaining is the description
     const description = remainder.trim();
 
-    // Check if description contains patterns that look like modifiers (e.g., [key value])
+    // Check if description contains patterns that look like modifiers (e.g., [key] or [key value])
     // This prevents modifiers from appearing after the description has started
-    const modifierLikePattern = /\[[^\]]*\s+[^\]]*\]/;
+    const modifierLikePattern = /\[[A-Za-z]\w*(?:\s+[^\]]*)?]/;
     if (modifierLikePattern.test(description)) {
         throw makeInputParseError(
             "Modifiers must appear immediately after the type, before any description text",

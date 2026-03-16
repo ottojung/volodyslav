@@ -26,7 +26,8 @@
  * Supported input format: TYPE [MODIFIERS...] DESCRIPTION
  * - TYPE is required and must be a single word (letters and digits only, starting with a letter)
  * - MODIFIERS are optional, format: [key value] (multiple allowed)  
- * - DESCRIPTION is optional, can contain any text (including dashes, brackets, special chars)
+ * - DESCRIPTION is optional and may contain free text, but bracketed modifier syntax
+ *   (e.g. [done], [when now]) is not allowed inside the description
  * - Multi-word descriptions don't require punctuation when used without modifiers
  * 
  * Examples of valid inputs:
