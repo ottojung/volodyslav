@@ -73,7 +73,7 @@ async function computeTranscriptionForAssetPath(relativeAssetPath, capabilities)
 
     const fileStream = capabilities.reader.createReadStream(file);
     const value = await transcribe.transcribeStream(capabilities, fileStream);
-    capabilities.logger.logDebug(
+    capabilities.logger.logInfo(
         {
             relative_asset_path: relativeAssetPath,
             transcription_length: value.text.length,
