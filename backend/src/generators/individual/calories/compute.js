@@ -31,7 +31,7 @@ async function computeCaloriesForEvent(event, capabilities) {
 
     const inputText = event.input ?? "";
     const value = await capabilities.aiCalories.estimateCalories(inputText);
-    capabilities.logger.logDebug(
+    capabilities.logger.logInfo(
         {
             event_id: event.id,
             input_text_length: inputText.length,
