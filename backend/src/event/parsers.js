@@ -57,55 +57,62 @@ function parseModifier(modifier) {
     return { type, description };
 }
 
+// Matches a single modifier bracket whose key starts with a letter:
+//   [key]        - flag modifier (empty value)
+//   [key value]  - key-value modifier
+// Key: one letter followed by zero or more word characters.
+// Value: any non-bracket text after the key and whitespace.
+// The pattern is intentionally anchored (^\s*) so it only matches at the start
+// of a string, enabling safe iterative consumption without backtracking.
+const LEADING_MODIFIER_PATTERN = /^\s*\[([A-Za-z]\w*)(?:\s+([^\]]*))?\]/;
+
+// Same shape as LEADING_MODIFIER_PATTERN but unanchored, used to detect
+// modifier-like brackets anywhere inside a description string.
+const MODIFIER_IN_DESCRIPTION_PATTERN = /\[[A-Za-z]\w*(?:\s+[^\]]+)?\]/;
+
 /**
  * Parses structured input in the format: TYPE [MODIFIERS...] DESCRIPTION
+ * Uses an iterative approach to avoid ReDoS vulnerabilities.
  * @param {string} input - The input string to parse
  * @returns {ParsedInput} - The parsed input structure
  */
 function parseStructuredInput(input) {
-    // Match: TYPE [modifiers...] description
-    // TYPE must be a single word (letters and digits only, starting with a letter)
-    // modifiers are optional, description is optional
-    // Only capture brackets that contain spaces (valid modifiers) immediately after type
-    const pattern = /^\s*([A-Za-z][A-Za-z0-9]*)\s*((?:\[[^\]]*\s+[^\]]*\]\s*)*)\s*(.*)$/;
-    const match = input.match(pattern);
-
-    if (!match) {
+    // Step 1: Extract the type (first word starting with a letter).
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    if (!typeMatch) {
         throw makeInputParseError("Bad structure of input", input);
     }
+    const type = typeMatch[1];
+    let remainder = input.slice(typeMatch[0].length);
 
-    const type = match[1];
-    const modifiersStr = (match[2] || "").trim();
-    const description = (match[3] || "").trim();
-
-    if (!type) {
-        throw makeInputParseError("Type is required but not found in input", input);
+    // Step 2: Iteratively consume leading modifier brackets from the remainder.
+    // Modifier keys start with a letter; [key] is a flag modifier (empty value),
+    // [key value] is a key-value modifier.
+    /** @type {Record<string, string>} */
+    const modifiers = {};
+    let modifierMatch = LEADING_MODIFIER_PATTERN.exec(remainder);
+    while (modifierMatch !== null) {
+        const modifierContent = modifierMatch[0].trim().slice(1, -1);
+        const parsed = parseModifier(modifierContent);
+        modifiers[parsed.type] = parsed.description;
+        remainder = remainder.slice(modifierMatch[0].length);
+        modifierMatch = LEADING_MODIFIER_PATTERN.exec(remainder);
     }
 
-    // Check if description contains patterns that look like modifiers (e.g., [key value])
-    // This prevents modifiers from appearing after the description has started
-    const modifierLikePattern = /\[[^\]]*\s+[^\]]*\]/;
-    if (modifierLikePattern.test(description)) {
+    // Step 3: Everything remaining is the description.
+    const description = remainder.trim();
+
+    // Step 4: All modifiers must appear before any description text.
+    // Reject inputs where the description contains a modifier-like bracket.
+    if (MODIFIER_IN_DESCRIPTION_PATTERN.test(description)) {
         throw makeInputParseError(
             "Modifiers must appear immediately after the type, before any description text",
             input
         );
     }
 
-    // Parse modifiers - only match those with spaces (valid modifier format)
-    const modifierMatches = modifiersStr.match(/\[[^\]]*\s+[^\]]*\]/g) || [];
-    /** @type {Record<string, string>} */
-    const modifiers = {};
-
-    for (const modifierMatch of modifierMatches) {
-        // Remove brackets
-        const modifierContent = modifierMatch.slice(1, -1);
-        const parsed = parseModifier(modifierContent);
-        modifiers[parsed.type] = parsed.description;
-    }
-
     return {
-        type: type,
+        type,
         description,
         modifiers,
     };

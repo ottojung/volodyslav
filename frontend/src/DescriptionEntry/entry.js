@@ -51,8 +51,8 @@ function parseInput(input) {
     let remainder = input.slice(typeMatch[0].length);
 
     // Step 2: Extract zero or more [key value] modifier tokens from the front.
-    // A modifier must contain whitespace (e.g. "[key value]"); "[key]" is left as description,
-    // matching the backend parseStructuredInput() behavior.
+    // The frontend only captures key-value modifiers (e.g. "[key value]" with whitespace);
+    // flag modifiers "[key]" (no value) are left in the description for display purposes.
     /** @type {Record<string, string>} */
     const modifiers = {};
     const modifierPattern = /^\s*\[(\w+)\s+([^[\]]*)\]/;
