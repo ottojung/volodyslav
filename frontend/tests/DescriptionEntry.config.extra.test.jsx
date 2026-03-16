@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -122,7 +123,7 @@ describe("DescriptionEntry", () => {
         // Clear the default mock and make it return null to simulate no config
         fetchConfig.mockResolvedValue(null);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // When config fetch returns null, no config section should be shown
         await waitFor(() => {
@@ -139,7 +140,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("maintains input focus after shortcut click", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -185,7 +186,7 @@ describe("DescriptionEntry", () => {
 
         submitEntry.mockRejectedValue(new Error("Submission failed"));
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."

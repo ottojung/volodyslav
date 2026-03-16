@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -119,7 +120,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("renders the main elements", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for all async operations to complete
         await waitFor(() => {
@@ -143,7 +144,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("updates input value when typing", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {
@@ -159,7 +160,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("renders Take Photos button correctly", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {
@@ -185,7 +186,7 @@ describe("DescriptionEntry", () => {
         // Override default mock to return null for this test
         fetchConfig.mockResolvedValue(null);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to finish loading
         await waitFor(() => {
@@ -204,7 +205,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("submits entry when Enter key is pressed", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {
@@ -230,7 +231,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("does not submit when Enter is pressed with Shift key", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {

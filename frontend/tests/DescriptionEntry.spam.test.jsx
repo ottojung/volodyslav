@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -115,7 +116,7 @@ describe("DescriptionEntry spam prevention", () => {
             });
         });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -156,7 +157,7 @@ describe("DescriptionEntry spam prevention", () => {
             });
         });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -198,7 +199,7 @@ describe("DescriptionEntry spam prevention", () => {
             });
         });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {

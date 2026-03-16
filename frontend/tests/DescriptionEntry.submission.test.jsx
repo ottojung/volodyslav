@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -121,7 +122,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("trims whitespace from input before submission", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -147,7 +148,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("handles Enter key submission with trimmed input", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -175,7 +176,7 @@ describe("DescriptionEntry", () => {
 
 
     it("handles config section tab switching", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for config to load
         await waitFor(() => {
@@ -208,7 +209,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("handles multiple consecutive submissions", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -246,7 +247,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("navigates to search page after successful submission", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -267,7 +268,7 @@ describe("DescriptionEntry", () => {
     it("does not navigate to search page when submission fails", async () => {
         submitEntry.mockRejectedValue(new Error("Network error"));
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -288,7 +289,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("triggers last entries prefetch after successful submission", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -309,7 +310,7 @@ describe("DescriptionEntry", () => {
     it("does not trigger last entries prefetch when submission fails", async () => {
         submitEntry.mockRejectedValue(new Error("Network error"));
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
