@@ -178,21 +178,37 @@ function getEventAssetDirectorySuffix(event) {
 }
 
 /**
+ * @typedef {Object} TranscriptionCapabilities
+ * @property {import('../../../logger').Logger} logger
+ */
+
+/**
  * Combines an event and its transcription after validating that the audio path
  * belongs to the event.
  *
+ * @param {TranscriptionCapabilities} capabilities
  * @param {Event} event
  * @param {TranscriptionResult} transcription
  * @param {string} audioPath - Audio path relative to the assets root
  * @returns {EventTranscriptionEntry}
  */
-function computeEventTranscription(event, transcription, audioPath) {
+function computeEventTranscription(capabilities, event, transcription, audioPath) {
     // Normalize both sides to forward-slash separators so that the check is
     // consistent with the canonical `<YYYY-MM>/<DD>/<event id>/<filename>`
     // layout documented in the spec, regardless of the host OS path separator.
     const suffix = getEventAssetDirectorySuffix(event).replace(/\\/g, "/");
     const normalizedAudioPath = audioPath.replace(/\\/g, "/");
     const expectedPrefix = suffix + "/";
+
+    capabilities.logger.logDebug(
+        {
+            event_id: event.id.identifier,
+            audio_path: audioPath,
+            expected_prefix: expectedPrefix,
+        },
+        "Validating audio path association with event",
+    );
+
     if (!normalizedAudioPath.startsWith(expectedPrefix)) {
         throw new AudioNotAssociatedWithEventError(audioPath, event.id.identifier);
     }

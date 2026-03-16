@@ -2,9 +2,17 @@ const { deserialize } = require("../../../event");
 const { computeEventTranscription } = require("./compute");
 
 /**
- * @type {import('../../incremental_graph/types').NodeDefComputor}
+ * @typedef {import('../../incremental_graph/types').NodeDefComputor} NodeDefComputor
  */
-const computor = async (inputs, _oldValue, bindings) => {
+
+/**
+ * @typedef {import('./compute').TranscriptionCapabilities} Capabilities
+ */
+
+/**
+ * @type {(capabilities: Capabilities) => NodeDefComputor}
+ */
+const makeComputor = (capabilities) => async (inputs, _oldValue, bindings) => {
     const eventEntry = inputs[0];
     if (!eventEntry || eventEntry.type !== "event") {
         throw new Error("Expected event input for event_transcription(e, a) computor");
@@ -18,6 +26,7 @@ const computor = async (inputs, _oldValue, bindings) => {
         throw new Error("Expected audio path binding at position 1 for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
     }
     return computeEventTranscription(
+        capabilities,
         deserialize(eventEntry.value),
         transcriptionEntry.value,
         audioPath,
@@ -25,5 +34,5 @@ const computor = async (inputs, _oldValue, bindings) => {
 };
 
 module.exports = {
-    computor,
+    makeComputor,
 };
