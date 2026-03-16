@@ -50,12 +50,12 @@ function parseInput(input) {
     const type = typeMatch[1] ?? '';
     let remainder = input.slice(typeMatch[0].length);
 
-    // Step 2: Extract zero or more [key value] modifier tokens from the front.
-    // A modifier must contain whitespace (e.g. "[key value]"); "[key]" is left as description,
-    // matching the backend parseStructuredInput() behavior.
+    // Step 2: Extract zero or more modifier tokens from the front.
+    // A modifier bracket must start with a letter, e.g. "[key value]" or "[key]" (flag).
+    // "[123]" (starts with digit) is left as description.
     /** @type {Record<string, string>} */
     const modifiers = {};
-    const modifierPattern = /^\s*\[(\w+)\s+([^[\]]*)\]/;
+    const modifierPattern = /^\s*\[([A-Za-z]\w*)(?:\s+([^[\]]*))?\]/;
     let modifierMatch = modifierPattern.exec(remainder);
     while (modifierMatch !== null) {
         const key = modifierMatch[1];
