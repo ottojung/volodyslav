@@ -3,6 +3,7 @@ const { readObjects } = require("../json_stream_file");
 const {
     ExistingConfigReadError,
     ExistingEntriesReadError,
+    MalformedEntryError,
 } = require("./read_errors");
 /** @typedef {import('./types').Capabilities} Capabilities */
 /** @typedef {import('./types').AppendCapabilities} AppendCapabilities */
@@ -312,17 +313,10 @@ class EventLogStorageClass {
             for (const obj of objects) {
                 const result = event.tryDeserialize(obj);
                 if (event.isTryDeserializeError(result)) {
-                    this.capabilities.logger.logWarning(
-                        {
-                            filepath: this.dataFile.path,
-                            invalidObject: obj,
-                            error: result.message,
-                            field: result.field,
-                            value: result.value,
-                            expectedType: result.expectedType,
-                            errorType: result.name,
-                        },
-                        "Found invalid object in data.json, skipping"
+                    throw new MalformedEntryError(
+                        this.dataFile.path,
+                        result,
+                        obj
                     );
                 } else {
                     validEvents.push(result);

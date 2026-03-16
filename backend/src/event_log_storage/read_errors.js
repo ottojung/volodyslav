@@ -79,10 +79,36 @@ function isExistingConfigReadError(object) {
     return object instanceof ExistingConfigReadError;
 }
 
+/**
+ * Error raised when a specific entry in data.json fails deserialization.
+ */
+class MalformedEntryError extends ExistingEntriesReadError {
+    /**
+     * @param {string} filepath
+     * @param {unknown} cause
+     * @param {unknown} invalidObject
+     */
+    constructor(filepath, cause, invalidObject) {
+        super(filepath, cause);
+        this.name = "MalformedEntryError";
+        this.invalidObject = invalidObject;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MalformedEntryError}
+ */
+function isMalformedEntryError(object) {
+    return object instanceof MalformedEntryError;
+}
+
 module.exports = {
     ExistingConfigReadError,
     ExistingEntriesReadError,
+    MalformedEntryError,
     isEventLogStorageReadError,
     isExistingConfigReadError,
     isExistingEntriesReadError,
+    isMalformedEntryError,
 };

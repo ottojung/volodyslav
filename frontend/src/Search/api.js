@@ -16,12 +16,8 @@ function parseEntries(results) {
     /** @type {Entry[]} */
     const valid = [];
     for (const item of results) {
-        try {
-            const entry = makeEntry(item);
-            valid.push(entry);
-        } catch (error) {
-            logger.warn("Invalid entry received:", error);
-        }
+        const entry = makeEntry(item);
+        valid.push(entry);
     }
     return valid;
 }
