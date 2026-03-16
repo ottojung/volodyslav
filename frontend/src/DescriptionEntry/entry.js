@@ -55,7 +55,7 @@ function parseInput(input) {
     // matching the backend parseStructuredInput() behavior.
     /** @type {Record<string, string>} */
     const modifiers = {};
-    const modifierPattern = /^\s*\[(\w+)\s+([^\[\]]*)\]/;
+    const modifierPattern = /^\s*\[(\w+)\s+([^[\]]*)\]/;
     let modifierMatch = modifierPattern.exec(remainder);
     while (modifierMatch !== null) {
         const key = modifierMatch[1];
