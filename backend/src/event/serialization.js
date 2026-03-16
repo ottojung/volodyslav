@@ -7,6 +7,7 @@ const {
     makeInvalidValueError,
     makeInvalidStructureError,
     makeNestedFieldError,
+    makeUnrecognizedFieldError,
 } = require("./errors");
 
 /**
@@ -14,10 +15,14 @@ const {
  *           ReturnType<typeof makeInvalidTypeError> |
  *           ReturnType<typeof makeInvalidValueError> |
  *           ReturnType<typeof makeInvalidStructureError> |
- *           ReturnType<typeof makeNestedFieldError>} TryDeserializeError
+ *           ReturnType<typeof makeNestedFieldError> |
+ *           ReturnType<typeof makeUnrecognizedFieldError>} TryDeserializeError
  */
 
 /** @typedef {import('../creator').Creator} Creator */
+
+const KNOWN_EVENT_FIELDS = new Set(["id", "date", "original", "input", "creator"]);
+const KNOWN_CREATOR_FIELDS = new Set(["name", "uuid", "version", "hostname"]);
 
 /**
  * @typedef Event
@@ -92,6 +97,13 @@ function tryDeserialize(obj) {
             );
         }
 
+        const knownFields = KNOWN_EVENT_FIELDS;
+        for (const [key, value] of Object.entries(obj)) {
+            if (!knownFields.has(key)) {
+                return makeUnrecognizedFieldError(key, value);
+            }
+        }
+
         if (!("id" in obj)) return makeMissingFieldError("id");
         const id = obj.id;
         if (typeof id !== "string") {
@@ -122,14 +134,18 @@ function tryDeserialize(obj) {
             return makeInvalidTypeError("creator", creator, "object");
         }
 
+        const knownCreatorFields = KNOWN_CREATOR_FIELDS;
+        for (const [key, value] of Object.entries(creator)) {
+            if (!knownCreatorFields.has(key)) {
+                return makeUnrecognizedFieldError(`creator.${key}`, value);
+            }
+        }
+
         const dateObj = fromISOString(date);
         if (!dateObj.isValid) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 
-        if (!creator || typeof creator !== "object") {
-            return makeInvalidTypeError("creator", creator, "object");
-        }
         if (!("name" in creator)) {
             return makeNestedFieldError("creator", "name", creator, "missing required field");
         }

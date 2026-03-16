@@ -92,6 +92,17 @@ class NestedFieldError extends TryDeserializeError {
     }
 }
 
+class UnrecognizedFieldError extends TryDeserializeError {
+    /**
+     * @param {string} field - The unrecognized field name
+     * @param {unknown} value - The value of the unrecognized field
+     */
+    constructor(field, value) {
+        super(`Unrecognized field: '${field}'`, field, value, undefined);
+        this.name = "UnrecognizedFieldError";
+    }
+}
+
 /**
  * @param {string} field
  * @returns {MissingFieldError}
@@ -138,6 +149,15 @@ function makeInvalidStructureError(message, value) {
  */
 function makeNestedFieldError(parentField, nestedField, value, reason) {
     return new NestedFieldError(parentField, nestedField, value, reason);
+}
+
+/**
+ * @param {string} field
+ * @param {unknown} value
+ * @returns {UnrecognizedFieldError}
+ */
+function makeUnrecognizedFieldError(field, value) {
+    return new UnrecognizedFieldError(field, value);
 }
 
 /**
@@ -188,16 +208,26 @@ function isNestedFieldError(object) {
     return object instanceof NestedFieldError;
 }
 
+/**
+ * @param {unknown} object
+ * @returns {object is UnrecognizedFieldError}
+ */
+function isUnrecognizedFieldError(object) {
+    return object instanceof UnrecognizedFieldError;
+}
+
 module.exports = {
     makeMissingFieldError,
     makeInvalidTypeError,
     makeInvalidValueError,
     makeInvalidStructureError,
     makeNestedFieldError,
+    makeUnrecognizedFieldError,
     isTryDeserializeError,
     isMissingFieldError,
     isInvalidTypeError,
     isInvalidValueError,
     isInvalidStructureError,
     isNestedFieldError,
+    isUnrecognizedFieldError,
 };

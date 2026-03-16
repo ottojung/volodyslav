@@ -2,11 +2,47 @@ const { parseStructuredInput, isInputParseError } = require("../src/event/from_i
 
 describe("parseStructuredInput", () => {
     // -------------------------------------------------------------------------
-    // Basic valid inputs
+    // Basic structure
     // -------------------------------------------------------------------------
 
     test("parses minimal input (type only)", () => {
         const result = parseStructuredInput("WORK");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: {}
+        });
+    });
+
+    test("parses lowercase type", () => {
+        const result = parseStructuredInput("diary");
+        expect(result).toEqual({
+            type: "diary",
+            description: "",
+            modifiers: {}
+        });
+    });
+
+    test("parses mixed-case type", () => {
+        const result = parseStructuredInput("AudioNote");
+        expect(result).toEqual({
+            type: "AudioNote",
+            description: "",
+            modifiers: {}
+        });
+    });
+
+    test("parses type that contains digits", () => {
+        const result = parseStructuredInput("NOTE2");
+        expect(result).toEqual({
+            type: "NOTE2",
+            description: "",
+            modifiers: {}
+        });
+    });
+
+    test("parses type with leading/trailing whitespace", () => {
+        const result = parseStructuredInput("  WORK  ");
         expect(result).toEqual({
             type: "WORK",
             description: "",
@@ -23,7 +59,20 @@ describe("parseStructuredInput", () => {
         });
     });
 
-    test("parses type with key-value modifier", () => {
+    test("parses type with multi-word description", () => {
+        const result = parseStructuredInput("NOTE lots of words in the description here");
+        expect(result).toEqual({
+            type: "NOTE",
+            description: "lots of words in the description here",
+            modifiers: {}
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Key-value modifiers
+    // -------------------------------------------------------------------------
+
+    test("parses type with a single key-value modifier", () => {
         const result = parseStructuredInput("WORK [loc office]");
         expect(result).toEqual({
             type: "WORK",
@@ -53,6 +102,15 @@ describe("parseStructuredInput", () => {
         });
     });
 
+    test("parses modifier with many-word value", () => {
+        const result = parseStructuredInput("WORK [key value1 value2 value3]");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: { key: "value1 value2 value3" }
+        });
+    });
+
     test("parses type with key-value modifier and description", () => {
         const result = parseStructuredInput("WORK [loc office] - Fixed the parser bug");
         expect(result).toEqual({
@@ -64,47 +122,60 @@ describe("parseStructuredInput", () => {
         });
     });
 
-    // -------------------------------------------------------------------------
-    // Flag modifiers (no value) must come before description
-    // -------------------------------------------------------------------------
-
-    test("parses flag modifier [key] before description", () => {
-        const result = parseStructuredInput("WORK [done] task number 1");
+    test("parses modifier with mixed-case key", () => {
+        const result = parseStructuredInput("WORK [locHome here]");
         expect(result).toEqual({
             type: "WORK",
-            description: "task number 1",
-            modifiers: { done: "" }
+            description: "",
+            modifiers: { locHome: "here" }
         });
     });
 
-    test("parses flag modifier [key] with no description", () => {
-        const result = parseStructuredInput("WORK [done]");
+    test("parses modifier key with underscores and digits", () => {
+        const result = parseStructuredInput("TASK [key_name_1 value]");
         expect(result).toEqual({
-            type: "WORK",
+            type: "TASK",
+            description: "",
+            modifiers: { key_name_1: "value" }
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Flag modifiers (single-word brackets, no value)
+    // -------------------------------------------------------------------------
+
+    test("parses a single flag modifier", () => {
+        const result = parseStructuredInput("TASK [done]");
+        expect(result).toEqual({
+            type: "TASK",
             description: "",
             modifiers: { done: "" }
         });
     });
 
-    test("parses multiple flag modifiers before description", () => {
-        const result = parseStructuredInput("TASK [urgent] [done] some notes");
+    test("parses multiple flag modifiers", () => {
+        const result = parseStructuredInput("TASK [done] [archived] [urgent]");
         expect(result).toEqual({
             type: "TASK",
-            description: "some notes",
-            modifiers: { urgent: "", done: "" }
+            description: "",
+            modifiers: { done: "", archived: "", urgent: "" }
         });
     });
 
-    test("parses mixed flag and key-value modifiers before description", () => {
-        const result = parseStructuredInput("WORK [done] [loc office] final report");
+    test("parses flag modifiers mixed with key-value modifiers (regression)", () => {
+        // Regression: [audiorecording] used to end up in description
+        const result = parseStructuredInput("diary [when 0 hours ago] [audiorecording]");
         expect(result).toEqual({
-            type: "WORK",
-            description: "final report",
-            modifiers: { done: "", loc: "office" }
+            type: "diary",
+            description: "",
+            modifiers: {
+                when: "0 hours ago",
+                audiorecording: ""
+            }
         });
     });
 
-    test("parses flag modifier alongside key-value modifier, no description", () => {
+    test("parses flag modifier before key-value modifier", () => {
         const result = parseStructuredInput("WORK [done] [loc office]");
         expect(result).toEqual({
             type: "WORK",
@@ -113,34 +184,70 @@ describe("parseStructuredInput", () => {
         });
     });
 
-    // -------------------------------------------------------------------------
-    // Throws when any modifier appears in description
-    // -------------------------------------------------------------------------
-
-    test("throws InputParseError for bad structure", () => {
-        expect(() => parseStructuredInput("[invalid] format")).toThrow();
-        let err;
-        try {
-            parseStructuredInput("[invalid] format");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("parses flag modifier followed by description", () => {
+        const result = parseStructuredInput("WORK [loc office] [done] some notes");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "some notes",
+            modifiers: { loc: "office", done: "" }
+        });
     });
 
-    test("throws when key-value modifier [key value] appears after description text", () => {
-        expect(() => parseStructuredInput("WORK description [loc office]")).toThrow();
-        let err;
-        try {
-            parseStructuredInput("WORK description [loc office]");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("flag modifier with underscore key is treated as a modifier", () => {
+        const result = parseStructuredInput("WORK [flag_with_underscore]");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: { flag_with_underscore: "" }
+        });
     });
+
+    // -------------------------------------------------------------------------
+    // Brackets that stay in the description (not modifiers)
+    // -------------------------------------------------------------------------
+
+    test("bracket starting with a digit stays in description", () => {
+        const result = parseStructuredInput("note [123] numbers in brackets");
+        expect(result).toEqual({
+            type: "note",
+            description: "[123] numbers in brackets",
+            modifiers: {}
+        });
+    });
+
+    test("bracket starting with underscore stays in description", () => {
+        const result = parseStructuredInput("TASK [_flag]");
+        expect(result).toEqual({
+            type: "TASK",
+            description: "[_flag]",
+            modifiers: {}
+        });
+    });
+
+    test("unclosed bracket stays in description", () => {
+        const result = parseStructuredInput("work [unclosed bracket in description");
+        expect(result).toEqual({
+            type: "work",
+            description: "[unclosed bracket in description",
+            modifiers: {}
+        });
+    });
+
+    test("standalone closing bracket stays in description", () => {
+        const result = parseStructuredInput("item description with ] standalone bracket");
+        expect(result).toEqual({
+            type: "item",
+            description: "description with ] standalone bracket",
+            modifiers: {}
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Any modifier-like bracket after description text — throws
+    // -------------------------------------------------------------------------
 
     test("throws when flag modifier [key] appears after description text", () => {
-        expect(() => parseStructuredInput("WORK task number 1 [done]")).toThrow();
+        // WORK task number 1 [done] is the exact example from the issue
         let err;
         try {
             parseStructuredInput("WORK task number 1 [done]");
@@ -150,41 +257,17 @@ describe("parseStructuredInput", () => {
         expect(isInputParseError(err)).toBe(true);
     });
 
-    test("throws when flag modifier appears mid-description", () => {
-        expect(() => parseStructuredInput("WORK some text [flag] more text")).toThrow();
+    test("throws when flag modifier [key] appears after description text (short form)", () => {
         let err;
         try {
-            parseStructuredInput("WORK some text [flag] more text");
+            parseStructuredInput("WORK description [done]");
         } catch (e) {
             err = e;
         }
         expect(isInputParseError(err)).toBe(true);
     });
 
-    test("throws when key-value modifier appears mid-description", () => {
-        expect(() => parseStructuredInput("WORK some text [loc office] more text")).toThrow();
-        let err;
-        try {
-            parseStructuredInput("WORK some text [loc office] more text");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
-    });
-
-    test("throws when valid modifiers are followed by description containing a modifier", () => {
-        expect(() => parseStructuredInput("WORK [done] description [loc office]")).toThrow();
-        let err;
-        try {
-            parseStructuredInput("WORK [done] description [loc office]");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
-    });
-
-    test("throws for multiple flag modifiers after description", () => {
-        expect(() => parseStructuredInput("TASK some notes [flag1] [flag2]")).toThrow();
+    test("throws when multiple flag modifiers appear after description text", () => {
         let err;
         try {
             parseStructuredInput("TASK some notes [flag1] [flag2]");
@@ -194,32 +277,99 @@ describe("parseStructuredInput", () => {
         expect(isInputParseError(err)).toBe(true);
     });
 
-    // -------------------------------------------------------------------------
-    // Non-modifier brackets in description are allowed
-    // -------------------------------------------------------------------------
-
-    test("allows unclosed bracket in description", () => {
-        const result = parseStructuredInput("work [unclosed bracket in description");
-        expect(result.description).toBe("[unclosed bracket in description");
-        expect(result.modifiers).toEqual({});
+    test("throws when single-word bracket appears mid-description", () => {
+        let err;
+        try {
+            parseStructuredInput("task description with [brackets] but more text");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
     });
 
-    test("allows numeric bracket [123] in description", () => {
-        // Brackets starting with a digit are not modifiers
-        const result = parseStructuredInput("note [123] numbers in brackets");
+    test("throws InputParseError when key-value modifier appears after description", () => {
+        let err;
+        try {
+            parseStructuredInput("WORK description [loc office]");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    test("throws InputParseError when key-value modifier appears after flag in description", () => {
+        let err;
+        try {
+            parseStructuredInput("TASK some notes [done flag] extra");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    test("throws when valid modifiers are followed by description with a modifier", () => {
+        let err;
+        try {
+            parseStructuredInput("WORK [done] description [loc office]");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    // -------------------------------------------------------------------------
+    // Structural errors
+    // -------------------------------------------------------------------------
+
+    test("throws InputParseError for bad structure (no type)", () => {
+        let err;
+        try {
+            parseStructuredInput("[invalid] format");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    test("throws InputParseError for input starting with a digit", () => {
+        let err;
+        try {
+            parseStructuredInput("123 task");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    test("throws InputParseError for input starting with a special character", () => {
+        let err;
+        try {
+            parseStructuredInput("- task");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    // -------------------------------------------------------------------------
+    // Whitespace handling
+    // -------------------------------------------------------------------------
+
+    test("handles extra whitespace between type and modifier", () => {
+        const result = parseStructuredInput("WORK  [key]  description");
         expect(result).toEqual({
-            type: "note",
-            description: "[123] numbers in brackets",
-            modifiers: {}
+            type: "WORK",
+            description: "description",
+            modifiers: { key: "" }
         });
     });
 
-    test("allows standalone closing bracket in description", () => {
-        const result = parseStructuredInput("item description with ] standalone bracket");
+    test("handles extra whitespace between modifiers", () => {
+        const result = parseStructuredInput("SOCIAL  [with John]   [loc cafe]  notes");
         expect(result).toEqual({
-            type: "item",
-            description: "description with ] standalone bracket",
-            modifiers: {}
+            type: "SOCIAL",
+            description: "notes",
+            modifiers: { with: "John", loc: "cafe" }
         });
     });
 });
