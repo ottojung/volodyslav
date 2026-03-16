@@ -5,22 +5,16 @@
  * @typedef {object} EntryData
  * @property {string} id
  * @property {string} date
- * @property {string} type
- * @property {string} description
  * @property {string} input
  * @property {string} original
- * @property {Record<string,string>} [modifiers]
  * @property {object} creator
  */
 
 class EntryClass {
     /** @type {string} */ id;
     /** @type {string} */ date;
-    /** @type {string} */ type;
-    /** @type {string} */ description;
     /** @type {string} */ input;
     /** @type {string} */ original;
-    /** @type {Record<string,string>} */ modifiers;
     /** @type {object} */ creator;
     /** @type {undefined} */ __brand;
 
@@ -30,11 +24,8 @@ class EntryClass {
     constructor(data) {
         this.id = data.id;
         this.date = data.date;
-        this.type = data.type;
-        this.description = data.description;
         this.input = data.input;
         this.original = data.original;
-        this.modifiers = data.modifiers || {};
         this.creator = data.creator;
         if (this.__brand !== undefined) {
             throw new Error('Entry is a nominal type');
@@ -43,6 +34,81 @@ class EntryClass {
 }
 
 /** @typedef {EntryClass} Entry */
+
+/**
+ * Parses an input string in the format: TYPE [MODIFIERS...] DESCRIPTION
+ * Uses an iterative approach to avoid ReDoS vulnerabilities.
+ * @param {string} input
+ * @returns {{ type: string, description: string, modifiers: Record<string, string> }}
+ */
+function parseInput(input) {
+    // Step 1: Extract the type (first word starting with a letter)
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    if (!typeMatch) {
+        return { type: '', description: input.trim(), modifiers: {} };
+    }
+    const type = typeMatch[1] ?? '';
+    let remainder = input.slice(typeMatch[0].length);
+
+    // Step 2: Extract zero or more [key value] modifier tokens from the front.
+    // A modifier must contain whitespace (e.g. "[key value]"); "[key]" is left as description,
+    // matching the backend parseStructuredInput() behavior.
+    /** @type {Record<string, string>} */
+    const modifiers = {};
+    const modifierPattern = /^\s*\[(\w+)\s+([^[\]]*)\]/;
+    let modifierMatch = modifierPattern.exec(remainder);
+    while (modifierMatch !== null) {
+        const key = modifierMatch[1];
+        const value = (modifierMatch[2] || '').trim();
+        if (key !== undefined) {
+            modifiers[key] = value;
+        }
+        remainder = remainder.slice(modifierMatch[0].length);
+        modifierMatch = modifierPattern.exec(remainder);
+    }
+
+    // Step 3: Everything left is the description
+    const description = remainder.trim();
+    return { type, description, modifiers };
+}
+
+/**
+ * Computes type, description, and modifiers of an entry from its input field in one parse.
+ * Prefer this over calling getEntryType/getEntryDescription/getEntryModifiers individually
+ * when multiple derived fields are needed.
+ * @param {{ input: string }} entry
+ * @returns {{ type: string, description: string, modifiers: Record<string, string> }}
+ */
+export function getEntryParsed(entry) {
+    return parseInput(entry.input);
+}
+
+/**
+ * Computes the type of an entry from its input field.
+ * @param {{ input: string }} entry
+ * @returns {string}
+ */
+export function getEntryType(entry) {
+    return parseInput(entry.input).type;
+}
+
+/**
+ * Computes the description of an entry from its input field.
+ * @param {{ input: string }} entry
+ * @returns {string}
+ */
+export function getEntryDescription(entry) {
+    return parseInput(entry.input).description;
+}
+
+/**
+ * Computes the modifiers of an entry from its input field.
+ * @param {{ input: string }} entry
+ * @returns {Record<string, string>}
+ */
+export function getEntryModifiers(entry) {
+    return parseInput(entry.input).modifiers;
+}
 
 /**
  * Validates a plain object and constructs an Entry instance.
@@ -62,14 +128,6 @@ export function makeEntry(obj) {
     const date = obj.date;
     if (typeof date !== 'string') throw new Error('Invalid date');
 
-    if (!('type' in obj)) throw new Error('Missing type');
-    const type = obj.type;
-    if (typeof type !== 'string') throw new Error('Invalid type');
-
-    if (!('description' in obj)) throw new Error('Missing description');
-    const description = obj.description;
-    if (typeof description !== 'string') throw new Error('Invalid description');
-
     if (!('input' in obj)) throw new Error('Missing input');
     const input = obj.input;
     if (typeof input !== 'string') throw new Error('Invalid input');
@@ -84,28 +142,11 @@ export function makeEntry(obj) {
         throw new Error('Invalid creator');
     }
 
-    const rawModifiers = 'modifiers' in obj ? obj.modifiers : {};
-    if (rawModifiers === null || typeof rawModifiers !== 'object' || Array.isArray(rawModifiers)) {
-        throw new Error('Invalid modifiers');
-    }
-
-    /** @type {Record<string, string>} */
-    const validatedModifiers = {};
-    for (const [key, value] of Object.entries(rawModifiers)) {
-        if (typeof value !== 'string') {
-            throw new Error('Modifier values must be strings');
-        }
-        validatedModifiers[key] = value;
-    }
-
     return new EntryClass({
         id,
         date,
-        type,
-        description,
         input,
         original,
-        modifiers: validatedModifiers,
         creator,
     });
 }

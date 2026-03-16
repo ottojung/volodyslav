@@ -9,6 +9,7 @@ const {
     stubEventLogRepository,
 } = require("./stubs");
 const { getEntryById } = require("../src/entry");
+const { getType, getDescription } = require("../src/event");
 
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();
@@ -55,7 +56,7 @@ describe("GET /api/entries with search", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(2);
         for (const result of res.body.results) {
-            expect(result.type).toBe("food");
+            expect(getType(result)).toBe("food");
         }
     });
 
@@ -70,7 +71,7 @@ describe("GET /api/entries with search", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
-        expect(res.body.results[0].description).toContain("pizza");
+        expect(getDescription(res.body.results[0])).toContain("pizza");
     });
 
     it("returns empty results when regex matches nothing", async () => {
@@ -133,7 +134,7 @@ describe("GET /api/entries with search", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
-        expect(res.body.results[0].type).toBe("food");
+        expect(getType(res.body.results[0])).toBe("food");
     });
 
     it("search is case-insensitive for description", async () => {
@@ -146,7 +147,7 @@ describe("GET /api/entries with search", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
-        expect(res.body.results[0].description).toContain("Pizza");
+        expect(getDescription(res.body.results[0])).toContain("Pizza");
     });
 
     it("empty search string returns all entries", async () => {
@@ -248,11 +249,8 @@ describe("GET /api/entries with search", () => {
         const entry = res.body.results[0];
         expect(entry).toHaveProperty("id");
         expect(entry).toHaveProperty("date");
-        expect(entry).toHaveProperty("type");
-        expect(entry).toHaveProperty("description");
         expect(entry).toHaveProperty("input");
         expect(entry).toHaveProperty("original");
-        expect(entry).toHaveProperty("modifiers");
         expect(entry).toHaveProperty("creator");
     });
 });
@@ -270,7 +268,7 @@ describe("GET /api/entries/:id", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.entry).toBeDefined();
         expect(res.body.entry.id).toBe(createdId);
-        expect(res.body.entry.type).toBe("food");
+        expect(getType(res.body.entry)).toBe("food");
     });
 
     it("returns 404 for a non-existent entry id", async () => {
@@ -294,11 +292,8 @@ describe("GET /api/entries/:id", () => {
         const entry = res.body.entry;
         expect(entry).toHaveProperty("id");
         expect(entry).toHaveProperty("date");
-        expect(entry).toHaveProperty("type");
-        expect(entry).toHaveProperty("description");
         expect(entry).toHaveProperty("input");
         expect(entry).toHaveProperty("original");
-        expect(entry).toHaveProperty("modifiers");
         expect(entry).toHaveProperty("creator");
     });
 
@@ -312,8 +307,8 @@ describe("GET /api/entries/:id", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.entry.id).toBe(createdEntry.id);
-        expect(res.body.entry.type).toBe(createdEntry.type);
-        expect(res.body.entry.description).toBe(createdEntry.description);
+        expect(getType(res.body.entry)).toBe(getType(createdEntry));
+        expect(getDescription(res.body.entry)).toBe(getDescription(createdEntry));
     });
 
     it("returns 404 error message string", async () => {
@@ -339,10 +334,10 @@ describe("GET /api/entries/:id", () => {
         const fetch2 = await request(app).get(`/api/entries/${id2}`);
 
         expect(fetch1.statusCode).toBe(200);
-        expect(fetch1.body.entry.type).toBe("food");
+        expect(getType(fetch1.body.entry)).toBe("food");
 
         expect(fetch2.statusCode).toBe(200);
-        expect(fetch2.body.entry.type).toBe("sleep");
+        expect(getType(fetch2.body.entry)).toBe("sleep");
     });
 });
 
@@ -382,6 +377,6 @@ describe("getEntryById unit tests", () => {
 
         const result = await getEntryById(capabilities, sleepId);
         expect(result).not.toBeNull();
-        expect(result.type).toBe("sleep");
+        expect(getType(result)).toBe("sleep");
     });
 });

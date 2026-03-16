@@ -2,6 +2,7 @@ const { transaction } = require("./event_log_storage");
 const event = require("./event");
 const eventId = event.id;
 const asset = event.asset;
+const { getParsed } = require("./event");
 const creatorMake = require("./creator");
 
 /**
@@ -73,9 +74,6 @@ function isEntryValidationError(object) {
  * @typedef {object} EntryData
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
- * @property {string} type - The type of entry (e.g., "note", "diary", "todo")
- * @property {string} description - The content/description of the entry (can be empty)
- * @property {Record<string, string>} [modifiers] - Additional key-value modifiers
  */
 
 /**
@@ -97,9 +95,6 @@ async function createEntry(capabilities, entryData, files = []) {
         date,
         original: entryData.original,
         input: entryData.input,
-        modifiers: entryData.modifiers || {},
-        type: entryData.type,
-        description: entryData.description,
         creator,
     };
 
@@ -109,13 +104,14 @@ async function createEntry(capabilities, entryData, files = []) {
         eventLogStorage.addEntry(event, assets);
     });
 
+    const parsed = getParsed(event);
     capabilities.logger.logInfo(
         {
             eventId: eventId.toString(event.id),
-            type: event.type,
+            type: parsed.type,
             fileCount: files.length,
         },
-        `Entry created: ${event.type} with ${files.length} file(s)`
+        `Entry created: ${parsed.type} with ${files.length} file(s)`
     );
 
     return event;
@@ -180,7 +176,8 @@ async function getEntries(capabilities, pagination) {
 
     for await (const entry of capabilities.interface.getSortedEvents(order)) {
         if (searchRegex !== null) {
-            if (!searchRegex.test(entry.type) && !searchRegex.test(entry.description)) {
+            const { type: entryType, description: entryDescription } = getParsed(entry);
+            if (!searchRegex.test(entryType) && !searchRegex.test(entryDescription)) {
                 continue;
             }
         }

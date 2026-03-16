@@ -17,11 +17,6 @@ const {
  *           ReturnType<typeof makeNestedFieldError>} TryDeserializeError
  */
 
-/**
- * @typedef Modifiers
- * @type {Record<string, string>}
- */
-
 /** @typedef {import('../creator').Creator} Creator */
 
 /**
@@ -31,9 +26,6 @@ const {
  * @property {import('../datetime').DateTime} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
- * @property {Modifiers} modifiers - Modifiers applied to the event.
- * @property {string} type - The type of the event.
- * @property {string} description - A description of the event (required).
  * @property {Creator} creator - Who created the event.
  */
 
@@ -44,9 +36,6 @@ const {
  * @property {string} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
- * @property {Modifiers} modifiers - Modifiers applied to the event.
- * @property {string} type - The type of the event.
- * @property {string} description - A description of the event (required).
  * @property {Creator} creator - Who created the event.
  */
 
@@ -63,15 +52,12 @@ const {
 function serialize(capabilities, event) {
     const date = format(capabilities, event.date);
     const id = event.id.identifier;
-    const { original, input, modifiers, type, description, creator } = event;
+    const { original, input, creator } = event;
     return {
         id,
         date,
         original,
         input,
-        modifiers,
-        type,
-        description,
         creator,
     };
 }
@@ -82,10 +68,11 @@ function serialize(capabilities, event) {
  */
 function deserialize(serializedEvent) {
     return {
-        ...serializedEvent,
         id: eventId.fromString(serializedEvent.id),
         date: fromISOString(serializedEvent.date),
-        modifiers: serializedEvent.modifiers || {},
+        original: serializedEvent.original,
+        input: serializedEvent.input,
+        creator: serializedEvent.creator,
     };
 }
 
@@ -129,37 +116,10 @@ function tryDeserialize(obj) {
             return makeInvalidTypeError("input", input, "string");
         }
 
-        if (!("type" in obj)) return makeMissingFieldError("type");
-        const type = obj.type;
-        if (typeof type !== "string") {
-            return makeInvalidTypeError("type", type, "string");
-        }
-
-        if (!("description" in obj)) return makeMissingFieldError("description");
-        const description = obj.description;
-        if (typeof description !== "string") {
-            return makeInvalidTypeError("description", description, "string");
-        }
-
         if (!("creator" in obj)) return makeMissingFieldError("creator");
         const creator = obj.creator;
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return makeInvalidTypeError("creator", creator, "object");
-        }
-
-        const hasModifiers = "modifiers" in obj;
-        const rawModifiers = hasModifiers ? obj.modifiers : {};
-        if (rawModifiers === null || typeof rawModifiers !== "object" || Array.isArray(rawModifiers)) {
-            return makeInvalidTypeError("modifiers", rawModifiers, "object");
-        }
-
-        /** @type {Record<string, unknown>} */
-        let modifiers = {};
-        for (const [key, value] of Object.entries(rawModifiers)) {
-            if (typeof value !== "string") {
-                return makeNestedFieldError("modifiers", key, value, "expected string value");
-            }
-            modifiers[key] = value;
         }
 
         const dateObj = fromISOString(date);
@@ -200,37 +160,18 @@ function tryDeserialize(obj) {
             return makeNestedFieldError("creator", "hostname", creatorHostname, "expected string");
         }
 
-        const sourceEntries = Object.entries(modifiers);
-        const validatedEntries = [];
-        for (let i = 0; i < sourceEntries.length; i++) {
-            const entry = sourceEntries[i];
-            if (!entry || entry.length !== 2) {
-                return makeInvalidValueError("modifiers", modifiers, "invalid entry structure");
-            }
-            const key = entry[0];
-            const value = entry[1];
-            if (typeof value !== "string") {
-                return makeNestedFieldError("modifiers", key, value, "expected string value");
-            }
-            validatedEntries.push([key, value]);
-        }
-        const validatedModifiers = Object.fromEntries(validatedEntries);
-
         /** @type {SerializedEvent} */
         const validatedSerializedEvent = {
             id: id,
             date: date,
             original: original,
             input: input,
-            type: type,
-            description: description,
             creator: {
                 name: creatorName,
                 uuid: creatorUuid,
                 version: creatorVersion,
                 hostname: creatorHostname,
             },
-            modifiers: validatedModifiers,
         };
 
         const eventIdObj = eventId.fromString(validatedSerializedEvent.id);

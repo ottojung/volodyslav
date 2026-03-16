@@ -8,6 +8,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
+const { getType, getDescription } = require("../src/event");
 
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();
@@ -77,7 +78,7 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.description).toBe(longDescription);
+            expect(getDescription(res.body.entry)).toBe(longDescription);
         });
 
         it("handles special characters in descriptions", async () => {
@@ -95,7 +96,7 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.description).toBe(specialChars);
+            expect(getDescription(res.body.entry)).toBe(specialChars);
         });
 
         it("handles unicode characters", async () => {
@@ -113,7 +114,7 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.description).toBe(unicode);
+            expect(getDescription(res.body.entry)).toBe(unicode);
         });
 
         it("returns 400 for null rawInput", async () => {
@@ -160,9 +161,8 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.type).toBe("work");
-            expect(res.body.entry.description).toBe("");
-            expect(res.body.entry.modifiers).toEqual({});
+            expect(getType(res.body.entry)).toBe("work");
+            expect(getDescription(res.body.entry)).toBe("");
         });
 
         it("allows entries with empty descriptions after type", async () => {
@@ -179,9 +179,8 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.type).toBe("work");
-            expect(res.body.entry.description).toBe("");
-            expect(res.body.entry.modifiers).toEqual({});
+            expect(getType(res.body.entry)).toBe("work");
+            expect(getDescription(res.body.entry)).toBe("");
         });
 
         it("allows entries with only modifiers and empty description", async () => {
@@ -198,9 +197,8 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.type).toBe("work");
-            expect(res.body.entry.description).toBe("");
-            expect(res.body.entry.modifiers).toEqual({ loc: "office" });
+            expect(getType(res.body.entry)).toBe("work");
+            expect(getDescription(res.body.entry)).toBe("");
         });
     });
 });

@@ -180,9 +180,6 @@ async function handleEntryPost(req, res, capabilities, reqId) {
 
         const { original, input, parsed } = processed;
         const entryData = {
-            type: parsed.type,
-            description: parsed.description,
-            modifiers: parsed.modifiers,
             original,
             input,
         };
@@ -193,9 +190,9 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         capabilities.logger.logDebug(
             {
                 request_identifier: reqId.identifier,
-                entry_type: event.type,
+                entry_type: parsed.type,
                 file_count: fileObjects.length,
-                has_modifiers: Object.keys(parsed.modifiers || {}).length > 0,
+                has_modifiers: Object.keys(parsed.modifiers).length > 0,
                 status_code: 201,
                 client_ip: req.ip
             },

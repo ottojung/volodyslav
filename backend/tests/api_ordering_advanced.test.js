@@ -97,7 +97,7 @@ describe("API Ordering Integration Tests", () => {
             // Verify each entry has the expected fields
             expect(res.body.results.length).toBeGreaterThan(0);
             const entry = res.body.results[0];
-            const requiredFields = ['id', 'date', 'type', 'description', 'input', 'original'];
+            const requiredFields = ['id', 'date', 'input', 'original'];
 
             for (const field of requiredFields) {
                 expect(entry).toHaveProperty(field);

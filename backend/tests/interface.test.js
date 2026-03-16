@@ -39,12 +39,9 @@ async function getTestCapabilities() {
 function makeEvent(id, input) {
     return {
         id: eventId.fromString(id),
-        type: "text",
-        description: input,
         date: fromISOString("2024-01-01T00:00:00.000Z"),
-        original: input,
-        input,
-        modifiers: {},
+        original: `text ${input}`,
+        input: `text ${input}`,
         creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0", hostname: "test-host" },
     };
 }
@@ -132,7 +129,7 @@ describe("generators/interface", () => {
             expect(ids).toContain("event-2");
             const e1 = result.events.find((e) => e.id === "event-1");
             expect(e1).toBeDefined();
-            expect(e1.input).toBe("updated text");
+            expect(e1.input).toBe("text updated text");
         });
 
         test("handles empty store (returns no events)", async () => {

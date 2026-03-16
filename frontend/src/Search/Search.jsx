@@ -15,6 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { searchEntries } from "./api.js";
 import { formatRelativeDate } from "../DescriptionEntry/utils.js";
+import { getEntryParsed } from "../DescriptionEntry/entry.js";
 import {
     SPACING,
     SIZES,
@@ -183,7 +184,9 @@ export default function Search() {
                     <Card {...CARD_STYLES.main}>
                         <CardBody p={SPACING.lg}>
                             <VStack spacing={SPACING.sm} align="stretch">
-                                {results.map((entry, index) => (
+                                {results.map((entry, index) => {
+                                    const { type: entryType, description: entryDescription } = getEntryParsed(entry);
+                                    return (
                                     <Link
                                         key={entry.id || index}
                                         to={`/entry/${entry.id}`}
@@ -199,17 +202,18 @@ export default function Search() {
                                             <HStack justify="space-between" align="flex-start">
                                                 <VStack align="flex-start" spacing={1} flex={1}>
                                                     <HStack spacing={2}>
-                                                        <Badge {...BADGE_STYLES}>{entry.type}</Badge>
+                                                        <Badge {...BADGE_STYLES}>{entryType}</Badge>
                                                         <Text {...TEXT_STYLES.entryMeta}>
                                                             {formatRelativeDate(entry.date)}
                                                         </Text>
                                                     </HStack>
-                                                    <Text {...TEXT_STYLES.entryText}>{entry.description}</Text>
+                                                    <Text {...TEXT_STYLES.entryText}>{entryDescription}</Text>
                                                 </VStack>
                                             </HStack>
                                         </Box>
                                     </Link>
-                                ))}
+                                    );
+                                })}
                             </VStack>
                         </CardBody>
                     </Card>

@@ -9,6 +9,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
+const { getType, getDescription, getModifiers } = require("../src/event");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -46,11 +47,10 @@ describe("POST /api/entries", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: "httptype",
-            description: "HTTP description",
             date: expect.stringContaining("2025-05-2"), // Timezone invariant.
-            modifiers: { foo: "bar" },
         });
+        expect(getType(res.body.entry)).toBe("httptype");
+        expect(getDescription(res.body.entry)).toBe("HTTP description");
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({ type: "httptype", fileCount: 0 }),
             expect.stringContaining("Entry created")
@@ -75,14 +75,16 @@ describe("POST /api/entries", () => {
     it("ignores modifiers field when it is not an object", async () => {
         const { app } = await makeTestApp();
         const requestBody = {
-            rawInput: "bad-mods bad",
+            rawInput: "badmods bad",
+            modifiers: "notanobject",
         };
         const res = await request(app)
             .post("/api/entries")
             .send(requestBody)
             .set("Content-Type", "application/json");
         expect(res.statusCode).toBe(201);
-        expect(res.body.entry.modifiers).toEqual({});
+        expect(res.body.entry.input).toBeDefined();
+        expect(Object.keys(getModifiers({ input: res.body.entry.input }))).toHaveLength(0);
     });
 
     it("creates an entry with an asset when a file is uploaded", async () => {
@@ -100,8 +102,8 @@ describe("POST /api/entries", () => {
             .attach("files", tmpFilePath);
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
-        expect(res.body.entry.type).toBe("filetype");
-        expect(res.body.entry.description).toBe("- File description");
+        expect(getType(res.body.entry)).toBe("filetype");
+        expect(getDescription(res.body.entry)).toBe("- File description");
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({ type: "filetype", fileCount: 1 }),
             expect.stringContaining("Entry created")
@@ -133,7 +135,7 @@ describe("POST /api/entries", () => {
         }
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
-        expect(res.body.entry.type).toBe("multifile");
+        expect(getType(res.body.entry)).toBe("multifile");
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({ type: "multifile", fileCount: 2 }),
             expect.stringContaining("Entry created")
@@ -244,7 +246,7 @@ describe("POST /api/entries", () => {
 
         // This input is actually valid - it treats everything after "work " as description
         expect(res.statusCode).toBe(201);
-        expect(res.body.entry.description).toBe("[unclosed bracket description");
+        expect(getDescription(res.body.entry)).toBe("[unclosed bracket description");
     });
 
     describe("File validation errors", () => {

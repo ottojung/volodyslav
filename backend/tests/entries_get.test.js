@@ -55,8 +55,7 @@ describe("GET /api/entries", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
         expect(res.body.results[0]).toMatchObject({
-            type: "testtype",
-            description: "- Test description",
+            input: "testtype - Test description",
         });
         expect(res.body.next).toBeNull();
     });

@@ -18,6 +18,7 @@ const eventId = require('./id');
 const asset = require('./asset');
 const fromInput = require('./from_input');
 const eventDate = require('./date');
+const { getType, getDescription, getModifiers, getParsed } = require('./computed');
 
 /** @typedef {import('./structure').Event} Event */
 /** @typedef {import('./structure').SerializedEvent} SerializedEvent */
@@ -37,6 +38,10 @@ module.exports = {
     extractHashtags,
     isContextEnhancing,
     equal,
+    getType,
+    getDescription,
+    getModifiers,
+    getParsed,
     id: eventId,
     asset,
     fromInput,

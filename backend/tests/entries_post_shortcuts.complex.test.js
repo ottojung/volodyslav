@@ -43,9 +43,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             {
                 rawInput: "wh - Working from home today",
                 expected: {
-                    type: "WORK",
-                    description: "- Working from house today", // "home" gets transformed to "house" 
-                    modifiers: { loc: "house" },
                     input: "WORK [loc house] - Working from house today",
                     original: "wh - Working from home today"
                 }
@@ -53,9 +50,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             {
                 rawInput: "mb [duration 2h] - Project review",
                 expected: {
-                    type: "MEETING",
-                    description: "- Project review",
-                    modifiers: { with: "manager Sarah", duration: "2h" },
                     input: "MEETING [with manager Sarah] [duration 2h] - Project review",
                     original: "mb [duration 2h] - Project review"
                 }
@@ -63,9 +57,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             {
                 rawInput: "eg [duration 45min] - Cardio workout",
                 expected: {
-                    type: "EXERCISE",
-                    description: "- Cardio workout",
-                    modifiers: { loc: "fitness center", duration: "45min" },
                     input: "EXERCISE [loc fitness center] [duration 45min] - Cardio workout",
                     original: "eg [duration 45min] - Cardio workout"
                 }
@@ -115,7 +106,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         // Verify the transformation worked
         expect(res.body.entry.original).toBe("test - This should be transformed");
         expect(res.body.entry.input).toBe("TRANSFORMED - This should be transformed");
-        expect(res.body.entry.type).toBe("TRANSFORMED");
     });
 
 });

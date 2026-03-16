@@ -4,12 +4,9 @@ const { fromISOString, fromMinutes } = require("../src/datetime");
 describe("getEventBasicContext", () => {
     const makeEvent = (id, input, date, type = "text") => ({
         id,
-        input,
+        input: `${type} ${input}`,
         date,
-        type,
-        original: input,
-        modifiers: {},
-        description: input,
+        original: `${type} ${input}`,
         creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
     });
 
@@ -113,7 +110,7 @@ describe("getEventBasicContext", () => {
             "1",
             "Earlier #work event",
             date1,
-            "non-enhancing"
+            "food"
         );
         const targetEvent = makeEvent("target", "Current #work status", date2);
 
