@@ -15,10 +15,14 @@ const {
  *           ReturnType<typeof makeInvalidTypeError> |
  *           ReturnType<typeof makeInvalidValueError> |
  *           ReturnType<typeof makeInvalidStructureError> |
- *           ReturnType<typeof makeNestedFieldError>} TryDeserializeError
+ *           ReturnType<typeof makeNestedFieldError> |
+ *           ReturnType<typeof makeUnrecognizedFieldError>} TryDeserializeError
  */
 
 /** @typedef {import('../creator').Creator} Creator */
+
+const KNOWN_EVENT_FIELDS = new Set(["id", "date", "original", "input", "creator"]);
+const KNOWN_CREATOR_FIELDS = new Set(["name", "uuid", "version", "hostname"]);
 
 /**
  * @typedef Event
@@ -93,44 +97,44 @@ function tryDeserialize(obj) {
             );
         }
 
-        const knownFields = new Set(["id", "date", "original", "input", "creator"]);
+        const knownFields = KNOWN_EVENT_FIELDS;
         for (const key of Object.keys(obj)) {
             if (!knownFields.has(key)) {
                 return makeUnrecognizedFieldError(key, obj[key]);
             }
         }
 
-        if (!("id" in obj)) return makeMissingFieldError("id");
+        if (!Object.prototype.hasOwnProperty.call(obj, "id")) return makeMissingFieldError("id");
         const id = obj.id;
         if (typeof id !== "string") {
             return makeInvalidTypeError("id", id, "string");
         }
 
-        if (!("date" in obj)) return makeMissingFieldError("date");
+        if (!Object.prototype.hasOwnProperty.call(obj, "date")) return makeMissingFieldError("date");
         const date = obj.date;
         if (typeof date !== "string") {
             return makeInvalidTypeError("date", date, "string");
         }
 
-        if (!("original" in obj)) return makeMissingFieldError("original");
+        if (!Object.prototype.hasOwnProperty.call(obj, "original")) return makeMissingFieldError("original");
         const original = obj.original;
         if (typeof original !== "string") {
             return makeInvalidTypeError("original", original, "string");
         }
 
-        if (!("input" in obj)) return makeMissingFieldError("input");
+        if (!Object.prototype.hasOwnProperty.call(obj, "input")) return makeMissingFieldError("input");
         const input = obj.input;
         if (typeof input !== "string") {
             return makeInvalidTypeError("input", input, "string");
         }
 
-        if (!("creator" in obj)) return makeMissingFieldError("creator");
+        if (!Object.prototype.hasOwnProperty.call(obj, "creator")) return makeMissingFieldError("creator");
         const creator = obj.creator;
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return makeInvalidTypeError("creator", creator, "object");
         }
 
-        const knownCreatorFields = new Set(["name", "uuid", "version", "hostname"]);
+        const knownCreatorFields = KNOWN_CREATOR_FIELDS;
         for (const key of Object.keys(creator)) {
             if (!knownCreatorFields.has(key)) {
                 return makeUnrecognizedFieldError(`creator.${key}`, creator[key]);
@@ -142,16 +146,16 @@ function tryDeserialize(obj) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 
-        if (!("name" in creator)) {
+        if (!Object.prototype.hasOwnProperty.call(creator, "name")) {
             return makeNestedFieldError("creator", "name", creator, "missing required field");
         }
-        if (!("uuid" in creator)) {
+        if (!Object.prototype.hasOwnProperty.call(creator, "uuid")) {
             return makeNestedFieldError("creator", "uuid", creator, "missing required field");
         }
-        if (!("version" in creator)) {
+        if (!Object.prototype.hasOwnProperty.call(creator, "version")) {
             return makeNestedFieldError("creator", "version", creator, "missing required field");
         }
-        if (!("hostname" in creator)) {
+        if (!Object.prototype.hasOwnProperty.call(creator, "hostname")) {
             return makeNestedFieldError("creator", "hostname", creator, "missing required field");
         }
 
