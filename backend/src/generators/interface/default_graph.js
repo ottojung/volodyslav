@@ -178,7 +178,7 @@ function createDefaultGraphDefinition(capabilities) {
         {
             output: "event_transcription(e, a)",
             inputs: ["event(e)", "transcription(a)"],
-            computor: eventTranscription.computor,
+            computor: eventTranscription.makeComputor(capabilities),
             isDeterministic: true,
             hasSideEffects: false,
         },

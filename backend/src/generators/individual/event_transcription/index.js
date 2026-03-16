@@ -1,8 +1,8 @@
 const { computeEventTranscription, isAudioNotAssociatedWithEventError } = require("./compute");
-const { computor } = require("./wrapper");
+const { makeComputor } = require("./wrapper");
 
 module.exports = {
     computeEventTranscription,
     isAudioNotAssociatedWithEventError,
-    computor,
+    makeComputor,
 };
