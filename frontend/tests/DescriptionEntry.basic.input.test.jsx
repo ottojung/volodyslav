@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -124,7 +125,7 @@ describe("DescriptionEntry", () => {
             entry: { input: "processed test event" },
         });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {
@@ -150,7 +151,7 @@ describe("DescriptionEntry", () => {
     it("handles submission errors gracefully", async () => {
         submitEntry.mockRejectedValue(new Error("Network error"));
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {
@@ -179,7 +180,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("does not submit empty or whitespace-only input", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
         await waitFor(() => {
@@ -200,7 +201,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("focuses input field on mount", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
         await waitFor(() => {

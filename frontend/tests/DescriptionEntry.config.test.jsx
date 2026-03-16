@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -119,7 +120,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("handles shortcut clicks from config section", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -154,7 +155,7 @@ describe("DescriptionEntry", () => {
     });
 
     it("handles syntax example clicks from config section", async () => {
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."

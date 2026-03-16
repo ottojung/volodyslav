@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -68,7 +69,7 @@ it("ensures photos are submitted with correct field name to backend", async () =
     });
     retrievePhotos.mockReturnValue([mockFile]);
 
-    render(<DescriptionEntry />);
+    renderWithChakra(<DescriptionEntry />);
 
     // Wait for camera return processing
     await waitFor(() => {

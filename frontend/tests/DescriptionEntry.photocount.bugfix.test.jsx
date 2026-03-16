@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock Chakra UI useToast
 const mockToast = jest.fn();
@@ -130,7 +131,7 @@ describe("Photo Count Display Bug Fix", () => {
         ];
         retrievePhotosFromIndexedDB.mockResolvedValue(mockPhotosData);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to process the camera return
         await waitFor(() => {
@@ -179,7 +180,7 @@ describe("Photo Count Display Bug Fix", () => {
         // Mock IndexedDB having no photos (null return)
         retrievePhotosFromIndexedDB.mockResolvedValue(null);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to process the camera return
         await waitFor(() => {
@@ -217,7 +218,7 @@ describe("Photo Count Display Bug Fix", () => {
         // Mock IndexedDB having empty array
         retrievePhotosFromIndexedDB.mockResolvedValue([]);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to process the camera return
         await waitFor(() => {
@@ -257,7 +258,7 @@ describe("Photo Count Display Bug Fix", () => {
         // Mock IndexedDB retrieval failing
         retrievePhotosFromIndexedDB.mockRejectedValue(new Error("IndexedDB error"));
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to process the camera return
         await waitFor(() => {

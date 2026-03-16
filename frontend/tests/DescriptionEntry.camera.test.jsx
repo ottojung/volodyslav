@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -80,7 +81,7 @@ describe("Camera Integration", () => {
         generateRequestIdentifier.mockReturnValue("test-req-id-123");
         checkCameraReturn.mockReturnValue({ isReturn: false });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to settle
         await waitFor(() => {
@@ -128,7 +129,7 @@ describe("Camera Integration", () => {
         // Mock 2 photos in storage
         retrievePhotosFromIndexedDB.mockResolvedValue([{}, {}]);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         await waitFor(() => {
             expect(checkCameraReturn).toHaveBeenCalled();
@@ -180,7 +181,7 @@ describe("Camera Integration", () => {
             entry: { input: "Take a photo [phone_take_photo] of the sunset" },
         });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to process the camera return
         await waitFor(() => {
@@ -218,7 +219,7 @@ describe("Camera Integration", () => {
         // Set specific mock values for this test
         checkCameraReturn.mockReturnValue({ isReturn: false }); // Ensure no camera return state
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to settle
         await waitFor(() => {
@@ -268,7 +269,7 @@ describe("Camera Integration", () => {
         });
         retrievePhotos.mockReturnValue([mockFile]);
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         await waitFor(() => {
             expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
@@ -305,7 +306,7 @@ describe("Camera Integration", () => {
             requestIdentifier: null,
         });
 
-        render(<DescriptionEntry />);
+        renderWithChakra(<DescriptionEntry />);
 
         // Wait for the component to settle
         await waitFor(() => {
