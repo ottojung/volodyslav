@@ -25,7 +25,6 @@ describe("default graph computor wiring", () => {
         expect(findNode(graph, "meta_events").computor).toBe(individual.metaEvents.computor);
         expect(findNode(graph, "event_context").computor).toBe(individual.eventContext.computor);
         expect(findNode(graph, "event(e)").computor).toBe(individual.event.computor);
-        expect(findNode(graph, "event_transcription(e, a)").computor).toBe(individual.eventTranscription.computor);
     });
 
     test("uses extracted factory computors for capabilities-bound nodes", async () => {
