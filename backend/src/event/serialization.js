@@ -104,31 +104,31 @@ function tryDeserialize(obj) {
             }
         }
 
-        if (!Object.prototype.hasOwnProperty.call(obj, "id")) return makeMissingFieldError("id");
+        if (!("id" in obj)) return makeMissingFieldError("id");
         const id = obj.id;
         if (typeof id !== "string") {
             return makeInvalidTypeError("id", id, "string");
         }
 
-        if (!Object.prototype.hasOwnProperty.call(obj, "date")) return makeMissingFieldError("date");
+        if (!("date" in obj)) return makeMissingFieldError("date");
         const date = obj.date;
         if (typeof date !== "string") {
             return makeInvalidTypeError("date", date, "string");
         }
 
-        if (!Object.prototype.hasOwnProperty.call(obj, "original")) return makeMissingFieldError("original");
+        if (!("original" in obj)) return makeMissingFieldError("original");
         const original = obj.original;
         if (typeof original !== "string") {
             return makeInvalidTypeError("original", original, "string");
         }
 
-        if (!Object.prototype.hasOwnProperty.call(obj, "input")) return makeMissingFieldError("input");
+        if (!("input" in obj)) return makeMissingFieldError("input");
         const input = obj.input;
         if (typeof input !== "string") {
             return makeInvalidTypeError("input", input, "string");
         }
 
-        if (!Object.prototype.hasOwnProperty.call(obj, "creator")) return makeMissingFieldError("creator");
+        if (!("creator" in obj)) return makeMissingFieldError("creator");
         const creator = obj.creator;
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return makeInvalidTypeError("creator", creator, "object");
@@ -146,16 +146,16 @@ function tryDeserialize(obj) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 
-        if (!Object.prototype.hasOwnProperty.call(creator, "name")) {
+        if (!("name" in creator)) {
             return makeNestedFieldError("creator", "name", creator, "missing required field");
         }
-        if (!Object.prototype.hasOwnProperty.call(creator, "uuid")) {
+        if (!("uuid" in creator)) {
             return makeNestedFieldError("creator", "uuid", creator, "missing required field");
         }
-        if (!Object.prototype.hasOwnProperty.call(creator, "version")) {
+        if (!("version" in creator)) {
             return makeNestedFieldError("creator", "version", creator, "missing required field");
         }
-        if (!Object.prototype.hasOwnProperty.call(creator, "hostname")) {
+        if (!("hostname" in creator)) {
             return makeNestedFieldError("creator", "hostname", creator, "missing required field");
         }
 
