@@ -98,9 +98,9 @@ function tryDeserialize(obj) {
         }
 
         const knownFields = KNOWN_EVENT_FIELDS;
-        for (const key of Object.keys(obj)) {
+        for (const [key, value] of Object.entries(obj)) {
             if (!knownFields.has(key)) {
-                return makeUnrecognizedFieldError(key, obj[key]);
+                return makeUnrecognizedFieldError(key, value);
             }
         }
 
@@ -135,9 +135,9 @@ function tryDeserialize(obj) {
         }
 
         const knownCreatorFields = KNOWN_CREATOR_FIELDS;
-        for (const key of Object.keys(creator)) {
+        for (const [key, value] of Object.entries(creator)) {
             if (!knownCreatorFields.has(key)) {
-                return makeUnrecognizedFieldError(`creator.${key}`, creator[key]);
+                return makeUnrecognizedFieldError(`creator.${key}`, value);
             }
         }
 

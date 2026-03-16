@@ -68,7 +68,11 @@ describe('event.tryDeserialize', () => {
   });
 
   it('returns error when creator is missing required field', () => {
-    const { name: _name, ...creatorWithoutName } = validObj.creator;
+    const creatorWithoutName = {
+      uuid: validObj.creator.uuid,
+      version: validObj.creator.version,
+      hostname: validObj.creator.hostname,
+    };
     const obj = { ...validObj, creator: creatorWithoutName };
     const result = event.tryDeserialize(obj);
     expect(event.isNestedFieldError(result)).toBe(true);
