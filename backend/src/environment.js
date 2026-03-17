@@ -14,7 +14,7 @@ class EnvironmentError extends Error {
      * @param {string} variableName - The name of the environment variable.
      * @param {string} [reason]
      */
-    constructor(variableName, reason = "must be set.") {
+    constructor(variableName, reason = "must be set") {
         const message = `Environment variable $${variableName} ${reason}`;
         super(message);
         this.variableName = variableName;
@@ -95,7 +95,7 @@ function hostname() {
     if (!isValidHostname(value)) {
         throw new EnvironmentError(
             "VOLODYSLAV_HOSTNAME",
-            "must match [0-9a-zA-Z_-]+."
+            "must match [0-9a-zA-Z_-]+"
         );
     }
     return value;

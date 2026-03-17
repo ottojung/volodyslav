@@ -110,6 +110,7 @@ describe("generators repository host branch merging", () => {
             capabilities.environment.workingDirectory(),
             "generators-working"
         );
+        expect(await capabilities.reader.readFileAsText(path.join(workDirectory, "test-host.txt"))).toBe("current host");
         expect(await capabilities.reader.readFileAsText(path.join(workDirectory, "alice.txt"))).toBe("alice host");
         expect(await capabilities.reader.readFileAsText(path.join(workDirectory, "bob.txt"))).toBe("bob host");
         expect(await currentBranch(capabilities, workDirectory)).toBe("test-host-main");

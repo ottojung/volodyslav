@@ -172,11 +172,11 @@ All clone operations use:
 git clone --depth=1 --no-single-branch --branch=<hostname>-main
 ```
 
-Only the latest commit is fetched. The active branch is derived from
+The clone stays shallow because of `--depth=1`, so only the branch tips are
+fetched one commit deep. The active branch is derived from
 `VOLODYSLAV_HOSTNAME` as `<hostname>-main`, and the hostname must match
-`[0-9a-zA-Z_-]+`. This keeps temp work trees lightweight regardless of how many
-commits the repository has accumulated while still making all remote hostname
-branches discoverable locally.
+`[0-9a-zA-Z_-]+`. Using `--no-single-branch` keeps all remote hostname branches
+discoverable locally without pulling their full history.
 
 For the generators database, synchronisation performs one extra reconciliation
 pass after the normal pull/push (or clone/reset) flow:

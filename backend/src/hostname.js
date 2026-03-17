@@ -18,7 +18,7 @@ function parseRemoteHostnameBranch(refName) {
     if (match === null) {
         return null;
     }
-    return match[1];
+    return match[1] ?? null;
 }
 
 module.exports = {
