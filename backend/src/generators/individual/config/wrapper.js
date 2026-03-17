@@ -23,6 +23,17 @@ function makeBox() {
  */
 function makeComputor(box, _capabilities) {
     return async (_inputs, oldValue, _bindings) => {
+        if (box.value === null) {
+            // This is the initial state before the interface has ever called setConfig.
+            if (oldValue === undefined) {
+                // We haven't set a value yet, and we also don't have an old value,
+                // so we return the default of null.
+                return { type: "config", config: null };
+            } else {
+                return oldValue;
+            }
+        }
+
         const nextValue = { type: "config", config: box.value };
         if (
             oldValue !== undefined &&
@@ -30,7 +41,7 @@ function makeComputor(box, _capabilities) {
             JSON.stringify(
                 oldValue.config === null ? null : serialize(oldValue.config)
             ) === JSON.stringify(
-                nextValue.config === null ? null : serialize(nextValue.config)
+                serialize(nextValue.config)
             )
         ) {
             return makeUnchanged();
