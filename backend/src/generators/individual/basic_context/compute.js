@@ -18,11 +18,13 @@ const { computeEventForId } = require("../event");
  * @returns {BasicContextEntry | Unchanged}
  */
 function computeBasicContextForEventId(eventId, oldValue, serializedEvents) {
+    const eventEntry = computeEventForId(eventId, undefined, serializedEvents);
     const allEvents = serializedEvents.map(deserialize);
-    computeEventForId(eventId, undefined, serializedEvents);
-    const event = allEvents.find((candidate) => candidate.id.identifier === eventId);
+    const event = allEvents.find(
+        (candidate) => candidate.id.identifier === eventEntry.value.id
+    );
     if (event === undefined) {
-        throw new Error(`Event with ID ${eventId} not found in all_events`);
+        throw new Error(`Event with ID ${eventEntry.value.id} not found in all_events`);
     }
 
     const contextEvents = getEventBasicContext(allEvents, event);

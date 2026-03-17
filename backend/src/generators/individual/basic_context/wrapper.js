@@ -1,7 +1,12 @@
 const { computeBasicContextForEventId } = require("./compute");
 
 /**
- * @type {import('../../incremental_graph/types').NodeDefComputor}
+ * Computes `basic_context(e)` from `all_events`.
+ *
+ * @param {Array<import('../../incremental_graph/database/types').ComputedValue>} inputs
+ * @param {import('../../incremental_graph/database/types').ComputedValue | undefined} oldValue
+ * @param {Array<string>} bindings
+ * @returns {Promise<import('../../incremental_graph/database/types').ComputedValue | import('../../incremental_graph/unchanged').Unchanged>}
  */
 const computor = async (inputs, oldValue, bindings) => {
     const firstInput = inputs[0];
