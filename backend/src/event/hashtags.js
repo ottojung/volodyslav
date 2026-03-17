@@ -11,7 +11,7 @@
  * @returns {Set<string>} A set of unique hashtags found in the text.
  */
 function extractHashtagsFromText(text) {
-    const hashtagRegex = /#((\w|\d)+)/g;
+    const hashtagRegex = /#(\w+(?:-\w+)*)/g;
     const hashtags = new Set();
     let match;
     while ((match = hashtagRegex.exec(text)) !== null) {
