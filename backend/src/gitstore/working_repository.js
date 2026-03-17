@@ -5,7 +5,6 @@
 //
 
 const path = require("path");
-const fsp = require("fs/promises");
 const gitmethod = require("./wrappers");
 const { configureRemoteForAllBranches } = require("./branch_setup");
 const { git } = require("../executables");
@@ -15,6 +14,7 @@ const { withRetry } = require("../retryer");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -32,6 +32,7 @@ const { withRetry } = require("../retryer");
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {FileMover} mover - A file mover instance.
  * @property {FileWriter} writer - A file writer instance.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
@@ -61,6 +62,19 @@ class WorkingRepositoryError extends Error {
  */
 function isWorkingRepositoryError(object) {
     return object instanceof WorkingRepositoryError;
+}
+
+/**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isDestinationCollisionError(error) {
+    return (
+        error !== null &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error.code === "EEXIST" || error.code === "ENOTEMPTY")
+    );
 }
 
 /**
@@ -125,18 +139,18 @@ async function synchronize(capabilities, workingPath, origin, options) {
             await configureRemoteForAllBranches(capabilities, tempDir);
             await gitmethod.makePushable(capabilities, tempDir);
             // Atomic rename: if workDir already exists (another concurrent
-            // attempt succeeded first), fsp.rename throws ENOTEMPTY/EEXIST.
-            await fsp.rename(tempDir, workDir);
+            // attempt succeeded first), rename throws ENOTEMPTY/EEXIST.
+            await capabilities.mover.moveDirectory(tempDir, workDir);
         } catch (error) {
             // Always clean up the temp dir – it is ours alone.
             await capabilities.deleter.deleteDirectory(tempDir).catch(() => undefined);
-            // workDir exists from another attempt → treat as success.
-            if (
-                error instanceof Object &&
-                "code" in error &&
-                (error.code === "EEXIST" || error.code === "ENOTEMPTY")
-            ) {
-                return;
+            if (isDestinationCollisionError(error)) {
+                // Only treat rename collision as success if a valid repo now
+                // exists at the destination (likely created by a concurrent
+                // successful attempt). Otherwise retry/fail.
+                if (await capabilities.checker.fileExists(headFile)) {
+                    return;
+                }
             }
             throw error;
         }

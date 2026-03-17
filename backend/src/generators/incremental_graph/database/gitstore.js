@@ -32,6 +32,7 @@ const { renderToFilesystem } = require('./render');
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../../../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
@@ -51,6 +52,7 @@ const { renderToFilesystem } = require('./render');
  * @property {FileCreator} creator
  * @property {FileDeleter} deleter
  * @property {FileChecker} checker
+ * @property {FileMover} mover
  * @property {FileWriter} writer
  * @property {FileReader} reader
  * @property {DirScanner} scanner

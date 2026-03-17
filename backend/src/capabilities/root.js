@@ -12,6 +12,7 @@
 /** @typedef {import('../filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../exiter').Exiter} Exiter */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
@@ -41,6 +42,7 @@
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {FileMover} mover - A directory mover instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Command} rsync - A command instance for rsync operations.
  * @property {Environment} environment - An environment instance.
@@ -69,6 +71,7 @@ const writerCapability = filesystem.writer;
 const readerCapability = filesystem.reader;
 const appendCapability = filesystem.appender;
 const checkerCapability = filesystem.checker;
+const moverCapability = filesystem.mover;
 const gitCapability = require("../executables").git;
 const rsyncCapability = require("../executables").rsync;
 const environmentCapability = require("../environment");
@@ -114,6 +117,7 @@ const make = () => {
         reader: readerCapability.make(),
         appender: appendCapability.make(),
         checker: checkerCapability.make(() => ret),
+        mover: moverCapability.make(),
         git: gitCapability,
         rsync: rsyncCapability,
         environment,

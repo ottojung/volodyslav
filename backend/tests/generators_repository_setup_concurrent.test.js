@@ -1,4 +1,5 @@
 const path = require("path");
+const mover = require("../src/filesystem/mover");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubDatetime, stubEnvironment, stubGit, stubLogger } = require("./stubs");
@@ -146,5 +147,43 @@ describe("generators repository setup – concurrent and fetch efficiency", () =
         // pull() should fetch exactly once (explicit fetch) and then merge the
         // already-fetched ref – not call git-pull which would fetch a second time.
         expect(fetchCount).toBe(1);
+    });
+
+    test("rename collision without valid destination repo retries instead of returning success", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+        await seedGeneratorsRemote(capabilities, [["test-host", "test-host.txt", "test host branch"]]);
+
+        let cloneAttempts = 0;
+        const originalGitCall = capabilities.git.call;
+        stubGit(capabilities, (...args) => {
+            if (args.includes("clone")) {
+                cloneAttempts += 1;
+            }
+            return originalGitCall.apply(capabilities.git, args);
+        });
+
+        let renameFailures = 0;
+        const realMoveDirectory = mover.make().moveDirectory;
+        capabilities.mover.moveDirectory.mockImplementation(async (...args) => {
+            if (renameFailures === 0) {
+                renameFailures += 1;
+                const error = new Error("Simulated destination collision");
+                error.code = "ENOTEMPTY";
+                throw error;
+            }
+            return realMoveDirectory(...args);
+        });
+
+        await expect(
+            workingRepository.synchronize(
+                capabilities,
+                "generators-collision-retry",
+                { url: capabilities.environment.generatorsRepository() }
+            )
+        ).resolves.toBeUndefined();
+
+        expect(renameFailures).toBe(1);
+        expect(cloneAttempts).toBe(2);
     });
 });

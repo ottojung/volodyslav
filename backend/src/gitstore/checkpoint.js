@@ -29,6 +29,7 @@ const { gitStoreMutexKey } = require("./mutex");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -43,6 +44,7 @@ const { gitStoreMutexKey } = require("./mutex");
  * @property {FileCreator} creator
  * @property {FileDeleter} deleter
  * @property {FileChecker} checker
+ * @property {FileMover} mover
  * @property {FileWriter} writer
  * @property {Environment} environment
  * @property {Logger} logger
