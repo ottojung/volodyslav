@@ -174,7 +174,7 @@ describe("synchronizeNoLock", () => {
             await db.close();
         }
 
-        await synchronizeNoLock(capabilities, { resetToTheirs: true });
+        await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
 
         const reopened = await getRootDatabase(capabilities);
         try {

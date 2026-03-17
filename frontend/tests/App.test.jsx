@@ -200,7 +200,7 @@ describe("App", () => {
     it("shows step progress via the onProgress callback during sync", async () => {
         fetchVersion.mockResolvedValue("1.2.3");
 
-        postSync.mockImplementation((_resetToTheirs, onProgress) => {
+        postSync.mockImplementation((_resetToHostname, onProgress) => {
             onProgress?.([{ name: "generators", status: "success" }]);
             return Promise.resolve({ success: true, steps: [{ name: "generators", status: "success" }] });
         });
@@ -251,7 +251,7 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         fireEvent.change(
-            screen.getByPlaceholderText("Hostname (leave empty for current host)"),
+            screen.getByPlaceholderText("Hostname"),
             { target: { value: "alice" } }
         );
         fireEvent.click(screen.getByText("Sync"));

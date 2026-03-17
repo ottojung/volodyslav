@@ -45,7 +45,7 @@ describe("postSync", () => {
 
         let result;
         await act(async () => {
-            result = await postSync(true);
+            result = await postSync();
         });
 
         expect(result).toEqual({ success: true, steps: undefined });
@@ -54,7 +54,7 @@ describe("postSync", () => {
             "/api/sync",
             expect.objectContaining({
                 method: "POST",
-                body: JSON.stringify({ reset_to_theirs: true }),
+                body: JSON.stringify({}),
             })
         );
         expect(global.fetch).toHaveBeenNthCalledWith(

@@ -34,15 +34,12 @@ function makeEmptySyncError() {
 }
 
 /**
- * @param {boolean | string | undefined} resetToTarget
+ * @param {string | undefined} resetToHostname
  * @returns {string}
  */
-function makeSyncSuccessMessage(resetToTarget) {
-  if (resetToTarget === true) {
-    return 'Your local data was reset to match the current host branch.';
-  }
-  if (typeof resetToTarget === 'string') {
-    return `Your local data was reset to match ${resetToTarget}-main.`;
+function makeSyncSuccessMessage(resetToHostname) {
+  if (resetToHostname !== undefined) {
+    return `Your local data was reset to match ${resetToHostname}-main.`;
   }
 
   return 'Your local and remote data are now in sync.';
@@ -160,21 +157,26 @@ function App() {
   };
 
   const handleSyncClick = async () => {
+    const trimmedResetHostname = syncResetHostname.trim();
+    if (syncMode === 'reset-to-hostname' && trimmedResetHostname === '') {
+      return;
+    }
+
     setSyncState('loading');
     setSyncError(makeEmptySyncError());
     setSyncSuccessMessage('');
     setSyncSteps([]);
 
-    const nextResetTarget = syncMode === 'reset-to-hostname'
-      ? (syncResetHostname.trim() === '' ? true : syncResetHostname.trim())
+    const nextResetHostname = syncMode === 'reset-to-hostname'
+      ? trimmedResetHostname
       : undefined;
-    const result = await postSync(nextResetTarget, (steps) => {
+    const result = await postSync(nextResetHostname, (steps) => {
       setSyncSteps(steps);
     });
 
     if (result.success) {
       setSyncState('success');
-      setSyncSuccessMessage(makeSyncSuccessMessage(nextResetTarget));
+      setSyncSuccessMessage(makeSyncSuccessMessage(nextResetHostname));
       setSyncSteps(result.steps || []);
       setTimeout(() => setSyncState('idle'), 2000);
     } else {
@@ -238,7 +240,7 @@ function App() {
               size="sm"
               value={syncResetHostname}
               onChange={handleSyncHostnameChange}
-              placeholder="Hostname (leave empty for current host)"
+              placeholder="Hostname"
               w="260px"
             />
           )}
@@ -247,7 +249,7 @@ function App() {
             variant="outline"
             w="200px"
             onClick={handleSyncClick}
-            isDisabled={syncState === 'loading'}
+            isDisabled={syncState === 'loading' || (syncMode === 'reset-to-hostname' && syncResetHostname.trim() === '')}
             leftIcon={syncState === 'loading' ? <Spinner size="sm" /> : undefined}
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}

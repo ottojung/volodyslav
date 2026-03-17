@@ -88,19 +88,16 @@ function toSyncResult(data) {
 
 /**
  * Calls POST /api/sync to synchronize persisted application state.
- * @param {boolean | string} [resetToTarget] - When true, resets to this instance hostname branch. When a string, resets to that hostname branch.
+ * @param {string} [resetToHostname] - Optional hostname branch target for reset mode.
  * @param {(steps: SyncStepResult[]) => void} [onProgress] - Called with current step results whenever the running state is polled.
  * @returns {Promise<PostSyncResult>}
  */
-export async function postSync(resetToTarget, onProgress) {
+export async function postSync(resetToHostname, onProgress) {
     try {
-        /** @type {{ reset_to_theirs?: boolean, reset_to_hostname?: string }} */
+        /** @type {{ reset_to_hostname?: string }} */
         const body = {};
-        if (resetToTarget === true) {
-            body.reset_to_theirs = true;
-        }
-        if (typeof resetToTarget === "string") {
-            body.reset_to_hostname = resetToTarget;
+        if (resetToHostname !== undefined) {
+            body.reset_to_hostname = resetToHostname;
         }
 
         const response = await fetch(`${API_BASE_URL}/sync`, {

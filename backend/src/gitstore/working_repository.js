@@ -104,7 +104,7 @@ async function hasOriginRemote(capabilities, workDir) {
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation} origin - Remote location or local location to sync with.
- * @param {{ resetToTheirs?: boolean, resetToHostname?: string, mergeHostBranches?: boolean }} [options] - Optional sync options.
+ * @param {{ resetToHostname?: string, mergeHostBranches?: boolean }} [options] - Optional sync options.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError} If synchronization of the working repository fails.
  * @throws {MergeHostBranchesError} If merging host branches during synchronization fails.
@@ -114,7 +114,6 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const headFile = path.join(gitDir, "HEAD");
     const remotePath = origin.url;
-    const resetToTheirs = options && options.resetToTheirs;
     const resetToHostname = options && options.resetToHostname;
     const mergeHostBranches = options && options.mergeHostBranches;
 
@@ -147,7 +146,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
         }
 
         try {
-            if (resetToTheirs || resetToHostname !== undefined || (exists && needsRemoteSetup)) {
+            if (resetToHostname !== undefined || (exists && needsRemoteSetup)) {
                 if (exists) {
                     // fetchAndResetHard reconciles the local repo with the remote,
                     // including the case where they have unrelated histories.
@@ -161,6 +160,13 @@ async function synchronize(capabilities, workingPath, origin, options) {
                         capabilities,
                         { remotePath, workDir, headFile }
                     );
+                    if (resetToHostname !== undefined) {
+                        await gitmethod.fetchAndResetHard(
+                            capabilities,
+                            workDir,
+                            resetToHostname
+                        );
+                    }
                 }
             } else {
                 if (exists) {

@@ -82,7 +82,7 @@ describe("sync route", () => {
 
         const startResponse = await request(app)
             .post("/api/sync")
-            .send({ reset_to_theirs: true });
+            .send({ reset_to_hostname: "test-host" });
         expect(startResponse.statusCode).toBe(202);
 
         await new Promise((resolve) => setImmediate(resolve));
@@ -91,7 +91,7 @@ describe("sync route", () => {
         expect(failedResponse.statusCode).toBe(500);
         expect(failedResponse.body).toMatchObject({
             status: "error",
-            reset_to_theirs: true,
+            reset_to_hostname: "test-host",
             error: {
                 message: "Sync failed: Generators database sync failed: git push failed",
                 details: [
@@ -210,14 +210,4 @@ describe("sync route", () => {
         expect(response.body.error).toContain("Invalid reset_to_hostname value");
     });
 
-    it("rejects payloads that include both reset_to_theirs and reset_to_hostname", async () => {
-        const app = await makeApp();
-
-        const response = await request(app)
-            .post("/api/sync")
-            .send({ reset_to_theirs: true, reset_to_hostname: "alice" });
-
-        expect(response.statusCode).toBe(400);
-        expect(response.body.error).toContain("use either reset_to_theirs or reset_to_hostname");
-    });
 });

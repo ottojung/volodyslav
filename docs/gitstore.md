@@ -192,10 +192,9 @@ report an organized summary of the hosts that failed.
 
 ### Sync reset targets (`Reset to $HOSTNAME`)
 
-The sync API supports two reset payload forms:
+The sync API supports one reset payload form:
 
-- `{"reset_to_theirs": true}` — reset to the currently running instance branch (`<current-hostname>-main`).
-- `{"reset_to_hostname": "<hostname>"}` — reset to any specific hostname branch (`<hostname>-main`).
+- `{"reset_to_hostname": "<hostname>"}` — reset to the specific hostname branch (`<hostname>-main`).
 
 When `reset_to_hostname` is provided, the local working branch remains the
 current host branch, but its contents are hard-reset to `origin/<hostname>-main`.
