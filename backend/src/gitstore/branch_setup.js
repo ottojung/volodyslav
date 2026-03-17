@@ -1,10 +1,12 @@
 const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - Environment access including hostname.
  */
 
 /**
@@ -60,8 +62,13 @@ async function ensureCurrentBranch(capabilities, workDirectory) {
     const branch = defaultBranch(capabilities);
     const remoteRef = `refs/remotes/origin/${branch}`;
     const hasRemoteBranch = await hasRef(capabilities, workDirectory, remoteRef);
+    const hasLocalBranch = await hasRef(
+        capabilities,
+        workDirectory,
+        `refs/heads/${branch}`
+    );
 
-    if (await hasRef(capabilities, workDirectory, `refs/heads/${branch}`)) {
+    if (hasLocalBranch) {
         await capabilities.git.call(
             "-C",
             workDirectory,

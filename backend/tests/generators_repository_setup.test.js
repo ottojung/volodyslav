@@ -105,6 +105,16 @@ async function currentBranch(capabilities, workDirectory) {
     return result.stdout.trim();
 }
 
+/**
+ * @param {Array<string>} args
+ * @param {string} workDirectory
+ * @returns {boolean}
+ */
+function isCloneInto(args, workDirectory) {
+    const cloneIndex = args.indexOf("clone");
+    return cloneIndex !== -1 && args.slice(cloneIndex + 1).includes(workDirectory);
+}
+
 describe("generators repository setup", () => {
     test("fresh clone setup can reset to a different remote hostname branch", async () => {
         const capabilities = getTestCapabilities();
@@ -224,7 +234,7 @@ describe("generators repository setup", () => {
         );
         const originalGitCall = capabilities.git.call;
         stubGit(capabilities, (...args) => {
-            if (args.includes("clone") && args.at(-1) === workDirectory) {
+            if (isCloneInto(args, workDirectory)) {
                 cloneAttempts += 1;
             }
             if (
@@ -263,7 +273,7 @@ describe("generators repository setup", () => {
         );
         const originalGitCall = capabilities.git.call;
         stubGit(capabilities, (...args) => {
-            if (args.includes("clone") && args.at(-1) === workDirectory) {
+            if (isCloneInto(args, workDirectory)) {
                 cloneAttempts += 1;
             }
             if (
