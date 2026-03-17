@@ -22,6 +22,7 @@ const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
 
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../event').SerializedEvent} SerializedEvent */
 
 /**
  * @typedef {object} Capabilities
@@ -73,10 +74,34 @@ Respond with exactly one token:
 No units, no prose, no JSON, no markdown.`;
 
 /**
- * @param {string} entry
+ * @param {SerializedEvent} targetEvent
+ * @param {Array<SerializedEvent>} contextEvents
+ * @returns {string}
+ */
+function makeCaloriesEntryText(targetEvent, contextEvents) {
+    const relatedContext = contextEvents.filter((event) => event.id !== targetEvent.id);
+    const relatedContextBlock = relatedContext.length === 0
+        ? "- none"
+        : relatedContext
+            .map((event, index) => `${index + 1}. ${event.input}`)
+            .join("\n");
+
+    return [
+        "Target event:",
+        targetEvent.input,
+        "",
+        "Basic context (related events for disambiguation only):",
+        relatedContextBlock,
+    ].join("\n");
+}
+
+/**
+ * @param {SerializedEvent} targetEvent
+ * @param {Array<SerializedEvent>} contextEvents
  * @returns {Array<{ role: "system" | "user", content: string }>}
  */
-function makeCaloriesMessages(entry) {
+function makeCaloriesMessages(targetEvent, contextEvents) {
+    const entry = makeCaloriesEntryText(targetEvent, contextEvents);
     return [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: entry },
@@ -85,18 +110,19 @@ function makeCaloriesMessages(entry) {
 
 /**
  * @typedef {object} AICalories
- * @property {(entry: string) => Promise<number | 'N/A'>} estimateCalories
+ * @property {(targetEvent: SerializedEvent, contextEvents: Array<SerializedEvent>) => Promise<number | 'N/A'>} estimateCalories
  */
 
 /**
  * Estimates the number of calories in a log entry.
  * @param {function(string): OpenAI} openai - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
- * @param {string} entry - The log entry to analyse.
+ * @param {SerializedEvent} targetEvent - The event whose calories should be estimated.
+ * @param {Array<SerializedEvent>} contextEvents - Basic-context events for disambiguation.
  * @returns {Promise<number | 'N/A'>} - The estimated calorie count, or 'N/A' when not applicable.
  */
-async function estimateCalories(openai, capabilities, entry) {
-    if (entry.trim() === "") {
+async function estimateCalories(openai, capabilities, targetEvent, contextEvents) {
+    if (targetEvent.input.trim() === "") {
         return "N/A";
     }
 
@@ -104,7 +130,7 @@ async function estimateCalories(openai, capabilities, entry) {
         const apiKey = capabilities.environment.openaiAPIKey();
         const response = await openai(apiKey).chat.completions.create({
             model: CALORIES_MODEL,
-            messages: makeCaloriesMessages(entry),
+            messages: makeCaloriesMessages(targetEvent, contextEvents),
         });
         const text = response.choices[0]?.message?.content?.trim() ?? "N/A";
         if (text === "N/A") {
@@ -138,13 +164,15 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
     const openai = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        estimateCalories: (entry) => estimateCalories(openai, getCapabilitiesMemo(), entry),
+        estimateCalories: (targetEvent, contextEvents) =>
+            estimateCalories(openai, getCapabilitiesMemo(), targetEvent, contextEvents),
     };
 }
 
 module.exports = {
     CALORIES_MODEL,
     SYSTEM_PROMPT,
+    makeCaloriesEntryText,
     makeCaloriesMessages,
     make,
     isAICaloriesError,

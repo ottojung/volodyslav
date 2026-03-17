@@ -129,6 +129,8 @@ The user payload should:
 - show the target event in its own section,
 - list related context events separately,
 - explicitly label context as disambiguation-only.
+- be rendered inside the AI module from the raw target event plus raw context
+  events, rather than pre-rendered upstream.
 
 ## Expected benefits
 

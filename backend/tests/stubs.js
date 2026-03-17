@@ -119,7 +119,7 @@ function stubAiTranscriber(capabilities) {
 /**
  * Stubs the AI calories capabilities for testing.
  * @param {object} capabilities
- * @param {number | 'N/A'} [defaultCalories='N/A'] - The default calorie count to return for any input, or 'N/A' for unavailable
+ * @param {number | 'N/A'} [defaultCalories='N/A'] - The default calorie count to return for any event/context pair, or 'N/A' for unavailable
  */
 function stubAiCalories(capabilities, defaultCalories = "N/A") {
     capabilities.aiCalories.estimateCalories = jest

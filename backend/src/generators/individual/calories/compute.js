@@ -13,39 +13,10 @@
  */
 
 /**
- * Builds a structured AI prompt input from a target event and its basic context.
- *
- * @param {string} targetEventId
- * @param {Array<SerializedEvent>} contextEvents
- * @returns {string}
- */
-function buildCaloriesPromptInput(targetEventId, contextEvents) {
-    const targetEvent = contextEvents.find((event) => event.id === targetEventId);
-    if (targetEvent === undefined) {
-        return "";
-    }
-
-    const relatedContext = contextEvents.filter((event) => event.id !== targetEventId);
-    const relatedContextBlock = relatedContext.length === 0
-        ? "- none"
-        : relatedContext
-            .map((event, index) => `${index + 1}. ${event.input}`)
-            .join("\n");
-
-    return [
-        "Target event:",
-        targetEvent.input,
-        "",
-        "Basic context (related events for disambiguation only):",
-        relatedContextBlock,
-    ].join("\n");
-}
-
-/**
  * Estimates the calorie count for the given event basic context.
  *
- * Builds structured prompt input and delegates to the AI estimator
- * via capabilities. Returns 'N/A' when context is empty or when the AI
+ * Delegates the target event and raw basic context to the AI estimator.
+ * Returns 'N/A' when context is empty or when the AI
  * determines the entry has no meaningful calorie assignment (e.g. sleep, exercise).
  *
  * @param {string} targetEventId - The event ID whose calories are being estimated
@@ -62,8 +33,8 @@ async function computeCaloriesForEvent(targetEventId, contextEvents, capabilitie
         return { type: "calories", value: "N/A" };
     }
 
-    const inputText = buildCaloriesPromptInput(targetEventId, contextEvents);
-    if (inputText === "") {
+    const targetEvent = contextEvents.find((event) => event.id === targetEventId);
+    if (targetEvent === undefined) {
         capabilities.logger.logDebug(
             { target_event_id: targetEventId },
             "computeCaloriesForEvent: target event missing from context, returning N/A"
@@ -75,15 +46,15 @@ async function computeCaloriesForEvent(targetEventId, contextEvents, capabilitie
         {
             target_event_id: targetEventId,
             context_size: contextEvents.length,
-            input_text_length: inputText.length,
+            target_event_input_length: targetEvent.input.length,
         },
         "Computing calories for event basic context",
     );
-    const value = await capabilities.aiCalories.estimateCalories(inputText);
+    const value = await capabilities.aiCalories.estimateCalories(targetEvent, contextEvents);
     capabilities.logger.logInfo(
         {
+            target_event_id: targetEventId,
             context_size: contextEvents.length,
-            input_text_length: inputText.length,
             estimated_calories: value,
         },
         "Estimated calories for event basic context",
@@ -92,6 +63,5 @@ async function computeCaloriesForEvent(targetEventId, contextEvents, capabilitie
 }
 
 module.exports = {
-    buildCaloriesPromptInput,
     computeCaloriesForEvent,
 };

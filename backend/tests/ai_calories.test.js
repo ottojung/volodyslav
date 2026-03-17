@@ -12,6 +12,7 @@ const {
     SYSTEM_PROMPT,
     isAICaloriesError,
     make,
+    makeCaloriesEntryText,
     makeCaloriesMessages,
 } = require("../src/ai/calories");
 
@@ -47,19 +48,36 @@ function setupMockClient(responseText) {
     };
 }
 
+function makeSerializedEvent(id, input) {
+    return {
+        id,
+        input,
+        type: "text",
+        description: input,
+        original: input,
+        modifiers: {},
+    };
+}
+
 describe("ai/calories", () => {
     beforeEach(() => {
         OpenAI.mockReset();
     });
 
-    test("makeCaloriesMessages builds the selected target-and-context prompt shape", () => {
-        const entry = "Target event:\nfood: sandwich\n\nBasic context (related events for disambiguation only):\n- none";
-        const messages = makeCaloriesMessages(entry);
+    test("makeCaloriesEntryText builds the selected target-and-context prompt shape", () => {
+        const targetEvent = makeSerializedEvent("1", "food: sandwich");
+        const contextEvents = [targetEvent];
+
+        const entry = makeCaloriesEntryText(targetEvent, contextEvents);
+        const messages = makeCaloriesMessages(targetEvent, contextEvents);
 
         expect(messages).toEqual([
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: entry },
         ]);
+        expect(entry).toBe(
+            "Target event:\nfood: sandwich\n\nBasic context (related events for disambiguation only):\n- none"
+        );
         expect(SYSTEM_PROMPT).toContain("Target event");
         expect(SYSTEM_PROMPT).toContain("Basic context");
         expect(SYSTEM_PROMPT).toContain("Do not add calories from context events");
@@ -69,23 +87,28 @@ describe("ai/calories", () => {
         const { mockCreate } = setupMockClient("420");
         const capabilities = makeMockCapabilities();
         const aiCalories = make(() => capabilities);
-        const entry = "Target event:\nfood: sandwich\n\nBasic context (related events for disambiguation only):\n1. text packed lunch";
+        const targetEvent = makeSerializedEvent("2", "food: sandwich");
+        const contextEvents = [
+            makeSerializedEvent("1", "text packed lunch"),
+            targetEvent,
+        ];
 
-        const result = await aiCalories.estimateCalories(entry);
+        const result = await aiCalories.estimateCalories(targetEvent, contextEvents);
 
         expect(result).toBe(420);
         expect(OpenAI).toHaveBeenCalledWith({ apiKey: "test-api-key" });
         expect(mockCreate).toHaveBeenCalledWith({
             model: CALORIES_MODEL,
-            messages: makeCaloriesMessages(entry),
+            messages: makeCaloriesMessages(targetEvent, contextEvents),
         });
     });
 
-    test("returns N/A for blank input without calling OpenAI", async () => {
+    test("returns N/A for blank target input without calling OpenAI", async () => {
         const capabilities = makeMockCapabilities();
         const aiCalories = make(() => capabilities);
+        const targetEvent = makeSerializedEvent("1", "   ");
 
-        const result = await aiCalories.estimateCalories("   ");
+        const result = await aiCalories.estimateCalories(targetEvent, [targetEvent]);
 
         expect(result).toBe("N/A");
         expect(OpenAI).not.toHaveBeenCalled();
@@ -95,8 +118,9 @@ describe("ai/calories", () => {
         setupMockClient("about 500 calories");
         const capabilities = makeMockCapabilities();
         const aiCalories = make(() => capabilities);
+        const targetEvent = makeSerializedEvent("1", "food: sandwich");
         const error = await aiCalories
-            .estimateCalories("Target event:\nfood: sandwich\n\nBasic context (related events for disambiguation only):\n- none")
+            .estimateCalories(targetEvent, [targetEvent])
             .catch((caught) => caught);
 
         expect(isAICaloriesError(error)).toBe(true);
