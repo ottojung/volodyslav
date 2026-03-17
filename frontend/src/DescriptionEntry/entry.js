@@ -43,7 +43,7 @@ class EntryClass {
  */
 function parseInput(input) {
     // Step 1: Extract the type (first word starting with a letter)
-    const typeMatch = input.match(/^\s*([A-Za-z]\w*)/);
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9_]*)/);
     if (!typeMatch) {
         return { type: '', description: input.trim(), modifiers: {} };
     }

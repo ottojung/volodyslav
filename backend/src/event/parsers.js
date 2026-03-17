@@ -64,7 +64,7 @@ function parseModifier(modifier) {
  */
 function parseStructuredInput(input) {
     // Step 1: Extract the type (first word starting with a letter)
-    const typeMatch = input.match(/^\s*([A-Za-z]\w*)/);
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9_]*)/);
     if (!typeMatch) {
         throw makeInputParseError("Bad structure of input", input);
     }
