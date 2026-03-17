@@ -1,6 +1,6 @@
 const path = require("path");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const { transaction } = require("./event_log_storage");
+const { transaction } = require("./local_data");
 const event = require("./event");
 const eventId = event.id;
 const asset = event.asset;

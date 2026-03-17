@@ -8,7 +8,7 @@ const {
 } = require("../src/generators/interface");
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
-const { transaction } = require("../src/event_log_storage");
+const { transaction } = require("../src/local_data");
 const { stubGeneratorsRepository } = require("./stub_generators_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment, stubDatetime } = require("./stubs");
@@ -129,6 +129,28 @@ describe("generators/interface", () => {
 
             const freshness = await iface.debugGetFreshness("all_events");
             expect(freshness).toBe("up-to-date");
+        });
+
+        test("updates all_events through invalidation before recomputing", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            await iface.update([makeEvent("event-1", "first")]);
+            await iface.pullGraphNode("all_events");
+
+            await iface.update([makeEvent("event-2", "second")]);
+
+            await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
+                "potentially-outdated"
+            );
+            await expect(iface.pullGraphNode("all_events")).resolves.toMatchObject({
+                type: "all_events",
+                events: [{ id: "event-2" }],
+            });
+            await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
+                "up-to-date"
+            );
         });
 
         test("is a no-op before ensureInitialized()", async () => {

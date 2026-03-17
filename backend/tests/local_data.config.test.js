@@ -1,5 +1,5 @@
 const path = require("path");
-const { transaction } = require("../src/event_log_storage");
+const { transaction } = require("../src/local_data");
 const configStorage = require("../src/config/storage");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
@@ -17,7 +17,7 @@ function pathToConfig(capabilities) {
     return path.join(capabilities.environment.workingDirectory(), "config.json");
 }
 
-describe("event_log_storage config", () => {
+describe("local_data config", () => {
     test("reads back config written by a previous transaction", async () => {
         const capabilities = getTestCapabilities();
         const testConfig = {

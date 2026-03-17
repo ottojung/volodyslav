@@ -1,7 +1,7 @@
 const path = require("path");
 const event = require("../src/event");
 const { fromISOString } = require("../src/datetime");
-const { transaction } = require("../src/event_log_storage");
+const { transaction } = require("../src/local_data");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubLogger,

@@ -90,7 +90,7 @@ interface EntryData {
 
 ## 5. Durability & Pluggable Storage
 
-**event_log_storage** abstraction supports:
+**local_data** abstraction supports:
 - **Atomic Writes**: all entry writes (and linked assets) occur within atomic transactions, ensuring consistency or rollback
 - **Pluggable Backends**: JSON streams, file-based logs, Git-backed stores for audit, history, and diff-driven workflows
 - **Consistent Reads**: safe retrieval during concurrent operations
@@ -163,7 +163,7 @@ interface EntryData {
 ## 13. Extension & Customization
 
 - **Parser Plugins**: add or override parsing rules for new entry types and modifiers; extend `processUserInput` and adjust downstream handlers
-- **Storage Adapters**: implement custom backends (NoSQL, distributed logs) by conforming to the transaction API; swap or augment storage by implementing custom `event_log_storage` modules
+- **Storage Adapters**: implement custom backends (NoSQL, distributed logs) by conforming to the transaction API; swap or augment storage by implementing custom `local_data` modules
 - **Lifecycle Hooks**: insert custom logic at key points (pre-create, post-retrieve, on-delete) for auditing or replication; add hooks in `transaction` callbacks for auditing, replication, or real-time streaming
 
 ---

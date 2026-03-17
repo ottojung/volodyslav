@@ -1,4 +1,4 @@
-const { transaction } = require("./event_log_storage");
+const localConfig = require("./local_config");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -60,9 +60,10 @@ async function getConfig(capabilities) {
  * @returns {Promise<void>}
  */
 async function setConfig(capabilities, config) {
-    await transaction(capabilities, async (storage) => {
-        storage.setConfig(config);
-    });
+    await localConfig.writeConfig(capabilities, config);
+    if (capabilities.interface.isInitialized()) {
+        await capabilities.interface.invalidateGraphNode("config");
+    }
 
     capabilities.logger.logInfo(
         {

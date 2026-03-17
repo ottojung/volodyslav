@@ -11,6 +11,7 @@
  * @property {() => GeneratorsCapabilities} _getCapabilities
  * @property {import('../incremental_graph').IncrementalGraph | null} _incrementalGraph
  * @property {RootDatabase | null} _database
+ * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
  */
 
 const {
@@ -23,6 +24,7 @@ const {
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
+const { allEvents } = require("../individual");
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
 function internalIsInitialized(interfaceInstance) {
@@ -66,7 +68,8 @@ async function internalEnsureInitializedWithMigration(
 
     const capabilities = interfaceInstance._getCapabilities();
     const database = await getRootDatabase(capabilities);
-    const nodeDefs = createDefaultGraphDefinition(capabilities);
+    const allEventsBox = allEvents.makeBox();
+    const nodeDefs = createDefaultGraphDefinition(capabilities, allEventsBox);
     try {
         await runMigrationProcedure(
             capabilities,
@@ -81,6 +84,7 @@ async function internalEnsureInitializedWithMigration(
         );
         interfaceInstance._database = database;
         interfaceInstance._incrementalGraph = incrementalGraph;
+        interfaceInstance._allEventsBox = allEventsBox;
     } catch (error) {
         try {
             await database.close();
@@ -114,6 +118,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const capabilities = interfaceInstance._getCapabilities();
     const database = interfaceInstance._database;
     const incrementalGraph = interfaceInstance._incrementalGraph;
+    const allEventsBox = interfaceInstance._allEventsBox;
     if (database === null) {
         await synchronizeNoLock(capabilities, options);
         return;
@@ -121,12 +126,14 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
 
     interfaceInstance._database = null;
     interfaceInstance._incrementalGraph = null;
+    interfaceInstance._allEventsBox = null;
 
     try {
         await database.close();
     } catch (error) {
         interfaceInstance._database = database;
         interfaceInstance._incrementalGraph = incrementalGraph;
+        interfaceInstance._allEventsBox = allEventsBox;
         throw error;
     }
 

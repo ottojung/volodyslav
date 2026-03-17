@@ -57,9 +57,10 @@ const {
  *   config                                      [standalone, no graph inputs]
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
+ * @param {import('../individual/all_events/wrapper').AllEventsBox} allEventsBox
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(capabilities) {
+function createDefaultGraphDefinition(capabilities, allEventsBox) {
     return [
         {
             output: "config",
@@ -71,7 +72,7 @@ function createDefaultGraphDefinition(capabilities) {
         {
             output: "all_events",
             inputs: [],
-            computor: allEvents.makeComputor(capabilities),
+            computor: allEvents.makeComputor(allEventsBox, capabilities),
             isDeterministic: false,
             hasSideEffects: false,
         },

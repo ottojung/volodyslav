@@ -1,4 +1,4 @@
-const { transaction } = require("../src/event_log_storage");
+const { transaction } = require("../src/local_data");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
@@ -26,7 +26,7 @@ function makeEvent(id, input) {
     };
 }
 
-describe("event_log_storage transaction", () => {
+describe("local_data transaction", () => {
     test("stores new entries in the incremental graph", async () => {
         const capabilities = getTestCapabilities();
 

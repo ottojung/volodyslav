@@ -1,4 +1,4 @@
-const { transaction } = require("../../../event_log_storage");
+const localConfig = require("../../../local_config");
 
 /**
  * @typedef {import('../../interface/default_graph').Capabilities} Capabilities
@@ -10,9 +10,7 @@ const { transaction } = require("../../../event_log_storage");
  */
 function makeComputor(capabilities) {
     return async (_inputs, _oldValue, _bindings) => {
-        const config = await transaction(capabilities, async (storage) => {
-            return await storage.getExistingConfig();
-        });
+        const config = await localConfig.readConfig(capabilities);
         return { type: "config", config };
     };
 }

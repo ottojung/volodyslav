@@ -6,6 +6,7 @@
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
+/** @typedef {import('../individual/all_events/wrapper').AllEventsBox} AllEventsBox */
 
 const {
     internalEnsureInitialized,
@@ -57,6 +58,12 @@ class InterfaceClass {
     _database;
 
     /**
+     * Boxed event list captured by the all_events computor.
+     * @type {AllEventsBox | null}
+     */
+    _allEventsBox;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
@@ -64,6 +71,7 @@ class InterfaceClass {
         this._getCapabilities = getCapabilities;
         this._incrementalGraph = null;
         this._database = null;
+        this._allEventsBox = null;
     }
 
     /**

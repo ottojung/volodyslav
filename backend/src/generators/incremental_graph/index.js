@@ -35,8 +35,6 @@ const { makeRootDatabase, getRootDatabase } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration, runMigrationUnsafe } = require('./migration_runner');
 const { withMutex, withExclusiveMode } = require('./lock');
-const { internalPropagateOutdated } = require('./invalidate');
-const { serializeNodeKey } = require('./node_key');
 const {
     makeDecisionConflictError,
     isDecisionConflict,
@@ -59,7 +57,6 @@ const {
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
-const { stringToNodeName } = require('./database');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -123,7 +120,4 @@ module.exports = {
     withExclusiveMode,
     migrationCallback,
     synchronizeNoLock,
-    stringToNodeName,
-    serializeNodeKey,
-    internalPropagateOutdated,
 };
