@@ -314,7 +314,11 @@ export default function EntryDetail() {
 
     const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && key !== "basic_context" && hasAdditionalPropertyValue(value));
 
-    const additionalPropertyErrors = additionalProperties.errors ?? {};
+    const allErrors = additionalProperties.errors ?? {};
+    const basicContextError = allErrors["basic_context"] ?? null;
+    const additionalPropertyErrors = Object.fromEntries(
+        Object.entries(allErrors).filter(([key]) => key !== "basic_context")
+    );
 
     const basicContextInputs = additionalProperties.basic_context;
     const isLoadingBasicContext = loadingAdditionalProperties.includes("basic_context");
@@ -488,6 +492,13 @@ export default function EntryDetail() {
                                     <Spinner size="sm" color="blue.400" mt="2px" />
                                     <Text {...TEXT_STYLES.helper}>Loading basic context...</Text>
                                 </HStack>
+                            </Box>
+                        ) : basicContextError !== null ? (
+                            <Box px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
+                                <Text fontSize="xs" fontWeight="semibold" color="red.600" textTransform="uppercase" mb={1}>
+                                    basic context error
+                                </Text>
+                                <Text fontSize="sm" color="red.700">{basicContextError}</Text>
                             </Box>
                         ) : !basicContextInputs || basicContextInputs.length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>

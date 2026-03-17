@@ -702,6 +702,69 @@ describe("EntryDetail page", () => {
         expect(screen.queryByText("basic_context")).not.toBeInTheDocument();
     });
 
+    it("shows a basic context error in the Basic Context card, not Computed Properties", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "basic_context") {
+                return Promise.resolve({ errors: { basic_context: "Context service unavailable" } });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(/basic context error/i)).toBeInTheDocument();
+            expect(screen.getByText("Context service unavailable")).toBeInTheDocument();
+        });
+
+        // The error must not appear inside Computed Properties
+        expect(screen.queryByText(/basic_context error/i)).not.toBeInTheDocument();
+    });
+
+    it("does not show 'None' in Basic Context when there is a basic_context error", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "basic_context") {
+                return Promise.resolve({ errors: { basic_context: "Context service unavailable" } });
+            }
+            if (propertyName === "calories") {
+                return Promise.resolve({ calories: 100 });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(/basic context error/i)).toBeInTheDocument();
+            expect(screen.getByText("Context service unavailable")).toBeInTheDocument();
+        });
+
+        // The Basic Context card must show the error, not 'None'
+        expect(screen.queryByText("None")).not.toBeInTheDocument();
+    });
+
+    it("shows a calories error in Computed Properties but not in Basic Context", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "calories") {
+                return Promise.resolve({ errors: { calories: "Calories service unavailable" } });
+            }
+            if (propertyName === "basic_context") {
+                return Promise.resolve({ basic_context: ["text some event"] });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText(/calories error/i)).toBeInTheDocument();
+            expect(screen.getByText("text some event")).toBeInTheDocument();
+        });
+
+        // calories error appears in Computed Properties, not Basic Context
+        expect(screen.queryByText(/basic context error/i)).not.toBeInTheDocument();
+    });
+
     // --- Media / Assets section ---
 
     it("shows the Media section header", async () => {
