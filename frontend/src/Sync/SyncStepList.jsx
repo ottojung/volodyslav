@@ -7,7 +7,6 @@ import { VStack, HStack, Text, Spinner, Badge } from '@chakra-ui/react';
 
 /** @type {{ name: string, label: string }[]} */
 const SYNC_STEPS = [
-  { name: 'event_log', label: 'Event Log' },
   { name: 'generators', label: 'Generators' },
   { name: 'assets', label: 'Assets' },
 ];

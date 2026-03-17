@@ -2,20 +2,65 @@
  * Graph-facing API methods for the generators interface.
  */
 
+const { serialize } = require("../../event");
+const {
+    stringToNodeName,
+    internalPropagateOutdated,
+    serializeNodeKey,
+} = require("../incremental_graph");
+
 /**
  * @typedef {object} InterfaceGraphAccess
  * @property {() => Promise<void>} ensureInitialized
  * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
+ * @property {() => import('./types').GeneratorsCapabilities} _getCapabilities
  */
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
+ * @param {Array<import('../../event').Event>} newEntries
  * @returns {Promise<void>}
  */
-async function internalUpdate(interfaceInstance) {
+async function internalUpdate(interfaceInstance, newEntries) {
     await interfaceInstance.ensureInitialized();
-    await interfaceInstance._requireInitializedGraph().invalidate("all_events");
-    await interfaceInstance._requireInitializedGraph().invalidate("config");
+    const graph = interfaceInstance._requireInitializedGraph();
+    const capabilities = interfaceInstance._getCapabilities();
+    /** @type {import('../incremental_graph/database/types').AllEventsEntry} */
+    const nextValue = {
+        type: "all_events",
+        events: newEntries.map((entry) => serialize(capabilities, entry)),
+    };
+    const nodeKey = serializeNodeKey({
+        head: stringToNodeName("all_events"),
+        args: [],
+    });
+
+    await graph.storage.withBatch(async (batch) => {
+        const oldValue = await batch.values.get(nodeKey);
+        const isUnchanged =
+            oldValue !== undefined &&
+            oldValue.type === "all_events" &&
+            JSON.stringify(oldValue.events) === JSON.stringify(nextValue.events);
+
+        if (isUnchanged) {
+            await graph.storage.ensureMaterialized(nodeKey, [], [], batch);
+            batch.freshness.put(nodeKey, "up-to-date");
+            return;
+        }
+
+        const oldCounter = await batch.counters.get(nodeKey);
+        const nowIso = graph.datetime.now().toISOString();
+        const createdAt = oldCounter === undefined
+            ? nowIso
+            : (await batch.timestamps.get(nodeKey))?.createdAt || nowIso;
+
+        batch.values.put(nodeKey, nextValue);
+        batch.counters.put(nodeKey, oldCounter === undefined ? 1 : oldCounter + 1);
+        batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso });
+        await graph.storage.ensureMaterialized(nodeKey, [], [], batch);
+        batch.freshness.put(nodeKey, "up-to-date");
+        await internalPropagateOutdated(graph, nodeKey, batch);
+    });
 }
 
 /**

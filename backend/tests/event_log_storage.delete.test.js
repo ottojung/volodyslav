@@ -1,16 +1,7 @@
-const path = require("path");
-const { transaction } = require("../src/event_log_storage");
-const gitstore = require("../src/gitstore");
-const { readObjects } = require("../src/json_stream_file");
-const event = require("../src/event/structure");
-const {
-    stubEnvironment,
-    stubLogger,
-    stubDatetime,
-    stubEventLogRepository,
-} = require("./stubs");
-const { getMockedRootCapabilities } = require("./spies");
+const { transaction, isEntryNotFoundError } = require("../src/event_log_storage");
 const { fromISOString } = require("../src/datetime");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -20,186 +11,67 @@ function getTestCapabilities() {
     return capabilities;
 }
 
+function makeEvent(id, input) {
+    return {
+        id: { identifier: id },
+        date: fromISOString("2025-05-12T00:00:00.000Z"),
+        original: input,
+        input,
+        creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
+    };
+}
+
 describe("event_log_storage deletion", () => {
-    test("transaction allows deleting existing entries", async () => {
+    test("removes existing entries from the incremental graph", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
+        const first = makeEvent("delete-1", "first");
+        const second = makeEvent("delete-2", "second");
 
-        const e1 = {
-            id: { identifier: "delete1" },
-            date: fromISOString("2025-05-12"),
-            original: "first",
-            input: "first",
-            type: "test",
-            description: "first",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-        const e2 = {
-            id: { identifier: "delete2" },
-            date: fromISOString("2025-05-13"),
-            original: "second",
-            input: "second",
-            type: "test",
-            description: "second",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-
-        await transaction(capabilities, async (s) => {
-            s.addEntry(e1, []);
-            s.addEntry(e2, []);
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(first, []);
+            storage.addEntry(second, []);
         });
 
-        await transaction(capabilities, async (s) => {
-            s.deleteEntry(e1.id);
+        await transaction(capabilities, async (storage) => {
+            storage.deleteEntry(first.id);
         });
 
-        await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
-            const workTree = await store.getWorkTree();
-            const dataPath = path.join(workTree, "data.json");
-            const dataFile = await capabilities.checker.instantiate(dataPath);
-            const objects = await readObjects(capabilities, dataFile);
-            expect(objects).toHaveLength(1);
-            expect(objects[0].id).toBe(event.serialize(capabilities, e2).id);
-        });
+        const events = await capabilities.interface.getAllEvents();
+        expect(events.map((entry) => entry.id.identifier)).toEqual(["delete-2"]);
     });
 
-    test("deleteEntry removes entry queued in same transaction", async () => {
+    test("absorbs entries added and deleted in the same transaction", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
+        const first = makeEvent("queued-1", "first");
+        const second = makeEvent("queued-2", "second");
 
-        const e1 = {
-            id: { identifier: "todel1" },
-            date: fromISOString("2025-05-14"),
-            original: "one",
-            input: "one",
-            type: "test",
-            description: "one",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-        const e2 = {
-            id: { identifier: "todel2" },
-            date: fromISOString("2025-05-15"),
-            original: "two",
-            input: "two",
-            type: "test",
-            description: "two",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-
-        await transaction(capabilities, async (s) => {
-            s.addEntry(e1, []);
-            s.addEntry(e2, []);
-            s.deleteEntry(e1.id);
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(first, []);
+            storage.addEntry(second, []);
+            storage.deleteEntry(first.id);
         });
 
-        await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
-            const workTree = await store.getWorkTree();
-            const dataPath = path.join(workTree, "data.json");
-            const dataFile = await capabilities.checker.instantiate(dataPath);
-            const objects = await readObjects(capabilities, dataFile);
-            expect(objects).toHaveLength(1);
-            expect(objects[0].id).toBe(event.serialize(capabilities, e2).id);
-        });
+        const events = await capabilities.interface.getAllEvents();
+        expect(events.map((entry) => entry.id.identifier)).toEqual(["queued-2"]);
     });
 
-    test("deleting the only entry results in empty log", async () => {
+    test("throws EntryNotFoundError when deleting a missing entry", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
+        let thrownError = null;
 
-        const e1 = {
-            id: { identifier: "solo" },
-            date: fromISOString("2025-05-16"),
-            original: "solo",
-            input: "solo",
-            type: "test",
-            description: "solo",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-
-        await transaction(capabilities, async (s) => {
-            s.addEntry(e1, []);
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(makeEvent("existing", "hello"), []);
         });
 
-        await transaction(capabilities, async (s) => {
-            s.deleteEntry(e1.id);
-        });
+        try {
+            await transaction(capabilities, async (storage) => {
+                storage.deleteEntry({ identifier: "missing" });
+            });
+        } catch (error) {
+            thrownError = error;
+        }
 
-        await gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
-            const workTree = await store.getWorkTree();
-            const dataPath = path.join(workTree, "data.json");
-            const dataFile = await capabilities.checker.instantiate(dataPath);
-            const objects = await readObjects(capabilities, dataFile);
-            expect(objects).toHaveLength(0);
-        });
-    });
-
-    test("getDeletedIds returns an iterator of EventIds", async () => {
-        const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
-
-        const e = {
-            id: { identifier: "iter" },
-            date: fromISOString("2025-06-01"),
-            original: "i",
-            input: "i",
-            type: "test",
-            description: "iter",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-
-        await transaction(capabilities, async (s) => {
-            s.addEntry(e, []);
-        });
-
-        await transaction(capabilities, async (s) => {
-            s.deleteEntry(e.id);
-            const iter = s.getDeletedIds();
-            expect(typeof iter[Symbol.iterator]).toBe("function");
-            const arr = Array.from(iter);
-            expect(arr).toHaveLength(1);
-            expect(arr[0]).toEqual(e.id);
-        });
-    });
-
-    test("transaction can delete multiple entries in one call", async () => {
-        const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
-
-        const e1 = {
-            id: { identifier: "multi1" },
-            date: fromISOString("2025-06-02"),
-            original: "m1",
-            input: "m1",
-            type: "test",
-            description: "m1",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-        const e2 = {
-            id: { identifier: "multi2" },
-            date: fromISOString("2025-06-03"),
-            original: "m2",
-            input: "m2",
-            type: "test",
-            description: "m2",
-            creator: { name: "t", uuid: "u", version: "1", hostname: "test-host" },
-        };
-
-        await transaction(capabilities, async (s) => {
-            s.addEntry(e1, []);
-            s.addEntry(e2, []);
-        });
-
-        await transaction(capabilities, async (s) => {
-            s.deleteEntry(e1.id);
-            s.deleteEntry(e2.id);
-        });
-
-        await gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
-            const workTree = await store.getWorkTree();
-            const dataPath = path.join(workTree, "data.json");
-            const dataFile = await capabilities.checker.instantiate(dataPath);
-            const objects = await readObjects(capabilities, dataFile);
-            expect(objects).toHaveLength(0);
-        });
+        expect(isEntryNotFoundError(thrownError)).toBe(true);
+        await expect(capabilities.interface.getAllEvents()).resolves.toHaveLength(1);
     });
 });

@@ -1,7 +1,7 @@
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
 const { fromObject: Duration } = require("../datetime");
-const { synchronizeAll, isSynchronizeAllError, isEventLogSyncError, isAssetsSyncError, isGeneratorsSyncError } = require("../sync");
+const { synchronizeAll, isSynchronizeAllError, isAssetsSyncError, isGeneratorsSyncError } = require("../sync");
 
 /** @typedef {import('../scheduler').Registration} Registration */
 
@@ -26,9 +26,7 @@ async function everyHour(capabilities) {
             return;
         }
         for (const e of error.errors) {
-            if (isEventLogSyncError(e)) {
-                capabilities.logger.logError({ error: e }, "Error during event log repository synchronization");
-            } else if (isAssetsSyncError(e)) {
+            if (isAssetsSyncError(e)) {
                 capabilities.logger.logError({ error: e }, "Error during assets directory synchronization");
             } else if (isGeneratorsSyncError(e)) {
                 capabilities.logger.logError({ error: e }, "Error during generators database synchronization");

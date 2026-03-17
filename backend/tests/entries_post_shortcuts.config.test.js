@@ -64,9 +64,12 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create malformed config
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const configPath = path.join(
+            capabilities.environment.workingDirectory(),
+            "config.json"
+        );
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, "invalid json content");
+        fs.writeFileSync(configPath, JSON.stringify({ invalid: true }));
 
         const requestBody = {
             rawInput: "MEETING [with John] - Project discussion",
@@ -95,8 +98,10 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Ensure no config file exists
-        const eventLogRepo = capabilities.environment.eventLogRepository();
-        const configPath = eventLogRepo + "/config.json";
+        const configPath = path.join(
+            capabilities.environment.workingDirectory(),
+            "config.json"
+        );
         
         // Make sure the directory exists but no config file
         fs.mkdirSync(path.dirname(configPath), { recursive: true });

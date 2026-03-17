@@ -14,7 +14,6 @@ const versionRouter = routes.version;
 const assetsRouter = routes.assets;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
-const eventLogStorage = require("./event_log_storage");
 const { getBasePath } = require("./base_path");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -70,7 +69,6 @@ async function ensureStartupDependencies(capabilities, app) {
     await capabilities.notifier.ensureNotificationsAvailable();
     await capabilities.git.ensureAvailable();
     await capabilities.rsync.ensureAvailable();
-    await eventLogStorage.ensureAccessible(capabilities);
     await capabilities.state.ensureAccessible();
     await ensureDailyTasksAvailable(capabilities);
     await capabilities.wifiChecker.ensureAvailable();

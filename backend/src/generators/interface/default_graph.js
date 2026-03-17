@@ -38,13 +38,12 @@ const {
 /**
  * Creates the default graph definition for the incremental graph.
  *
- * The `all_events` node reads events directly from the git-backed event log
- * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
- * causes the next pull to re-read from disk.
+ * The `all_events` node is persisted directly in the incremental graph.
+ * `InterfaceClass.update(newEntries)` writes the full serialized event list
+ * into the graph, so recomputes never need to read a separate event-log file.
  *
- * The `config` node reads config.json directly from the git-backed event log
- * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
- * causes the next pull to re-read from disk.
+ * The `config` node reads config.json from the local working directory on
+ * every recompute. Invalidating it causes the next pull to re-read from disk.
  *
  * Graph adjacency:
  *   all_events -> sorted_events_descending

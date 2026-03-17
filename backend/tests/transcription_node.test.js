@@ -7,7 +7,6 @@ const {
     stubLogger,
     stubEnvironment,
     stubDatetime,
-    stubEventLogRepository,
     stubAiTranscriber,
 } = require("./stubs");
 
@@ -37,7 +36,6 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    await stubEventLogRepository(capabilities);
     stubAiTranscriber(capabilities);
     return capabilities;
 }
@@ -86,8 +84,6 @@ describe("transcription(a) node", () => {
             "1",
             ["memo.mp3"],
         );
-        await iface.update();
-
         const result = await iface._incrementalGraph.pull(
             "transcription",
             [relativeAssetPath],
@@ -123,8 +119,6 @@ describe("transcription(a) node", () => {
             "1",
             ["memo.mp3"],
         );
-        await iface.update();
-
         const first = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
         const second = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
 
@@ -136,8 +130,6 @@ describe("transcription(a) node", () => {
         const capabilities = await getTestCapabilities();
         const iface = capabilities.interface;
         await iface.ensureInitialized();
-        await iface.update();
-
         await expect(
             iface._incrementalGraph.pull("transcription", ["../escape.mp3"])
         ).rejects.toThrow("Invalid asset path for transcription: ../escape.mp3");
@@ -156,8 +148,6 @@ describe("event_transcription(e, a) node", () => {
             "1",
             ["memo.mp3"],
         );
-        await iface.update();
-
         const result = await iface._incrementalGraph.pull(
             "event_transcription",
             ["1", relativeAssetPath],
@@ -183,8 +173,6 @@ describe("event_transcription(e, a) node", () => {
         // Create two events with their own audio files
         await writeDiaryEventWithAssets(capabilities, "1", ["memo1.mp3"]);
         const [audioPath2] = await writeDiaryEventWithAssets(capabilities, "2", ["memo2.mp3"]);
-        await iface.update();
-
         // Attempt to combine event "1" with event "2"'s audio path
         await expect(
             iface._incrementalGraph.pull("event_transcription", ["1", audioPath2])
@@ -201,8 +189,6 @@ describe("event_transcription(e, a) node", () => {
             "1",
             ["memo.mp3"],
         );
-        await iface.update();
-
         const first = await iface._incrementalGraph.pull("event_transcription", ["1", relativeAssetPath]);
         const second = await iface._incrementalGraph.pull("event_transcription", ["1", relativeAssetPath]);
 

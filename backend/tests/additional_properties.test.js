@@ -17,7 +17,6 @@ const {
     stubDatetime,
     stubAiCalories,
     stubAiTranscriber,
-    stubEventLogRepository,
 } = require("./stubs");
 
 /**
@@ -101,7 +100,6 @@ async function makeUninitializedApp(defaultCalories = "N/A") {
     stubDatetime(capabilities);
     stubAiCalories(capabilities, defaultCalories);
     stubAiTranscriber(capabilities);
-    await stubEventLogRepository(capabilities);
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
@@ -133,7 +131,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(100);
 
             await writeEventsToStore(capabilities, [makeEvent("known-id", "food: a pizza")]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/unknown-id/additional-properties");
@@ -146,7 +143,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "")]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/entry-1/additional-properties");
@@ -159,7 +155,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "ran 5km")]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/entry-1/additional-properties");
@@ -172,7 +167,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(0);
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "a cup of plain tea")]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/entry-1/additional-properties");
@@ -185,7 +179,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(420);
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "food: had a big pasta")]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/entry-1/additional-properties");
@@ -198,7 +191,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(300);
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-calories", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/diary-calories/additional-properties?property=calories");
@@ -213,7 +205,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const input = "food: two slices of toast with butter";
 
             await writeEventsToStore(capabilities, [makeEvent("entry-2", input)]);
-            await capabilities.interface.update();
 
             await request(app)
                 .get("/api/entries/entry-2/additional-properties");
@@ -225,7 +216,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(200);
 
             await writeEventsToStore(capabilities, [makeEvent("entry-3", "food: a bowl of oatmeal")]);
-            await capabilities.interface.update();
 
             await request(app).get("/api/entries/entry-3/additional-properties");
             await request(app).get("/api/entries/entry-3/additional-properties");
@@ -245,7 +235,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 makeEvent("entry-a", "food: an apple"),
                 makeEvent("entry-b", "food: a big burger"),
             ]);
-            await capabilities.interface.update();
 
             const resA = await request(app)
                 .get("/api/entries/entry-a/additional-properties");
@@ -260,7 +249,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "ran 5km")]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/entry-1/additional-properties");
@@ -274,7 +262,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-1", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/diary-1/additional-properties");
@@ -288,7 +275,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(300);
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-transcription", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/diary-transcription/additional-properties?property=transcription");
@@ -302,7 +288,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-2", ["first.mp3", "second.mp3"]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/diary-2/additional-properties");
@@ -324,7 +309,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             await transaction(capabilities, async (storage) => {
                 storage.addEntry(diaryEvent, assets);
             });
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/diary-3/additional-properties");
@@ -338,7 +322,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-4", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             await request(app).get("/api/entries/diary-4/additional-properties");
             await request(app).get("/api/entries/diary-4/additional-properties");
@@ -350,7 +333,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(300);
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-5", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             const res = await request(app)
                 .get("/api/entries/diary-5/additional-properties");
@@ -376,7 +358,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-error", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             // Override the stub to simulate AI failure after graph invalidation
             capabilities.aiTranscription.transcribeStream.mockRejectedValue(
@@ -399,7 +380,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-calories-error", "food: a pizza")]);
-            await capabilities.interface.update();
 
             // Override the stub to simulate AI failure after graph invalidation
             capabilities.aiCalories.estimateCalories.mockRejectedValue(
@@ -422,7 +402,6 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp(420);
 
             await writeDiaryEventWithAudioAssets(capabilities, "diary-mixed", ["memo.mp3"]);
-            await capabilities.interface.update();
 
             // Calories should succeed (returns 420), transcription should fail
             capabilities.aiTranscription.transcribeStream.mockRejectedValue(

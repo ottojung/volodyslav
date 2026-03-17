@@ -87,7 +87,7 @@ function toSyncResult(data) {
 }
 
 /**
- * Calls POST /api/sync to synchronize event log and generators database.
+ * Calls POST /api/sync to synchronize persisted application state.
  * @param {boolean} [resetToTheirs] - When true, resets local state to the remote (theirs) version.
  * @param {(steps: SyncStepResult[]) => void} [onProgress] - Called with current step results whenever the running state is polled.
  * @returns {Promise<PostSyncResult>}

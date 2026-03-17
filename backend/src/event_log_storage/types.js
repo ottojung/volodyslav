@@ -9,10 +9,8 @@
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('../datetime').Datetime} Datetime */
 
 /**
  * @typedef {object} Capabilities
@@ -22,17 +20,9 @@
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
- * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
- */
-
-/**
- * Minimal capabilities needed for appending entries to files
- * @typedef {object} AppendCapabilities
- * @property {FileAppender} appender - A file appender instance
- * @property {Datetime} datetime - Datetime utilities
  */
 
 /**
@@ -54,14 +44,6 @@
  */
 
 /**
- * Minimal capabilities needed for reading existing entries
- * @typedef {object} ReadEntriesCapabilities
- * @property {import('../filesystem/reader').FileReader} reader - A file reader instance
- * @property {Logger} logger - A logger instance
- * @property {import('../datetime').Datetime} datetime - Datetime utilities
- */
-
-/**
  * Comprehensive capabilities needed for EventLogStorage operations and transactions
  * @typedef {object} EventLogStorageCapabilities
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance
@@ -71,7 +53,6 @@
  * @property {FileDeleter} deleter - A file deleter instance
  * @property {FileCopier} copier - A file copier instance
  * @property {FileAppender} appender - A file appender instance
- * @property {Command} git - A Git command instance
  * @property {Environment} environment - An environment instance
  * @property {Logger} logger - A logger instance
  * @property {import('../datetime').Datetime} datetime - Datetime utilities

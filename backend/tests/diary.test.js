@@ -2,15 +2,12 @@
 const path = require("path");
 const fs = require("fs/promises");
 const { processDiaryAudios } = require("../src/diary");
-const gitstore = require("../src/gitstore");
-const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const dateFormatter = require("../src/event/date");
 const {
     stubEnvironment,
     stubLogger,
     stubDatetime,
-    stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -28,24 +25,12 @@ function getTestCapabilities() {
 }
 
 async function countLogEntries(capabilities) {
-    let length;
-    const remoteLocation = { url: capabilities.environment.eventLogRepository() };
-    await gitstore.transaction(capabilities, "working-git-repository", remoteLocation, async (store) => {
-        const workTree = await store.getWorkTree();
-        const dataFile = await capabilities.checker.instantiate(path.join(workTree, "data.json"));
-        const objects = await readObjects(
-            capabilities,
-            dataFile
-        );
-        length = objects.length;
-    });
-    return length;
+    return (await capabilities.interface.getAllEvents()).length;
 }
 
 describe("processDiaryAudios", () => {
     it("processes all diary audios successfully", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
 
         // Prepare diary directory with audio files
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
@@ -68,24 +53,21 @@ describe("processDiaryAudios", () => {
             filenames.length
         );
 
-        // Event log entries committed
-        const remoteLocation = { url: capabilities.environment.eventLogRepository() };
-        await gitstore.transaction(capabilities, "working-git-repository", remoteLocation, async (store) => {
-            const workTree = await store.getWorkTree();
-            const dataPath = path.join(workTree, "data.json");
-            const dataFile = await capabilities.checker.instantiate(dataPath);
-            const objects = await readObjects(capabilities, dataFile);
-            expect(objects).toHaveLength(filenames.length);
-            objects.forEach((obj, i) => {
-                const date = formatFileTimestamp(filenames[i], capabilities.datetime);
-                expect(obj).toEqual({
-                    id: obj.id,
-                    date: dateFormatter.format(capabilities, date),
-                    original: "diary [when 0 hours ago] [audiorecording]",
-                    input: "diary [when 0 hours ago] [audiorecording]",
-                    creator: expect.any(Object),
-                });
+        // Event log entries stored in the incremental graph
+        const entries = await capabilities.interface.getAllEvents();
+        expect(entries).toHaveLength(filenames.length);
+        entries.forEach((entry, i) => {
+            const date = formatFileTimestamp(filenames[i], capabilities.datetime);
+            expect(entry).toMatchObject({
+                id: expect.any(Object),
+                date,
+                original: "diary [when 0 hours ago] [audiorecording]",
+                input: "diary [when 0 hours ago] [audiorecording]",
+                creator: expect.any(Object),
             });
+            expect(dateFormatter.format(capabilities, entry.date)).toBe(
+                dateFormatter.format(capabilities, date)
+            );
         });
 
         // Assets copied into correct structure
@@ -109,7 +91,6 @@ describe("processDiaryAudios", () => {
 
     it("skips files with invalid timestamp names and logs errors", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
 
         // Prepare diary directory
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
@@ -135,7 +116,6 @@ describe("processDiaryAudios", () => {
 
     it("continues processing when event log transaction fails for an asset", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
 
         // Override copier to throw for specific file
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
@@ -172,7 +152,6 @@ describe("processDiaryAudios", () => {
 
     it("skips unstable files that are still being recorded", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
 
         // Prepare diary directory with audio files
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
@@ -228,7 +207,6 @@ describe("processDiaryAudios", () => {
 
     it("handles file stability check errors gracefully", async () => {
         const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
 
         // Prepare diary directory with audio files
         const diaryDir = capabilities.environment.diaryAudiosDirectory();

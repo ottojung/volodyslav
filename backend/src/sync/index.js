@@ -1,24 +1,9 @@
-const eventLogStorage = require("../event_log_storage");
 const assets = require("../assets");
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 // ---------------------------------------------------------------------------
 // Per-destination error types
 // ---------------------------------------------------------------------------
-
-class EventLogSyncError extends Error {
-    /** @param {unknown} cause */
-    constructor(cause) {
-        super(`Event log sync failed: ${cause}`);
-        this.name = "EventLogSyncError";
-        this.cause = cause;
-    }
-}
-
-/** @param {unknown} object @returns {object is EventLogSyncError} */
-function isEventLogSyncError(object) {
-    return object instanceof EventLogSyncError;
-}
 
 class AssetsSyncError extends Error {
     /** @param {unknown} cause */
@@ -53,7 +38,7 @@ function isGeneratorsSyncError(object) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {EventLogSyncError | AssetsSyncError | GeneratorsSyncError} SyncDestinationError
+ * @typedef {AssetsSyncError | GeneratorsSyncError} SyncDestinationError
  */
 
 class SynchronizeAllError extends Error {
@@ -82,8 +67,7 @@ function isSynchronizeAllError(object) {
  */
 
 /**
- * Synchronizes all destinations (event log, assets, generators database) and
- * then invalidates the incremental graph interface.
+ * Synchronizes all destinations and then invalidates the incremental graph interface.
  *
  * All destinations are always attempted even if earlier ones fail (best-effort).
  * If any step fails it is wrapped in a dedicated typed error and collected.
@@ -100,13 +84,6 @@ function isSynchronizeAllError(object) {
 async function synchronizeAll(capabilities, options, onStepComplete) {
     /** @type {SyncDestinationError[]} */
     const errors = [];
-
-    await eventLogStorage.synchronize(capabilities, options).then(() => {
-        onStepComplete?.({ name: "event_log", status: "success" });
-    }).catch((cause) => {
-        errors.push(new EventLogSyncError(cause));
-        onStepComplete?.({ name: "event_log", status: "error" });
-    });
 
     await capabilities.interface.synchronizeDatabase(options).then(() => {
         onStepComplete?.({ name: "generators", status: "success" });
@@ -130,7 +107,6 @@ async function synchronizeAll(capabilities, options, onStepComplete) {
 module.exports = {
     synchronizeAll,
     isSynchronizeAllError,
-    isEventLogSyncError,
     isAssetsSyncError,
     isGeneratorsSyncError,
 };

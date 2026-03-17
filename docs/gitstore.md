@@ -32,7 +32,7 @@ There are three distinct repository objects involved in any operation.
 
 The source of truth. It can be:
 
-- A `RemoteLocation` – any URL or local filesystem path that Git can address. For the event log this is the path stored in `environment.eventLogRepository()`.
+- A `RemoteLocation` – any URL or local filesystem path that Git can address.
 - The string `"empty"` – no remote exists; the system creates a fresh local-only repository the first time.
 
 ### The Local Working Copy
@@ -208,8 +208,6 @@ All three follow the project's error-as-value convention: use the corresponding 
 
 | Caller | `workingPath` | `initial_state` | Usage |
 |---|---|---|---|
-| `event_log_storage/transaction.js` | `"working-git-repository"` | `{ url: environment.eventLogRepository() }` | Appends events, writes config, copies assets |
-| `event_log_storage/synchronize.js` | `"working-git-repository"` | `{ url: environment.eventLogRepository() }` | Bi-directional sync with remote on startup / request |
 | `runtime_state_storage/transaction.js` | `"runtime-state-repository"` | `"empty"` | Writes transient runtime state; local-only, never pushed to a remote |
 | `runtime_state_storage/synchronize.js` | `"runtime-state-repository"` | `"empty"` | Ensures the local-only runtime state repo exists |
 | `generators/incremental_graph/database/gitstore.js` (`checkpointDatabase`) | `"generators-database"` | `"empty"` | Records a single rendered snapshot commit of the live incremental-graph database |

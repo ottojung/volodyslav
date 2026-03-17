@@ -1,16 +1,4 @@
-/**
- * Implements atomic, Git-based storage for event log entries and their assets.
- *
- * Call `transaction(transformation)` with a function that uses
- * `storage.addEntry(entry, assets)` to queue log entries and assets. The
- * process appends entries to `data.json` and writes any config changes.
- * If there are new entries or config, those changes are committed before
- * any assets are copied into the repository.
- * If any step fails, copied assets are removed before the error is rethrown.
- */
-
 const path = require("path");
-const gitstore = require("../gitstore");
 const event = require("../event");
 const asset = event.asset;
 const { targetPath } = asset;
@@ -19,17 +7,11 @@ const configStorage = config.storage;
 const { make: makeEventLogStorage } = require("./class");
 const { isFileNotFoundError } = require("../filesystem").checker;
 
-/** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
-/** @typedef {import("./types").AppendCapabilities} AppendCapabilities */
 /** @typedef {import("./types").CopyAssetCapabilities} CopyAssetCapabilities */
 /** @typedef {import("./types").CleanupAssetCapabilities} CleanupAssetCapabilities */
 /** @typedef {import("./types").EventLogStorageCapabilities} EventLogStorageCapabilities */
 /** @typedef {import("./class").EventLogStorage} EventLogStorage */
 
-/**
- * Error thrown when a requested entry deletion targets IDs that do not exist
- * in the event log.
- */
 class EntryNotFoundError extends Error {
     /**
      * @param {string} message
@@ -41,7 +23,6 @@ class EntryNotFoundError extends Error {
 }
 
 /**
- * Type guard for EntryNotFoundError.
  * @param {unknown} object
  * @returns {object is EntryNotFoundError}
  */
@@ -50,194 +31,61 @@ function isEntryNotFoundError(object) {
 }
 
 /**
- * Appends an array of entries to a specified file.
- * Each entry is serialized to JSON format and appended to the file with a newline.
- *
- * @param {AppendCapabilities} capabilities - The minimal capabilities needed for appending entries
- * @param {ExistingFile} file - The file where entries will be appended.
- * @param {Array<import('../event').Event>} entries - An array of objects to append to the file.
- * @returns {Promise<void>} - A promise that resolves when all entries are appended.
- *
- * Notes and Gotchas:
- * - Uses `JSON.stringify(entry, null, "\t")` to pretty-print with tabs. This produces multi-line JSON.
- *   Consumers must parse complex blocks rather than line-by-line JSON.
- * - Each `appendFile` call opens and closes the file; for high-volume writes, batching or streaming may be more efficient.
- */
-async function appendEntriesToFile(capabilities, file, entries) {
-    for (const entry of entries) {
-        const serialized = event.serialize(capabilities, entry);
-        const eventString = JSON.stringify(serialized, null, "\t");
-        await capabilities.appender.appendFile(file, eventString + "\n");
-    }
-}
-
-/**
- * Overwrites a file with the provided entries serialized as JSON.
- * @param {EventLogStorageCapabilities} capabilities
- * @param {ExistingFile} file
- * @param {Array<import('../event').Event>} entries
- */
-async function writeEntriesToFile(capabilities, file, entries) {
-    const lines = entries.map((e) => {
-        const serialized = event.serialize(capabilities, e);
-        return JSON.stringify(serialized, null, '\t');
-    });
-    const content = lines.join('\n') + (lines.length > 0 ? '\n' : '');
-    await capabilities.writer.writeFile(file, content);
-}
-
-/**
- * New helper to copy all queued assets into the asset directory.
- * Ensures that the parent directory exists before copying files.
- * @param {CopyAssetCapabilities} capabilities - The minimal capabilities needed for copying assets
- * @param {import('../event').Asset[]} assets - An array of assets to copy.
- * @returns {Promise<void>} - A promise that resolves when all assets are copied.
- */
-async function copyAssets(capabilities, assets) {
-    for (const asset of assets) {
-        const target = targetPath(capabilities, asset);
-        const targetDir = path.dirname(target);
-        await capabilities.creator.createDirectory(targetDir);
-        await capabilities.copier.copyFile(asset.file, target);
-    }
-}
-
-/**
  * @template T
  * @typedef {(eventLogStorage: EventLogStorage) => Promise<T>} Transformation
  */
 
 /**
- * Performs a Git-backed transaction using the given storage and transformation.
- * @template T
- * @param {EventLogStorageCapabilities} capabilities - An object containing the capabilities.
- * @param {EventLogStorage} eventLogStorage - The event log storage instance.
- * @param {Transformation<T>} transformation - Async callback to apply to the storage.
- * @returns {Promise<{ result: T, committed: boolean }>}
+ * @param {EventLogStorageCapabilities} capabilities
+ * @returns {string}
  */
-async function performGitTransaction(
-    capabilities,
-    eventLogStorage,
-    transformation
-) {
-    return await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
-        const workTree = await store.getWorkTree();
-        const dataPath = path.join(workTree, "data.json");
-        const configPath = path.join(workTree, "config.json");
-        const dataFile = await capabilities.checker
-            .instantiate(dataPath)
-            .catch((error) => {
-                if (isFileNotFoundError(error)) {
-                    return null;
-                }
-                throw error;
-            });
-        const configFile = await capabilities.checker
-            .instantiate(configPath)
-            .catch((error) => {
-                if (isFileNotFoundError(error)) {
-                    return null;
-                }
-                throw error;
-            });
+function pathToConfig(capabilities) {
+    return path.join(capabilities.environment.workingDirectory(), "config.json");
+}
 
-        // Set file paths for possible lazy loading
-        eventLogStorage.dataFile = dataFile;
-        eventLogStorage.configFile = configFile;
-
-        // Run user-provided transformation to accumulate entries and config
-        const result = await transformation(eventLogStorage);
-
-        // Get queued updates
-        const newEntries = eventLogStorage.getNewEntries();
-        const deletedIds = Array.from(eventLogStorage.getDeletedIds());
-        const deletedIdStrings = new Set(deletedIds.map((d) => d.identifier));
-        const newConfig = eventLogStorage.getNewConfig();
-
-        // Track if we need to commit
-        let needsCommit = false;
-
-        // Persist when we have new entries or deletions
-        if (newEntries.length > 0 || deletedIdStrings.size > 0) {
-            const existingDataFile =
-                dataFile == null
-                    ? await capabilities.creator.createFile(dataPath)
-                    : dataFile;
-            if (deletedIdStrings.size > 0) {
-                const existing = dataFile
-                    ? await eventLogStorage.getExistingEntries()
-                    : [];
-                const remaining = existing.filter(
-                    (e) => !deletedIdStrings.has(e.id.identifier)
-                );
-                const absorbedIds = eventLogStorage.getAbsorbedDeletionIds();
-                const hasExistingDeletion = remaining.length < existing.length;
-                const hasAbsorbedDeletion = Array.from(deletedIdStrings).some(
-                    (id) => absorbedIds.has(id)
-                );
-                if (!hasExistingDeletion && !hasAbsorbedDeletion) {
-                    const ids = Array.from(deletedIdStrings).join(", ");
-                    throw new EntryNotFoundError(`Entry not found: ${ids}`);
-                }
-                remaining.push(...newEntries);
-                await writeEntriesToFile(
-                    capabilities,
-                    existingDataFile,
-                    remaining
-                );
-            } else {
-                await appendEntriesToFile(
-                    capabilities,
-                    existingDataFile,
-                    newEntries
-                );
-            }
-            needsCommit = true;
+/**
+ * @param {EventLogStorageCapabilities} capabilities
+ * @param {string} filepath
+ * @returns {Promise<import("../filesystem/file").ExistingFile | null>}
+ */
+async function instantiateIfExists(capabilities, filepath) {
+    return await capabilities.checker.instantiate(filepath).catch((error) => {
+        if (isFileNotFoundError(error)) {
+            return null;
         }
-
-        // Write config if changed
-        if (newConfig !== null) {
-            await configStorage.writeConfig(
-                capabilities,
-                configPath,
-                newConfig
-            );
-            needsCommit = true;
-        }
-
-        // Commit queued changes if needed
-        if (needsCommit) {
-            await store.commit("Event log storage update");
-        }
-
-        // Copy any queued assets
-        const assets = eventLogStorage.getNewAssets();
-        await copyAssets(capabilities, assets);
-
-        return { result, committed: needsCommit };
+        throw error;
     });
 }
 
 /**
- * Cleans up all copied assets by removing their files.
- * @param {CleanupAssetCapabilities} capabilities - The minimal capabilities needed for cleaning up assets
- * @param {EventLogStorage} eventLogStorage - The storage containing asset references.
+ * @param {CopyAssetCapabilities} capabilities
+ * @param {import("../event").Asset[]} assets
+ * @returns {Promise<void>}
+ */
+async function copyAssets(capabilities, assets) {
+    for (const asset of assets) {
+        const target = targetPath(capabilities, asset);
+        await capabilities.creator.createDirectory(path.dirname(target));
+        await capabilities.copier.copyFile(asset.file, target);
+    }
+}
+
+/**
+ * @param {CleanupAssetCapabilities} capabilities
+ * @param {EventLogStorage} eventLogStorage
  * @returns {Promise<void>}
  */
 async function cleanupAssets(capabilities, eventLogStorage) {
-    const assets = eventLogStorage.getNewAssets();
-    for (const asset of assets) {
-        // determine path of copied asset and attempt removal
+    for (const asset of eventLogStorage.getNewAssets()) {
         const assetPath = targetPath(capabilities, asset);
         try {
             await capabilities.deleter.deleteFile(assetPath);
         } catch (error) {
-            const msg =
-                error instanceof Error ? error.message : String(error);
+            const message = error instanceof Error ? error.message : String(error);
             capabilities.logger.logWarning(
                 {
                     file: assetPath,
-                    error: msg,
+                    error: message,
                 },
                 `Failed to remove asset file ${assetPath}. This may be due to the file being in use or not existing.`
             );
@@ -246,26 +94,68 @@ async function cleanupAssets(capabilities, eventLogStorage) {
 }
 
 /**
- * Applies a transformation within a Git-backed event log transaction.
  * @template T
- * @param {EventLogStorageCapabilities} capabilities - An object containing the capabilities.
- * @param {Transformation<T>} transformation - The transformation to execute.
+ * @param {EventLogStorageCapabilities} capabilities
+ * @param {Transformation<T>} transformation
  * @returns {Promise<T>}
  */
 async function transaction(capabilities, transformation) {
     const eventLogStorage = makeEventLogStorage(capabilities);
+    eventLogStorage.configFile = await instantiateIfExists(
+        capabilities,
+        pathToConfig(capabilities)
+    );
+
     try {
-        const { result, committed } = await performGitTransaction(
-            capabilities,
-            eventLogStorage,
-            transformation
-        );
-        if (committed) {
-            await capabilities.interface.update();
+        const result = await transformation(eventLogStorage);
+        const newEntries = eventLogStorage.getNewEntries();
+        const deletedIds = Array.from(eventLogStorage.getDeletedIds());
+        const deletedIdStrings = new Set(deletedIds.map((id) => id.identifier));
+        const newConfig = eventLogStorage.getNewConfig();
+        const entriesChanged = newEntries.length > 0 || deletedIdStrings.size > 0;
+
+        /** @type {Array<import("../event").Event>} */
+        let nextEntries = [];
+        if (entriesChanged) {
+            const existingEntries = await capabilities.interface.getAllEvents();
+            const remainingEntries = existingEntries.filter(
+                (entry) => !deletedIdStrings.has(entry.id.identifier)
+            );
+            const absorbedIds = eventLogStorage.getAbsorbedDeletionIds();
+            const hasExistingDeletion = remainingEntries.length < existingEntries.length;
+            const hasAbsorbedDeletion = Array.from(deletedIdStrings).some((id) =>
+                absorbedIds.has(id)
+            );
+
+            if (deletedIdStrings.size > 0 && !hasExistingDeletion && !hasAbsorbedDeletion) {
+                throw new EntryNotFoundError(
+                    `Entry not found: ${Array.from(deletedIdStrings).join(", ")}`
+                );
+            }
+
+            nextEntries = [...remainingEntries, ...newEntries];
         }
+
+        await copyAssets(capabilities, eventLogStorage.getNewAssets());
+
+        if (newConfig !== null) {
+            await configStorage.writeConfig(
+                capabilities,
+                pathToConfig(capabilities),
+                newConfig
+            );
+        }
+
+        if (entriesChanged) {
+            await capabilities.interface.update(nextEntries);
+        }
+
+        if (newConfig !== null && capabilities.interface.isInitialized()) {
+            await capabilities.interface.invalidateGraphNode("config");
+        }
+
         return result;
     } catch (error) {
-        // If anything goes wrong, clean up all copied assets and rethrow.
         await cleanupAssets(capabilities, eventLogStorage);
         throw error;
     }

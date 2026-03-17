@@ -88,9 +88,12 @@ class InterfaceClass {
         await internalSynchronizeDatabase(this, options);
     }
 
-    /** @returns {Promise<void>} */
-    async update() {
-        await internalUpdate(this);
+    /**
+     * @param {Array<Event>} newEntries
+     * @returns {Promise<void>}
+     */
+    async update(newEntries) {
+        await internalUpdate(this, newEntries);
     }
 
     /**

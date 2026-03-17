@@ -1,15 +1,7 @@
-const event = require("../event");
-const { readObjects } = require("../json_stream_file");
 const {
     ExistingConfigReadError,
-    ExistingEntriesReadError,
-    MalformedEntryError,
 } = require("./read_errors");
 /** @typedef {import('./types').Capabilities} Capabilities */
-/** @typedef {import('./types').AppendCapabilities} AppendCapabilities */
-/** @typedef {import('./types').CopyAssetCapabilities} CopyAssetCapabilities */
-/** @typedef {import('./types').CleanupAssetCapabilities} CleanupAssetCapabilities */
-/** @typedef {import('./types').ReadEntriesCapabilities} ReadEntriesCapabilities */
 /** @typedef {import('./types').EventLogStorageCapabilities} EventLogStorageCapabilities */
 /** @typedef {import('./types').ExistingFile} ExistingFile */
 /** @typedef {import('../event/id').EventId} EventId */
@@ -48,33 +40,10 @@ class EventLogStorageClass {
     absorbedDeletionIds;
 
     /**
-     * Path to the data.json file, set during transaction.
-     * Undefined means no transaction has initialized this storage yet;
-     * null means the transaction is active but data.json does not exist.
-     * @type {ExistingFile|null|undefined}
-     */
-    dataFile = undefined;
-
-    /**
      * Path to the config.json file, set during transaction
      * @type {ExistingFile|null|undefined}
      */
     configFile = undefined;
-
-    /**
-     * Cache for existing entries loaded from data.json
-     * @private
-     * @type {Array<import('../event/structure').Event>}
-     */
-    existingEntriesCache = [];
-
-    /**
-     * Tracks whether existing entries have already been loaded during the
-     * current transaction.
-     * @private
-     * @type {boolean}
-     */
-    hasExistingEntriesCache = false;
 
     /**
      * Cache for existing config loaded from config.json
@@ -275,71 +244,6 @@ class EventLogStorageClass {
         }
     }
 
-    /**
-     * Lazily reads and returns the events that existed in data.json
-     * at the start of the current transaction. The file is only read
-     * on the first call, subsequent calls return cached results.
-     *
-     * Uses capabilities: reader, logger (via readObjects)
-     *
-     * @returns {Promise<Array<import('../event/structure').Event>>} - The list of existing entries from data.json.
-     * @throws {Error} - If called outside of a transaction.
-     */
-    async getExistingEntries() {
-        if (this.dataFile === undefined) {
-            throw new Error(
-                "getExistingEntries() called outside of a transaction"
-            );
-        }
-
-        // Return cached results if available
-        if (this.hasExistingEntriesCache) {
-            return this.existingEntriesCache;
-        }
-
-        if (this.dataFile === null) {
-            this.existingEntriesCache = [];
-            this.hasExistingEntriesCache = true;
-            return this.existingEntriesCache;
-        }
-
-        try {
-            const objects = await readObjects(this.capabilities, this.dataFile);
-
-            // Use tryDeserialize to safely convert objects to Events
-            /** @type {Array<import('../event/structure').Event>} */
-            const validEvents = [];
-
-            for (const obj of objects) {
-                const result = event.tryDeserialize(obj);
-                if (event.isTryDeserializeError(result)) {
-                    throw new MalformedEntryError(
-                        this.dataFile.path,
-                        result,
-                        obj
-                    );
-                } else {
-                    validEvents.push(result);
-                }
-            }
-
-            this.existingEntriesCache = validEvents;
-            this.hasExistingEntriesCache = true;
-            return this.existingEntriesCache;
-        } catch (error) {
-            const readError = error instanceof ExistingEntriesReadError
-                ? error
-                : new ExistingEntriesReadError(this.dataFile.path, error);
-            this.capabilities.logger.logError(
-                {
-                    filepath: this.dataFile.path,
-                    error: readError.message,
-                },
-                "Failed to read data.json"
-            );
-            throw readError;
-        }
-    }
 }
 
 /** @typedef {EventLogStorageClass} EventLogStorage */

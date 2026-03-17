@@ -9,27 +9,6 @@ export VOLODYSLAV_EVENT_LOG_ASSETS_REPOSITORY="dist/test/mock-event-log-assets-r
 export VOLODYSLAV_SERVER_PORT=3000
 export VOLODYSLAV_HOSTNAME="${VOLODYSLAV_HOSTNAME:-$(hostname)}"
 
-if test -z "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
-then
-
-    # Use populated repository by default for better development experience
-    # To use empty repository instead, set VOLODYSLAV_USE_EMPTY_REPO=1
-    if test "$VOLODYSLAV_USE_EMPTY_REPO" = "1"
-    then
-        export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository-empty"
-        SOURCE_REPO="backend/tests/mock-event-log-repository"
-    else
-        export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository-populated"
-        SOURCE_REPO="backend/tests/mock-event-log-repository-populated"
-    fi
-
-    if ! test -d "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
-    then
-        mkdir -p -- dist/test
-        cp -r -T -- "$SOURCE_REPO" "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
-    fi
-fi
-
 if test -z "$VOLODYSLAV_GENERATORS_REPOSITORY"
 then
     export VOLODYSLAV_GENERATORS_REPOSITORY="dist/test/mock-generators-repository"
