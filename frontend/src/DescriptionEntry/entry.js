@@ -42,8 +42,8 @@ class EntryClass {
  * @returns {{ type: string, description: string, modifiers: Record<string, string> }}
  */
 function parseInput(input) {
-    // Step 1: Extract the type (first word starting with a letter)
-    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    // Step 1: Extract the type (first word starting with a letter, may contain digits and underscores)
+    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9_]*)/);
     if (!typeMatch) {
         return { type: '', description: input.trim(), modifiers: {} };
     }

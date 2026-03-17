@@ -24,7 +24,7 @@
  *   // If shortcuts config has "w": "work", this will expand to the same as above
  * 
  * Supported input format: TYPE [MODIFIERS...] DESCRIPTION
- * - TYPE is required and must be a single word (letters and digits only, starting with a letter)
+ * - TYPE is required and must be a single word (letters, digits, and underscores, starting with a letter)
  * - MODIFIERS are optional, format: [key value] (multiple allowed)  
  * - DESCRIPTION is optional and may contain free text, but bracketed modifier syntax
  *   (e.g. [done], [when now]) is not allowed inside the description
