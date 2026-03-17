@@ -198,39 +198,47 @@ describe("parseInput (frontend entry parsing)", () => {
     });
 
     // -------------------------------------------------------------------------
-    // Modifiers after description text — throw
+    // Brackets in description — allowed (brackets are just text in descriptions)
     // -------------------------------------------------------------------------
 
-    test("throws when key-value modifier appears after description", () => {
-        expect(() => parseInput("WORK description [loc office]")).toThrow(
-            "Modifiers must appear immediately after the type, before any description text"
-        );
+    test("allows key-value bracket after description text", () => {
+        expect(parseInput("WORK description [loc office]")).toEqual({
+            type: "WORK",
+            description: "description [loc office]",
+            modifiers: {},
+        });
     });
 
-    test("throws when flag modifier appears after description", () => {
-        expect(() => parseInput("WORK description [done]")).toThrow(
-            "Modifiers must appear immediately after the type, before any description text"
-        );
+    test("allows flag-style bracket after description text", () => {
+        expect(parseInput("WORK description [done]")).toEqual({
+            type: "WORK",
+            description: "description [done]",
+            modifiers: {},
+        });
     });
 
-    test("throws when bracket without spaces appears after description", () => {
-        expect(() =>
-            parseInput("task description with [brackets] but no spaces")
-        ).toThrow(
-            "Modifiers must appear immediately after the type, before any description text"
-        );
+    test("allows bracket without spaces after description", () => {
+        expect(parseInput("task description with [brackets] but no spaces")).toEqual({
+            type: "task",
+            description: "description with [brackets] but no spaces",
+            modifiers: {},
+        });
     });
 
-    test("throws when multiple flag modifiers appear after description", () => {
-        expect(() => parseInput("TASK some notes [flag1] [flag2]")).toThrow(
-            "Modifiers must appear immediately after the type, before any description text"
-        );
+    test("allows multiple brackets after description text", () => {
+        expect(parseInput("TASK some notes [flag1] [flag2]")).toEqual({
+            type: "TASK",
+            description: "some notes [flag1] [flag2]",
+            modifiers: {},
+        });
     });
 
-    test("throws when modifier appears in the middle of description", () => {
-        expect(() => parseInput("TASK some [flag] notes")).toThrow(
-            "Modifiers must appear immediately after the type, before any description text"
-        );
+    test("allows bracket in the middle of description", () => {
+        expect(parseInput("TASK some [flag] notes")).toEqual({
+            type: "TASK",
+            description: "some [flag] notes",
+            modifiers: {},
+        });
     });
 
     test("does not throw for digit-starting bracket after description", () => {
