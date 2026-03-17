@@ -7,6 +7,7 @@
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 /** @typedef {import('../individual/all_events/wrapper').AllEventsBox} AllEventsBox */
+/** @typedef {import('../individual/config/wrapper').ConfigBox} ConfigBox */
 
 const {
     internalEnsureInitialized,
@@ -24,6 +25,7 @@ const {
     internalGetModificationTime,
     internalInvalidateGraphNode,
     internalPullGraphNode,
+    internalSetConfig,
     internalUpdate,
 } = require("./graph_api");
 const {
@@ -64,6 +66,12 @@ class InterfaceClass {
     _allEventsBox;
 
     /**
+     * Boxed config captured by the config computor.
+     * @type {ConfigBox | null}
+     */
+    _configBox;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
@@ -72,6 +80,7 @@ class InterfaceClass {
         this._incrementalGraph = null;
         this._database = null;
         this._allEventsBox = null;
+        this._configBox = null;
     }
 
     /**
@@ -102,6 +111,14 @@ class InterfaceClass {
      */
     async update(newEntries) {
         await internalUpdate(this, newEntries);
+    }
+
+    /**
+     * @param {import('../../config/structure').Config | null} config
+     * @returns {Promise<void>}
+     */
+    async setConfig(config) {
+        await internalSetConfig(this, config);
     }
 
     /**

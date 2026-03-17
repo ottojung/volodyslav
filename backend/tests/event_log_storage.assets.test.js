@@ -1,6 +1,6 @@
 const path = require("path");
 const fsp = require("fs/promises");
-const { transaction } = require("../src/local_data");
+const { transaction } = require("../src/event_log_storage");
 const { targetPath } = require("../src/event/asset");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
@@ -33,7 +33,7 @@ async function makeAsset(capabilities, event, filename, content = "test content"
     };
 }
 
-describe("local_data assets", () => {
+describe("event_log_storage assets", () => {
     test("copies asset files into the assets directory", async () => {
         const capabilities = getTestCapabilities();
         const testEvent = makeEvent("asset-event");

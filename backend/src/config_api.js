@@ -1,5 +1,3 @@
-const localConfig = require("./local_config");
-
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -60,10 +58,7 @@ async function getConfig(capabilities) {
  * @returns {Promise<void>}
  */
 async function setConfig(capabilities, config) {
-    await localConfig.writeConfig(capabilities, config);
-    if (capabilities.interface.isInitialized()) {
-        await capabilities.interface.invalidateGraphNode("config");
-    }
+    await capabilities.interface.setConfig(config);
 
     capabilities.logger.logInfo(
         {

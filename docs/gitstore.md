@@ -89,7 +89,7 @@ A `transaction` pushes new commits into the working copy's `.git` directory but 
 
 The typical safe pattern is:
 
-- Use `transaction` for remote-backed repositories (`local_data`).
+- Use `transaction` for repositories that stage related changes before one final update.
 - Use `checkpoint` for local-only "empty" repositories (`runtime_state_storage` pattern) where the work tree is the single source of truth.
 
 ### No-op safety

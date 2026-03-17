@@ -1,4 +1,4 @@
-const { transaction, isEntryNotFoundError } = require("../src/local_data");
+const { transaction, isEntryNotFoundError } = require("../src/event_log_storage");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
@@ -21,7 +21,7 @@ function makeEvent(id, input) {
     };
 }
 
-describe("local_data deletion", () => {
+describe("event_log_storage deletion", () => {
     test("removes existing entries from the incremental graph", async () => {
         const capabilities = getTestCapabilities();
         const first = makeEvent("delete-1", "first");

@@ -26,7 +26,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @param {Set<NodeKeyString>} [nodesBecomingOutdated]
  * @returns {Promise<void>}
  */
-async function propagateOutdated(
+async function internalPropagateOutdated(
     incrementalGraph,
     changedKey,
     batch,
@@ -45,7 +45,7 @@ async function propagateOutdated(
         if (currentFreshness === "up-to-date") {
             batch.freshness.put(output, "potentially-outdated");
             nodesBecomingOutdated.add(output);
-            await propagateOutdated(
+            await internalPropagateOutdated(
                 incrementalGraph,
                 output,
                 batch,
@@ -74,7 +74,7 @@ async function propagateOutdated(
  * @param {Array<ConstValue>} bindings
  * @returns {Promise<void>}
  */
-async function unsafeInvalidate(
+async function internalUnsafeInvalidate(
     incrementalGraph,
     nodeName,
     bindings
@@ -115,7 +115,7 @@ async function unsafeInvalidate(
             inputCounters,
             batch
         );
-        await propagateOutdated(
+        await internalPropagateOutdated(
             incrementalGraph,
             nodeDefinition.output,
             batch
@@ -131,18 +131,18 @@ async function unsafeInvalidate(
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<void>}
  */
-async function invalidate(
+async function internalInvalidate(
     incrementalGraph,
     nodeName,
     bindings = []
 ) {
     return withObserveMode(incrementalGraph.sleeper, () =>
-        unsafeInvalidate(incrementalGraph, nodeName, bindings)
+        internalUnsafeInvalidate(incrementalGraph, nodeName, bindings)
     );
 }
 
 module.exports = {
-    invalidate,
-    propagateOutdated,
-    unsafeInvalidate,
+    internalInvalidate,
+    internalPropagateOutdated,
+    internalUnsafeInvalidate,
 };

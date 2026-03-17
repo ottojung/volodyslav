@@ -8,7 +8,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
-const { transaction } = require("../src/local_data");
+const { transaction } = require("../src/event_log_storage");
 
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();

@@ -1,6 +1,4 @@
-const path = require("path");
-const { transaction } = require("../src/local_data");
-const configStorage = require("../src/config/storage");
+const { transaction } = require("../src/event_log_storage");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
@@ -13,11 +11,7 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-function pathToConfig(capabilities) {
-    return path.join(capabilities.environment.workingDirectory(), "config.json");
-}
-
-describe("local_data config", () => {
+describe("event_log_storage config", () => {
     test("reads back config written by a previous transaction", async () => {
         const capabilities = getTestCapabilities();
         const testConfig = {
@@ -42,13 +36,10 @@ describe("local_data config", () => {
             expect(cachedConfig).toBe(readConfig);
         });
 
-        const configFile = await capabilities.checker.instantiate(pathToConfig(capabilities));
-        await expect(configStorage.readConfig(capabilities, configFile)).resolves.toEqual(
-            testConfig
-        );
+        await expect(capabilities.interface.getConfig()).resolves.toEqual(testConfig);
     });
 
-    test("handles missing config.json gracefully", async () => {
+    test("handles missing graph config gracefully", async () => {
         const capabilities = getTestCapabilities();
 
         await transaction(capabilities, async (storage) => {
@@ -76,9 +67,6 @@ describe("local_data config", () => {
         });
 
         await expect(capabilities.interface.getAllEvents()).resolves.toHaveLength(1);
-        const configFile = await capabilities.checker.instantiate(pathToConfig(capabilities));
-        await expect(configStorage.readConfig(capabilities, configFile)).resolves.toEqual(
-            testConfig
-        );
+        await expect(capabilities.interface.getConfig()).resolves.toEqual(testConfig);
     });
 });

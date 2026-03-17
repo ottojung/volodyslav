@@ -90,10 +90,10 @@ interface EntryData {
 
 ## 5. Durability & Pluggable Storage
 
-**local_data** abstraction supports:
-- **Atomic Writes**: all entry writes (and linked assets) occur within atomic transactions, ensuring consistency or rollback
-- **Pluggable Backends**: JSON streams, file-based logs, Git-backed stores for audit, history, and diff-driven workflows
-- **Consistent Reads**: safe retrieval during concurrent operations
+**event_log_storage** abstraction supports:
+- **Atomic Staging**: entry additions, deletions, config changes, and asset copies are staged inside one transaction callback before the graph is updated
+- **Graph-backed Persistence**: entries and config are persisted in incremental-graph nodes rather than separate on-disk data files
+- **Consistent Reads**: transactions can inspect the current graph-backed config while preparing updates
 
 **Retrieval Interface**  
 - **getEntries** (`backend/src/entry.js`) validates `page` and `limit` parameters, reads full event list inside a transaction, slices results for the requested page, and returns `{ results, total, hasMore, page, limit }`
@@ -163,7 +163,7 @@ interface EntryData {
 ## 13. Extension & Customization
 
 - **Parser Plugins**: add or override parsing rules for new entry types and modifiers; extend `processUserInput` and adjust downstream handlers
-- **Storage Adapters**: implement custom backends (NoSQL, distributed logs) by conforming to the transaction API; swap or augment storage by implementing custom `local_data` modules
+- **Storage Adapters**: extend the transaction layer if you need different staging semantics around graph updates or asset copying
 - **Lifecycle Hooks**: insert custom logic at key points (pre-create, post-retrieve, on-delete) for auditing or replication; add hooks in `transaction` callbacks for auditing, replication, or real-time streaming
 
 ---

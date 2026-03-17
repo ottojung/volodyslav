@@ -3,8 +3,9 @@
  * Provides the computor for the config graph node.
  */
 
-const { makeComputor } = require("./wrapper");
+const { makeBox, makeComputor } = require("./wrapper");
 
 module.exports = {
+    makeBox,
     makeComputor,
 };

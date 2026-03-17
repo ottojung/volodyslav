@@ -1,8 +1,6 @@
 const request = require("supertest");
 const { fromISOString } = require("../src/datetime");
 const { makeTestApp } = require("./api_ordering_test_setup");
-const fs = require("fs");
-const path = require("path");
 
 describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("works without shortcuts when config file doesn't exist", async () => {
@@ -33,7 +31,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with empty shortcuts using transaction system
-        const { transaction } = require("../src/local_data");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -58,18 +56,12 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         });
     });
 
-    it("handles malformed config gracefully", async () => {
+    it("does not transform input when graph config is cleared", async () => {
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create malformed config
-        const configPath = path.join(
-            capabilities.environment.workingDirectory(),
-            "config.json"
-        );
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({ invalid: true }));
+        await capabilities.interface.setConfig(null);
 
         const requestBody = {
             rawInput: "MEETING [with John] - Project discussion",
@@ -86,32 +78,14 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             input: "MEETING [with John] - Project discussion",
             original: "MEETING [with John] - Project discussion"
         });
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
-    it("confirms no transformation when config file doesn't exist (expected behavior)", async () => {
-        // This test verifies what happens when there's no config file - 
-        // this is likely what's happening in your real application
+    it("confirms no transformation when graph config doesn't exist", async () => {
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Ensure no config file exists
-        const configPath = path.join(
-            capabilities.environment.workingDirectory(),
-            "config.json"
-        );
-        
-        // Make sure the directory exists but no config file
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        
-        // Verify no config file exists
-        if (fs.existsSync(configPath)) {
-            fs.unlinkSync(configPath);
-        }
+        await capabilities.interface.setConfig(null);
 
-        // Test with input that would be transformed if shortcuts existed
         const requestBody = { rawInput: "w [loc o] - Should not be transformed" };
 
         const res = await request(app)
@@ -122,13 +96,11 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         
-        // Without config, no transformation should happen
         expect(res.body.entry.original).toBe("w [loc o] - Should not be transformed");
-        expect(res.body.entry.input).toBe("w [loc o] - Should not be transformed"); // Same as original
+        expect(res.body.entry.input).toBe("w [loc o] - Should not be transformed");
 
-        // Test the config endpoint too
         const configRes = await request(app).get("/api/config");
         expect(configRes.statusCode).toBe(200);
-        expect(configRes.body.config).toBeNull(); // No config file means null config
+        expect(configRes.body.config).toBeNull();
     });
 });

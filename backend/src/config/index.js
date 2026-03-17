@@ -11,8 +11,6 @@ const {
     isInvalidArrayElementError
 } = require("./structure");
 
-const storage = require("./storage");
-
 /** @typedef {import('./structure').Config} Config */
 /** @typedef {import('./structure').SerializedConfig} SerializedConfig */
 /** @typedef {import('./structure').Shortcut} Shortcut */
@@ -28,5 +26,4 @@ module.exports = {
     isInvalidValueError,
     isInvalidStructureError,
     isInvalidArrayElementError,
-    storage,
 };

@@ -37,9 +37,9 @@ const {
     internalGetModificationTime,
 } = require("./inspection");
 const {
-    invalidate: invalidateNode,
-    propagateOutdated: propagateOutdatedNodes,
-    unsafeInvalidate: unsafeInvalidateNode,
+    internalInvalidate,
+    internalPropagateOutdated,
+    internalUnsafeInvalidate,
 } = require("./invalidate");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
@@ -102,7 +102,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async propagateOutdated(changedKey, batch, nodesBecomingOutdated = new Set()) {
-        await propagateOutdatedNodes(
+        await internalPropagateOutdated(
             this,
             changedKey,
             batch,
@@ -116,7 +116,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async unsafeInvalidate(nodeName, bindings) {
-        await unsafeInvalidateNode(this, nodeName, bindings);
+        await internalUnsafeInvalidate(this, nodeName, bindings);
     }
 
     /**
@@ -125,7 +125,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async invalidate(nodeName, bindings = []) {
-        await invalidateNode(this, nodeName, bindings);
+        await internalInvalidate(this, nodeName, bindings);
     }
 
     /**

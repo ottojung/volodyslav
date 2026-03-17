@@ -4,7 +4,7 @@
 
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
-const { transaction } = require("../src/local_data");
+const { transaction } = require("../src/event_log_storage");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubLogger,
