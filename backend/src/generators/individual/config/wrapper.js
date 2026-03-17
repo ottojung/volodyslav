@@ -30,7 +30,12 @@ function makeComputor(box, _capabilities) {
                 // so we return the default of null.
                 return { type: "config", config: null };
             } else {
-                return oldValue;
+                if (oldValue.type !== "config") {
+                    throw new Error(
+                        `Expected oldValue of type config but got type: ${oldValue.type}`
+                    );
+                }
+                box.value = oldValue.config;
             }
         }
 
@@ -41,7 +46,7 @@ function makeComputor(box, _capabilities) {
             JSON.stringify(
                 oldValue.config === null ? null : serialize(oldValue.config)
             ) === JSON.stringify(
-                serialize(nextValue.config)
+                nextValue.config === null ? null : serialize(nextValue.config)
             )
         ) {
             return makeUnchanged();
