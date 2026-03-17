@@ -6,6 +6,7 @@
 
 const path = require("path");
 const gitmethod = require("./wrappers");
+const { configureRemoteForAllBranches } = require("./branch_setup");
 const { git } = require("../executables");
 const { withRetry } = require("../retryer");
 
@@ -112,6 +113,21 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const remotePath = origin.url;
     const resetToTheirs = options && options.resetToTheirs;
 
+    async function cloneAndConfigureRepository() {
+        let cloned = false;
+        try {
+            await gitmethod.clone(capabilities, remotePath, workDir);
+            cloned = true;
+            await configureRemoteForAllBranches(capabilities, workDir);
+            await gitmethod.makePushable(capabilities, workDir);
+        } catch (error) {
+            if (cloned) {
+                await capabilities.deleter.deleteDirectory(workDir).catch(() => undefined);
+            }
+            throw error;
+        }
+    }
+
     // Determine once, before any retry, whether the local repo exists without
     // a remote configured.  Repos initialised via initializeEmptyRepository
     // have no remote; we must add origin and accept the remote state via
@@ -147,16 +163,14 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     // including the case where they have unrelated histories.
                     await gitmethod.fetchAndResetHard(capabilities, workDir);
                 } else {
-                    await gitmethod.clone(capabilities, remotePath, workDir);
-                    await gitmethod.makePushable(capabilities, workDir);
+                    await cloneAndConfigureRepository();
                 }
             } else {
                 if (exists) {
                     await gitmethod.pull(capabilities, workDir);
                     await gitmethod.push(capabilities, workDir);
                 } else {
-                    await gitmethod.clone(capabilities, remotePath, workDir);
-                    await gitmethod.makePushable(capabilities, workDir);
+                    await cloneAndConfigureRepository();
                 }
             }
         } catch (error) {

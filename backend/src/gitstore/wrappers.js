@@ -1,6 +1,7 @@
 const { isCommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
+const { configureRemoteForAllBranches, ensureCurrentBranch } = require("./branch_setup");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
@@ -19,9 +20,6 @@ class GitUnavailable extends Error {
     }
 }
 
-/**
- * Error thrown when git push operation fails.
- */
 class PushError extends Error {
     /**
      * @param {string} message - Error message
@@ -36,19 +34,12 @@ class PushError extends Error {
     }
 }
 
-/**
- * Type guard for PushError.
- * @param {unknown} object - The object to check.
- * @returns {object is PushError}
- */
+/** @param {unknown} object @returns {object is PushError} */
 function isPushError(object) {
     return object instanceof PushError;
 }
 
-/**
- * Ensures that the git executable exists in the PATH.
- * @returns {Promise<void>}
- */
+/** @returns {Promise<void>} */
 async function ensureGitAvailable() {
     try {
         await git.ensureAvailable();
@@ -86,7 +77,6 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--all"
     );
 
-    // Check if there is anything staged to commit
     const statusResult = await capabilities.git.call(
         "-c", "safe.directory=*",
         "--git-dir", git_directory,
@@ -98,7 +88,6 @@ async function commit(capabilities, git_directory, work_directory, message) {
         return;
     }
 
-    // Commit all staged changes
     await capabilities.git.call(
         "-c", "safe.directory=*",
         "-c", "user.name=volodyslav",
@@ -117,8 +106,6 @@ async function commit(capabilities, git_directory, work_directory, message) {
  * @returns {Promise<void>}
  */
 async function makePushable(capabilities, workDirectory) {
-    // Make sure that we can push to this repository
-    // as if it was a bare repository.
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -152,7 +139,7 @@ async function clone(capabilities, remote_uri, work_directory) {
         "user.email=volodyslav",
         "clone",
         "--depth=1",
-        "--single-branch",
+        "--no-single-branch",
         `--branch=${branch}`,
         "--",
         remote_uri,
@@ -160,7 +147,7 @@ async function clone(capabilities, remote_uri, work_directory) {
     );
 }
 
-/** 
+/**
  * Pull changes from the remote repository.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to pull from
@@ -168,6 +155,22 @@ async function clone(capabilities, remote_uri, work_directory) {
  */
 async function pull(capabilities, workDirectory) {
     const branch = defaultBranch(capabilities);
+    await configureRemoteForAllBranches(capabilities, workDirectory);
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "fetch",
+        "origin"
+    );
+    if (!(await ensureCurrentBranch(capabilities, workDirectory))) {
+        return;
+    }
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -183,16 +186,11 @@ async function pull(capabilities, workDirectory) {
     );
 }
 
-/**
- * Push changes to the remote repository.
- * @param {Capabilities} capabilities - The capabilities object containing the git command.
- * @param {string} workDirectory - The repository directory to push from
- * @returns {Promise<void>}
- * @throws {PushError} When push operation fails
- */
+/** @param {Capabilities} capabilities @param {string} workDirectory @returns {Promise<void>} */
 async function push(capabilities, workDirectory) {
     const branch = defaultBranch(capabilities);
     try {
+        await ensureCurrentBranch(capabilities, workDirectory);
         await capabilities.git.call(
             "-C",
             workDirectory,
@@ -203,6 +201,7 @@ async function push(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "push",
+            "-u",
             "origin",
             branch
         );
@@ -225,6 +224,7 @@ async function push(capabilities, workDirectory) {
  */
 async function fetchAndResetHard(capabilities, workDirectory) {
     const branch = defaultBranch(capabilities);
+    await configureRemoteForAllBranches(capabilities, workDirectory);
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -237,6 +237,7 @@ async function fetchAndResetHard(capabilities, workDirectory) {
         "fetch",
         "origin"
     );
+    await ensureCurrentBranch(capabilities, workDirectory);
     await capabilities.git.call(
         "-C",
         workDirectory,
