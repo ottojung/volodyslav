@@ -31,6 +31,24 @@ async function keepNodeType(nodeName, storage) {
 }
 
 /**
+ * A migration callback that deletes all nodes of a certain type.
+ *
+ * @param {string} nodeName - The name of the node type to delete (e.g., "meta_events")
+ * @param {MigrationStorage} storage - The migration storage instance
+ * @returns {Promise<void>}
+ */
+async function deleteNodeType(nodeName, storage) {
+    const nodeNameTyped = stringToNodeName(nodeName);
+    const nodeKeys = storage.listMaterializedNodes();
+    for await (const nodeKey of nodeKeys) {
+        const parsed = deserializeNodeKey(nodeKey);
+        if (parsed.head === nodeNameTyped) {
+            await storage.delete(nodeKey);
+        }
+    }
+}
+
+/**
  * @param {GeneratorsCapabilities} capabilities
  * @returns {function(MigrationStorage): Promise<void>}
  */
@@ -46,8 +64,8 @@ function migrationCallback(capabilities) {
         await keepNodeType("config", storage);
         await keepNodeType("meta_events", storage);
         await keepNodeType("event", storage);
-        await keepNodeType("basic_context", storage);
-        await keepNodeType("calories", storage);
+        await deleteNodeType("basic_context", storage);
+        await deleteNodeType("calories", storage);
         await keepNodeType("event_transcription", storage);
         await keepNodeType("transcription", storage);
     };
