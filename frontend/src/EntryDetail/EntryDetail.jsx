@@ -176,7 +176,7 @@ function mergeAdditionalProperties(current, incoming) {
 }
 
 /** @type {AdditionalPropertyName[]} */
-const ADDITIONAL_PROPERTY_NAMES = ["calories", "transcription"];
+const ADDITIONAL_PROPERTY_NAMES = ["calories", "transcription", "basic_context"];
 
 /**
  * Entry detail page. Displays all JSON fields for a single entry
@@ -312,9 +312,17 @@ export default function EntryDetail() {
     const { primaryFields, derivedFields } = entryToFields(entry);
     const { type: entryType } = getEntryParsed(entry);
 
-    const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && hasAdditionalPropertyValue(value));
+    const additionalFields = Object.entries(additionalProperties).filter(([key, value]) => key !== "errors" && key !== "basic_context" && hasAdditionalPropertyValue(value));
 
-    const additionalPropertyErrors = additionalProperties.errors ?? {};
+    const allErrors = additionalProperties.errors ?? {};
+    const basicContextError = allErrors["basic_context"] ?? null;
+    const additionalPropertyErrors = Object.fromEntries(
+        Object.entries(allErrors).filter(([key]) => key !== "basic_context")
+    );
+
+    const basicContextInputs = additionalProperties.basic_context;
+    const isLoadingBasicContext = loadingAdditionalProperties.includes("basic_context");
+    const loadingComputedProperties = loadingAdditionalProperties.filter((name) => name !== "basic_context");
 
     const imageAssets = filterAssetsByType(entryAssets, "image");
     const audioAssets = filterAssetsByType(entryAssets, "audio");
@@ -436,18 +444,18 @@ export default function EntryDetail() {
                             Computed Properties
                         </Text>
                         {additionalFields.length > 0 && (
-                            <VStack spacing={SPACING.sm} align="stretch" mb={loadingAdditionalProperties.length > 0 ? SPACING.md : 0}>
+                            <VStack spacing={SPACING.sm} align="stretch" mb={loadingComputedProperties.length > 0 ? SPACING.md : 0}>
                                 {additionalFields.map(([key, value]) => (
                                     <FieldRow key={key} fieldKey={key} value={String(value)} />
                                 ))}
                             </VStack>
                         )}
-                        {loadingAdditionalProperties.length > 0 ? (
+                        {loadingComputedProperties.length > 0 ? (
                             <Box py={SPACING.md}>
                                 <HStack align="flex-start" spacing={SPACING.sm}>
                                     <Spinner size="sm" color="blue.400" mt="2px" />
                                     <VStack align="flex-start" spacing={1}>
-                                        {loadingAdditionalProperties.map((propertyName) => (
+                                        {loadingComputedProperties.map((propertyName) => (
                                             <Text key={propertyName} {...TEXT_STYLES.helper}>
                                                 Loading {propertyName}...
                                             </Text>
@@ -458,7 +466,7 @@ export default function EntryDetail() {
                         ) : additionalFields.length === 0 && Object.keys(additionalPropertyErrors).length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : null}
-                        {Object.keys(additionalPropertyErrors).length > 0 && loadingAdditionalProperties.length === 0 && (
+                        {Object.keys(additionalPropertyErrors).length > 0 && loadingComputedProperties.length === 0 && (
                             <VStack spacing={SPACING.sm} align="stretch" mt={additionalFields.length > 0 ? SPACING.sm : 0}>
                                 {Object.entries(additionalPropertyErrors).map(([key, message]) => (
                                     <Box key={key} px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
@@ -466,6 +474,39 @@ export default function EntryDetail() {
                                             {key} error
                                         </Text>
                                         <Text fontSize="sm" color="red.700">{message}</Text>
+                                    </Box>
+                                ))}
+                            </VStack>
+                        )}
+                    </CardBody>
+                </Card>
+
+                <Card {...CARD_STYLES.secondary}>
+                    <CardBody p={SPACING.lg}>
+                        <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
+                            Basic Context
+                        </Text>
+                        {isLoadingBasicContext ? (
+                            <Box py={SPACING.md}>
+                                <HStack align="flex-start" spacing={SPACING.sm}>
+                                    <Spinner size="sm" color="blue.400" mt="2px" />
+                                    <Text {...TEXT_STYLES.helper}>Loading basic context...</Text>
+                                </HStack>
+                            </Box>
+                        ) : basicContextError !== null ? (
+                            <Box px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
+                                <Text fontSize="xs" fontWeight="semibold" color="red.600" textTransform="uppercase" mb={1}>
+                                    basic context error
+                                </Text>
+                                <Text fontSize="sm" color="red.700">{basicContextError}</Text>
+                            </Box>
+                        ) : !basicContextInputs || basicContextInputs.length === 0 ? (
+                            <Text {...TEXT_STYLES.helper}>None</Text>
+                        ) : (
+                            <VStack spacing={SPACING.sm} align="stretch">
+                                {basicContextInputs.map((input, index) => (
+                                    <Box key={index} {...CARD_STYLES.entry}>
+                                        <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{input}</Text>
                                     </Box>
                                 ))}
                             </VStack>

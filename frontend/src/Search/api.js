@@ -57,11 +57,12 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
  * @typedef {object} AdditionalProperties
  * @property {number} [calories] - Estimated calorie count; absent when 0 or unknown.
  * @property {string} [transcription] - Transcription text; absent when unavailable.
+ * @property {string[]} [basic_context] - Input fields from the basic context events.
  * @property {Object<string, string>} [errors] - Per-property error messages; absent when no errors.
  */
 
 /**
- * @typedef {'calories' | 'transcription'} AdditionalPropertyName
+ * @typedef {'calories' | 'transcription' | 'basic_context'} AdditionalPropertyName
  */
 
 /**
