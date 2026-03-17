@@ -108,9 +108,9 @@ describe("basic context with hyphenated hashtags", () => {
             makeSerializedEvent("unrelated", "text unrelated #unrelated"),
             makeSerializedEvent("unrelated2", "photo unrelated #unrelated2"),
             makeSerializedEvent("photo1", "photo #yogurt-yoplait1"),
-            makeSerializedEvent("exact", "register #yogurt-yoplait1"),
-            makeSerializedEvent("photo2", "register [phone_take_photo] #mixed-nuts-3"),
-            makeSerializedEvent("photo3", "register [phone_take_photo] #mixed-nuts-3"),
+            makeSerializedEvent("exact1", "register #yogurt-yoplait1"),
+            makeSerializedEvent("exact2", "register [phone_take_photo] #mixed-nuts-3"),
+            makeSerializedEvent("exact3", "register [phone_take_photo] #mixed-nuts-3"),
         ];
 
         const basicContext = computeBasicContextForEventId(
@@ -123,6 +123,6 @@ describe("basic context with hyphenated hashtags", () => {
             type: "basic_context",
             eventId: "target",
         });
-        expect(basicContext.events.map((event) => event.id)).toEqual(["target", "photo1", "exact", "photo2", "photo3"]);
+        expect(basicContext.events.map((event) => event.id)).toEqual(["target", "photo1", "exact1", "exact2", "exact3"]);
     });
 });
