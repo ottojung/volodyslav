@@ -200,7 +200,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
         });
 
-        it("passes the entry input text to the AI estimator", async () => {
+        it("passes a structured target-event prompt to the AI estimator", async () => {
             const { app, capabilities } = await makeInitializedApp(300);
             const input = "food: two slices of toast with butter";
 
@@ -209,7 +209,9 @@ describe("GET /api/entries/:id/additional-properties", () => {
             await request(app)
                 .get("/api/entries/entry-2/additional-properties");
 
-            expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(input);
+            expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
+                "Target event:\nfood: two slices of toast with butter\n\nBasic context (related events for disambiguation only):\n- none"
+            );
         });
 
         it("uses cached value on repeated requests without re-calling AI", async () => {

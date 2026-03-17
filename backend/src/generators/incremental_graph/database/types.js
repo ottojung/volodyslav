@@ -129,6 +129,7 @@ function versionToString(Version) {
  * Basic context for a single event, indexed by event ID.
  * @typedef {object} BasicContextEntry
  * @property {'basic_context'} type - The type of the entry
+ * @property {string} eventId - The event ID the context belongs to
  * @property {Array<SerializedEvent>} events - The serialized context events
  */
 

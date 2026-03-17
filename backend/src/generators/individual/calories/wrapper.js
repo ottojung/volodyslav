@@ -14,7 +14,7 @@ function makeComputor(capabilities) {
         if (!firstInput || firstInput.type !== "basic_context") {
             throw new Error("Expected input of type basic_context for calories(e) computor");
         }
-        return computeCaloriesForEvent(firstInput.events, capabilities);
+        return computeCaloriesForEvent(firstInput.eventId, firstInput.events, capabilities);
     };
 }
 

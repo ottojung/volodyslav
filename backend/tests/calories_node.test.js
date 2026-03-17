@@ -143,7 +143,7 @@ describe("event(e) node", () => {
 // ---------------------------------------------------------------------------
 
 describe("calories(e) node", () => {
-    test("calls estimateCalories with the event input text and returns result", async () => {
+    test("calls estimateCalories with structured target-event prompt input and returns result", async () => {
         const capabilities = await getTestCapabilities(250);
         const iface = capabilities.interface;
         await iface.ensureInitialized();
@@ -153,7 +153,7 @@ describe("calories(e) node", () => {
 
         expect(result).toEqual({ type: "calories", value: 250 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "food: a bowl of pasta"
+            "Target event:\nfood: a bowl of pasta\n\nBasic context (related events for disambiguation only):\n- none"
         );
     });
 
@@ -170,7 +170,7 @@ describe("calories(e) node", () => {
 
         expect(result).toEqual({ type: "calories", value: 480 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "text prep #lunch\nfood lunch #lunch"
+            "Target event:\nfood lunch #lunch\n\nBasic context (related events for disambiguation only):\n1. text prep #lunch"
         );
     });
 
@@ -196,7 +196,7 @@ describe("calories(e) node", () => {
 
         expect(result).toEqual({ type: "calories", value: "N/A" });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "sleep 8 hours"
+            "Target event:\nsleep 8 hours\n\nBasic context (related events for disambiguation only):\n- none"
         );
     });
 
@@ -210,7 +210,7 @@ describe("calories(e) node", () => {
 
         expect(result).toEqual({ type: "calories", value: 0 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "a cup of plain tea"
+            "Target event:\na cup of plain tea\n\nBasic context (related events for disambiguation only):\n- none"
         );
     });
 
@@ -250,10 +250,12 @@ describe("calories(e) node", () => {
 
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(2);
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenNthCalledWith(
-            1, "food: a slice of bread"
+            1,
+            "Target event:\nfood: a slice of bread\n\nBasic context (related events for disambiguation only):\n- none"
         );
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenNthCalledWith(
-            2, "food: a large pizza"
+            2,
+            "Target event:\nfood: a large pizza\n\nBasic context (related events for disambiguation only):\n- none"
         );
     });
 

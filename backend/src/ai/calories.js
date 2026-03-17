@@ -51,12 +51,37 @@ function isAICaloriesError(object) {
 
 const CALORIES_MODEL = "gpt-5.2";
 
-const SYSTEM_PROMPT = `You are a nutrition assistant. Given a personal log entry, estimate the number of calories consumed.
+const SYSTEM_PROMPT = `You estimate calories consumed in the TARGET EVENT of a personal event log.
 
-Rules:
-- If the entry describes food or drink consumption, return your best integer estimate of the total calories. Use 0 for items with no caloric content (e.g. water, plain tea, black coffee).
-- If the entry contains no food or drink consumption (e.g. sleep, exercise, mood, tasks), return N/A.
-- Respond with a single integer or the token N/A and nothing else. No units, no explanation.`;
+The user message contains:
+- a "Target event" section with the single event whose calories must be estimated
+- a "Basic context" section with related events that may clarify the target event
+
+Decision rules:
+- Estimate calories only for food or drink consumed in the target event.
+- Use basic context only to disambiguate the target event (for example, references like "same lunch", omitted quantities, or meal-prep notes).
+- Do not add calories from context events that describe separate consumption events.
+- If the target event is not about consuming food or drink, return N/A.
+- Use 0 for clearly non-caloric drinks such as water, plain tea, or black coffee.
+- If the target event clearly contains multiple consumed items, total them.
+- When details are missing, infer a single best integer estimate from common portions.
+
+Respond with exactly one token:
+- an integer like 540
+- or N/A
+
+No units, no prose, no JSON, no markdown.`;
+
+/**
+ * @param {string} entry
+ * @returns {Array<{ role: "system" | "user", content: string }>}
+ */
+function makeCaloriesMessages(entry) {
+    return [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: entry },
+    ];
+}
 
 /**
  * @typedef {object} AICalories
@@ -79,10 +104,7 @@ async function estimateCalories(openai, capabilities, entry) {
         const apiKey = capabilities.environment.openaiAPIKey();
         const response = await openai(apiKey).chat.completions.create({
             model: CALORIES_MODEL,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: entry },
-            ],
+            messages: makeCaloriesMessages(entry),
         });
         const text = response.choices[0]?.message?.content?.trim() ?? "N/A";
         if (text === "N/A") {
@@ -121,6 +143,9 @@ function make(getCapabilities) {
 }
 
 module.exports = {
+    CALORIES_MODEL,
+    SYSTEM_PROMPT,
+    makeCaloriesMessages,
     make,
     isAICaloriesError,
 };
