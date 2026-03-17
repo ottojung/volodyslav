@@ -25,7 +25,7 @@ import { getEntryType, getEntryDescription } from "./entry.js";
  * @param {Entry} props.entry - The entry data
  * @param {number} props.index - Index for fallback key
  * @param {(id: string) => void} [props.onDelete] - Called when delete button is clicked
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export const EntryItem = ({ entry, index, onDelete }) => (
     <Box key={entry.id || index} {...CARD_STYLES.entry}>
@@ -58,7 +58,7 @@ export const EntryItem = ({ entry, index, onDelete }) => (
 
 /**
  * Loading skeleton for entries
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export const EntryItemSkeleton = () => (
     <Box {...CARD_STYLES.entry}>

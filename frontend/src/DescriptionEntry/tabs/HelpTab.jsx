@@ -14,7 +14,7 @@ const syntaxExamples = [
  * @param {Object} props
  * @param {string} props.helpText - The help text to display
  * @param {(value: string) => void} props.onShortcutClick - Called when a syntax example is clicked
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export const HelpTab = ({ helpText, onShortcutClick }) => (
     <VStack spacing={SPACING.lg} align="stretch">

@@ -84,7 +84,7 @@ function entryToFields(entry) {
 /**
  * A single field row with a copy button.
  * @param {{ fieldKey: string, value: string }} props
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 function FieldRow({ fieldKey, value }) {
     const [copied, setCopied] = useState(false);
@@ -181,7 +181,7 @@ const ADDITIONAL_PROPERTY_NAMES = ["calories", "transcription"];
 /**
  * Entry detail page. Displays all JSON fields for a single entry
  * with copy buttons on the right of each field.
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export default function EntryDetail() {
     const { id } = useParams();

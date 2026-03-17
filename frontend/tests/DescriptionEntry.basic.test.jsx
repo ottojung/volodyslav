@@ -138,7 +138,7 @@ describe("DescriptionEntry", () => {
         ).toBeInTheDocument();
 
         // Should render configuration section tabs (no Recent Entries tab since it was removed)
-        expect(screen.getByText("Help")).toBeInTheDocument();
+        expect(await screen.findByText("Help")).toBeInTheDocument();
         expect(screen.getByText("Shortcuts")).toBeInTheDocument();
         expect(screen.queryByText("Recent Entries")).not.toBeInTheDocument();
     });

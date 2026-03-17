@@ -49,7 +49,7 @@ const getShortcutPreview = (shortcut, currentInput) => {
  * @param {Shortcut[]} props.shortcuts - Array of shortcuts
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
  * @param {string} props.currentInput - Current input text for preview
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export const ShortcutsTab = ({ shortcuts, onShortcutClick, currentInput }) => (
     <VStack spacing={SPACING.md} align="stretch">

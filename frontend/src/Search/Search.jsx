@@ -77,7 +77,7 @@ function loadSearchState() {
  * Search page component.
  * Shows a regex search field at the top and matching entries below.
  * Clicking an entry navigates to its detail page.
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export default function Search() {
     const navigationType = useNavigationType();

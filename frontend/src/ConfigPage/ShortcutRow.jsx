@@ -22,7 +22,7 @@ import {
  * @param {number} props.rowKey - Stable key used for identification
  * @param {(rowKey: number, shortcut: Shortcut) => void} props.onChange - Called when any field changes
  * @param {(rowKey: number) => void} props.onDelete - Called when delete is clicked
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
     const [pattern, replacement, description] = shortcut;

@@ -16,11 +16,11 @@ export default function DescriptionEntry() {
         handleKeyUp,
     } = useDescriptionEntry();
 
+    /** @type {React.RefObject<HTMLInputElement | null>} */
     const inputRef = useRef(null);
 
     useEffect(() => {
         if (inputRef.current) {
-            // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
             inputRef.current.focus();
         }
     }, []);
@@ -29,7 +29,6 @@ export default function DescriptionEntry() {
         setDescription(text);
         // Focus the input after setting the text
         if (inputRef.current) {
-            // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
             inputRef.current.focus();
         }
     };
