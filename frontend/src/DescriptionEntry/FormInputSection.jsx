@@ -24,9 +24,9 @@ import {
  * @param {() => void} props.onSubmit - Submit handler
  * @param {(e: React.KeyboardEvent) => void} props.onKeyUp - Key up handler
  * @param {boolean} props.isSubmitting - Whether form is submitting
- * @param {React.RefObject<HTMLInputElement>} props.inputRef - Input element ref
+ * @param {React.RefObject<HTMLInputElement | null>} props.inputRef - Input element ref
  * @param {number} [props.photoCount] - Number of photos attached
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export const FormInputSection = ({
     description,

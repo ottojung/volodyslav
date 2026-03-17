@@ -18,7 +18,7 @@ import { useCameraLogic } from "./camera_logic.js";
  * Camera component allowing users to capture photos and
  * navigate back to the main application once done.
  *
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export default function Camera() {
     const request_identifier = useMemo(() => {

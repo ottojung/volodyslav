@@ -33,7 +33,7 @@ function getInitialConfig() {
  * @param {Object} props
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
  * @param {string} props.currentInput - Current input value to show preview
- * @returns {JSX.Element|null}
+ * @returns {React.JSX.Element|null}
  */
 export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     /** @type {[Config|null, import("react").Dispatch<import("react").SetStateAction<Config|null>>]} */

@@ -37,7 +37,7 @@ function getInitialKeyedShortcuts() {
 
 /**
  * Page for managing the configuration (shortcuts and help text).
- * @returns {JSX.Element}
+ * @returns {React.JSX.Element}
  */
 export default function ConfigPage() {
     /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
