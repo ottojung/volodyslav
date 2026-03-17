@@ -200,16 +200,20 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
         });
 
-        it("passes the entry input text to the AI estimator", async () => {
+        it("passes the target event and raw basic context to the AI estimator", async () => {
             const { app, capabilities } = await makeInitializedApp(300);
             const input = "food: two slices of toast with butter";
+            const entry = makeEvent("entry-2", input);
 
-            await writeEventsToStore(capabilities, [makeEvent("entry-2", input)]);
+            await writeEventsToStore(capabilities, [entry]);
 
             await request(app)
                 .get("/api/entries/entry-2/additional-properties");
 
-            expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(input);
+            expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
+                expect.objectContaining({ id: "entry-2", input }),
+                [expect.objectContaining({ id: "entry-2", input })]
+            );
         });
 
         it("uses cached value on repeated requests without re-calling AI", async () => {

@@ -1,4 +1,3 @@
-const { deserialize } = require("../../../event");
 const { computeCaloriesForEvent } = require("./compute");
 
 /**
@@ -12,11 +11,10 @@ const { computeCaloriesForEvent } = require("./compute");
 function makeComputor(capabilities) {
     return async (inputs, _oldValue, _bindings) => {
         const firstInput = inputs[0];
-        if (!firstInput || firstInput.type !== "event") {
-            throw new Error("Expected input of type event for calories(e) computor");
+        if (!firstInput || firstInput.type !== "basic_context") {
+            throw new Error("Expected input of type basic_context for calories(e) computor");
         }
-        const ev = deserialize(firstInput.value);
-        return computeCaloriesForEvent(ev, capabilities);
+        return computeCaloriesForEvent(firstInput.eventId, firstInput.events, capabilities);
     };
 }
 

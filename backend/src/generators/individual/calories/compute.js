@@ -3,7 +3,7 @@
  */
 
 /** @typedef {import('../../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
-/** @typedef {import('../../../event').Event} Event */
+/** @typedef {import('../../../event').SerializedEvent} SerializedEvent */
 /** @typedef {import('../../../ai/calories').AICalories} AICalories */
 
 /**
@@ -13,38 +13,51 @@
  */
 
 /**
- * Estimates the calorie count for the given event.
+ * Estimates the calorie count for the given event basic context.
  *
- * Extracts the raw input text from the event and delegates to the AI estimator
- * via capabilities. Returns 'N/A' when the event is null or when the AI
+ * Delegates the target event and raw basic context to the AI estimator.
+ * Returns 'N/A' when context is empty or when the AI
  * determines the entry has no meaningful calorie assignment (e.g. sleep, exercise).
  *
- * @param {Event | null} event - The full event object, or null if not found
+ * @param {string} targetEventId - The event ID whose calories are being estimated
+ * @param {Array<SerializedEvent>} contextEvents - The serialized basic context events
  * @param {CaloriesCapabilities} capabilities - Capabilities providing the AI estimator
  * @returns {Promise<CaloriesEntry>}
  */
-async function computeCaloriesForEvent(event, capabilities) {
-    if (event === null) {
-        capabilities.logger.logDebug({}, "computeCaloriesForEvent: event is null, returning N/A");
+async function computeCaloriesForEvent(targetEventId, contextEvents, capabilities) {
+    if (contextEvents.length === 0) {
+        capabilities.logger.logDebug(
+            {},
+            "computeCaloriesForEvent: context is empty, returning N/A"
+        );
         return { type: "calories", value: "N/A" };
     }
 
-    const inputText = event.input ?? "";
+    const targetEvent = contextEvents.find((event) => event.id === targetEventId);
+    if (targetEvent === undefined) {
+        capabilities.logger.logDebug(
+            { target_event_id: targetEventId },
+            "computeCaloriesForEvent: target event missing from context, returning N/A"
+        );
+        return { type: "calories", value: "N/A" };
+    }
+
     capabilities.logger.logDebug(
         {
-            event_id: event.id,
-            input_text_length: inputText.length,
+            target_event_id: targetEventId,
+            context_size: contextEvents.length,
+            target_event_input_length: targetEvent.input.length,
         },
-        "Computing calories for event",
+        "Computing calories for event basic context",
     );
-    const value = await capabilities.aiCalories.estimateCalories(inputText);
+    const value = await capabilities.aiCalories.estimateCalories(targetEvent, contextEvents);
     capabilities.logger.logInfo(
         {
-            event_id: event.id,
-            input_text_length: inputText.length,
+            target_event_id: targetEventId,
+            context_size: contextEvents.length,
             estimated_calories: value,
         },
-        "Estimated calories for event",
+        "Estimated calories for event basic context",
     );
     return { type: "calories", value };
 }

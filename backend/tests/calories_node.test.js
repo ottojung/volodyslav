@@ -143,17 +143,40 @@ describe("event(e) node", () => {
 // ---------------------------------------------------------------------------
 
 describe("calories(e) node", () => {
-    test("calls estimateCalories with the event input text and returns result", async () => {
+    test("calls estimateCalories with the target event and raw basic context and returns result", async () => {
         const capabilities = await getTestCapabilities(250);
         const iface = capabilities.interface;
         await iface.ensureInitialized();
 
-        await writeEventsToStore(capabilities, [makeEvent("1", "food: a bowl of pasta")]);
+        const targetEvent = makeEvent("1", "food: a bowl of pasta");
+        await writeEventsToStore(capabilities, [targetEvent]);
         const result = await iface._incrementalGraph.pull("calories", ["1"]);
 
         expect(result).toEqual({ type: "calories", value: 250 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "food: a bowl of pasta"
+            expect.objectContaining({ id: "1", input: "food: a bowl of pasta" }),
+            [expect.objectContaining({ id: "1", input: "food: a bowl of pasta" })]
+        );
+    });
+
+    test("uses basic context input rather than only the target event input", async () => {
+        const capabilities = await getTestCapabilities(480);
+        const iface = capabilities.interface;
+        await iface.ensureInitialized();
+
+        await writeEventsToStore(capabilities, [
+            makeEvent("1", "text prep #lunch"),
+            makeEvent("2", "food lunch #lunch"),
+        ]);
+        const result = await iface._incrementalGraph.pull("calories", ["2"]);
+
+        expect(result).toEqual({ type: "calories", value: 480 });
+        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "2", input: "food lunch #lunch" }),
+            [
+                expect.objectContaining({ id: "1", input: "text prep #lunch" }),
+                expect.objectContaining({ id: "2", input: "food lunch #lunch" }),
+            ]
         );
     });
 
@@ -179,7 +202,8 @@ describe("calories(e) node", () => {
 
         expect(result).toEqual({ type: "calories", value: "N/A" });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "sleep 8 hours"
+            expect.objectContaining({ id: "1", input: "sleep 8 hours" }),
+            [expect.objectContaining({ id: "1", input: "sleep 8 hours" })]
         );
     });
 
@@ -193,7 +217,8 @@ describe("calories(e) node", () => {
 
         expect(result).toEqual({ type: "calories", value: 0 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
-            "a cup of plain tea"
+            expect.objectContaining({ id: "1", input: "a cup of plain tea" }),
+            [expect.objectContaining({ id: "1", input: "a cup of plain tea" })]
         );
     });
 
@@ -233,10 +258,14 @@ describe("calories(e) node", () => {
 
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(2);
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenNthCalledWith(
-            1, "food: a slice of bread"
+            1,
+            expect.objectContaining({ id: "1", input: "food: a slice of bread" }),
+            [expect.objectContaining({ id: "1", input: "food: a slice of bread" })]
         );
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenNthCalledWith(
-            2, "food: a large pizza"
+            2,
+            expect.objectContaining({ id: "1", input: "food: a large pizza" }),
+            [expect.objectContaining({ id: "1", input: "food: a large pizza" })]
         );
     });
 

@@ -46,6 +46,7 @@ function migrationCallback(capabilities) {
         await keepNodeType("config", storage);
         await keepNodeType("meta_events", storage);
         await keepNodeType("event", storage);
+        await keepNodeType("basic_context", storage);
         await keepNodeType("calories", storage);
         await keepNodeType("event_transcription", storage);
         await keepNodeType("transcription", storage);

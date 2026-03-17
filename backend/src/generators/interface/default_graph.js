@@ -10,6 +10,7 @@ const {
     metaEvents,
     eventContext,
     event,
+    basicContext,
     calories,
     transcription,
     eventTranscription,
@@ -53,6 +54,8 @@ const {
  *   sorted_events_ascending  -> first_entries(n)           (O(1) slice, parameterised by n)
  *   all_events -> events_count                            (O(1) length)
  *   all_events -> event(e)
+ *   all_events -> basic_context(e)
+ *   basic_context(e) -> calories(e)
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e), transcription(a) -> event_transcription(e, a)
  *   config                                      [standalone, no graph inputs]
@@ -164,8 +167,15 @@ function createDefaultGraphDefinition(capabilities, configBox, allEventsBox) {
             hasSideEffects: false,
         },
         {
+            output: "basic_context(e)",
+            inputs: ["all_events"],
+            computor: basicContext.computor,
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
             output: "calories(e)",
-            inputs: ["event(e)"],
+            inputs: ["basic_context(e)"],
             computor: calories.makeComputor(capabilities),
             isDeterministic: false,
             hasSideEffects: true,
