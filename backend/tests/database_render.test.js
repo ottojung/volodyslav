@@ -446,8 +446,33 @@ describe('renderToFilesystem()', () => {
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/format', content: JSON.stringify('xy-v1') },
-                { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }) },
+                { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('object values are rendered as pretty-printed JSON', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const value = {
+            type: 'event',
+            nested: {
+                count: 1,
+                values: ['a', 'b'],
+            },
+        };
+        const db = await makeSeededDatabase(capabilities, [
+            ['!x!!values!{"head":"event","args":["pretty"]}', value],
+        ]);
+        try {
+            const outputDir = path.join(tmpDir, 'render-pretty');
+            await renderToFilesystem(capabilities, db, outputDir);
+
+            const files = collectFiles(outputDir);
+            const renderedFile = files.find(f => f.relPath === 'x/values/event/pretty');
+            expect(renderedFile).toBeDefined();
+            expect(renderedFile.content).toBe(JSON.stringify(value, null, 2));
         } finally {
             await db.close();
         }

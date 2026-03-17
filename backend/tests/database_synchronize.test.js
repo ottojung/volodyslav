@@ -116,7 +116,7 @@ describe("synchronizeNoLock", () => {
                 ...keyToRelativePath(eventKey).split("/")
             );
             expect(await capabilities.reader.readFileAsText(renderedFile)).toBe(
-                JSON.stringify({ source: "local" })
+                JSON.stringify({ source: "local" }, null, 2)
             );
             expect(
                 await capabilities.checker.directoryExists(
