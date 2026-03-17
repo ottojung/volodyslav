@@ -61,13 +61,7 @@ describe('Camera component', () => {
     });
 
     beforeEach(() => {
-        // Mock window.location to include request_identifier
-        delete window.location;
-        window.location = { 
-            search: '?request_identifier=TEST_ID',
-            origin: 'http://localhost:3000',
-            href: 'http://localhost:3000/?request_identifier=TEST_ID'
-        };
+        window.history.replaceState({}, "", "/?request_identifier=TEST_ID");
 
         // Mock IndexedDB
         const mockStore = new Map();
