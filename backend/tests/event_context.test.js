@@ -151,6 +151,21 @@ describe("getEventBasicContext", () => {
         expect(context).toContain(targetEvent);
     });
 
+    it("includes events with context-enhancing type 'register'", () => {
+        const date1 = fromISOString("2024-01-01T12:00:00.000Z");
+        const date2 = date1.advance(fromMinutes(10));
+
+        const event1 = makeEvent("1", "Earlier #work event", date1, "register");
+        const targetEvent = makeEvent("target", "Current #work status", date2);
+
+        const allEvents = [event1, targetEvent];
+
+        const context = getEventBasicContext(allEvents, targetEvent);
+        expect(context).toHaveLength(2);
+        expect(context).toContain(event1);
+        expect(context).toContain(targetEvent);
+    });
+
     it("handles multiple events with various conditions", () => {
         const date1 = fromISOString("2024-01-01T12:00:00.000Z");
         const date2 = date1.advance(fromMinutes(10));
