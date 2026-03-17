@@ -2,6 +2,7 @@ const { isCommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 const { configureRemoteForAllBranches, ensureCurrentBranch } = require("./branch_setup");
+const { mergeRemoteHostBranches, MergeHostBranchesError, isMergeHostBranchesError } = require("./merge_host_branches");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
@@ -287,9 +288,12 @@ module.exports = {
     makePushable,
     clone,
     pull,
+    mergeRemoteHostBranches,
     push,
     fetchAndResetHard,
     init,
     PushError,
     isPushError,
+    MergeHostBranchesError,
+    isMergeHostBranchesError,
 };

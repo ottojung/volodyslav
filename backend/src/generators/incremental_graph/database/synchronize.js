@@ -59,6 +59,8 @@ const { scanFromFilesystem } = require('./render');
  * Steps:
  * 1. `git add --all && git commit` — capture the latest in-memory state on disk.
  * 2. `git pull && git push` (or reset-to-theirs variant) — sync with the remote.
+ * 3. `git fetch origin` and merge every matching `origin/<hostname>-main`
+ *    branch into the local hostname branch, collecting merge failures by host.
  *
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
@@ -88,7 +90,7 @@ async function synchronizeNoLock(capabilities, options) {
             capabilities,
             CHECKPOINT_WORKING_PATH,
             remoteLocation,
-            options
+            { ...options, mergeHostBranches: true }
         );
 
         // Step 3: reconstruct the live database from the synchronized snapshot.

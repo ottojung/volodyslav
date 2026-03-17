@@ -104,7 +104,7 @@ async function hasOriginRemote(capabilities, workDir) {
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation} origin - Remote location or local location to sync with.
- * @param {{ resetToTheirs?: boolean }} [options] - Optional sync options.
+ * @param {{ resetToTheirs?: boolean, mergeHostBranches?: boolean }} [options] - Optional sync options.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
  */
@@ -114,6 +114,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const headFile = path.join(gitDir, "HEAD");
     const remotePath = origin.url;
     const resetToTheirs = options && options.resetToTheirs;
+    const mergeHostBranches = options && options.mergeHostBranches;
 
     // Determine once, before any retry, whether the local repo exists without
     // a remote configured.  Repos initialised via initializeEmptyRepository
@@ -166,8 +167,15 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     );
                 }
             }
+
+            if (mergeHostBranches) {
+                await gitmethod.mergeRemoteHostBranches(capabilities, workDir);
+            }
         } catch (error) {
             capabilities.logger.logInfo({ repository: remotePath, error }, "Failed to synchronize repository");
+            if (gitmethod.isMergeHostBranchesError(error)) {
+                throw error;
+            }
             if (attempt < 100) {
                 await new Promise(resolve => setTimeout(resolve, 0));
                 return retry();

@@ -153,7 +153,7 @@ Three independent operations that work on the same local copy for different purp
 | | `workingRepository.synchronize` | `gitstore.transaction` | `gitstore.checkpoint` |
 |---|---|---|---|
 | **Purpose** | Bi-directional sync with real remote | Atomically mutate files via temp work tree | Directly commit current working copy state |
-| **Direction** | pull from remote, then push to remote | clone → transform → push to working copy | `add --all` + `commit` on working copy |
+| **Direction** | pull from remote, then push to remote, and for generators optionally merge other fetched hostname branches | clone → transform → push to working copy | `add --all` + `commit` on working copy |
 | **Temp dir** | No | Yes (cleaned up always) | No |
 | **Push to remote** | Yes | No (writes to local working copy only) | No |
 | **Retries** | Up to 100 attempts | Up to `maxAttempts` (default 5) on `PushError` | None |
@@ -169,10 +169,26 @@ Three independent operations that work on the same local copy for different purp
 All clone operations use:
 
 ```
-git clone --depth=1 --single-branch --branch=master
+git clone --depth=1 --no-single-branch --branch=<hostname>-main
 ```
 
-Only the latest commit is fetched. The branch is always `master` (exported from `default_branch.js`). This keeps temp work trees lightweight regardless of how many commits the repository has accumulated.
+Only the latest commit is fetched. The active branch is derived from
+`VOLODYSLAV_HOSTNAME` as `<hostname>-main`, and the hostname must match
+`[0-9a-zA-Z_-]+`. This keeps temp work trees lightweight regardless of how many
+commits the repository has accumulated while still making all remote hostname
+branches discoverable locally.
+
+For the generators database, synchronisation performs one extra reconciliation
+pass after the normal pull/push (or clone/reset) flow:
+
+1. `git fetch origin`
+2. enumerate `refs/remotes/origin/*`
+3. merge every matching `origin/<hostname>-main` branch except the current one
+
+The merge uses `git merge --no-edit --allow-unrelated-histories` because host
+branches may have diverged from separate roots. Merge failures are collected per
+hostname so synchronisation can keep merging the remaining branches and then
+report an organized summary of the hosts that failed.
 
 ---
 
@@ -188,7 +204,7 @@ Only the latest commit is fetched. The branch is always `master` (exported from 
 | `working_repository.js` | Persistent local copy: create, synchronize, expose `.git` path |
 | `wrappers.js` | Thin wrappers over raw `git` calls: `clone`, `pull`, `push`, `commit`, `init`, `makePushable` |
 | `transaction_logging.js` | Structured log messages for every stage of the retry lifecycle |
-| `default_branch.js` | Single constant: `'master'` |
+| `default_branch.js` | Derives the active branch name as `<hostname>-main` |
 
 ---
 
