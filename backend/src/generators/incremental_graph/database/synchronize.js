@@ -18,6 +18,7 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
 } = require('./gitstore');
+const { isMergeHostBranchesError } = require('../../../gitstore/merge_host_branches');
 const { scanFromFilesystem } = require('./render');
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
@@ -75,6 +76,8 @@ async function synchronizeNoLock(capabilities, options) {
     const remoteLocation = { url: remotePath };
     const { getRootDatabase } = require('./index');
     const rootDatabase = await getRootDatabase(capabilities);
+    /** @type {import('../../../gitstore/merge_host_branches').MergeHostBranchesError | null} */
+    let mergeHostBranchesError = null;
 
     try {
         // Step 1: render the current live database into the tracked repository.
@@ -86,12 +89,19 @@ async function synchronizeNoLock(capabilities, options) {
         );
 
         // Step 2: synchronize the rendered repository with the remote.
-        await workingRepository.synchronize(
-            capabilities,
-            CHECKPOINT_WORKING_PATH,
-            remoteLocation,
-            { ...options, mergeHostBranches: true }
-        );
+        try {
+            await workingRepository.synchronize(
+                capabilities,
+                CHECKPOINT_WORKING_PATH,
+                remoteLocation,
+                { ...options, mergeHostBranches: true }
+            );
+        } catch (error) {
+            if (!isMergeHostBranchesError(error)) {
+                throw error;
+            }
+            mergeHostBranchesError = error;
+        }
 
         // Step 3: reconstruct the live database from the synchronized snapshot.
         await transaction(
@@ -107,6 +117,9 @@ async function synchronizeNoLock(capabilities, options) {
                 );
             }
         );
+        if (mergeHostBranchesError !== null) {
+            throw mergeHostBranchesError;
+        }
     } finally {
         await rootDatabase.close();
     }

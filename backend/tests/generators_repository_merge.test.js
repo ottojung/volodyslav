@@ -1,5 +1,6 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
+const { isMergeHostBranchesError } = require("../src/gitstore/merge_host_branches");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubDatetime, stubEnvironment, stubLogger } = require("./stubs");
 
@@ -167,6 +168,8 @@ describe("generators repository host branch merging", () => {
         }
 
         expect(thrownError).not.toBeNull();
+        expect(isMergeHostBranchesError(thrownError)).toBe(true);
+        expect(workingRepository.isWorkingRepositoryError(thrownError)).toBe(false);
         expect(String(thrownError)).toContain(
             "Failed to merge generators database branches:\n- alice:"
         );

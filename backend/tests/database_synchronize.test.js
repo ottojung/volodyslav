@@ -247,4 +247,50 @@ describe("synchronizeNoLock", () => {
             await reopened.close();
         }
     });
+
+    test("on partial host-merge failures, scans back successful merges before rethrowing", async () => {
+        const capabilities = getTestCapabilities();
+        const bobKey = '!x!!values!{"head":"event","args":["bob"]}';
+
+        await capabilities.git.call(
+            "init",
+            "--bare",
+            "--",
+            capabilities.environment.generatorsRepository()
+        );
+        await pushRemoteRepositoryBranch(capabilities, "test-host", [
+            ["!_meta!format", "xy-v1"],
+        ]);
+        await pushRemoteRepositoryBranch(capabilities, "bob", [
+            ["!_meta!format", "xy-v1"],
+            [bobKey, { source: "bob" }],
+        ]);
+        await pushRemoteRepositoryBranch(capabilities, "zed", [
+            ["!_meta!format", "xy-v1"],
+            ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
+        ]);
+
+        const originalGitCall = capabilities.git.call;
+        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+            if (
+                args.includes("merge") &&
+                args.includes("origin/zed-main")
+            ) {
+                throw new Error("Simulated zed merge failure");
+            }
+            return originalGitCall.apply(capabilities.git, args);
+        });
+
+        await expect(synchronizeNoLock(capabilities)).rejects.toThrow(
+            "Failed to merge generators database branches:\n- zed:"
+        );
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(bobKey)).toEqual({ source: "bob" });
+        } finally {
+            await reopened.close();
+        }
+    });
 });

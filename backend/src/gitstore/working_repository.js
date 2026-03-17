@@ -189,6 +189,9 @@ async function synchronize(capabilities, workingPath, origin, options) {
         capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
         await withRetry(capabilities, "synchronize", synchronizeRetry);
     } catch (err) {
+        if (gitmethod.isMergeHostBranchesError(err)) {
+            throw err;
+        }
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
             origin.url
