@@ -73,8 +73,9 @@ function migrationCallback(capabilities) {
 
 /**
  * Deletes all node values.
- * @param {GeneratorsCapabilities} capabilities 
- * @param {MigrationStorage} storage 
+ * @param {GeneratorsCapabilities} capabilities
+ * @param {MigrationStorage} storage
+ * @returns {Promise<void>}
  */
 async function deleteAllCallback(capabilities, storage) {
     // A conservative approach.
