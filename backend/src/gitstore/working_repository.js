@@ -106,7 +106,8 @@ async function hasOriginRemote(capabilities, workDir) {
  * @param {RemoteLocation} origin - Remote location or local location to sync with.
  * @param {{ resetToTheirs?: boolean, mergeHostBranches?: boolean }} [options] - Optional sync options.
  * @returns {Promise<void>}
- * @throws {WorkingRepositoryError}
+ * @throws {WorkingRepositoryError} If synchronization of the working repository fails.
+ * @throws {MergeHostBranchesError} If merging host branches during synchronization fails.
  */
 async function synchronize(capabilities, workingPath, origin, options) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
