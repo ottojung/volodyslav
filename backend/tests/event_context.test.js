@@ -271,4 +271,28 @@ describe("getEventBasicContext", () => {
         expect(context[2]).toBe(event3);
         expect(context[3]).toBe(targetEvent);
     });
+
+    it("excludes events whose input cannot be parsed (brackets in description)", () => {
+        const date1 = fromISOString("2024-01-01T12:00:00.000Z");
+        const date2 = date1.advance(fromMinutes(10));
+
+        // An event stored before the bracket restriction was added to the parser.
+        // Its input contains brackets in the description, which now fails to parse.
+        const unparseable = {
+            id: "1",
+            input: "text note about [something] #work",
+            date: date1,
+            original: "text note about [something] #work",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
+        };
+        const targetEvent = makeEvent("target", "Current #work status", date2);
+
+        const allEvents = [unparseable, targetEvent];
+
+        // Must not throw, even though 'unparseable' has brackets in its description
+        const context = getEventBasicContext(allEvents, targetEvent);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEvent);
+        expect(context).not.toContain(unparseable);
+    });
 });
