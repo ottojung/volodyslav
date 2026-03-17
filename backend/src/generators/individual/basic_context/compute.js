@@ -5,7 +5,7 @@
 const { deserialize } = require("../../../event");
 const { getEventBasicContext } = require("../../event_context");
 const { makeUnchanged } = require("../../incremental_graph");
-const { computeEventForId } = require("../event");
+const { getSerializedEventForIdOrThrow } = require("../event");
 
 /** @typedef {import('../../../event').SerializedEvent} SerializedEvent */
 /** @typedef {import('../../incremental_graph/database/types').BasicContextEntry} BasicContextEntry */
@@ -18,14 +18,13 @@ const { computeEventForId } = require("../event");
  * @returns {BasicContextEntry | Unchanged}
  */
 function computeBasicContextForEventId(eventId, oldValue, serializedEvents) {
-    // Reuse event(e) lookup semantics so callers observe the same not-found error.
-    computeEventForId(eventId, undefined, serializedEvents);
+    const serializedEvent = getSerializedEventForIdOrThrow(eventId, serializedEvents);
     const allEvents = serializedEvents.map(deserialize);
     const event = allEvents.find(
-        (candidate) => candidate.id.identifier === eventId
+        (candidate) => candidate.id.identifier === serializedEvent.id
     );
     if (event === undefined) {
-        throw new Error(`Event with ID ${eventId} not found in all_events`);
+        throw new Error(`Event with ID ${serializedEvent.id} not found in all_events`);
     }
 
     const contextEvents = getEventBasicContext(allEvents, event);
