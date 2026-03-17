@@ -45,6 +45,38 @@ describe("parseInput (frontend entry parsing)", () => {
         });
     });
 
+    test("parses type that contains underscores", () => {
+        expect(parseInput("wake_up")).toEqual({
+            type: "wake_up",
+            description: "",
+            modifiers: {},
+        });
+    });
+
+    test("parses type with underscore and description", () => {
+        expect(parseInput("wake_up had a good sleep")).toEqual({
+            type: "wake_up",
+            description: "had a good sleep",
+            modifiers: {},
+        });
+    });
+
+    test("parses type with underscore and modifier (the reported bug)", () => {
+        expect(parseInput("wake_up [when at 8:10 today]")).toEqual({
+            type: "wake_up",
+            description: "",
+            modifiers: { when: "at 8:10 today" },
+        });
+    });
+
+    test("parses type with underscore, modifier and description", () => {
+        expect(parseInput("wake_up [when at 8:10 today] felt rested")).toEqual({
+            type: "wake_up",
+            description: "felt rested",
+            modifiers: { when: "at 8:10 today" },
+        });
+    });
+
     test("returns empty type when input is empty", () => {
         const result = parseInput("");
         expect(result.type).toBe("");
@@ -229,6 +261,12 @@ describe("parseInput (frontend entry parsing)", () => {
 
     test("throws when modifier appears in the middle of description", () => {
         expect(() => parseInput("TASK some [flag] notes")).toThrow(
+            "Modifiers must appear immediately after the type, before any description text"
+        );
+    });
+
+    test("throws when modifier appears after description with underscore type", () => {
+        expect(() => parseInput("wake_up description [when at 8:10 today]")).toThrow(
             "Modifiers must appear immediately after the type, before any description text"
         );
     });

@@ -41,6 +41,42 @@ describe("parseStructuredInput", () => {
         });
     });
 
+    test("parses type that contains underscores", () => {
+        const result = parseStructuredInput("wake_up");
+        expect(result).toEqual({
+            type: "wake_up",
+            description: "",
+            modifiers: {}
+        });
+    });
+
+    test("parses type with underscore and description", () => {
+        const result = parseStructuredInput("wake_up had a good sleep");
+        expect(result).toEqual({
+            type: "wake_up",
+            description: "had a good sleep",
+            modifiers: {}
+        });
+    });
+
+    test("parses type with underscore and modifier (the reported bug)", () => {
+        const result = parseStructuredInput("wake_up [when at 8:10 today]");
+        expect(result).toEqual({
+            type: "wake_up",
+            description: "",
+            modifiers: { when: "at 8:10 today" }
+        });
+    });
+
+    test("parses type with underscore, modifier and description", () => {
+        const result = parseStructuredInput("wake_up [when at 8:10 today] felt rested");
+        expect(result).toEqual({
+            type: "wake_up",
+            description: "felt rested",
+            modifiers: { when: "at 8:10 today" }
+        });
+    });
+
     test("parses type with leading/trailing whitespace", () => {
         const result = parseStructuredInput("  WORK  ");
         expect(result).toEqual({
@@ -291,6 +327,16 @@ describe("parseStructuredInput", () => {
         let err;
         try {
             parseStructuredInput("TASK text [flag]");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
+    });
+
+    test("throws InputParseError when modifier appears after description with underscore type", () => {
+        let err;
+        try {
+            parseStructuredInput("wake_up description [when at 8:10 today]");
         } catch (e) {
             err = e;
         }
