@@ -13,7 +13,7 @@ const path = require('path');
 const gitstore = require('../../../gitstore');
 const { transaction } = gitstore;
 const workingRepository = gitstore.workingRepository;
-const { isMergeHostBranchesError } = gitstore.mergeHostBranches;
+const isMergeHostBranchesError = gitstore.mergeHostBranches.isMergeHostBranchesError;
 const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,

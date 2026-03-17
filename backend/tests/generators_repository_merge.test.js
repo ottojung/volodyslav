@@ -1,6 +1,7 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
-const { isMergeHostBranchesError } = require("../src/gitstore/merge_host_branches");
+const gitstore = require("../src/gitstore");
+const isMergeHostBranchesError = gitstore.mergeHostBranches.isMergeHostBranchesError;
 const { getMockedRootCapabilities } = require("./spies");
 const { stubDatetime, stubEnvironment, stubLogger } = require("./stubs");
 
