@@ -6,7 +6,7 @@
 
 const path = require("path");
 const gitmethod = require("./wrappers");
-const { configureRemoteForAllBranches } = require("./branch_setup");
+const { cloneAndConfigureRepository } = require("./clone_setup");
 const { git } = require("../executables");
 const { withRetry } = require("../retryer");
 
@@ -65,19 +65,6 @@ function isWorkingRepositoryError(object) {
 }
 
 /**
- * @param {unknown} error
- * @returns {boolean}
- */
-function isDestinationCollisionError(error) {
-    return (
-        error !== null &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error.code === "EEXIST" || error.code === "ENOTEMPTY")
-    );
-}
-
-/**
  * Get local repository path.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {string} workingPath - The path to the working directory.
@@ -128,34 +115,6 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const remotePath = origin.url;
     const resetToTheirs = options && options.resetToTheirs;
 
-    async function cloneAndConfigureRepository() {
-        // Clone into a temp dir so that if post-clone setup fails we only clean
-        // up the temp dir, never workDir which may be in use by a concurrent
-        // successful attempt. After full setup, rename the temp dir atomically
-        // to workDir so only fully-configured repos land at the final path.
-        const tempDir = await capabilities.creator.createTemporaryDirectory(capabilities);
-        try {
-            await gitmethod.clone(capabilities, remotePath, tempDir);
-            await configureRemoteForAllBranches(capabilities, tempDir);
-            await gitmethod.makePushable(capabilities, tempDir);
-            // Atomic rename: if workDir already exists (another concurrent
-            // attempt succeeded first), rename throws ENOTEMPTY/EEXIST.
-            await capabilities.mover.moveDirectory(tempDir, workDir);
-        } catch (error) {
-            // Always clean up the temp dir – it is ours alone.
-            await capabilities.deleter.deleteDirectory(tempDir).catch(() => undefined);
-            if (isDestinationCollisionError(error)) {
-                // Only treat rename collision as success if a valid repo now
-                // exists at the destination (likely created by a concurrent
-                // successful attempt). Otherwise retry/fail.
-                if (await capabilities.checker.fileExists(headFile)) {
-                    return;
-                }
-            }
-            throw error;
-        }
-    }
-
     // Determine once, before any retry, whether the local repo exists without
     // a remote configured.  Repos initialised via initializeEmptyRepository
     // have no remote; we must add origin and accept the remote state via
@@ -191,14 +150,20 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     // including the case where they have unrelated histories.
                     await gitmethod.fetchAndResetHard(capabilities, workDir);
                 } else {
-                    await cloneAndConfigureRepository();
+                    await cloneAndConfigureRepository(
+                        capabilities,
+                        { remotePath, workDir, headFile }
+                    );
                 }
             } else {
                 if (exists) {
                     await gitmethod.pull(capabilities, workDir);
                     await gitmethod.push(capabilities, workDir);
                 } else {
-                    await cloneAndConfigureRepository();
+                    await cloneAndConfigureRepository(
+                        capabilities,
+                        { remotePath, workDir, headFile }
+                    );
                 }
             }
         } catch (error) {
