@@ -171,6 +171,8 @@ async function pull(capabilities, workDirectory) {
     if (!(await ensureCurrentBranch(capabilities, workDirectory))) {
         return;
     }
+    // Merge the already-fetched remote ref rather than calling git-pull,
+    // which would perform a redundant second fetch.
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -180,9 +182,8 @@ async function pull(capabilities, workDirectory) {
         "user.name=volodyslav",
         "-c",
         "user.email=volodyslav",
-        "pull",
-        "origin",
-        branch
+        "merge",
+        `origin/${branch}`
     );
 }
 

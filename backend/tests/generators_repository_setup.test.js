@@ -106,13 +106,14 @@ async function currentBranch(capabilities, workDirectory) {
 }
 
 /**
+ * Returns true when the git call args are a "git clone" command.
+ * Since clones now go to a temp dir (for atomicity), we match any clone
+ * call instead of requiring a specific destination path.
  * @param {Array<string>} args
- * @param {string} workDirectory
  * @returns {boolean}
  */
-function isCloneInto(args, workDirectory) {
-    const cloneIndex = args.indexOf("clone");
-    return cloneIndex !== -1 && args.slice(cloneIndex + 1).includes(workDirectory);
+function isCloneCall(args) {
+    return args.includes("clone");
 }
 
 describe("generators repository setup", () => {
@@ -234,7 +235,7 @@ describe("generators repository setup", () => {
         );
         const originalGitCall = capabilities.git.call;
         stubGit(capabilities, (...args) => {
-            if (isCloneInto(args, workDirectory)) {
+            if (isCloneCall(args)) {
                 cloneAttempts += 1;
             }
             if (
@@ -267,13 +268,9 @@ describe("generators repository setup", () => {
 
         let cloneAttempts = 0;
         let makePushableFailures = 0;
-        const workDirectory = path.join(
-            capabilities.environment.workingDirectory(),
-            "generators-working"
-        );
         const originalGitCall = capabilities.git.call;
         stubGit(capabilities, (...args) => {
-            if (isCloneInto(args, workDirectory)) {
+            if (isCloneCall(args)) {
                 cloneAttempts += 1;
             }
             if (

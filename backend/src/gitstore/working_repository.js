@@ -5,6 +5,7 @@
 //
 
 const path = require("path");
+const fsp = require("fs/promises");
 const gitmethod = require("./wrappers");
 const { configureRemoteForAllBranches } = require("./branch_setup");
 const { git } = require("../executables");
@@ -114,15 +115,28 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const resetToTheirs = options && options.resetToTheirs;
 
     async function cloneAndConfigureRepository() {
-        let cloned = false;
+        // Clone into a temp dir so that if post-clone setup fails we only clean
+        // up the temp dir, never workDir which may be in use by a concurrent
+        // successful attempt. After full setup, rename the temp dir atomically
+        // to workDir so only fully-configured repos land at the final path.
+        const tempDir = await capabilities.creator.createTemporaryDirectory(capabilities);
         try {
-            await gitmethod.clone(capabilities, remotePath, workDir);
-            cloned = true;
-            await configureRemoteForAllBranches(capabilities, workDir);
-            await gitmethod.makePushable(capabilities, workDir);
+            await gitmethod.clone(capabilities, remotePath, tempDir);
+            await configureRemoteForAllBranches(capabilities, tempDir);
+            await gitmethod.makePushable(capabilities, tempDir);
+            // Atomic rename: if workDir already exists (another concurrent
+            // attempt succeeded first), fsp.rename throws ENOTEMPTY/EEXIST.
+            await fsp.rename(tempDir, workDir);
         } catch (error) {
-            if (cloned) {
-                await capabilities.deleter.deleteDirectory(workDir).catch(() => undefined);
+            // Always clean up the temp dir – it is ours alone.
+            await capabilities.deleter.deleteDirectory(tempDir).catch(() => undefined);
+            // workDir exists from another attempt → treat as success.
+            if (
+                error instanceof Object &&
+                "code" in error &&
+                (error.code === "EEXIST" || error.code === "ENOTEMPTY")
+            ) {
+                return;
             }
             throw error;
         }
