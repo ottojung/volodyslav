@@ -25,11 +25,9 @@ function getEventBasicContext(all_events, event) {
         let otherType;
         try {
             otherType = getType(otherEvent);
-        } catch (error) {
-            const body = JSON.stringify(otherEvent.input);
-            throw new Error(`Failed to parse event type for event with id ${otherEvent.id} and body ${body}: ${String(error)}`);
+        } catch (_err) {
+            return false;
         }
-
         if (!isContextEnhancing(otherType)) {
             return false;
         }
