@@ -131,7 +131,7 @@ describe("generators/interface", () => {
             expect(freshness).toBe("up-to-date");
         });
 
-        test("updates all_events through invalidation before recomputing", async () => {
+        test("update() persists all_events immediately (up-to-date after update)", async () => {
             const capabilities = await getTestCapabilities();
             const iface = capabilities.interface;
             await iface.ensureInitialized();
@@ -141,8 +141,9 @@ describe("generators/interface", () => {
 
             await iface.update([makeEvent("event-2", "second")]);
 
+            // With the fix, update() immediately pulls, so the node is always up-to-date.
             await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
-                "potentially-outdated"
+                "up-to-date"
             );
             await expect(iface.pullGraphNode("all_events")).resolves.toMatchObject({
                 type: "all_events",
@@ -158,6 +159,31 @@ describe("generators/interface", () => {
             const iface = capabilities.interface;
             // Should not throw before initialization
             await expect(iface.update([])).resolves.toBeUndefined();
+        });
+
+        test("events survive a simulated restart (synchronizeDatabase reopen)", async () => {
+            // Regression test: events must not reset to [] after a restart.
+            // Before the fix, update() only invalidated all_events without persisting the
+            // new value, so a restart would cause the next pull to recompute from an empty
+            // initial state, wiping all events.
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            await iface.update([
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+
+            // Simulate a restart: close and reopen the database.
+            await iface.synchronizeDatabase();
+
+            // Events must still be present after the restart.
+            const events = await iface.getAllEvents();
+            expect(events).toHaveLength(2);
+            const ids = events.map((e) => e.id.identifier);
+            expect(ids).toContain("event-1");
+            expect(ids).toContain("event-2");
         });
     });
 

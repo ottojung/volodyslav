@@ -22,6 +22,10 @@ async function internalUpdate(interfaceInstance, newEntries) {
     }
     interfaceInstance._allEventsBox.value = newEntries;
     await interfaceInstance._requireInitializedGraph().invalidate("all_events");
+    // Immediately pull to persist the new value to the database so it survives restarts.
+    // Without this, a restart before the next pull would cause the initial empty state to
+    // be computed and stored, resulting in data loss.
+    await interfaceInstance._requireInitializedGraph().pull("all_events");
 }
 
 /**
@@ -36,6 +40,8 @@ async function internalSetConfig(interfaceInstance, config) {
     }
     interfaceInstance._configBox.value = config;
     await interfaceInstance._requireInitializedGraph().invalidate("config");
+    // Immediately pull to persist the new value to the database so it survives restarts.
+    await interfaceInstance._requireInitializedGraph().pull("config");
 }
 
 /**
