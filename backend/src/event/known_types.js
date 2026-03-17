@@ -1,9 +1,10 @@
 
 const registrationType = 'reg';
+const registerType = 'register';
 const textType = 'text';
 const photoType = 'photo';
 
-const knownTypes = [registrationType, textType, photoType];
+const knownTypes = [registrationType, registerType, textType, photoType];
 
 /**
  * Checks if the given event type is context-enhancing.
@@ -13,7 +14,12 @@ const knownTypes = [registrationType, textType, photoType];
  * @returns {boolean}
  */
 function isContextEnhancing(type) {
-    return type === registrationType || type === textType || type === photoType;
+    return (
+        type === registrationType ||
+        type === registerType ||
+        type === textType ||
+        type === photoType
+    );
 }
 
 module.exports = {
