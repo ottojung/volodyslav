@@ -99,4 +99,30 @@ describe("basic context with hyphenated hashtags", () => {
             "exact",
         ]);
     });
+
+    test("computeBasicContextForEventId keeps only exact serialized matches 2", () => {
+        const serializedEvents = [
+            makeSerializedEvent("target", "food [when 0 hours ago] One bottle of yogurt. 100 grams total. Detailed at #yogurt-yoplait1. Small cup of mixed nuts. About 30 grams total. See photo #mixed-nuts-3."),
+            makeSerializedEvent("prefix-only", "text different yogurt #yogurt-yoplait2"),
+            makeSerializedEvent("prefix-only2", "text different yogurt #yogurt-yoplait"),
+            makeSerializedEvent("unrelated", "text unrelated #unrelated"),
+            makeSerializedEvent("unrelated2", "photo unrelated #unrelated2"),
+            makeSerializedEvent("photo1", "photo #yogurt-yoplait1"),
+            makeSerializedEvent("exact", "register #yogurt-yoplait1"),
+            makeSerializedEvent("photo2", "register [phone_take_photo] #mixed-nuts-3"),
+            makeSerializedEvent("photo3", "register [phone_take_photo] #mixed-nuts-3"),
+        ];
+
+        const basicContext = computeBasicContextForEventId(
+            "target",
+            undefined,
+            serializedEvents
+        );
+
+        expect(basicContext).toMatchObject({
+            type: "basic_context",
+            eventId: "target",
+        });
+        expect(basicContext.events.map((event) => event.id)).toEqual(["target", "photo1", "exact", "photo2", "photo3"]);
+    });
 });
