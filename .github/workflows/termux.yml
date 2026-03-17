@@ -5,7 +5,7 @@ jobs:
   termux-arm64-native:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Build the Termux Docker image
         run: |
           docker build --file scripts/termux.dockerfile --tag termux-ci-test .
