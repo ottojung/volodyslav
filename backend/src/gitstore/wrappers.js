@@ -223,11 +223,14 @@ async function push(capabilities, workDirectory) {
  * Fetch from the remote and hard-reset the local branch to the remote state (discard all local changes).
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to reset
+ * @param {string} [resetToHostname] - Optional hostname branch to reset to.
  * @returns {Promise<void>}
  * @throws {Error} When git fetch or reset operation fails
  */
-async function fetchAndResetHard(capabilities, workDirectory) {
-    const branch = defaultBranch(capabilities);
+async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
+    const branch = resetToHostname === undefined
+        ? defaultBranch(capabilities)
+        : `${resetToHostname}-main`;
     await configureRemoteForAllBranches(capabilities, workDirectory);
     await capabilities.git.call(
         "-C",

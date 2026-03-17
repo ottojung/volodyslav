@@ -1,5 +1,6 @@
 const express = require("express");
 const { synchronizeAll, isSynchronizeAllError } = require("../sync");
+const { isValidHostname } = require("../hostname");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
@@ -20,15 +21,15 @@ const { synchronizeAll, isSynchronizeAllError } = require("../sync");
  */
 
 /**
- * @typedef {{ status: "running", started_at: string, reset_to_theirs: boolean, steps: SyncStepResult[] }} RunningSyncState
+ * @typedef {{ status: "running", started_at: string, reset_to_theirs: boolean, reset_to_hostname?: string, steps: SyncStepResult[] }} RunningSyncState
  */
 
 /**
- * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_theirs: boolean, steps: SyncStepResult[] }} SuccessfulSyncState
+ * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_theirs: boolean, reset_to_hostname?: string, steps: SyncStepResult[] }} SuccessfulSyncState
  */
 
 /**
- * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_theirs: boolean, error: SyncErrorResponse, steps: SyncStepResult[] }} FailedSyncState
+ * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_theirs: boolean, reset_to_hostname?: string, error: SyncErrorResponse, steps: SyncStepResult[] }} FailedSyncState
  */
 
 /**
@@ -92,14 +93,14 @@ function makeSyncErrorResponse(error) {
 
 /**
  * @param {Capabilities} capabilities
- * @returns {{ getState: () => SyncState, start: (options: { resetToTheirs?: boolean }) => SyncState }}
+ * @returns {{ getState: () => SyncState, start: (options: { resetToTheirs?: boolean, resetToHostname?: string }) => SyncState }}
  */
 function makeSyncController(capabilities) {
     /** @type {SyncState} */
     let currentState = { status: "idle" };
 
     /**
-     * @param {{ resetToTheirs?: boolean }} options
+     * @param {{ resetToTheirs?: boolean, resetToHostname?: string }} options
      * @returns {SyncState}
      */
     function start(options) {
@@ -108,14 +109,16 @@ function makeSyncController(capabilities) {
         }
 
         const started_at = capabilities.datetime.now().toISOString();
+        const runningHostname = capabilities.environment.hostname();
+        const reset_to_hostname = options.resetToHostname;
         const reset_to_theirs = options.resetToTheirs === true;
 
         /** @type {RunningSyncState} */
-        const runningState = { status: "running", started_at, reset_to_theirs, steps: [] };
+        const runningState = { status: "running", started_at, reset_to_theirs, reset_to_hostname, steps: [] };
         currentState = runningState;
 
         capabilities.logger.logInfo(
-            { started_at, reset_to_theirs },
+            { started_at, reset_to_theirs, reset_to_hostname, runningHostname },
             "Sync started in background"
         );
 
@@ -138,10 +141,11 @@ function makeSyncController(capabilities) {
                     started_at,
                     finished_at,
                     reset_to_theirs,
+                    reset_to_hostname,
                     steps: runningState.steps,
                 };
                 capabilities.logger.logInfo(
-                    { started_at, finished_at, reset_to_theirs },
+                    { started_at, finished_at, reset_to_theirs, reset_to_hostname, runningHostname },
                     "Sync finished successfully"
                 );
             })
@@ -157,6 +161,7 @@ function makeSyncController(capabilities) {
                     started_at,
                     finished_at,
                     reset_to_theirs,
+                    reset_to_hostname,
                     error: syncError,
                     steps: runningState.steps,
                 };
@@ -202,18 +207,33 @@ function makeRouter(capabilities) {
     router.post("/sync", async (req, res) => {
         const body = req.body || {};
         const resetToTheirs = body.reset_to_theirs;
+        const resetToHostname = body.reset_to_hostname;
 
         if (resetToTheirs !== undefined && resetToTheirs !== true) {
             return res.status(400).json({
                 error: `Invalid reset_to_theirs value: ${JSON.stringify(resetToTheirs)}. Must be true or absent.`,
             });
         }
+        if (resetToHostname !== undefined && (typeof resetToHostname !== "string" || !isValidHostname(resetToHostname))) {
+            return res.status(400).json({
+                error: `Invalid reset_to_hostname value: ${JSON.stringify(resetToHostname)}. Must match [0-9A-Za-z_-]+.`,
+            });
+        }
+        if (resetToTheirs === true && resetToHostname !== undefined) {
+            return res.status(400).json({
+                error: "Invalid sync reset payload: use either reset_to_theirs or reset_to_hostname, not both.",
+            });
+        }
 
-        /** @type {{ resetToTheirs?: boolean }} */
-        const options = resetToTheirs === true ? { resetToTheirs: true } : {};
+        /** @type {{ resetToTheirs?: boolean, resetToHostname?: string }} */
+        const options = resetToHostname !== undefined
+            ? { resetToHostname }
+            : resetToTheirs === true
+                ? { resetToTheirs: true }
+                : {};
 
         capabilities.logger.logDebug(
-            { method: req.method, url: req.originalUrl, resetToTheirs, client_ip: req.ip },
+            { method: req.method, url: req.originalUrl, resetToTheirs, resetToHostname, client_ip: req.ip },
             "Sync endpoint called"
         );
 

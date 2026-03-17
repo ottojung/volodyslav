@@ -182,4 +182,42 @@ describe("sync route", () => {
             { name: "generators", status: "error" },
         ]);
     });
+
+    it("starts sync with reset_to_hostname when a custom hostname is provided", async () => {
+        synchronizeAll.mockResolvedValue(undefined);
+        const app = await makeApp();
+
+        const response = await request(app)
+            .post("/api/sync")
+            .send({ reset_to_hostname: "alice" });
+
+        expect(response.statusCode).toBe(202);
+        expect(synchronizeAll).toHaveBeenCalledWith(
+            expect.anything(),
+            { resetToHostname: "alice" },
+            expect.any(Function)
+        );
+    });
+
+    it("rejects invalid reset_to_hostname values", async () => {
+        const app = await makeApp();
+
+        const response = await request(app)
+            .post("/api/sync")
+            .send({ reset_to_hostname: "bad host" });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.body.error).toContain("Invalid reset_to_hostname value");
+    });
+
+    it("rejects payloads that include both reset_to_theirs and reset_to_hostname", async () => {
+        const app = await makeApp();
+
+        const response = await request(app)
+            .post("/api/sync")
+            .send({ reset_to_theirs: true, reset_to_hostname: "alice" });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.body.error).toContain("use either reset_to_theirs or reset_to_hostname");
+    });
 });

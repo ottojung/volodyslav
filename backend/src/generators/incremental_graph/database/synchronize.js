@@ -67,7 +67,7 @@ const { scanFromFilesystem } = require('./render');
  * duration of this call.
  *
  * @param {Capabilities} capabilities 
- * @param {{ resetToTheirs?: boolean }} [options] 
+ * @param {{ resetToTheirs?: boolean, resetToHostname?: string }} [options] 
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */

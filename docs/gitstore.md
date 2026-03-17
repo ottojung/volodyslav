@@ -190,6 +190,17 @@ branches may have diverged from separate roots. Merge failures are collected per
 hostname so synchronisation can keep merging the remaining branches and then
 report an organized summary of the hosts that failed.
 
+### Sync reset targets (`Reset to $HOSTNAME`)
+
+The sync API supports two reset payload forms:
+
+- `{"reset_to_theirs": true}` — reset to the currently running instance branch (`<current-hostname>-main`).
+- `{"reset_to_hostname": "<hostname>"}` — reset to any specific hostname branch (`<hostname>-main`).
+
+When `reset_to_hostname` is provided, the local working branch remains the
+current host branch, but its contents are hard-reset to `origin/<hostname>-main`.
+This is what powers the frontend **Reset to $HOSTNAME** mode.
+
 ---
 
 ## Module Map

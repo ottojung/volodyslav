@@ -76,7 +76,7 @@ function isSynchronizeAllError(object) {
  * dispatch on each type to produce per-destination log messages or responses.
  *
  * @param {Capabilities} capabilities
- * @param {{ resetToTheirs?: boolean }} [options]
+ * @param {{ resetToTheirs?: boolean, resetToHostname?: string }} [options]
  * @param {(step: SyncStepResult) => void} [onStepComplete]
  * @returns {Promise<void>}
  * @throws {SynchronizeAllError}

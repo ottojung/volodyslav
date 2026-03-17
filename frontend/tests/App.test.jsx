@@ -137,7 +137,7 @@ describe("App", () => {
         });
 
         fireEvent.change(screen.getByRole("combobox"), {
-            target: { value: "reset-to-theirs" },
+            target: { value: "reset-to-hostname" },
         });
 
         await waitFor(() => {
@@ -233,11 +233,34 @@ describe("App", () => {
         });
 
         fireEvent.change(screen.getByRole("combobox"), {
-            target: { value: "reset-to-theirs" },
+            target: { value: "reset-to-hostname" },
         });
 
         await waitFor(() => {
             expect(screen.queryByText("Generators")).not.toBeInTheDocument();
         });
+    });
+
+    it("sends a custom reset hostname and shows it in the success message", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({ success: true });
+
+        renderApp();
+
+        fireEvent.change(screen.getByRole("combobox"), {
+            target: { value: "reset-to-hostname" },
+        });
+        fireEvent.change(
+            screen.getByPlaceholderText("Hostname (leave empty for current host)"),
+            { target: { value: "alice" } }
+        );
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(postSync).toHaveBeenCalledWith("alice", expect.any(Function));
+        });
+        expect(
+            screen.getByText("Your local data was reset to match alice-main.")
+        ).toBeInTheDocument();
     });
 });

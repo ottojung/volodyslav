@@ -101,7 +101,7 @@ class InterfaceClass {
         await internalEnsureInitialized(this);
     }
 
-    /** @param {{ resetToTheirs?: boolean }} [options] */
+    /** @param {{ resetToTheirs?: boolean, resetToHostname?: string }} [options] */
     async synchronizeDatabase(options) {
         await internalSynchronizeDatabase(this, options);
     }

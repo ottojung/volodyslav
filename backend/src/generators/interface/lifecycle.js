@@ -108,7 +108,7 @@ async function internalEnsureInitializedWithMigration(
 
 /**
  * @param {InterfaceLifecycleAccess} interfaceInstance
- * @param {{ resetToTheirs?: boolean }} [options]
+ * @param {{ resetToTheirs?: boolean, resetToHostname?: string }} [options]
  */
 async function internalSynchronizeDatabase(interfaceInstance, options) {
     await withExclusiveMode(interfaceInstance._getCapabilities().sleeper, async () => {
@@ -118,7 +118,7 @@ async function internalSynchronizeDatabase(interfaceInstance, options) {
 
 /**
  * @param {InterfaceLifecycleAccess} interfaceInstance
- * @param {{ resetToTheirs?: boolean }} [options]
+ * @param {{ resetToTheirs?: boolean, resetToHostname?: string }} [options]
  * @returns {Promise<void>}
  */
 async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {

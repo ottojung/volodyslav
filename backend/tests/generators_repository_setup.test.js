@@ -106,6 +106,23 @@ async function currentBranch(capabilities, workDirectory) {
 }
 
 /**
+ * @param {object} capabilities
+ * @param {string} workDirectory
+ * @param {string} filePath
+ * @returns {Promise<boolean>}
+ */
+async function hasFileInHead(capabilities, workDirectory, filePath) {
+    return capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "show",
+        `HEAD:${filePath}`
+    ).then(() => true).catch(() => false);
+}
+
+/**
  * Returns true when the git call args are a "git clone" command.
  * Since clones now go to a temp dir (for atomicity), we match any clone
  * call instead of requiring a specific destination path.
@@ -220,6 +237,38 @@ describe("generators repository setup", () => {
             )
         ).toBe(true);
         expect(await currentBranch(capabilities, workDirectory)).toBe("hello-main");
+    });
+
+    test("resetToHostname hard-resets current hostname branch to a different hostname branch", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+        await seedGeneratorsRemote(capabilities, [
+            ["test-host", "test-host.txt", "test host branch"],
+            ["alice", "alice.txt", "alice branch"],
+        ]);
+
+        await workingRepository.synchronize(
+            capabilities,
+            "generators-working",
+            { url: capabilities.environment.generatorsRepository() }
+        );
+
+        await expect(
+            workingRepository.synchronize(
+                capabilities,
+                "generators-working",
+                { url: capabilities.environment.generatorsRepository() },
+                { resetToHostname: "alice" }
+            )
+        ).resolves.toBeUndefined();
+
+        const workDirectory = path.join(
+            capabilities.environment.workingDirectory(),
+            "generators-working"
+        );
+        expect(await currentBranch(capabilities, workDirectory)).toBe("test-host-main");
+        expect(await hasFileInHead(capabilities, workDirectory, "alice.txt")).toBe(true);
+        expect(await hasFileInHead(capabilities, workDirectory, "test-host.txt")).toBe(false);
     });
 
     test("clone setup retries atomically when configuring fetch refspec fails once", async () => {

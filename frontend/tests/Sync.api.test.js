@@ -67,6 +67,22 @@ describe("postSync", () => {
         );
     });
 
+    it("sends reset_to_hostname when a custom hostname reset target is requested", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(200, { status: "success" }));
+
+        await act(async () => {
+            await postSync("alice");
+        });
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            "/api/sync",
+            expect.objectContaining({
+                method: "POST",
+                body: JSON.stringify({ reset_to_hostname: "alice" }),
+            })
+        );
+    });
+
     it("returns detailed error information from the polled sync status", async () => {
         const details = [
             {

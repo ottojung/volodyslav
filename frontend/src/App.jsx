@@ -6,6 +6,7 @@ import {
   VStack,
   Text,
   Select,
+  Input,
   Spinner,
   Divider,
   Alert,
@@ -33,12 +34,15 @@ function makeEmptySyncError() {
 }
 
 /**
- * @param {boolean} resetToTheirs
+ * @param {boolean | string | undefined} resetToTarget
  * @returns {string}
  */
-function makeSyncSuccessMessage(resetToTheirs) {
-  if (resetToTheirs) {
-    return 'Your local data was reset to match the remote copy.';
+function makeSyncSuccessMessage(resetToTarget) {
+  if (resetToTarget === true) {
+    return 'Your local data was reset to match the current host branch.';
+  }
+  if (typeof resetToTarget === 'string') {
+    return `Your local data was reset to match ${resetToTarget}-main.`;
   }
 
   return 'Your local and remote data are now in sync.';
@@ -54,7 +58,8 @@ function makeEmptySyncSteps() {
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
-  const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
+  const [syncMode, setSyncMode] = useState('');
+  const [syncResetHostname, setSyncResetHostname] = useState('');
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState(makeEmptySyncError());
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
@@ -142,11 +147,16 @@ function App() {
 
   /** @param {{ target: { value: string } }} e */
   const handleSyncModeChange = (e) => {
-    setSyncResetToTheirs(e.target.value === 'reset-to-theirs');
+    setSyncMode(e.target.value);
     setSyncState('idle');
     setSyncError(makeEmptySyncError());
     setSyncSuccessMessage('');
     setSyncSteps([]);
+  };
+
+  /** @param {{ target: { value: string } }} e */
+  const handleSyncHostnameChange = (e) => {
+    setSyncResetHostname(e.target.value);
   };
 
   const handleSyncClick = async () => {
@@ -155,13 +165,16 @@ function App() {
     setSyncSuccessMessage('');
     setSyncSteps([]);
 
-    const result = await postSync(syncResetToTheirs || undefined, (steps) => {
+    const nextResetTarget = syncMode === 'reset-to-hostname'
+      ? (syncResetHostname.trim() === '' ? true : syncResetHostname.trim())
+      : undefined;
+    const result = await postSync(nextResetTarget, (steps) => {
       setSyncSteps(steps);
     });
 
     if (result.success) {
       setSyncState('success');
-      setSyncSuccessMessage(makeSyncSuccessMessage(syncResetToTheirs));
+      setSyncSuccessMessage(makeSyncSuccessMessage(nextResetTarget));
       setSyncSteps(result.steps || []);
       setTimeout(() => setSyncState('idle'), 2000);
     } else {
@@ -213,13 +226,22 @@ function App() {
         <VStack spacing={2}>
           <Select
             size="sm"
-            value={syncResetToTheirs ? 'reset-to-theirs' : ''}
+            value={syncMode}
             onChange={handleSyncModeChange}
             w="200px"
           >
             <option value="">Normal sync</option>
-            <option value="reset-to-theirs">Reset to Theirs</option>
+            <option value="reset-to-hostname">Reset to $HOSTNAME</option>
           </Select>
+          {syncMode === 'reset-to-hostname' && (
+            <Input
+              size="sm"
+              value={syncResetHostname}
+              onChange={handleSyncHostnameChange}
+              placeholder="Hostname (leave empty for current host)"
+              w="260px"
+            />
+          )}
           <Button
             colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
             variant="outline"
