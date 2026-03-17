@@ -6,7 +6,7 @@
  *   renderToFilesystem(capabilities, rootDatabase, outputDir)
  *     Dumps every raw LevelDB key/value pair to a directory tree.
  *     Each key is mapped to a relative file path via keyToRelativePath().
- *     Each value is written as a JSON string.
+ *     Each value is written as pretty-printed JSON.
  *
  *   scanFromFilesystem(capabilities, rootDatabase, inputDir)
  *     Restores a database from a directory tree written by renderToFilesystem().
@@ -468,7 +468,7 @@ async function walkFilesRecursively(capabilities, dir) {
  *
  * For each entry in the database:
  *   - The key is mapped to a relative file path via keyToRelativePath().
- *   - The value is JSON-serialised and written to that file.
+ *   - The value is JSON-serialised with indentation and written to that file.
  *
  * Parent directories are created automatically.  The output directory itself
  * is also created if it does not already exist.
@@ -492,7 +492,7 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
     for (const entry of validatedEntries) {
         const absPath = resolveContainedPath(outputDir, entry.relPath);
         const file = await capabilities.creator.createFile(absPath);
-        await capabilities.writer.writeFile(file, JSON.stringify(entry.value));
+        await capabilities.writer.writeFile(file, JSON.stringify(entry.value, null, 2));
     }
     capabilities.logger.logInfo(
         { outputDir, count: validatedEntries.length },
