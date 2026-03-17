@@ -13,12 +13,12 @@ const path = require('path');
 const gitstore = require('../../../gitstore');
 const { transaction } = gitstore;
 const workingRepository = gitstore.workingRepository;
+const { isMergeHostBranchesError } = gitstore.mergeHostBranches;
 const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
 } = require('./gitstore');
-const { isMergeHostBranchesError } = require('../../../gitstore/merge_host_branches');
 const { scanFromFilesystem } = require('./render');
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
@@ -76,7 +76,7 @@ async function synchronizeNoLock(capabilities, options) {
     const remoteLocation = { url: remotePath };
     const { getRootDatabase } = require('./index');
     const rootDatabase = await getRootDatabase(capabilities);
-    /** @type {import('../../../gitstore/merge_host_branches').MergeHostBranchesError | null} */
+    /** @type {Error | null} */
     let mergeHostBranchesError = null;
 
     try {

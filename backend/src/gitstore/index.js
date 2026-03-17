@@ -7,9 +7,11 @@
 const { transaction } = require("./transaction");
 const { checkpoint } = require("./checkpoint");
 const workingRepository = require("./working_repository");
+const mergeHostBranches = require("./merge_host_branches");
 
 module.exports = {
     transaction,
     checkpoint,
     workingRepository,
+    mergeHostBranches,
 };
