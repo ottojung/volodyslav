@@ -64,7 +64,7 @@ function parseModifier(modifier) {
  */
 function parseStructuredInput(input) {
     // Step 1: Extract the type (first word starting with a letter)
-    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    const typeMatch = input.match(/^\s*([A-Za-z]\w*)/);
     if (!typeMatch) {
         throw makeInputParseError("Bad structure of input", input);
     }
@@ -93,16 +93,6 @@ function parseStructuredInput(input) {
 
     // Step 3: Everything remaining is the description
     const description = remainder.trim();
-
-    // Check if description contains patterns that look like modifiers (e.g., [key] or [key value])
-    // This prevents modifiers from appearing after the description has started
-    const modifierLikePattern = /\[[A-Za-z]\w*(?:\s+[^\]]*)?]/;
-    if (modifierLikePattern.test(description)) {
-        throw makeInputParseError(
-            "Modifiers must appear immediately after the type, before any description text",
-            input
-        );
-    }
 
     return {
         type,

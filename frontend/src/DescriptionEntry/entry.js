@@ -43,7 +43,7 @@ class EntryClass {
  */
 function parseInput(input) {
     // Step 1: Extract the type (first word starting with a letter)
-    const typeMatch = input.match(/^\s*([A-Za-z][A-Za-z0-9]*)/);
+    const typeMatch = input.match(/^\s*([A-Za-z]\w*)/);
     if (!typeMatch) {
         return { type: '', description: input.trim(), modifiers: {} };
     }
@@ -69,14 +69,6 @@ function parseInput(input) {
 
     // Step 3: Everything left is the description
     const description = remainder.trim();
-
-    // Modifiers are only valid immediately after type, not inside description.
-    const modifierLikePattern = /\[[A-Za-z]\w*(?:\s+[^\]]*)?]/;
-    if (modifierLikePattern.test(description)) {
-        throw new Error(
-            "Modifiers must appear immediately after the type, before any description text"
-        );
-    }
 
     return { type, description, modifiers };
 }

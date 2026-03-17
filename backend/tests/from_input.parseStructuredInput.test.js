@@ -41,6 +41,15 @@ describe("parseStructuredInput", () => {
         });
     });
 
+    test("parses type that contains underscores", () => {
+        const result = parseStructuredInput("wake_up");
+        expect(result).toEqual({
+            type: "wake_up",
+            description: "",
+            modifiers: {}
+        });
+    });
+
     test("parses type with leading/trailing whitespace", () => {
         const result = parseStructuredInput("  WORK  ");
         expect(result).toEqual({
@@ -234,67 +243,52 @@ describe("parseStructuredInput", () => {
     });
 
     // -------------------------------------------------------------------------
-    // Modifiers after description text — throws
+    // Bracket text after description remains part of description
     // -------------------------------------------------------------------------
 
-    test("throws InputParseError when key-value modifier appears after description", () => {
-        let err;
-        try {
-            parseStructuredInput("WORK description [loc office]");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("accepts key-value-looking bracket text after description", () => {
+        const result = parseStructuredInput("WORK description [loc office]");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "description [loc office]",
+            modifiers: {}
+        });
     });
 
-    test("throws InputParseError when flag modifier appears after description", () => {
-        let err;
-        try {
-            parseStructuredInput("WORK description [done]");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("accepts flag-looking bracket text after description", () => {
+        const result = parseStructuredInput("WORK description [done]");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "description [done]",
+            modifiers: {}
+        });
     });
 
-    test("throws InputParseError when bracket without spaces appears after description", () => {
-        let err;
-        try {
-            parseStructuredInput("task description with [brackets] but no spaces");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("accepts issue reproduction with underscore type and when modifier", () => {
+        const result = parseStructuredInput("wake_up [when at 8:10 today]");
+        expect(result).toEqual({
+            type: "wake_up",
+            description: "",
+            modifiers: { when: "at 8:10 today" }
+        });
     });
 
-    test("throws InputParseError for multiple flag modifiers after description", () => {
-        let err;
-        try {
-            parseStructuredInput("TASK some notes [flag1] [flag2]");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("accepts bracket text in the middle of description", () => {
+        const result = parseStructuredInput("TASK some [flag] notes");
+        expect(result).toEqual({
+            type: "TASK",
+            description: "some [flag] notes",
+            modifiers: {}
+        });
     });
 
-    test("throws InputParseError when modifier appears in the middle of description", () => {
-        let err;
-        try {
-            parseStructuredInput("TASK some [flag] notes");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
-    });
-
-    test("throws InputParseError when modifier-like bracket appears before free text", () => {
-        let err;
-        try {
-            parseStructuredInput("TASK text [flag]");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("accepts multiple bracket groups in description", () => {
+        const result = parseStructuredInput("TASK some notes [flag1] [flag2]");
+        expect(result).toEqual({
+            type: "TASK",
+            description: "some notes [flag1] [flag2]",
+            modifiers: {}
+        });
     });
 
     test("does not throw for digit-starting bracket after description", () => {
@@ -315,14 +309,13 @@ describe("parseStructuredInput", () => {
         });
     });
 
-    test("throws InputParseError when key-value modifier appears after flag in description", () => {
-        let err;
-        try {
-            parseStructuredInput("TASK some notes [done flag] extra");
-        } catch (e) {
-            err = e;
-        }
-        expect(isInputParseError(err)).toBe(true);
+    test("accepts bracket text followed by free text in description", () => {
+        const result = parseStructuredInput("TASK some notes [done flag] extra");
+        expect(result).toEqual({
+            type: "TASK",
+            description: "some notes [done flag] extra",
+            modifiers: {}
+        });
     });
 
     // -------------------------------------------------------------------------
