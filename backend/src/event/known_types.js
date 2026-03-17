@@ -1,10 +1,10 @@
 
 const registrationType = 'reg';
-const registrationAliasType = 'register';
+const registerType = 'register';
 const textType = 'text';
 const photoType = 'photo';
 
-const knownTypes = [registrationType, registrationAliasType, textType, photoType];
+const knownTypes = [registrationType, registerType, textType, photoType];
 
 /**
  * Checks if the given event type is context-enhancing.
@@ -16,7 +16,7 @@ const knownTypes = [registrationType, registrationAliasType, textType, photoType
 function isContextEnhancing(type) {
     return (
         type === registrationType ||
-        type === registrationAliasType ||
+        type === registerType ||
         type === textType ||
         type === photoType
     );
