@@ -1,3 +1,5 @@
+const { isValidHostname } = require("./hostname");
+
 /**
  * This module handles environment variable retrieval and validation.
  */
@@ -10,9 +12,10 @@ class EnvironmentError extends Error {
     /**
      * Custom error class for environment variable errors.
      * @param {string} variableName - The name of the environment variable.
+     * @param {string} [reason]
      */
-    constructor(variableName) {
-        const message = `Environment variable $${variableName} must be set.`;
+    constructor(variableName, reason = "must be set") {
+        const message = `Environment variable $${variableName} ${reason}`;
         super(message);
         this.variableName = variableName;
     }
@@ -88,7 +91,14 @@ function eventLogAssetsRepository() {
 }
 
 function hostname() {
-    return getEnv("VOLODYSLAV_HOSTNAME");
+    const value = getEnv("VOLODYSLAV_HOSTNAME");
+    if (!isValidHostname(value)) {
+        throw new EnvironmentError(
+            "VOLODYSLAV_HOSTNAME",
+            "must match [0-9a-zA-Z_-]+"
+        );
+    }
+    return value;
 }
 
 /**

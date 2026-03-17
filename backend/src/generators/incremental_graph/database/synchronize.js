@@ -13,6 +13,7 @@ const path = require('path');
 const gitstore = require('../../../gitstore');
 const { transaction } = gitstore;
 const workingRepository = gitstore.workingRepository;
+const isMergeHostBranchesError = gitstore.mergeHostBranches.isMergeHostBranchesError;
 const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
@@ -59,6 +60,8 @@ const { scanFromFilesystem } = require('./render');
  * Steps:
  * 1. `git add --all && git commit` — capture the latest in-memory state on disk.
  * 2. `git pull && git push` (or reset-to-theirs variant) — sync with the remote.
+ * 3. `git fetch origin` and merge every matching `origin/<hostname>-main`
+ *    branch into the local hostname branch, collecting merge failures by host.
  *
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
@@ -73,6 +76,8 @@ async function synchronizeNoLock(capabilities, options) {
     const remoteLocation = { url: remotePath };
     const { getRootDatabase } = require('./index');
     const rootDatabase = await getRootDatabase(capabilities);
+    /** @type {Error | null} */
+    let mergeHostBranchesError = null;
 
     try {
         // Step 1: render the current live database into the tracked repository.
@@ -84,12 +89,19 @@ async function synchronizeNoLock(capabilities, options) {
         );
 
         // Step 2: synchronize the rendered repository with the remote.
-        await workingRepository.synchronize(
-            capabilities,
-            CHECKPOINT_WORKING_PATH,
-            remoteLocation,
-            options
-        );
+        try {
+            await workingRepository.synchronize(
+                capabilities,
+                CHECKPOINT_WORKING_PATH,
+                remoteLocation,
+                { ...options, mergeHostBranches: true }
+            );
+        } catch (error) {
+            if (!isMergeHostBranchesError(error)) {
+                throw error;
+            }
+            mergeHostBranchesError = error;
+        }
 
         // Step 3: reconstruct the live database from the synchronized snapshot.
         await transaction(
@@ -105,6 +117,9 @@ async function synchronizeNoLock(capabilities, options) {
                 );
             }
         );
+        if (mergeHostBranchesError !== null) {
+            throw mergeHostBranchesError;
+        }
     } finally {
         await rootDatabase.close();
     }

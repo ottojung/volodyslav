@@ -21,14 +21,13 @@ function getTestCapabilities() {
 
 /**
  * @param {object} capabilities
+ * @param {string} hostname
  * @param {Array<[string, *]>} entries
  * @returns {Promise<void>}
  */
-async function seedRemoteRepository(capabilities, entries) {
-    const branch = defaultBranch(capabilities);
+async function pushRemoteRepositoryBranch(capabilities, hostname, entries) {
+    const branch = `${hostname}-main`;
     const remotePath = capabilities.environment.generatorsRepository();
-    await capabilities.git.call("init", "--bare", "--", remotePath);
-
     const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
     try {
         await capabilities.git.call(
@@ -64,6 +63,25 @@ async function seedRemoteRepository(capabilities, entries) {
     } finally {
         await capabilities.deleter.deleteDirectory(workTree);
     }
+}
+
+/**
+ * @param {object} capabilities
+ * @param {Array<[string, *]>} entries
+ * @returns {Promise<void>}
+ */
+async function seedRemoteRepository(capabilities, entries) {
+    await capabilities.git.call(
+        "init",
+        "--bare",
+        "--",
+        capabilities.environment.generatorsRepository()
+    );
+    await pushRemoteRepositoryBranch(
+        capabilities,
+        capabilities.environment.hostname(),
+        entries
+    );
 }
 
 /**
@@ -199,6 +217,78 @@ describe("synchronizeNoLock", () => {
             const entries = await collectRawEntries(reopened);
             expect(entries.get(firstKey)).toEqual({ source: "first-sync" });
             expect(entries.get(secondKey)).toEqual({ source: "second-sync" });
+        } finally {
+            await reopened.close();
+        }
+    });
+
+    test("merges rendered data from other hostname branches into the live database", async () => {
+        const capabilities = getTestCapabilities();
+        const aliceKey = '!x!!values!{"head":"event","args":["alice"]}';
+        await capabilities.git.call(
+            "init",
+            "--bare",
+            "--",
+            capabilities.environment.generatorsRepository()
+        );
+        await pushRemoteRepositoryBranch(capabilities, "test-host", [["!_meta!format", "xy-v1"]]);
+        await pushRemoteRepositoryBranch(capabilities, "alice", [
+            ["!_meta!format", "xy-v1"],
+            [aliceKey, { source: "alice" }],
+        ]);
+
+        await synchronizeNoLock(capabilities);
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(aliceKey)).toEqual({ source: "alice" });
+        } finally {
+            await reopened.close();
+        }
+    });
+
+    test("on partial host-merge failures, scans back successful merges before rethrowing", async () => {
+        const capabilities = getTestCapabilities();
+        const bobKey = '!x!!values!{"head":"event","args":["bob"]}';
+
+        await capabilities.git.call(
+            "init",
+            "--bare",
+            "--",
+            capabilities.environment.generatorsRepository()
+        );
+        await pushRemoteRepositoryBranch(capabilities, "test-host", [
+            ["!_meta!format", "xy-v1"],
+        ]);
+        await pushRemoteRepositoryBranch(capabilities, "bob", [
+            ["!_meta!format", "xy-v1"],
+            [bobKey, { source: "bob" }],
+        ]);
+        await pushRemoteRepositoryBranch(capabilities, "zed", [
+            ["!_meta!format", "xy-v1"],
+            ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
+        ]);
+
+        const originalGitCall = capabilities.git.call;
+        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+            if (
+                args.includes("merge") &&
+                args.includes("origin/zed-main")
+            ) {
+                throw new Error("Simulated zed merge failure");
+            }
+            return originalGitCall.apply(capabilities.git, args);
+        });
+
+        await expect(synchronizeNoLock(capabilities)).rejects.toThrow(
+            "Failed to merge generators database branches:\n- zed:"
+        );
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(bobKey)).toEqual({ source: "bob" });
         } finally {
             await reopened.close();
         }

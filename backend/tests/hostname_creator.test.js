@@ -17,9 +17,9 @@ describe("environment.hostname()", () => {
     });
 
     it("returns the value of VOLODYSLAV_HOSTNAME when set", () => {
-        process.env.VOLODYSLAV_HOSTNAME = "my-server.example.com";
+        process.env.VOLODYSLAV_HOSTNAME = "my_server-01";
         const env = make();
-        expect(env.hostname()).toBe("my-server.example.com");
+        expect(env.hostname()).toBe("my_server-01");
     });
 
     it("throws EnvironmentError when VOLODYSLAV_HOSTNAME is not set", () => {
@@ -28,10 +28,16 @@ describe("environment.hostname()", () => {
         expect(() => env.hostname()).toThrow("VOLODYSLAV_HOSTNAME");
     });
 
-    it("returns an empty string when VOLODYSLAV_HOSTNAME is set to empty string", () => {
+    it("throws EnvironmentError when VOLODYSLAV_HOSTNAME is empty", () => {
         process.env.VOLODYSLAV_HOSTNAME = "";
         const env = make();
-        expect(env.hostname()).toBe("");
+        expect(() => env.hostname()).toThrow("[0-9a-zA-Z_-]+");
+    });
+
+    it("throws EnvironmentError when VOLODYSLAV_HOSTNAME contains unsupported characters", () => {
+        process.env.VOLODYSLAV_HOSTNAME = "my-server.example.com";
+        const env = make();
+        expect(() => env.hostname()).toThrow("[0-9a-zA-Z_-]+");
     });
 
     it("is included in ensureEnvironmentIsInitialized check", () => {
