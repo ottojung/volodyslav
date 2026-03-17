@@ -183,6 +183,7 @@ async function pull(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "merge",
+        "--no-edit",
         `origin/${branch}`
     );
 }
