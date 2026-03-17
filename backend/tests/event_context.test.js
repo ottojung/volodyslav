@@ -251,6 +251,30 @@ describe("getEventBasicContext", () => {
         expect(context).toContain(targetEvent);
     });
 
+    it("does not throw when an event's input has modifier-like brackets in description", () => {
+        const date1 = fromISOString("2024-01-01T12:00:00.000Z");
+        const date2 = date1.advance(fromMinutes(10));
+
+        // This event has a modifier-like pattern "[done]" in the description,
+        // which would cause parseStructuredInput to throw.
+        const eventWithBadInput = {
+            id: "bad",
+            input: "text Some #work note [done]",
+            date: date1,
+            original: "text Some #work note [done]",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0", hostname: "test-host" },
+        };
+        const targetEvent = makeEvent("target", "Current #work status", date2);
+
+        const allEvents = [eventWithBadInput, targetEvent];
+
+        // Should not throw; the event with the unparseable input is treated as non-context-enhancing.
+        expect(() => getEventBasicContext(allEvents, targetEvent)).not.toThrow();
+        const context = getEventBasicContext(allEvents, targetEvent);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEvent);
+    });
+
     it("returns events in the order they appear in all_events", () => {
         const date1 = fromISOString("2024-01-01T12:00:00.000Z");
         const date2 = date1.advance(fromMinutes(10));

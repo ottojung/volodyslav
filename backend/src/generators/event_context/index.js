@@ -3,6 +3,19 @@
 const { extractHashtags, isContextEnhancing, getType } = require("../../event");
 
 /**
+ * Returns the type of an event, or null if the event's input cannot be parsed.
+ * @param {Event} otherEvent
+ * @returns {string | null}
+ */
+function tryGetType(otherEvent) {
+    try {
+        return getType(otherEvent);
+    } catch (_error) {
+        return null;
+    }
+}
+
+/**
  * This function extracts the basic context of a given event from a list of all events.
  *
  * @param {Array<Event>} all_events
@@ -17,8 +30,10 @@ function getEventBasicContext(all_events, event) {
             return true; // Always include the event itself
         }
 
-        // Check if event type is context-enhancing
-        if (!isContextEnhancing(getType(otherEvent))) {
+        // Check if event type is context-enhancing.
+        // Use tryGetType to avoid crashing when an event's input cannot be parsed.
+        const type = tryGetType(otherEvent);
+        if (type === null || !isContextEnhancing(type)) {
             return false;
         }
 
