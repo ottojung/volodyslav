@@ -10,7 +10,6 @@ const {
     stubLogger,
     stubEnvironment,
     stubDatetime,
-    stubEventLogRepository,
     stubAiCalories,
 } = require("./stubs");
 
@@ -23,7 +22,6 @@ async function getTestCapabilities(defaultCalories = "N/A") {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    await stubEventLogRepository(capabilities);
     stubAiCalories(capabilities, defaultCalories);
     return capabilities;
 }
@@ -78,8 +76,6 @@ describe("event(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
-        await iface.update();
-
         const result = await iface._incrementalGraph.pull("event", ["1"]);
         expect(result).toMatchObject({
             type: "event",
@@ -93,8 +89,6 @@ describe("event(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
-        await iface.update();
-
         await expect(
             iface._incrementalGraph.pull("event", ["999"])
         ).rejects.toThrow("Event with ID 999 not found in all_events");
@@ -106,12 +100,10 @@ describe("event(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "sleep 8 hours")]);
-        await iface.update();
         const first = await iface._incrementalGraph.pull("event", ["1"]);
         expect(first).toMatchObject({ type: "event", value: { id: "1", input: "sleep 8 hours" } });
 
         await replaceEventInStore(capabilities, makeEvent("1", "food: two eggs"));
-        await iface.update();
         const second = await iface._incrementalGraph.pull("event", ["1"]);
         expect(second).toMatchObject({ type: "event", value: { id: "1", input: "food: two eggs" } });
     });
@@ -122,8 +114,6 @@ describe("event(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "")]);
-        await iface.update();
-
         const result = await iface._incrementalGraph.pull("event", ["1"]);
         expect(result).toMatchObject({ type: "event", value: { id: "1", input: "" } });
     });
@@ -138,8 +128,6 @@ describe("event(e) node", () => {
             makeEvent("2", "sleep 7 hours"),
             makeEvent("3", "food: apple"),
         ]);
-        await iface.update();
-
         const r1 = await iface._incrementalGraph.pull("event", ["1"]);
         const r2 = await iface._incrementalGraph.pull("event", ["2"]);
         const r3 = await iface._incrementalGraph.pull("event", ["3"]);
@@ -161,7 +149,6 @@ describe("calories(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a bowl of pasta")]);
-        await iface.update();
         const result = await iface._incrementalGraph.pull("calories", ["1"]);
 
         expect(result).toEqual({ type: "calories", value: 250 });
@@ -176,8 +163,6 @@ describe("calories(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: burger")]);
-        await iface.update();
-
         await expect(
             iface._incrementalGraph.pull("calories", ["999"])
         ).rejects.toThrow("Event with ID 999 not found in all_events");
@@ -190,7 +175,6 @@ describe("calories(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "sleep 8 hours")]);
-        await iface.update();
         const result = await iface._incrementalGraph.pull("calories", ["1"]);
 
         expect(result).toEqual({ type: "calories", value: "N/A" });
@@ -205,7 +189,6 @@ describe("calories(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "a cup of plain tea")]);
-        await iface.update();
         const result = await iface._incrementalGraph.pull("calories", ["1"]);
 
         expect(result).toEqual({ type: "calories", value: 0 });
@@ -220,8 +203,6 @@ describe("calories(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
-        await iface.update();
-
         const first = await iface._incrementalGraph.pull("calories", ["1"]);
         expect(first).toEqual({ type: "calories", value: 100 });
 
@@ -242,13 +223,11 @@ describe("calories(e) node", () => {
         await iface.ensureInitialized();
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a slice of bread")]);
-        await iface.update();
         const first = await iface._incrementalGraph.pull("calories", ["1"]);
         expect(first).toEqual({ type: "calories", value: 100 });
 
         // Replace the event with new content
         await replaceEventInStore(capabilities, makeEvent("1", "food: a large pizza"));
-        await iface.update();
         const second = await iface._incrementalGraph.pull("calories", ["1"]);
         expect(second).toEqual({ type: "calories", value: 300 });
 
@@ -276,8 +255,6 @@ describe("calories(e) node", () => {
             makeEvent("2", "sleep 8 hours"),
             makeEvent("3", "food: a large steak"),
         ]);
-        await iface.update();
-
         const c1 = await iface._incrementalGraph.pull("calories", ["1"]);
         const c2 = await iface._incrementalGraph.pull("calories", ["2"]);
         const c3 = await iface._incrementalGraph.pull("calories", ["3"]);

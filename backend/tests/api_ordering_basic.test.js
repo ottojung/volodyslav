@@ -30,33 +30,34 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
-                { rawInput: "test - Oldest entry" },
-                { rawInput: "test - Newest entry" },
-                { rawInput: "test - Middle entry" },
+                {
+                    rawInput: "test - Oldest entry",
+                    date: fromISOString("2023-01-01T10:00:00Z"),
+                },
+                {
+                    rawInput: "test - Newest entry",
+                    date: fromISOString("2023-01-03T10:00:00Z"),
+                },
+                {
+                    rawInput: "test - Middle entry",
+                    date: fromISOString("2023-01-02T10:00:00Z"),
+                },
             ];
 
-            // Mock datetime to return different times for each entry
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime
-            ); // Oldest
+            capabilities.datetime.now.mockReturnValueOnce(entries[0].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[0])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime + 2 * 24 * 60 * 60 * 1000
-            ); // Newest
+            capabilities.datetime.now.mockReturnValueOnce(entries[1].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[1])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime + 24 * 60 * 60 * 1000
-            ); // Middle
+            capabilities.datetime.now.mockReturnValueOnce(entries[2].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[2])
@@ -80,23 +81,24 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
-                { rawInput: "test - First" },
-                { rawInput: "test - Second" },
+                {
+                    rawInput: "test - First",
+                    date: fromISOString("2023-01-01T10:00:00Z"),
+                },
+                {
+                    rawInput: "test - Second",
+                    date: fromISOString("2023-01-02T10:00:00Z"),
+                },
             ];
 
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime
-            );
+            capabilities.datetime.now.mockReturnValueOnce(entries[0].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[0])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime + 24 * 60 * 60 * 1000
-            );
+            capabilities.datetime.now.mockReturnValueOnce(entries[1].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[1])
@@ -118,23 +120,24 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
-                { rawInput: "test - Second" },
-                { rawInput: "test - First" },
+                {
+                    rawInput: "test - Second",
+                    date: fromISOString("2023-01-02T10:00:00Z"),
+                },
+                {
+                    rawInput: "test - First",
+                    date: fromISOString("2023-01-01T10:00:00Z"),
+                },
             ];
 
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime + 24 * 60 * 60 * 1000
-            ); // Second (newer)
+            capabilities.datetime.now.mockReturnValueOnce(entries[0].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[0])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(
-                baseTime
-            ); // First (older)
+            capabilities.datetime.now.mockReturnValueOnce(entries[1].date);
             await request(app)
                 .post("/api/entries")
                 .send(entries[1])

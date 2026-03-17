@@ -12,7 +12,6 @@ const {
     stubLogger,
     stubEnvironment,
     stubDatetime,
-    stubEventLogRepository,
 } = require("./stubs");
 
 /**
@@ -24,7 +23,6 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    await stubEventLogRepository(capabilities);
     await stubGeneratorsRepository(capabilities);
     return capabilities;
 }
@@ -55,8 +53,7 @@ function makeEvent(id, dateIso, type = "text", description = `Event ${id}`) {
 }
 
 /**
- * Writes an array of events into the event-log gitstore via a transaction
- * and then triggers an incremental graph update.
+ * Writes an array of events into the incremental graph-backed event log.
  * @param {object} capabilities
  * @param {Array<object>} events
  */
@@ -66,7 +63,6 @@ async function writeEventsAndUpdate(capabilities, events) {
             storage.addEntry(ev, []);
         }
     });
-    await capabilities.interface.update();
 }
 
 /**

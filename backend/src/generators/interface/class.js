@@ -6,6 +6,8 @@
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
+/** @typedef {import('../individual/all_events/wrapper').AllEventsBox} AllEventsBox */
+/** @typedef {import('../individual/config/wrapper').ConfigBox} ConfigBox */
 
 const {
     internalEnsureInitialized,
@@ -23,6 +25,7 @@ const {
     internalGetModificationTime,
     internalInvalidateGraphNode,
     internalPullGraphNode,
+    internalSetConfig,
     internalUpdate,
 } = require("./graph_api");
 const {
@@ -57,6 +60,18 @@ class InterfaceClass {
     _database;
 
     /**
+     * Boxed event list captured by the all_events computor.
+     * @type {AllEventsBox | null}
+     */
+    _allEventsBox;
+
+    /**
+     * Boxed config captured by the config computor.
+     * @type {ConfigBox | null}
+     */
+    _configBox;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
@@ -64,6 +79,8 @@ class InterfaceClass {
         this._getCapabilities = getCapabilities;
         this._incrementalGraph = null;
         this._database = null;
+        this._allEventsBox = null;
+        this._configBox = null;
     }
 
     /**
@@ -88,9 +105,20 @@ class InterfaceClass {
         await internalSynchronizeDatabase(this, options);
     }
 
-    /** @returns {Promise<void>} */
-    async update() {
-        await internalUpdate(this);
+    /**
+     * @param {Array<Event>} newEntries
+     * @returns {Promise<void>}
+     */
+    async update(newEntries) {
+        await internalUpdate(this, newEntries);
+    }
+
+    /**
+     * @param {import('../../config/structure').Config | null} config
+     * @returns {Promise<void>}
+     */
+    async setConfig(config) {
+        await internalSetConfig(this, config);
     }
 
     /**

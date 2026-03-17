@@ -71,11 +71,11 @@ describe("App", () => {
         fetchVersion.mockResolvedValue("1.2.3");
         postSync.mockResolvedValue({
             success: false,
-            error: "Sync failed: Event log sync failed: git push failed",
+            error: "Sync failed: Generators database sync failed: git push failed",
             details: [
                 {
-                    name: "EventLogSyncError",
-                    message: "Event log sync failed: git push failed",
+                    name: "GeneratorsSyncError",
+                    message: "Generators database sync failed: git push failed",
                     causes: ["git push failed"],
                 },
             ],
@@ -90,10 +90,10 @@ describe("App", () => {
         });
 
         expect(
-            screen.getByText("Sync failed: Event log sync failed: git push failed")
+            screen.getByText("Sync failed: Generators database sync failed: git push failed")
         ).toBeInTheDocument();
-        expect(screen.getByText("EventLogSyncError")).toBeInTheDocument();
-        expect(screen.getByText("Event log sync failed: git push failed")).toBeInTheDocument();
+        expect(screen.getByText("GeneratorsSyncError")).toBeInTheDocument();
+        expect(screen.getByText("Generators database sync failed: git push failed")).toBeInTheDocument();
         expect(screen.getByText("git push failed")).toBeInTheDocument();
     });
 
@@ -150,7 +150,6 @@ describe("App", () => {
         postSync.mockResolvedValue({
             success: true,
             steps: [
-                { name: "event_log", status: "success" },
                 { name: "generators", status: "success" },
                 { name: "assets", status: "success" },
             ],
@@ -164,10 +163,9 @@ describe("App", () => {
             expect(screen.getByText("Sync complete")).toBeInTheDocument();
         });
 
-        expect(screen.getByText("Event Log")).toBeInTheDocument();
         expect(screen.getByText("Generators")).toBeInTheDocument();
         expect(screen.getByText("Assets")).toBeInTheDocument();
-        expect(screen.getAllByText("done")).toHaveLength(3);
+        expect(screen.getAllByText("done")).toHaveLength(2);
     });
 
     it("shows individual step results when some steps fail", async () => {
@@ -183,7 +181,6 @@ describe("App", () => {
                 },
             ],
             steps: [
-                { name: "event_log", status: "success" },
                 { name: "generators", status: "error" },
             ],
         });
@@ -196,9 +193,7 @@ describe("App", () => {
             expect(screen.getByText("Sync failed")).toBeInTheDocument();
         });
 
-        expect(screen.getByText("Event Log")).toBeInTheDocument();
         expect(screen.getByText("Generators")).toBeInTheDocument();
-        expect(screen.getByText("done")).toBeInTheDocument();
         expect(screen.getByText("failed")).toBeInTheDocument();
     });
 
@@ -206,8 +201,8 @@ describe("App", () => {
         fetchVersion.mockResolvedValue("1.2.3");
 
         postSync.mockImplementation((_resetToTheirs, onProgress) => {
-            onProgress?.([{ name: "event_log", status: "success" }]);
-            return Promise.resolve({ success: true, steps: [{ name: "event_log", status: "success" }] });
+            onProgress?.([{ name: "generators", status: "success" }]);
+            return Promise.resolve({ success: true, steps: [{ name: "generators", status: "success" }] });
         });
 
         renderApp();
@@ -215,7 +210,7 @@ describe("App", () => {
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {
-            expect(screen.getByText("Event Log")).toBeInTheDocument();
+            expect(screen.getByText("Generators")).toBeInTheDocument();
         });
     });
 
@@ -224,7 +219,6 @@ describe("App", () => {
         postSync.mockResolvedValue({
             success: true,
             steps: [
-                { name: "event_log", status: "success" },
                 { name: "generators", status: "success" },
                 { name: "assets", status: "success" },
             ],
@@ -235,7 +229,7 @@ describe("App", () => {
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {
-            expect(screen.getByText("Event Log")).toBeInTheDocument();
+            expect(screen.getByText("Generators")).toBeInTheDocument();
         });
 
         fireEvent.change(screen.getByRole("combobox"), {
@@ -243,7 +237,7 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.queryByText("Event Log")).not.toBeInTheDocument();
+            expect(screen.queryByText("Generators")).not.toBeInTheDocument();
         });
     });
 });

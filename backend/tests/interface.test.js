@@ -11,7 +11,7 @@ const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
 const { stubGeneratorsRepository } = require("./stub_generators_repository");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger, stubEnvironment, stubDatetime, stubEventLogRepository } = require("./stubs");
+const { stubLogger, stubEnvironment, stubDatetime } = require("./stubs");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -26,7 +26,6 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    await stubEventLogRepository(capabilities);
     await stubGeneratorsRepository(capabilities);
     return capabilities;
 }
@@ -59,18 +58,6 @@ async function writeEventsToStore(capabilities, events) {
     });
 }
 
-/**
- * Replaces an event in the event store by deleting the old one and adding the new one.
- * @param {object} capabilities
- * @param {object} event
- */
-async function replaceEventInStore(capabilities, event) {
-    await transaction(capabilities, async (storage) => {
-        storage.deleteEntry(event.id);
-        storage.addEntry(event, []);
-    });
-}
-
 describe("generators/interface", () => {
     describe("makeInterface()", () => {
         test("creates and returns an interface instance", async () => {
@@ -87,11 +74,10 @@ describe("generators/interface", () => {
             const iface = capabilities.interface;
             await iface.ensureInitialized();
 
-            await writeEventsToStore(capabilities, [
+            await iface.update([
                 makeEvent("event-1", "First event"),
                 makeEvent("event-2", "Second event"),
             ]);
-            await iface.update();
 
             const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
@@ -108,19 +94,17 @@ describe("generators/interface", () => {
             const iface = capabilities.interface;
             await iface.ensureInitialized();
 
-            await writeEventsToStore(capabilities, [
-                makeEvent("event-1", "original text"),
-            ]);
-            await iface.update();
+            await iface.update([makeEvent("event-1", "original text")]);
 
             let result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(1);
             expect(result.events[0].id).toBe("event-1");
 
             // Replace event-1 with new content and add event-2
-            await replaceEventInStore(capabilities, makeEvent("event-1", "updated text"));
-            await writeEventsToStore(capabilities, [makeEvent("event-2", "new event")]);
-            await iface.update();
+            await iface.update([
+                makeEvent("event-1", "updated text"),
+                makeEvent("event-2", "new event"),
+            ]);
 
             result = await iface._incrementalGraph.pull("all_events");
             expect(result.events).toHaveLength(2);
@@ -137,7 +121,7 @@ describe("generators/interface", () => {
             const iface = capabilities.interface;
             await iface.ensureInitialized();
 
-            await iface.update();
+            await iface.update([]);
 
             const result = await iface._incrementalGraph.pull("all_events");
             expect(result).toBeDefined();
@@ -147,11 +131,33 @@ describe("generators/interface", () => {
             expect(freshness).toBe("up-to-date");
         });
 
+        test("updates all_events through invalidation before recomputing", async () => {
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            await iface.update([makeEvent("event-1", "first")]);
+            await iface.pullGraphNode("all_events");
+
+            await iface.update([makeEvent("event-2", "second")]);
+
+            await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
+                "potentially-outdated"
+            );
+            await expect(iface.pullGraphNode("all_events")).resolves.toMatchObject({
+                type: "all_events",
+                events: [{ id: "event-2" }],
+            });
+            await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
+                "up-to-date"
+            );
+        });
+
         test("is a no-op before ensureInitialized()", async () => {
             const capabilities = await getTestCapabilities();
             const iface = capabilities.interface;
             // Should not throw before initialization
-            await expect(iface.update()).resolves.toBeUndefined();
+            await expect(iface.update([])).resolves.toBeUndefined();
         });
     });
 
@@ -202,7 +208,6 @@ describe("generators/interface", () => {
             ];
 
             await writeEventsToStore(capabilities, events);
-            await iface.update();
 
             // Get context for first event
             const context = await iface.getEventBasicContext(events[0]);
@@ -223,7 +228,6 @@ describe("generators/interface", () => {
             const events = [makeEvent("1", "Event without hashtags")];
 
             await writeEventsToStore(capabilities, events);
-            await iface.update();
 
             const context = await iface.getEventBasicContext(events[0]);
 
@@ -239,7 +243,6 @@ describe("generators/interface", () => {
             const events = [makeEvent("1", "Test #tag event")];
 
             await writeEventsToStore(capabilities, events);
-            await iface.update();
 
             // Get context - this should trigger propagation
             const context = await iface.getEventBasicContext(events[0]);

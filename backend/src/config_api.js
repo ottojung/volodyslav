@@ -1,5 +1,3 @@
-const { transaction } = require("./event_log_storage");
-
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -60,9 +58,7 @@ async function getConfig(capabilities) {
  * @returns {Promise<void>}
  */
 async function setConfig(capabilities, config) {
-    await transaction(capabilities, async (storage) => {
-        storage.setConfig(config);
-    });
+    await capabilities.interface.setConfig(config);
 
     capabilities.logger.logInfo(
         {

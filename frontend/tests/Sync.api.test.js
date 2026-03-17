@@ -70,8 +70,8 @@ describe("postSync", () => {
     it("returns detailed error information from the polled sync status", async () => {
         const details = [
             {
-                name: "EventLogSyncError",
-                message: "Event log sync failed: git push failed",
+                name: "GeneratorsSyncError",
+                message: "Generators database sync failed: git push failed",
                 causes: ["git push failed"],
             },
         ];
@@ -80,7 +80,7 @@ describe("postSync", () => {
             .mockResolvedValueOnce(makeResponse(500, {
                 status: "error",
                 error: {
-                    message: "Sync failed: Event log sync failed: git push failed",
+                    message: "Sync failed: Generators database sync failed: git push failed",
                     details,
                 },
             }));
@@ -92,14 +92,13 @@ describe("postSync", () => {
 
         expect(result).toEqual({
             success: false,
-            error: "Sync failed: Event log sync failed: git push failed",
+            error: "Sync failed: Generators database sync failed: git push failed",
             details,
         });
     });
 
     it("returns steps from the final success response", async () => {
         const steps = [
-            { name: "event_log", status: "success" },
             { name: "generators", status: "success" },
             { name: "assets", status: "success" },
         ];
@@ -117,7 +116,6 @@ describe("postSync", () => {
 
     it("returns steps from the final error response", async () => {
         const steps = [
-            { name: "event_log", status: "success" },
             { name: "generators", status: "error" },
         ];
         const details = [
@@ -152,11 +150,11 @@ describe("postSync", () => {
     });
 
     it("calls onProgress with intermediate steps while the sync is running", async () => {
-        const intermediateSteps = [{ name: "event_log", status: "success" }];
+        const intermediateSteps = [{ name: "generators", status: "success" }];
         global.fetch
             .mockResolvedValueOnce(makeResponse(202, { status: "running", steps: intermediateSteps }))
             .mockResolvedValueOnce(makeResponse(202, { status: "running", steps: intermediateSteps }))
-            .mockResolvedValueOnce(makeResponse(200, { status: "success", steps: [...intermediateSteps, { name: "generators", status: "success" }] }));
+            .mockResolvedValueOnce(makeResponse(200, { status: "success", steps: [...intermediateSteps, { name: "assets", status: "success" }] }));
 
         const onProgress = jest.fn();
 

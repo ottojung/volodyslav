@@ -79,10 +79,6 @@ function eventLogAssetsDirectory() {
     return getEnv("VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY");
 }
 
-function eventLogRepository() {
-    return getEnv("VOLODYSLAV_EVENT_LOG_REPOSITORY");
-}
-
 function generatorsRepository() {
     return getEnv("VOLODYSLAV_GENERATORS_REPOSITORY");
 }
@@ -109,7 +105,6 @@ function ensureEnvironmentIsInitialized(environment) {
     environment.logFile();
     environment.diaryAudiosDirectory();
     environment.eventLogAssetsDirectory();
-    environment.eventLogRepository();
     environment.generatorsRepository();
     environment.eventLogAssetsRepository();
     environment.hostname();
@@ -129,7 +124,6 @@ function make() {
         logFile,
         diaryAudiosDirectory,
         eventLogAssetsDirectory,
-        eventLogRepository,
         generatorsRepository,
         eventLogAssetsRepository,
         hostname,

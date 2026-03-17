@@ -6,15 +6,35 @@
  * @typedef {object} InterfaceGraphAccess
  * @property {() => Promise<void>} ensureInitialized
  * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
+ * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
+ * @property {import('../individual/config/wrapper').ConfigBox | null} _configBox
  */
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
+ * @param {Array<import('../../event').Event>} newEntries
  * @returns {Promise<void>}
  */
-async function internalUpdate(interfaceInstance) {
+async function internalUpdate(interfaceInstance, newEntries) {
     await interfaceInstance.ensureInitialized();
+    if (interfaceInstance._allEventsBox === null) {
+        throw new Error("Impossible: expected all_events box to be initialized");
+    }
+    interfaceInstance._allEventsBox.value = newEntries;
     await interfaceInstance._requireInitializedGraph().invalidate("all_events");
+}
+
+/**
+ * @param {InterfaceGraphAccess} interfaceInstance
+ * @param {import('../../config/structure').Config | null} config
+ * @returns {Promise<void>}
+ */
+async function internalSetConfig(interfaceInstance, config) {
+    await interfaceInstance.ensureInitialized();
+    if (interfaceInstance._configBox === null) {
+        throw new Error("Impossible: expected config box to be initialized");
+    }
+    interfaceInstance._configBox.value = config;
     await interfaceInstance._requireInitializedGraph().invalidate("config");
 }
 
@@ -121,5 +141,6 @@ module.exports = {
     internalGetModificationTime,
     internalInvalidateGraphNode,
     internalPullGraphNode,
+    internalSetConfig,
     internalUpdate,
 };

@@ -38,13 +38,13 @@ const {
 /**
  * Creates the default graph definition for the incremental graph.
  *
- * The `all_events` node reads events directly from the git-backed event log
- * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
- * causes the next pull to re-read from disk.
+ * The `all_events` node is persisted directly in the incremental graph.
+ * `InterfaceClass.update(newEntries)` writes the full serialized event list
+ * into the graph, so recomputes never need to read a separate event-log file.
  *
- * The `config` node reads config.json directly from the git-backed event log
- * storage on every recompute.  Invalidating it (via `InterfaceClass.update()`)
- * causes the next pull to re-read from disk.
+ * The `config` node is persisted directly in the incremental graph.
+ * `InterfaceClass.setConfig(config)` writes the full config value via the
+ * invalidate/recompute path, so recomputes never need to read config from disk.
  *
  * Graph adjacency:
  *   all_events -> sorted_events_descending
@@ -58,21 +58,23 @@ const {
  *   config                                      [standalone, no graph inputs]
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
+ * @param {import('../individual/config/wrapper').ConfigBox} configBox
+ * @param {import('../individual/all_events/wrapper').AllEventsBox} allEventsBox
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(capabilities) {
+function createDefaultGraphDefinition(capabilities, configBox, allEventsBox) {
     return [
         {
             output: "config",
             inputs: [],
-            computor: config.makeComputor(capabilities),
+            computor: config.makeComputor(configBox, capabilities),
             isDeterministic: false,
             hasSideEffects: false,
         },
         {
             output: "all_events",
             inputs: [],
-            computor: allEvents.makeComputor(capabilities),
+            computor: allEvents.makeComputor(allEventsBox, capabilities),
             isDeterministic: false,
             hasSideEffects: false,
         },

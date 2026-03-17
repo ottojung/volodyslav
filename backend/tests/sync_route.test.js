@@ -72,8 +72,8 @@ describe("sync route", () => {
             name: "SynchronizeAllError",
             errors: [
                 {
-                    name: "EventLogSyncError",
-                    message: "Event log sync failed: git push failed",
+                    name: "GeneratorsSyncError",
+                    message: "Generators database sync failed: git push failed",
                     cause: new Error("git push failed"),
                 },
             ],
@@ -93,11 +93,11 @@ describe("sync route", () => {
             status: "error",
             reset_to_theirs: true,
             error: {
-                message: "Sync failed: Event log sync failed: git push failed",
+                message: "Sync failed: Generators database sync failed: git push failed",
                 details: [
                     {
-                        name: "EventLogSyncError",
-                        message: "Event log sync failed: git push failed",
+                        name: "GeneratorsSyncError",
+                        message: "Generators database sync failed: git push failed",
                         causes: ["git push failed"],
                     },
                 ],
@@ -122,7 +122,6 @@ describe("sync route", () => {
         const deferred = makeDeferred();
 
         synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
-            onStepComplete?.({ name: "event_log", status: "success" });
             onStepComplete?.({ name: "generators", status: "success" });
             return deferred.promise;
         });
@@ -133,7 +132,6 @@ describe("sync route", () => {
         const runningResponse = await request(app).get("/api/sync");
         expect(runningResponse.statusCode).toBe(202);
         expect(runningResponse.body.steps).toEqual([
-            { name: "event_log", status: "success" },
             { name: "generators", status: "success" },
         ]);
 
@@ -142,7 +140,6 @@ describe("sync route", () => {
 
     it("includes completed steps in the final success state", async () => {
         synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
-            onStepComplete?.({ name: "event_log", status: "success" });
             onStepComplete?.({ name: "generators", status: "success" });
             onStepComplete?.({ name: "assets", status: "success" });
             return Promise.resolve();
@@ -155,7 +152,6 @@ describe("sync route", () => {
         const finishedResponse = await request(app).get("/api/sync");
         expect(finishedResponse.statusCode).toBe(200);
         expect(finishedResponse.body.steps).toEqual([
-            { name: "event_log", status: "success" },
             { name: "generators", status: "success" },
             { name: "assets", status: "success" },
         ]);
@@ -163,7 +159,6 @@ describe("sync route", () => {
 
     it("includes completed steps in the final error state", async () => {
         synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
-            onStepComplete?.({ name: "event_log", status: "success" });
             onStepComplete?.({ name: "generators", status: "error" });
             return Promise.reject({
                 name: "SynchronizeAllError",
@@ -184,7 +179,6 @@ describe("sync route", () => {
         const failedResponse = await request(app).get("/api/sync");
         expect(failedResponse.statusCode).toBe(500);
         expect(failedResponse.body.steps).toEqual([
-            { name: "event_log", status: "success" },
             { name: "generators", status: "error" },
         ]);
     });
