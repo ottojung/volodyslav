@@ -88,4 +88,6 @@ async function deleteAllCallback(capabilities, storage) {
 module.exports = {
     deleteAllCallback,
     migrationCallback,
+    keepNodeType,
+    deleteNodeType,
 };
