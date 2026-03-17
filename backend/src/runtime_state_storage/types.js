@@ -7,6 +7,7 @@
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -20,6 +21,7 @@
  * @property {FileWriter} writer - A file writer instance.
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {FileMover} mover - A file mover instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
@@ -56,6 +58,7 @@
  * @property {FileWriter} writer - A file writer instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileChecker} checker - A file checker instance
+ * @property {FileMover} mover - A file mover instance
  * @property {FileDeleter} deleter - A file deleter instance
  * @property {Command} git - A Git command instance
  * @property {Environment} environment - An environment instance

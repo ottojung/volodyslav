@@ -7,6 +7,7 @@ const writer = require("./writer");
 const reader = require("./reader");
 const appender = require("./appender");
 const checker = require("./checker");
+const mover = require("./mover");
 const file = require("./file");
 
 module.exports = {
@@ -18,5 +19,6 @@ module.exports = {
     reader,
     appender,
     checker,
+    mover,
     file,
 };

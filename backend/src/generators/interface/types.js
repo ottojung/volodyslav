@@ -5,6 +5,7 @@
  * @typedef {import("../../environment").Environment} Environment
  * @typedef {import("../../filesystem/reader").FileReader} FileReader
  * @typedef {import("../../filesystem/checker").FileChecker} FileChecker
+ * @typedef {import("../../filesystem/mover").FileMover} FileMover
  * @typedef {import("../../filesystem/creator").FileCreator} FileCreator
  * @typedef {import("../../filesystem/deleter").FileDeleter} FileDeleter
  * @typedef {import("../../filesystem/dirscanner").DirScanner} DirScanner
@@ -26,6 +27,7 @@
  * @property {Environment} environment - An environment instance
  * @property {FileReader} reader - A file reader instance
  * @property {FileChecker} checker - A file checker instance
+ * @property {FileMover} mover - A file mover instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileDeleter} deleter - A file deleter instance
  * @property {DirScanner} scanner - A directory scanner instance

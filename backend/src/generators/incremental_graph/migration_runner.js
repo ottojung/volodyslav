@@ -35,6 +35,7 @@ const { runMigrationInTransaction } = require("./database");
  * @typedef {import("../../environment").Environment} Environment
  * @typedef {import("../../filesystem/reader").FileReader} FileReader
  * @typedef {import("../../filesystem/checker").FileChecker} FileChecker
+ * @typedef {import("../../filesystem/mover").FileMover} FileMover
  * @typedef {import("../../filesystem/creator").FileCreator} FileCreator
  * @typedef {import("../../filesystem/deleter").FileDeleter} FileDeleter
  * @typedef {import("../../filesystem/dirscanner").DirScanner} DirScanner
@@ -53,6 +54,7 @@ const { runMigrationInTransaction } = require("./database");
  * @property {Logger} logger - Logger for informational messages during migration.
  * @property {SleepCapability} sleeper - Sleeper capability for mutex operations.
  * @property {FileChecker} checker - A file checker instance
+ * @property {FileMover} mover - A file mover instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileDeleter} deleter - A file deleter instance
  * @property {DirScanner} scanner - A directory scanner instance

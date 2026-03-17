@@ -20,6 +20,7 @@ const { withRetry } = require("../retryer");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -39,6 +40,7 @@ const { withRetry } = require("../retryer");
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {FileMover} mover - A file mover instance.
  * @property {FileWriter} writer - A file writer instance.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
