@@ -4,8 +4,8 @@
  * Call `transaction(transformation)` with a function that uses
  * `storage.addEntry(entry, assets)` to queue entries and assets and
  * `storage.setConfig(config)` to queue config updates. Event and config values
- * are persisted through the incremental graph; queued assets are copied after
- * the graph update succeeds.
+ * are persisted through the incremental graph; queued assets are copied before
+ * the graph update and cleaned up again if the graph update fails.
  */
 
 const path = require("path");
