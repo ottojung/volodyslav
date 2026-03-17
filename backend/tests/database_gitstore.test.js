@@ -302,7 +302,7 @@ describe("checkpointDatabase", () => {
                     gitDir,
                     `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["hello"]}')}`
                 )
-            ).toBe(JSON.stringify({ message: "hello-content" }));
+            ).toBe(JSON.stringify({ message: "hello-content" }, null, 2));
         } finally {
             await db.close();
         }
@@ -359,7 +359,7 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             expect(
                 fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
-            ).toBe(JSON.stringify({ version: "version-2" }));
+            ).toBe(JSON.stringify({ version: "version-2" }, null, 2));
         } finally {
             await db.close();
         }
@@ -381,7 +381,7 @@ describe("checkpointDatabase", () => {
             expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(2);
             expect(
                 fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
-            ).toBe(JSON.stringify({ value: "base" }));
+            ).toBe(JSON.stringify({ value: "base" }, null, 2));
         } finally {
             await db.close();
         }
@@ -414,7 +414,7 @@ describe("runMigrationInTransaction", () => {
             ]);
             expect(
                 fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
-            ).toBe(JSON.stringify({ version: "after" }));
+            ).toBe(JSON.stringify({ version: "after" }, null, 2));
         } finally {
             await db.close();
         }
