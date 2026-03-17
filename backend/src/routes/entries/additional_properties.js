@@ -37,11 +37,12 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  * @typedef {object} AdditionalProperties
  * @property {number} [calories] - Estimated calorie count; omitted when N/A (non-food entry) or unknown.
  * @property {string} [transcription] - Transcription text; omitted when unavailable.
+ * @property {string[]} [basic_context] - Input fields from the basic context events.
  * @property {Object<string, string>} [errors] - Per-property error messages; omitted when no errors.
  */
 
 /**
- * @typedef {'calories' | 'transcription'} AdditionalPropertyName
+ * @typedef {'calories' | 'transcription' | 'basic_context'} AdditionalPropertyName
  */
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"]);
@@ -54,7 +55,7 @@ function isAudioFilename(filename) {
     return AUDIO_EXTENSIONS.has(path.extname(filename).toLowerCase());
 }
 
-const ADDITIONAL_PROPERTY_NAMES = new Set(["calories", "transcription"]);
+const ADDITIONAL_PROPERTY_NAMES = new Set(["calories", "transcription", "basic_context"]);
 
 /**
  * @param {unknown} value
@@ -256,6 +257,36 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
                         error: message,
                     },
                     `Failed to compute transcription for entry ${id}: ${message}`,
+                );
+            }
+        }
+    }
+
+    if (property === undefined || property === "basic_context") {
+        try {
+            const basicContextEntry = await capabilities.interface.getBasicContextForEventId(id);
+
+            capabilities.logger.logDebug(
+                {
+                    request_identifier: reqId.identifier,
+                    entry_id: id,
+                    basic_context_entry: basicContextEntry,
+                },
+                "Pulled basic_context entry for additional properties",
+            );
+
+            properties.basic_context = basicContextEntry.events.map((e) => e.input);
+        } catch (error) {
+            if (!isEventNotFoundError(error)) {
+                const message = error instanceof Error ? error.message : String(error);
+                errors["basic_context"] = message;
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        entry_id: id,
+                        error: message,
+                    },
+                    `Failed to compute basic_context for entry ${id}: ${message}`,
                 );
             }
         }

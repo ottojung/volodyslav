@@ -148,7 +148,8 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/entry-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({});
+            expect(res.body).not.toHaveProperty("calories");
+            expect(res.body).not.toHaveProperty("transcription");
         });
 
         it("returns empty object for a non-food entry", async () => {
@@ -160,7 +161,8 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/entry-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({});
+            expect(res.body).not.toHaveProperty("calories");
+            expect(res.body).not.toHaveProperty("transcription");
         });
 
         it("returns { calories: 0 } for a 0-calorie food entry", async () => {
@@ -172,7 +174,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/entry-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({ calories: 0 });
+            expect(res.body).toMatchObject({ calories: 0 });
         });
 
         it("returns { calories } when AI estimates non-zero calories", async () => {
@@ -184,7 +186,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/entry-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({ calories: 420 });
+            expect(res.body).toMatchObject({ calories: 420 });
         });
 
         it("returns only the requested calories property", async () => {
@@ -245,11 +247,11 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const resB = await request(app)
                 .get("/api/entries/entry-b/additional-properties");
 
-            expect(resA.body).toEqual({ calories: 150 });
-            expect(resB.body).toEqual({ calories: 500 });
+            expect(resA.body).toMatchObject({ calories: 150 });
+            expect(resB.body).toMatchObject({ calories: 500 });
         });
 
-        it("returns empty object for entry with no audio assets", async () => {
+        it("returns no calories or transcription for entry with no audio assets", async () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-1", "ran 5km")]);
@@ -258,7 +260,8 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/entry-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({});
+            expect(res.body).not.toHaveProperty("calories");
+            expect(res.body).not.toHaveProperty("transcription");
             expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
         });
 
@@ -271,7 +274,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/diary-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({ transcription: "mocked transcription result" });
+            expect(res.body).toMatchObject({ transcription: "mocked transcription result" });
             expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
         });
 
@@ -318,7 +321,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/diary-3/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({});
+            expect(res.body).not.toHaveProperty("transcription");
             expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
         });
 
@@ -423,6 +426,64 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 },
             });
             expect(res.body.transcription).toBeUndefined();
+        });
+
+        it("returns { basic_context } containing the event's own input", async () => {
+            const { app, capabilities } = await makeInitializedApp("N/A");
+
+            await writeEventsToStore(capabilities, [makeEvent("entry-ctx-1", "ran 5km")]);
+
+            const res = await request(app)
+                .get("/api/entries/entry-ctx-1/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toHaveProperty("basic_context");
+            expect(res.body.basic_context).toContain("ran 5km");
+        });
+
+        it("returns only the requested basic_context property", async () => {
+            const { app, capabilities } = await makeInitializedApp(300);
+
+            await writeEventsToStore(capabilities, [makeEvent("entry-ctx-2", "ran 5km")]);
+
+            const res = await request(app)
+                .get("/api/entries/entry-ctx-2/additional-properties?property=basic_context");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toHaveProperty("basic_context");
+            expect(res.body.basic_context).toContain("ran 5km");
+            expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
+            expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
+        });
+
+        it("returns basic_context with all related event inputs sharing a hashtag", async () => {
+            const { app, capabilities } = await makeInitializedApp("N/A");
+
+            await writeEventsToStore(capabilities, [
+                makeEvent("ctx-a", "text went to the gym #fitness"),
+                makeEvent("ctx-b", "text ran 10km #fitness"),
+                makeEvent("ctx-c", "text had a pizza"),
+            ]);
+
+            const res = await request(app)
+                .get("/api/entries/ctx-a/additional-properties?property=basic_context");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body.basic_context).toContain("text went to the gym #fitness");
+            expect(res.body.basic_context).toContain("text ran 10km #fitness");
+            expect(res.body.basic_context).not.toContain("text had a pizza");
+        });
+
+        it("does not return basic_context for an unknown entry id", async () => {
+            const { app, capabilities } = await makeInitializedApp("N/A");
+
+            await writeEventsToStore(capabilities, [makeEvent("known-id-ctx", "some event")]);
+
+            const res = await request(app)
+                .get("/api/entries/unknown-id-ctx/additional-properties");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).not.toHaveProperty("basic_context");
         });
     });
 });

@@ -32,6 +32,7 @@ const {
     internalGetAllEvents,
     internalGetSortedEvents,
     internalGetEventsCount,
+    internalGetBasicContextForEventId,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,
@@ -257,6 +258,14 @@ class InterfaceClass {
      */
     async getEvent(eventId) {
         return await internalGetEvent(this, eventId);
+    }
+
+    /**
+     * @param {string} eventId
+     * @returns {Promise<import('../incremental_graph/database/types').BasicContextEntry>}
+     */
+    async getBasicContextForEventId(eventId) {
+        return await internalGetBasicContextForEventId(this, eventId);
     }
 
     /**

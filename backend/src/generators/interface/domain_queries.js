@@ -54,6 +54,21 @@ async function internalGetEventTranscriptionForAudioPath(
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
+ * @param {string} eventId
+ * @returns {Promise<import('../incremental_graph/database/types').BasicContextEntry>}
+ */
+async function internalGetBasicContextForEventId(interfaceInstance, eventId) {
+    const result = await interfaceInstance
+        ._requireInitializedGraph()
+        .pull("basic_context", [eventId]);
+    if (result.type !== "basic_context") {
+        throw new Error(`Expected basic_context entry but got type: ${result.type}`);
+    }
+    return result;
+}
+
+/**
+ * @param {InterfaceQueryAccess} interfaceInstance
  * @param {Event} event
  * @returns {Promise<Array<Event>>}
  */
@@ -259,6 +274,7 @@ module.exports = {
     internalGetAllEvents,
     internalGetSortedEvents,
     internalGetEventsCount,
+    internalGetBasicContextForEventId,
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetEvent,
