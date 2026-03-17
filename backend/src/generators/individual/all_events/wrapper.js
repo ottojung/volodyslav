@@ -68,11 +68,9 @@ function makeComputor(box, capabilities) {
                 box.value = [];
             } else {
                 // We haven't set a value yet, but we do have an old value.  This means
-                // that the computor has run before and returned a value (which should be
-                // an empty list of events), but we haven't set the box to that value yet.
-                // This can happen if the computor was invalidated and re-run before we had
-                // a chance to update the box.
-                return oldValue;
+                // we've previously set a value, but it was cleared by an upstream change,
+                // so we can simply return the unchanged token.
+                return makeUnchanged();
             }
         }
 

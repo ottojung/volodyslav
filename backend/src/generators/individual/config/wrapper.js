@@ -30,12 +30,10 @@ function makeComputor(box, _capabilities) {
                 // so we return the default of null.
                 return { type: "config", config: null };
             } else {
-                if (oldValue.type !== "config") {
-                    throw new Error(
-                        `Expected oldValue of type config but got type: ${oldValue.type}`
-                    );
-                }
-                box.value = oldValue.config;
+                // We haven't set a value yet, but we do have an old value.  This means
+                // we've previously set a value, but it was cleared by an upstream change,
+                // so we can simply return the unchanged token.
+                return makeUnchanged();
             }
         }
 
