@@ -126,6 +126,13 @@ function versionToString(Version) {
  */
 
 /**
+ * Basic context for a single event, indexed by event ID.
+ * @typedef {object} BasicContextEntry
+ * @property {'basic_context'} type - The type of the entry
+ * @property {Array<SerializedEvent>} events - The serialized context events
+ */
+
+/**
  * Estimated calorie count for a single event.
  * @typedef {object} CaloriesEntry
  * @property {'calories'} type - The type of the entry
@@ -203,7 +210,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
  */
 
 /**

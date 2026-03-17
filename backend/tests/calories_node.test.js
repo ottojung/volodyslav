@@ -157,6 +157,23 @@ describe("calories(e) node", () => {
         );
     });
 
+    test("uses basic context input rather than only the target event input", async () => {
+        const capabilities = await getTestCapabilities(480);
+        const iface = capabilities.interface;
+        await iface.ensureInitialized();
+
+        await writeEventsToStore(capabilities, [
+            makeEvent("1", "text prep #lunch"),
+            makeEvent("2", "food lunch #lunch"),
+        ]);
+        const result = await iface._incrementalGraph.pull("calories", ["2"]);
+
+        expect(result).toEqual({ type: "calories", value: 480 });
+        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
+            "text prep #lunch\nfood lunch #lunch"
+        );
+    });
+
     test("throws EventNotFoundError for an unknown event ID", async () => {
         const capabilities = await getTestCapabilities(999);
         const iface = capabilities.interface;

@@ -25,6 +25,7 @@ describe("default graph computor wiring", () => {
         expect(findNode(graph, "meta_events").computor).toBe(individual.metaEvents.computor);
         expect(findNode(graph, "event_context").computor).toBe(individual.eventContext.computor);
         expect(findNode(graph, "event(e)").computor).toBe(individual.event.computor);
+        expect(findNode(graph, "basic_context(e)").computor).toBe(individual.basicContext.computor);
     });
 
     test("uses extracted factory computors for capabilities-bound nodes", async () => {
@@ -33,10 +34,10 @@ describe("default graph computor wiring", () => {
 
         await expect(findNode(graph, "calories(e)").computor([], undefined, []))
             .rejects
-            .toThrow("Expected input of type event for calories(e) computor");
+            .toThrow("Expected input of type basic_context for calories(e) computor");
         await expect(individual.calories.makeComputor(capabilities)([], undefined, []))
             .rejects
-            .toThrow("Expected input of type event for calories(e) computor");
+            .toThrow("Expected input of type basic_context for calories(e) computor");
 
         await expect(findNode(graph, "transcription(a)").computor([], undefined, [123]))
             .rejects
