@@ -2,8 +2,12 @@ const { serialize } = require("../../../event");
 const { makeUnchanged } = require("../../incremental_graph");
 
 /**
+ * @typedef {import("../../../event").Event} Event
+ */
+
+/**
  * @typedef {object} AllEventsBox
- * @property {Array<import('../../../event').Event>} value
+ * @property {Array<Event> | "never-set"} value
  */
 
 /**
@@ -14,9 +18,8 @@ const { makeUnchanged } = require("../../incremental_graph");
  * @returns {AllEventsBox}
  */
 function makeBox() {
-    return {
-        value: [],
-    };
+    const value = "never-set";
+    return { value };
 }
 
 /**
@@ -56,6 +59,23 @@ function serializedEventsEqual(left, right) {
  */
 function makeComputor(box, capabilities) {
     return async (_inputs, oldValue, _bindings) => {
+        if (box.value === "never-set") {
+            // This is the initial state before we've ever set a value.
+            if (oldValue === undefined) {
+                // We haven't set a value yet, and we also don't have an old value,
+                // so this is the very first time the computor is running.  Initialise the
+                // box to an empty list of events and return that as the initial value.
+                box.value = [];
+            } else {
+                // We haven't set a value yet, but we do have an old value.  This means
+                // that the computor has run before and returned a value (which should be
+                // an empty list of events), but we haven't set the box to that value yet.
+                // This can happen if the computor was invalidated and re-run before we had
+                // a chance to update the box.
+                return oldValue;
+            }
+        }
+
         const nextValue = {
             type: "all_events",
             events: box.value.map((entry) => serialize(capabilities, entry)),
