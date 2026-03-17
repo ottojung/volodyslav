@@ -17,8 +17,18 @@ function getEventBasicContext(all_events, event) {
             return true; // Always include the event itself
         }
 
-        // Check if event type is context-enhancing
-        if (!isContextEnhancing(getType(otherEvent))) {
+        // Check if event type is context-enhancing.
+        // Some stored entries may have been created before the current parsing
+        // rules were in place (e.g. descriptions containing bracket notation).
+        // Treat those unparseable events as non-context-enhancing so a single
+        // malformed entry cannot break calories computation for all events.
+        let otherType;
+        try {
+            otherType = getType(otherEvent);
+        } catch (_err) {
+            return false;
+        }
+        if (!isContextEnhancing(otherType)) {
             return false;
         }
 
