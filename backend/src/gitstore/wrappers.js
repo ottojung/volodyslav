@@ -184,6 +184,7 @@ async function pull(capabilities, workDirectory) {
         "user.email=volodyslav",
         "merge",
         "--no-edit",
+        "--ff-only",
         `origin/${branch}`
     );
 }
