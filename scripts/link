@@ -22,7 +22,7 @@ else
     rm -rf -- "$PREFIX"/share/volodyslav/source
 fi
 
-$COPY -- "$PWD"/ "$PREFIX"/share/volodyslav/source/
+$COPY -- ./ "$PREFIX"/share/volodyslav/source/
 
 # Capture the version from the source repository and store it for the installed version
 if command -v git >/dev/null 2>&1
