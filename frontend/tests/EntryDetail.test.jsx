@@ -197,6 +197,15 @@ describe("EntryDetail page", () => {
         expect(screen.queryByRole("button", { name: "Copy type" })).not.toBeInTheDocument();
     });
 
+    it("places each field copy button in the header area before the field value text", () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        const copyButton = screen.getByRole("button", { name: "Copy original" });
+        const valueText = screen.getByText("food - Ate pizza");
+
+        expect(copyButton.compareDocumentPosition(valueText) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it("does not fetch from API when entry is in state", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 

@@ -102,35 +102,35 @@ function FieldRow({ fieldKey, value }) {
 
     return (
         <Box {...CARD_STYLES.entry}>
-            <HStack justify="space-between" align="flex-start">
-                <VStack align="flex-start" spacing={1} flex={1} minW={0}>
+            <VStack align="flex-start" spacing={1} minW={0}>
+                <HStack justify="space-between" align="flex-start" w="full">
                     <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase">
                         {fieldKey}
                     </Text>
-                    <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{displayedValue}</Text>
-                    {isCollapsible && (
-                        <Button
-                            size="xs"
-                            variant="link"
-                            colorScheme="blue"
-                            onClick={() => setIsExpanded((currentValue) => !currentValue)}
-                            aria-label={`${isExpanded ? "Show less" : "Show full"} ${fieldKey}`}
-                        >
-                            {isExpanded ? "Show less" : "Show more"}
-                        </Button>
-                    )}
-                </VStack>
-                <Tooltip label={copied ? "Copied!" : "Copy"} placement="left">
-                    <IconButton
-                        aria-label={`Copy ${fieldKey}`}
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleCopy}
-                        icon={<span>{copied ? "✓" : "⎘"}</span>}
-                        flexShrink={0}
-                    />
-                </Tooltip>
-            </HStack>
+                    <Tooltip label={copied ? "Copied!" : "Copy"} placement="left">
+                        <IconButton
+                            aria-label={`Copy ${fieldKey}`}
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleCopy}
+                            icon={<span>{copied ? "✓" : "⎘"}</span>}
+                            flexShrink={0}
+                        />
+                    </Tooltip>
+                </HStack>
+                <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{displayedValue}</Text>
+                {isCollapsible && (
+                    <Button
+                        size="xs"
+                        variant="link"
+                        colorScheme="blue"
+                        onClick={() => setIsExpanded((currentValue) => !currentValue)}
+                        aria-label={`${isExpanded ? "Show less" : "Show full"} ${fieldKey}`}
+                    >
+                        {isExpanded ? "Show less" : "Show more"}
+                    </Button>
+                )}
+            </VStack>
         </Box>
     );
 }
