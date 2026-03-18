@@ -103,12 +103,7 @@ async function processDiaryAudios(capabilities) {
      */
     function diaryDateFromFilename(filename) {
         const utcDate = formatFileTimestamp(filename);
-        const localDateString = datetime.format(
-            utcDate,
-            "yyyy-MM-dd'T'HH:mm:ssZZ",
-            capabilities.datetime.timeZone(),
-        );
-        return datetime.fromISOString(localDateString);
+        return datetime.setZone(utcDate, capabilities.datetime.timeZone());
     }
 
     /**

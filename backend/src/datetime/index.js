@@ -4,7 +4,7 @@ const { make } = require('./capability');
 const { weekdayNameToCronNumber, cronNumberToWeekdayName, isWeekdayName, getAllWeekdayNames } = require('./weekday');
 const { isDateTime } = require('./structure');
 const { isDuration, difference, fromMilliseconds, fromSeconds, fromMinutes, fromHours, fromDays, fromWeeks, fromObject, maximum, minimum } = require('./duration');
-const { fromObject: dateTimeFromObject, format } = require('./factories');
+const { fromObject: dateTimeFromObject, format, setZone } = require('./factories');
 const { getMaxDaysInMonth } = require('./month');
 
 /** @typedef {import('./capability').Datetime} Datetime */
@@ -40,6 +40,7 @@ module.exports = {
     // DateTime factories
     dateTimeFromObject,
     format,
+    setZone,
     // Month utilities
     getMaxDaysInMonth,
 };
