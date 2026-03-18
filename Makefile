@@ -3,8 +3,12 @@ PREFIX = /usr/local
 
 all: install
 
-install:
-	sh scripts/install $(PREFIX)
+install: build/packages-token
+	sh scripts/install-post-npm $(PREFIX)
+
+build/packages-token: package.json package-lock.json backend/package.json frontend/package.json
+	npm ci
+	touch "$@"
 
 uninstall:
 	sh scripts/uninstall $(PREFIX)
