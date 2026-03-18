@@ -47,13 +47,6 @@ describe("diary audio asset association across timezones", () => {
         expect(entries).toHaveLength(1);
 
         const entry = entries[0];
-        const expectedAssetFilePath = path.join(
-            assetsDir,
-            "2026-03",
-            "17",
-            entry.id.identifier,
-            "20260318T020619Z.ogg"
-        );
         expect(entry.date.year).toBe(2026);
         expect(entry.date.month).toBe(3);
         expect(entry.date.day).toBe(17);
@@ -67,6 +60,13 @@ describe("diary audio asset association across timezones", () => {
         expect(serializedEntryResponse.statusCode).toBe(200);
         expect(serializedEntryResponse.body.entry.date).toBe("2026-03-17T19:06:19-0700");
 
+        const expectedAssetFilePath = path.join(
+            assetsDir,
+            "2026-03",
+            "17",
+            entry.id.identifier,
+            "20260318T020619Z.ogg"
+        );
         await expect(fs.access(expectedAssetFilePath)).resolves.toBeUndefined();
 
         const assetsResponse = await request(app)
