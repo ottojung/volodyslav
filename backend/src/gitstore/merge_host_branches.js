@@ -104,6 +104,22 @@ async function mergeRemoteHostBranches(capabilities, workDirectory) {
         "fetch",
         "origin"
     );
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "reset",
+        "--hard",
+    );
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "clean",
+        "-fd",
+    );
 
     for (const remoteBranch of await listRemoteBranches(capabilities, workDirectory)) {
         const hostname = parseRemoteHostnameBranch(remoteBranch);
