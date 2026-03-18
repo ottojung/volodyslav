@@ -1,4 +1,5 @@
 const path = require("path");
+const datetime = require("./datetime");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { transaction } = require("./event_log_storage");
 const event = require("./event");
@@ -94,13 +95,30 @@ async function processDiaryAudios(capabilities) {
     const creator = await creatorMake(capabilities);
 
     /**
+     * Diary audio filenames encode timestamps in UTC, but the recording time should
+     * be interpreted in the local configured timezone for downstream consistency.
+     *
+     * @param {string} filename
+     * @returns {import("./datetime").DateTime}
+     */
+    function diaryDateFromFilename(filename) {
+        const utcDate = formatFileTimestamp(filename);
+        const localDateString = datetime.format(
+            utcDate,
+            "yyyy-MM-dd'T'HH:mm:ssZZ",
+            capabilities.datetime.timeZone(),
+        );
+        return datetime.fromISOString(localDateString);
+    }
+
+    /**
      * @param {ExistingFile} file
      * @returns {Asset}
      */
     function makeAsset(file) {
         const filepath = file.path;
         const filename = path.basename(filepath);
-        const date = formatFileTimestamp(filename);
+        const date = diaryDateFromFilename(filename);
         const id = eventId.make(capabilities);
 
         /** @type {import('./event/structure').Event} */

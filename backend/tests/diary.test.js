@@ -250,4 +250,32 @@ describe("processDiaryAudios", () => {
             expect.stringContaining("Failed to check file stability")
         );
     });
+
+    it("converts diary filename timestamps to local time for stored entries and asset paths", async () => {
+        const capabilities = getTestCapabilities();
+        capabilities.datetime.timeZone = () => "America/Los_Angeles";
+
+        const diaryDir = capabilities.environment.diaryAudiosDirectory();
+        await fs.mkdir(diaryDir, { recursive: true });
+        await fs.writeFile(path.join(diaryDir, "20260318T020619Z.local.ogg"), "content");
+
+        await processDiaryAudios(capabilities);
+
+        const entries = await capabilities.interface.getAllEvents();
+        expect(entries).toHaveLength(1);
+        expect(dateFormatter.format(capabilities, entries[0].date)).toBe(
+            "2026-03-17T19:06:19-0700"
+        );
+
+        const assetsBase = capabilities.environment.eventLogAssetsDirectory();
+        const localDayPath = path.join(
+            assetsBase,
+            "2026-03",
+            "17",
+        );
+        const idDirs = await fs.readdir(localDayPath);
+        expect(idDirs).toHaveLength(1);
+        const files = await fs.readdir(path.join(localDayPath, idDirs[0]));
+        expect(files).toEqual(["20260318T020619Z.local.ogg"]);
+    });
 });
