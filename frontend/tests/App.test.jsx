@@ -313,6 +313,10 @@ describe("App", () => {
         expect(screen.getByRole("option", { name: "Loading hostnames..." })).toBeInTheDocument();
         expect(screen.queryByRole("option", { name: "alice" })).not.toBeInTheDocument();
         expect(screen.getByText("Sync")).toBeDisabled();
+
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "bob" })).toBeInTheDocument();
+        });
     });
 
     it("retries loading hostnames when Reset to Host mode is re-opened after an initial failure", async () => {

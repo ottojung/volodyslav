@@ -61,7 +61,13 @@ async function readSyncErrorResponse(response) {
  */
 function toSyncResult(data) {
     if (data?.status === "success") {
-        return { success: true, steps: data.steps, resetToHostname: data.reset_to_hostname };
+        /** @type {PostSyncResult} */
+        const success = { success: true, steps: data.steps };
+        const resetToHostname = data.reset_to_hostname;
+        if (typeof resetToHostname === "string" && resetToHostname.trim() !== "") {
+            return { ...success, resetToHostname };
+        }
+        return success;
     }
 
     if (data?.status === "error") {
