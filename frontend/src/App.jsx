@@ -105,6 +105,9 @@ function App() {
     let isMounted = true;
 
     async function loadSyncHostnames() {
+      setSyncHostnamesState('loading');
+      setSyncHostnames(makeEmptySyncHostnames());
+      setSyncResetHostname('');
       const nextHostnames = await fetchSyncHostnames();
       if (!isMounted) {
         return;
@@ -175,7 +178,11 @@ function App() {
 
   /** @param {{ target: { value: string } }} e */
   const handleSyncModeChange = (e) => {
-    setSyncMode(e.target.value);
+    const nextMode = e.target.value;
+    setSyncMode(nextMode);
+    if (nextMode !== 'reset-to-hostname') {
+      setSyncResetHostname('');
+    }
     setSyncState('idle');
     setSyncError(makeEmptySyncError());
     setSyncSuccessMessage('');

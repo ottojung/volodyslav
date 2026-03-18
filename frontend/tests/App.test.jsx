@@ -284,6 +284,37 @@ describe("App", () => {
         });
     });
 
+    it("shows loading state and clears stale hostname options when opening Reset to Host", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        fetchSyncHostnames
+            .mockResolvedValueOnce(["alice"])
+            .mockImplementationOnce(
+                () => new Promise((resolve) => setTimeout(() => resolve(["bob"]), 0))
+            );
+
+        renderApp();
+
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+        });
+
+        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        expect(screen.getByText("Sync")).not.toBeDisabled();
+
+        fireEvent.change(screen.getByLabelText("Sync mode"), { target: { value: "" } });
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+
+        expect(screen.getByRole("option", { name: "Loading hostnames..." })).toBeInTheDocument();
+        expect(screen.queryByRole("option", { name: "alice" })).not.toBeInTheDocument();
+        expect(screen.getByText("Sync")).toBeDisabled();
+    });
+
     it("retries loading hostnames when Reset to Host mode is re-opened after an initial failure", async () => {
         fetchVersion.mockResolvedValue("1.2.3");
         // First open: returns [] (failure); second open: returns hostnames (recovery)
@@ -319,6 +350,32 @@ describe("App", () => {
             expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
         });
         expect(fetchSyncHostnames).toHaveBeenCalledTimes(2);
+    });
+
+    it("clears selected reset hostname when leaving Reset to Host mode", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({ success: true, resetToHostname: "alice" });
+
+        renderApp();
+
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+        });
+        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        expect(screen.getByText("Sync")).not.toBeDisabled();
+
+        fireEvent.change(screen.getByLabelText("Sync mode"), { target: { value: "" } });
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+        });
+        expect(screen.getByText("Sync")).toBeDisabled();
     });
 
     it("shows success message from backend's reset_to_hostname, not frontend state", async () => {

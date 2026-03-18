@@ -191,11 +191,18 @@ async function pull(capabilities, workDirectory) {
     );
 }
 
-/** @param {Capabilities} capabilities @param {string} workDirectory @returns {Promise<void>} */
-async function push(capabilities, workDirectory) {
+/**
+ * @param {Capabilities} capabilities
+ * @param {string} workDirectory
+ * @param {boolean} [force]
+ * @returns {Promise<void>}
+ */
+async function push(capabilities, workDirectory, force) {
     const branch = defaultBranch(capabilities);
     try {
         await ensureCurrentBranch(capabilities, workDirectory);
+        /** @type {string[]} */
+        const forceArgs = force ? ["--force"] : [];
         await capabilities.git.call(
             "-C",
             workDirectory,
@@ -206,6 +213,7 @@ async function push(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "push",
+            ...forceArgs,
             "-u",
             "origin",
             branch
