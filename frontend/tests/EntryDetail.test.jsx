@@ -209,6 +209,12 @@ describe("EntryDetail page", () => {
         expect(screen.getAllByText("2023-01-01T10:00:00.000Z").length).toBeGreaterThan(0);
     });
 
+    it("uses normal word breaking for entry field values", () => {
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        expect(screen.getByText("food - Ate pizza")).toHaveStyle({ wordBreak: "normal" });
+    });
+
     it("shows multiple modifier fields when entry has multiple modifiers", async () => {
         const entryWithMultipleModifiers = {
             ...mockEntry,
@@ -681,6 +687,21 @@ describe("EntryDetail page", () => {
         await waitFor(() => {
             expect(screen.getByText("text some context event")).toBeInTheDocument();
             expect(screen.getByText("text another context event")).toBeInTheDocument();
+        });
+    });
+
+    it("uses normal word breaking for basic context inputs", async () => {
+        fetchAdditionalProperties.mockImplementation((id, propertyName) => {
+            if (propertyName === "basic_context") {
+                return Promise.resolve({ basic_context: ["context phrase with several words"] });
+            }
+            return Promise.resolve({});
+        });
+
+        renderWithRoute("/entry/entry-123", { entry: mockEntry });
+
+        await waitFor(() => {
+            expect(screen.getByText("context phrase with several words")).toHaveStyle({ wordBreak: "normal" });
         });
     });
 
