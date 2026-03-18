@@ -52,7 +52,7 @@ async function pushBranch(capabilities, branch, files) {
 }
 
 describe("working_repository reset semantics", () => {
-    test("resetToHostname creates a merge commit that can be pushed without force", async () => {
+    test("resetToHostname replaces branch files and commits the change for normal push", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
 
@@ -71,16 +71,6 @@ describe("working_repository reset semantics", () => {
             remoteRepoPath,
             currentBranch
         )).stdout.trim().split("\t")[0];
-        const resetTargetHead = (await capabilities.git.call(
-            "-c",
-            "safe.directory=*",
-            "ls-remote",
-            "--heads",
-            "--",
-            remoteRepoPath,
-            "alice-main"
-        )).stdout.trim().split("\t")[0];
-
         await workingRepository.synchronize(
             capabilities,
             "working-git-repository",
@@ -113,9 +103,18 @@ describe("working_repository reset semantics", () => {
                     "HEAD"
                 )
             ).stdout.trim().split(" ");
-            expect(headWithParents).toHaveLength(3);
+            expect(headWithParents).toHaveLength(2);
             expect(headWithParents).toContain(currentBranchHead);
-            expect(headWithParents).toContain(resetTargetHead);
+            const commitMessage = (
+                await capabilities.git.call(
+                    "-C",
+                    verifyTree,
+                    "log",
+                    "-1",
+                    "--pretty=%B"
+                )
+            ).stdout.trim();
+            expect(commitMessage).toContain("Merge-like reset to origin/alice-main");
         } finally {
             await capabilities.deleter.deleteDirectory(verifyTree);
         }

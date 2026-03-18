@@ -194,15 +194,12 @@ async function pull(capabilities, workDirectory) {
 /**
  * @param {Capabilities} capabilities
  * @param {string} workDirectory
- * @param {boolean} [force]
  * @returns {Promise<void>}
  */
-async function push(capabilities, workDirectory, force) {
+async function push(capabilities, workDirectory) {
     const branch = defaultBranch(capabilities);
     try {
         await ensureCurrentBranch(capabilities, workDirectory);
-        /** @type {string[]} */
-        const forceArgs = force ? ["--force"] : [];
         await capabilities.git.call(
             "-C",
             workDirectory,
@@ -213,7 +210,6 @@ async function push(capabilities, workDirectory, force) {
             "-c",
             "user.email=volodyslav",
             "push",
-            ...forceArgs,
             "-u",
             "origin",
             branch
@@ -229,17 +225,15 @@ async function push(capabilities, workDirectory, force) {
 }
 
 /**
- * Fetch from the remote and reconcile the local branch to match the remote
- * branch content while preserving a push-safe history.
- *
- * The merge/read-tree sequence intentionally avoids `git reset --hard` so that
- * reset mode can publish with a normal non-force push.
+ * Fetch from the remote and reset the local branch work tree to match the
+ * remote branch content. If files changed, create a commit with a merge-like
+ * message so reset mode remains push-safe with a normal push.
  *
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to reset
  * @param {string} [resetToHostname] - Optional hostname branch to reset to.
  * @returns {Promise<void>}
- * @throws {Error} When git fetch or merge operation fails
+ * @throws {Error} When git fetch/read-tree/commit operation fails
  */
 async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
     const branch = resetToHostname === undefined
@@ -259,41 +253,6 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "origin"
     );
     await ensureCurrentBranch(capabilities, workDirectory);
-    const currentHead = (await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "rev-parse",
-        "HEAD"
-    )).stdout.trim();
-    const targetHead = (await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "rev-parse",
-        `origin/${branch}`
-    )).stdout.trim();
-    if (currentHead === targetHead) {
-        return;
-    }
-    await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=volodyslav",
-        "-c",
-        "user.email=volodyslav",
-        "merge",
-        "--no-ff",
-        "--allow-unrelated-histories",
-        "--strategy=ours",
-        "--no-commit",
-        `origin/${branch}`
-    );
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -308,6 +267,17 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-u",
         `origin/${branch}`
     );
+    const statusResult = await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "status",
+        "--porcelain"
+    );
+    if (statusResult.stdout.trim() === "") {
+        return;
+    }
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -318,9 +288,8 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "commit",
-        "--allow-empty",
         "--message",
-        `Reset contents to origin/${branch}`
+        `Merge-like reset to origin/${branch}`
     );
 }
 
