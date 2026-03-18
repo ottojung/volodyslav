@@ -101,6 +101,7 @@ async function handleEntryAssets(req, res, capabilities, reqId) {
         }
 
         const dirPath = targetDir(capabilities, entry);
+        console.debug({dirPath, entry})
 
         const dirProof = await capabilities.checker.directoryExists(dirPath);
 
