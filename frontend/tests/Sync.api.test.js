@@ -13,7 +13,7 @@ jest.mock("../src/api_base_url.js", () => ({
     API_BASE_URL: "/api",
 }));
 
-import { postSync } from "../src/Sync/api.js";
+import { postSync, fetchSyncHostnames } from "../src/Sync/api.js";
 
 function makeResponse(status, data) {
     return {
@@ -180,5 +180,19 @@ describe("postSync", () => {
 
         expect(onProgress).toHaveBeenCalledWith(intermediateSteps);
         expect(onProgress).toHaveBeenCalledTimes(2);
+    });
+
+    it("fetches reset hostname options for the sync dropdown", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(200, {
+            hostnames: ["alice", "test-host"],
+        }));
+
+        let result;
+        await act(async () => {
+            result = await fetchSyncHostnames();
+        });
+
+        expect(global.fetch).toHaveBeenCalledWith("/api/sync/hostnames");
+        expect(result).toEqual(["alice", "test-host"]);
     });
 });

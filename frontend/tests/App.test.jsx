@@ -6,6 +6,7 @@ import { ChakraProvider } from "@chakra-ui/react";
 
 jest.mock("../src/Sync/api.js", () => ({
     postSync: jest.fn(),
+    fetchSyncHostnames: jest.fn(),
 }));
 
 jest.mock("../src/version_api.js", () => ({
@@ -22,7 +23,7 @@ jest.mock("../src/DescriptionEntry/logger.js", () => ({
 }));
 
 import App from "../src/App.jsx";
-import { postSync } from "../src/Sync/api.js";
+import { postSync, fetchSyncHostnames } from "../src/Sync/api.js";
 import { fetchVersion } from "../src/version_api.js";
 
 function renderApp() {
@@ -39,6 +40,8 @@ describe("App", () => {
     beforeEach(() => {
         fetchVersion.mockReset();
         postSync.mockReset();
+        fetchSyncHostnames.mockReset();
+        fetchSyncHostnames.mockResolvedValue(["test-host", "alice"]);
     });
 
     afterEach(() => {
@@ -136,7 +139,7 @@ describe("App", () => {
             expect(screen.getByText("Sync complete")).toBeInTheDocument();
         });
 
-        fireEvent.change(screen.getByRole("combobox"), {
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
             target: { value: "reset-to-hostname" },
         });
 
@@ -232,7 +235,7 @@ describe("App", () => {
             expect(screen.getByText("Generators")).toBeInTheDocument();
         });
 
-        fireEvent.change(screen.getByRole("combobox"), {
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
             target: { value: "reset-to-hostname" },
         });
 
@@ -247,13 +250,13 @@ describe("App", () => {
 
         renderApp();
 
-        fireEvent.change(screen.getByRole("combobox"), {
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
             target: { value: "reset-to-hostname" },
         });
-        fireEvent.change(
-            screen.getByPlaceholderText("Hostname"),
-            { target: { value: "alice" } }
-        );
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+        });
+        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {
@@ -262,5 +265,22 @@ describe("App", () => {
         expect(
             screen.getByText("Your local data was reset to match alice-main.")
         ).toBeInTheDocument();
+    });
+
+    it("shows reset hostname dropdown only in reset mode", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        postSync.mockResolvedValue({ success: true });
+
+        renderApp();
+
+        expect(screen.queryByLabelText("Reset hostname")).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByLabelText("Reset hostname")).toBeInTheDocument();
+        });
     });
 });

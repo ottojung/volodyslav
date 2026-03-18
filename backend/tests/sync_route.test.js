@@ -40,6 +40,13 @@ async function makeApp() {
     return app;
 }
 
+async function makeAppWithCapabilities() {
+    const capabilities = getTestCapabilities();
+    const app = expressApp.make();
+    app.use("/api", makeRouter(capabilities));
+    return { app, capabilities };
+}
+
 describe("sync route", () => {
     beforeEach(() => {
         synchronizeAll.mockReset();
@@ -210,4 +217,30 @@ describe("sync route", () => {
         expect(response.body.error).toContain("Invalid reset_to_hostname value");
     });
 
+    it("lists reset hostnames for the reset dropdown", async () => {
+        const { app, capabilities } = await makeAppWithCapabilities();
+        capabilities.git.call = jest.fn().mockResolvedValue({
+            stdout: [
+                "sha refs/heads/alice-main",
+                "sha refs/heads/test-host-main",
+                "sha refs/heads/not-a-host",
+                "",
+            ].join("\n"),
+        });
+
+        const response = await request(app).get("/api/sync/hostnames");
+
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toEqual({
+            hostnames: ["alice", "test-host"],
+        });
+        expect(capabilities.git.call).toHaveBeenCalledWith(
+            "-c",
+            "safe.directory=*",
+            "ls-remote",
+            "--heads",
+            "--",
+            expect.any(String)
+        );
+    });
 });

@@ -138,3 +138,35 @@ export async function postSync(resetToHostname, onProgress) {
         return { success: false, error: `Network error: ${message}` };
     }
 }
+
+/**
+ * Calls GET /api/sync/hostnames to obtain selectable reset hostnames.
+ * @returns {Promise<string[]>}
+ */
+export async function fetchSyncHostnames() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/sync/hostnames`);
+        if (!response.ok) {
+            logger.warn("Failed to fetch sync hostnames:", response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        if (!data || !Array.isArray(data.hostnames)) {
+            logger.warn("Sync hostnames response did not include an array");
+            return [];
+        }
+
+        /** @type {string[]} */
+        const hostnames = [];
+        for (const hostname of data.hostnames) {
+            if (typeof hostname === "string") {
+                hostnames.push(hostname);
+            }
+        }
+        return hostnames;
+    } catch (error) {
+        logger.error("Error fetching sync hostnames:", error);
+        return [];
+    }
+}

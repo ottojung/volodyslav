@@ -6,7 +6,6 @@ import {
   VStack,
   Text,
   Select,
-  Input,
   Spinner,
   Divider,
   Alert,
@@ -18,7 +17,7 @@ import {
   ListItem,
 } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
-import { postSync } from './Sync/api.js';
+import { postSync, fetchSyncHostnames } from './Sync/api.js';
 import { SyncStepList } from './Sync/SyncStepList.jsx';
 import { fetchVersion } from './version_api.js';
 
@@ -52,11 +51,20 @@ function makeEmptySyncSteps() {
   return [];
 }
 
+/**
+ * @returns {string[]}
+ */
+function makeEmptySyncHostnames() {
+  return [];
+}
+
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [syncMode, setSyncMode] = useState('');
   const [syncResetHostname, setSyncResetHostname] = useState('');
+  const [syncHostnames, setSyncHostnames] = useState(makeEmptySyncHostnames());
+  const [syncHostnamesState, setSyncHostnamesState] = useState('loading');
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState(makeEmptySyncError());
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
@@ -86,6 +94,25 @@ function App() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSyncHostnames() {
+      const nextHostnames = await fetchSyncHostnames();
+      if (!isMounted) {
+        return;
+      }
+      setSyncHostnames(nextHostnames);
+      setSyncHostnamesState('ready');
+    }
+
+    void loadSyncHostnames();
+
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -227,22 +254,34 @@ function App() {
 
         <VStack spacing={2}>
           <Select
+            aria-label="Sync mode"
             size="sm"
             value={syncMode}
             onChange={handleSyncModeChange}
             w="200px"
           >
             <option value="">Normal sync</option>
-            <option value="reset-to-hostname">Reset to $HOSTNAME</option>
+            <option value="reset-to-hostname">Reset to Host</option>
           </Select>
           {syncMode === 'reset-to-hostname' && (
-            <Input
+            <Select
+              aria-label="Reset hostname"
               size="sm"
               value={syncResetHostname}
               onChange={handleSyncHostnameChange}
-              placeholder="Hostname"
               w="260px"
-            />
+            >
+              <option value="" disabled={syncHostnames.length > 0}>
+                {syncHostnamesState === 'loading'
+                  ? 'Loading hostnames...'
+                  : syncHostnames.length === 0
+                    ? 'No hostnames available'
+                    : 'Select hostname'}
+              </option>
+              {syncHostnames.map((hostname) => (
+                <option key={hostname} value={hostname}>{hostname}</option>
+              ))}
+            </Select>
           )}
           <Button
             colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}

@@ -195,6 +195,37 @@ function sendSyncState(res, state) {
 
 /**
  * @param {Capabilities} capabilities
+ * @returns {Promise<string[]>}
+ */
+async function listResetHostnames(capabilities) {
+    const remotePath = capabilities.environment.generatorsRepository();
+    const result = await capabilities.git.call(
+        "-c",
+        "safe.directory=*",
+        "ls-remote",
+        "--heads",
+        "--",
+        remotePath
+    );
+
+    /** @type {string[]} */
+    const hostnames = [];
+    for (const line of result.stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed === "") {
+            continue;
+        }
+        const match = /^.*\s+refs\/heads\/([0-9A-Za-z_-]+)-main$/.exec(trimmed);
+        if (match !== null && match[1] !== undefined) {
+            hostnames.push(match[1]);
+        }
+    }
+
+    return [...new Set(hostnames)].sort();
+}
+
+/**
+ * @param {Capabilities} capabilities
  * @returns {import('express').Router}
  */
 function makeRouter(capabilities) {
@@ -224,6 +255,20 @@ function makeRouter(capabilities) {
 
     router.get("/sync", async (_req, res) => {
         return sendSyncState(res, syncController.getState());
+    });
+
+    router.get("/sync/hostnames", async (_req, res) => {
+        try {
+            return res.status(200).json({
+                hostnames: await listResetHostnames(capabilities),
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            capabilities.logger.logError({ error }, "Failed to list reset hostnames");
+            return res.status(500).json({
+                error: `Failed to list reset hostnames: ${message}`,
+            });
+        }
     });
 
     return router;
