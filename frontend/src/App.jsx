@@ -6,6 +6,8 @@ import {
   VStack,
   Text,
   Select,
+  RadioGroup,
+  Radio,
   Spinner,
   Divider,
   Alert,
@@ -189,9 +191,9 @@ function App() {
     setSyncSteps([]);
   };
 
-  /** @param {{ target: { value: string } }} e */
-  const handleSyncHostnameChange = (e) => {
-    setSyncResetHostname(e.target.value);
+  /** @param {string} value */
+  const handleSyncHostnameChange = (value) => {
+    setSyncResetHostname(value);
   };
 
   useEffect(() => {
@@ -288,24 +290,28 @@ function App() {
             <option value="reset-to-hostname">Reset to Host</option>
           </Select>
           {syncMode === 'reset-to-hostname' && (
-            <Select
-              aria-label="Reset hostname"
-              size="sm"
-              value={syncResetHostname}
-              onChange={handleSyncHostnameChange}
-              w="260px"
-            >
-              <option value="" disabled={syncHostnames.length > 0}>
-                {syncHostnamesState === 'loading'
-                  ? 'Loading hostnames...'
-                  : syncHostnames.length === 0
-                    ? 'No hostnames available'
-                    : 'Select hostname'}
-              </option>
-              {syncHostnames.map((hostname) => (
-                <option key={hostname} value={hostname}>{hostname}</option>
-              ))}
-            </Select>
+            <Box w="200px" borderWidth="1px" borderRadius="md" p={2}>
+              {syncHostnamesState === 'loading' ? (
+                <Text fontSize="sm">Loading hostnames...</Text>
+              ) : syncHostnames.length === 0 ? (
+                <Text fontSize="sm">No hostnames available</Text>
+              ) : (
+                <RadioGroup
+                  aria-label="Reset hostname"
+                  size="sm"
+                  value={syncResetHostname}
+                  onChange={handleSyncHostnameChange}
+                >
+                  <VStack align="stretch" spacing={1}>
+                    {syncHostnames.map((hostname) => (
+                      <Radio key={hostname} value={hostname}>
+                        {hostname}
+                      </Radio>
+                    ))}
+                  </VStack>
+                </RadioGroup>
+              )}
+            </Box>
           )}
           <Button
             colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
