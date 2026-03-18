@@ -197,7 +197,8 @@ The sync API supports one reset payload form:
 - `{"reset_to_hostname": "<hostname>"}` — reset to the specific hostname branch (`<hostname>-main`).
 
 When `reset_to_hostname` is provided, the local working branch remains the
-current host branch, but its contents are hard-reset to `origin/<hostname>-main`.
+current host branch, but its contents are reconciled to match
+`origin/<hostname>-main` via a merge-based reset flow.
 This is what powers the frontend **Reset to Host** mode.
 
 To power the **Reset to Host** UI, the backend also exposes a hostname discovery

@@ -156,7 +156,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                         resetToHostname
                     );
                     if (resetToHostname !== undefined) {
-                        await gitmethod.push(capabilities, workDir, true);
+                        await gitmethod.push(capabilities, workDir);
                     }
                 } else {
                     await cloneAndConfigureRepository(
@@ -169,7 +169,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                             workDir,
                             resetToHostname
                         );
-                        await gitmethod.push(capabilities, workDir, true);
+                        await gitmethod.push(capabilities, workDir);
                     }
                 }
             } else {

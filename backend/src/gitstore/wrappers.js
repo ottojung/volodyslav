@@ -229,12 +229,17 @@ async function push(capabilities, workDirectory, force) {
 }
 
 /**
- * Fetch from the remote and hard-reset the local branch to the remote state (discard all local changes).
+ * Fetch from the remote and reconcile the local branch to match the remote
+ * branch content while preserving a push-safe history.
+ *
+ * The merge/read-tree sequence intentionally avoids `git reset --hard` so that
+ * reset mode can publish with a normal non-force push.
+ *
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to reset
  * @param {string} [resetToHostname] - Optional hostname branch to reset to.
  * @returns {Promise<void>}
- * @throws {Error} When git fetch or reset operation fails
+ * @throws {Error} When git fetch or merge operation fails
  */
 async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
     const branch = resetToHostname === undefined
@@ -263,9 +268,38 @@ async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
         "user.name=volodyslav",
         "-c",
         "user.email=volodyslav",
-        "reset",
-        "--hard",
+        "merge",
+        "--no-ff",
+        "--allow-unrelated-histories",
+        "--strategy=ours",
+        "--no-commit",
         `origin/${branch}`
+    );
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "read-tree",
+        "--reset",
+        "-u",
+        `origin/${branch}`
+    );
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "commit",
+        "--no-edit"
     );
 }
 
