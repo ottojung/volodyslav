@@ -268,14 +268,14 @@ describe("processDiaryAudios", () => {
         );
 
         const assetsBase = capabilities.environment.eventLogAssetsDirectory();
-        const localDayPath = path.join(
+        const assetDirectoryForLocalDate = path.join(
             assetsBase,
             "2026-03",
             "17",
         );
-        const idDirs = await fs.readdir(localDayPath);
+        const idDirs = await fs.readdir(assetDirectoryForLocalDate);
         expect(idDirs).toHaveLength(1);
-        const files = await fs.readdir(path.join(localDayPath, idDirs[0]));
+        const files = await fs.readdir(path.join(assetDirectoryForLocalDate, idDirs[0]));
         expect(files).toEqual(["20260318T020619Z.local.ogg"]);
     });
 });
