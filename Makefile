@@ -8,6 +8,7 @@ install: build/packages-token
 
 build/packages-token: package.json package-lock.json backend/package.json frontend/package.json
 	npm ci
+	mkdir -p -- build/
 	touch "$@"
 
 uninstall:
