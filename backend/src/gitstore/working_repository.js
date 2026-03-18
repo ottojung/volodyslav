@@ -158,7 +158,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 } else {
                     await cloneAndConfigureRepository(
                         capabilities,
-                        { remotePath, workDir, headFile }
+                        { remotePath, workDir, headFile, resetToHostname }
                     );
                     if (resetToHostname !== undefined) {
                         await gitmethod.fetchAndResetHard(

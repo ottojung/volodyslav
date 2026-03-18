@@ -127,10 +127,11 @@ async function makePushable(capabilities, workDirectory) {
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
  * @param {string} work_directory - The repository directory to pull to
+ * @param {{ branch?: string }} [options] - Optional clone options.
  * @returns {Promise<void>}
  */
-async function clone(capabilities, remote_uri, work_directory) {
-    const branch = defaultBranch(capabilities);
+async function clone(capabilities, remote_uri, work_directory, options) {
+    const branch = (options && options.branch) ? options.branch : defaultBranch(capabilities);
     await capabilities.git.call(
         "-c",
         "safe.directory=*",

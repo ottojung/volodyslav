@@ -96,8 +96,8 @@ export async function postSync(resetToHostname, onProgress) {
     try {
         /** @type {{ reset_to_hostname?: string }} */
         const body = {};
-        if (resetToHostname !== undefined) {
-            body.reset_to_hostname = resetToHostname;
+        if (typeof resetToHostname === "string" && resetToHostname.trim() !== "") {
+            body.reset_to_hostname = resetToHostname.trim();
         }
 
         const response = await fetch(`${API_BASE_URL}/sync`, {

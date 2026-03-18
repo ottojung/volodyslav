@@ -47,14 +47,17 @@ function isDestinationCollisionError(error) {
  * the destination; otherwise the caller retries/fails.
  *
  * @param {Capabilities} capabilities
- * @param {{ remotePath: string, workDir: string, headFile: string }} options
+ * @param {{ remotePath: string, workDir: string, headFile: string, resetToHostname?: string }} options
  * @returns {Promise<void>}
  */
 async function cloneAndConfigureRepository(capabilities, options) {
-    const { remotePath, workDir, headFile } = options;
+    const { remotePath, workDir, headFile, resetToHostname } = options;
+    const cloneOptions = resetToHostname !== undefined
+        ? { branch: `${resetToHostname}-main` }
+        : undefined;
     const tempDir = await capabilities.creator.createTemporaryDirectory(capabilities);
     try {
-        await gitmethod.clone(capabilities, remotePath, tempDir);
+        await gitmethod.clone(capabilities, remotePath, tempDir, cloneOptions);
         await configureRemoteForAllBranches(capabilities, tempDir);
         await gitmethod.makePushable(capabilities, tempDir);
         await capabilities.mover.moveDirectory(tempDir, workDir);

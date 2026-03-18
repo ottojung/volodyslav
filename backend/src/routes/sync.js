@@ -1,6 +1,6 @@
 const express = require("express");
 const { synchronizeAll, isSynchronizeAllError } = require("../sync");
-const { isValidHostname } = require("../hostname");
+const { isValidHostname, parseHeadsRefHostnameBranch } = require("../hostname");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
@@ -215,9 +215,14 @@ async function listResetHostnames(capabilities) {
         if (trimmed === "") {
             continue;
         }
-        const match = /^.*\s+refs\/heads\/([0-9A-Za-z_-]+)-main$/.exec(trimmed);
-        if (match !== null && match[1] !== undefined) {
-            hostnames.push(match[1]);
+        const parts = trimmed.split(/\s+/);
+        const refName = parts[1] ?? null;
+        if (refName === null) {
+            continue;
+        }
+        const hostname = parseHeadsRefHostnameBranch(refName);
+        if (hostname !== null) {
+            hostnames.push(hostname);
         }
     }
 

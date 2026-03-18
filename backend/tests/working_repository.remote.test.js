@@ -252,4 +252,47 @@ describe("working_repository", () => {
         expect(hasOriginAfter).toBe(true);
     });
 
+
+    test("fresh-clone reset-to-hostname succeeds when only the target branch exists in remote", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+
+        // Set up a remote repo that has ONLY `alice-main` — no `test-host-main`
+        const remoteRepoPath = capabilities.environment.eventLogRepository();
+        await capabilities.git.call("init", "--bare", "--", remoteRepoPath);
+
+        const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+        await capabilities.git.call("init", "--initial-branch", "alice-main", "--", workTree);
+        const testFile = path.join(workTree, "test.txt");
+        const testFileObj = await capabilities.creator.createFile(testFile);
+        await capabilities.writer.writeFile(testFileObj, "alice content");
+        await capabilities.git.call("-C", workTree, "add", "--all");
+        await capabilities.git.call(
+            "-C", workTree,
+            "-c", "user.name=alice",
+            "-c", "user.email=alice",
+            "commit", "-m", "Alice initial"
+        );
+        await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remoteRepoPath);
+        await capabilities.git.call("-C", workTree, "push", "origin", "alice-main");
+        await capabilities.deleter.deleteDirectory(workTree);
+
+        // Synchronize with resetToHostname="alice" from a fresh (non-existent) local repo
+        await workingRepository.synchronize(
+            capabilities,
+            "working-git-repository",
+            { url: remoteRepoPath },
+            { resetToHostname: "alice" }
+        );
+
+        // Verify the local repo was cloned and the test.txt file is present
+        const localWorkDir = path.join(
+            capabilities.environment.workingDirectory(),
+            "working-git-repository"
+        );
+        const localTestFile = path.join(localWorkDir, "test.txt");
+        const content = await capabilities.reader.readFileAsText(localTestFile);
+        expect(content).toBe("alice content");
+    });
+
 });
