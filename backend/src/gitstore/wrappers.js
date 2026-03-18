@@ -194,15 +194,12 @@ async function pull(capabilities, workDirectory) {
 /**
  * @param {Capabilities} capabilities
  * @param {string} workDirectory
- * @param {boolean} [force]
  * @returns {Promise<void>}
  */
-async function push(capabilities, workDirectory, force) {
+async function push(capabilities, workDirectory) {
     const branch = defaultBranch(capabilities);
     try {
         await ensureCurrentBranch(capabilities, workDirectory);
-        /** @type {string[]} */
-        const forceArgs = force ? ["--force"] : [];
         await capabilities.git.call(
             "-C",
             workDirectory,
@@ -213,7 +210,6 @@ async function push(capabilities, workDirectory, force) {
             "-c",
             "user.email=volodyslav",
             "push",
-            ...forceArgs,
             "-u",
             "origin",
             branch
@@ -229,14 +225,17 @@ async function push(capabilities, workDirectory, force) {
 }
 
 /**
- * Fetch from the remote and hard-reset the local branch to the remote state (discard all local changes).
+ * Fetch from the remote and reset the local branch work tree to match the
+ * remote branch content. If files changed, create a commit with a merge-like
+ * message so reset mode remains push-safe with a normal push.
+ *
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to reset
  * @param {string} [resetToHostname] - Optional hostname branch to reset to.
  * @returns {Promise<void>}
- * @throws {Error} When git fetch or reset operation fails
+ * @throws {Error} When git fetch/read-tree/commit operation fails
  */
-async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
+async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
     const branch = resetToHostname === undefined
         ? defaultBranch(capabilities)
         : `${resetToHostname}-main`;
@@ -263,9 +262,34 @@ async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
         "user.name=volodyslav",
         "-c",
         "user.email=volodyslav",
-        "reset",
-        "--hard",
+        "read-tree",
+        "--reset",
+        "-u",
         `origin/${branch}`
+    );
+    const statusResult = await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "status",
+        "--porcelain"
+    );
+    if (statusResult.stdout.trim() === "") {
+        return;
+    }
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "commit",
+        "--message",
+        `Merge-like reset to origin/${branch}`
     );
 }
 
@@ -302,7 +326,7 @@ module.exports = {
     pull,
     mergeRemoteHostBranches,
     push,
-    fetchAndResetHard,
+    fetchAndReconcile,
     init,
     PushError,
     isPushError,

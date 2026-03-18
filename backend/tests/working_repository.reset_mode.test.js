@@ -52,7 +52,7 @@ async function pushBranch(capabilities, branch, files) {
 }
 
 describe("working_repository reset semantics", () => {
-    test("resetToHostname force-pushes current-host branch to avoid divergence", async () => {
+    test("resetToHostname replaces branch files and commits the change for normal push", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
 
@@ -62,7 +62,15 @@ describe("working_repository reset semantics", () => {
 
         await pushBranch(capabilities, currentBranch, [["current.txt", "current host"]]);
         await pushBranch(capabilities, "alice-main", [["alice.txt", "alice host"]]);
-
+        const currentBranchHead = (await capabilities.git.call(
+            "-c",
+            "safe.directory=*",
+            "ls-remote",
+            "--heads",
+            "--",
+            remoteRepoPath,
+            currentBranch
+        )).stdout.trim().split("\t")[0];
         await workingRepository.synchronize(
             capabilities,
             "working-git-repository",
@@ -84,6 +92,29 @@ describe("working_repository reset semantics", () => {
             expect(
                 await capabilities.checker.fileExists(path.join(verifyTree, "current.txt"))
             ).toBeNull();
+            const headWithParents = (
+                await capabilities.git.call(
+                    "-C",
+                    verifyTree,
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    "HEAD"
+                )
+            ).stdout.trim().split(" ");
+            expect(headWithParents).toHaveLength(2);
+            expect(headWithParents).toContain(currentBranchHead);
+            const commitMessage = (
+                await capabilities.git.call(
+                    "-C",
+                    verifyTree,
+                    "log",
+                    "-1",
+                    "--pretty=%B"
+                )
+            ).stdout.trim();
+            expect(commitMessage).toContain("Merge-like reset to origin/alice-main");
         } finally {
             await capabilities.deleter.deleteDirectory(verifyTree);
         }
