@@ -254,9 +254,9 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
-        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {
@@ -267,20 +267,24 @@ describe("App", () => {
         ).toBeInTheDocument();
     });
 
-    it("shows reset hostname dropdown only in reset mode", async () => {
+    it("shows reset hostname radio choices only in reset mode", async () => {
         fetchVersion.mockResolvedValue("1.2.3");
         postSync.mockResolvedValue({ success: true });
 
         renderApp();
 
-        expect(screen.queryByLabelText("Reset hostname")).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("radiogroup", { name: "Reset hostname" })
+        ).not.toBeInTheDocument();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), {
             target: { value: "reset-to-hostname" },
         });
 
         await waitFor(() => {
-            expect(screen.getByLabelText("Reset hostname")).toBeInTheDocument();
+            expect(
+                screen.getByRole("radiogroup", { name: "Reset hostname" })
+            ).toBeInTheDocument();
         });
     });
 
@@ -299,10 +303,10 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
 
-        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         expect(screen.getByText("Sync")).not.toBeDisabled();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), { target: { value: "" } });
@@ -310,12 +314,12 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
 
-        expect(screen.getByRole("option", { name: "Loading hostnames..." })).toBeInTheDocument();
-        expect(screen.queryByRole("option", { name: "alice" })).not.toBeInTheDocument();
+        expect(screen.getByText("Loading hostnames...")).toBeInTheDocument();
+        expect(screen.queryByRole("radio", { name: "alice" })).not.toBeInTheDocument();
         expect(screen.getByText("Sync")).toBeDisabled();
 
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "bob" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "bob" })).toBeInTheDocument();
         });
     });
 
@@ -351,7 +355,7 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
         expect(fetchSyncHostnames).toHaveBeenCalledTimes(2);
     });
@@ -366,9 +370,9 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
-        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         expect(screen.getByText("Sync")).not.toBeDisabled();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), { target: { value: "" } });
@@ -377,7 +381,7 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
         expect(screen.getByText("Sync")).toBeDisabled();
     });
@@ -393,9 +397,9 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         await waitFor(() => {
-            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
-        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {
