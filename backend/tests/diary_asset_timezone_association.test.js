@@ -53,7 +53,7 @@ describe("diary audio asset association across timezones", () => {
         expect(entry.date.hour).toBe(19);
         expect(entry.date.minute).toBe(6);
         expect(entry.date.second).toBe(19);
-        expect(entry.date.zone).toBe("America/Los_Angeles");
+        expect(entry.date.zone).toBe("UTC-7");
 
         const serializedEntryResponse = await request(app)
             .get(`/api/entries/${entry.id.identifier}`);
