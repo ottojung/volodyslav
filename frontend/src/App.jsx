@@ -98,6 +98,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (syncMode !== 'reset-to-hostname') {
+      return;
+    }
+
     let isMounted = true;
 
     async function loadSyncHostnames() {
@@ -114,7 +118,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [syncMode]);
 
   useEffect(() => {
     let isMounted = true;
@@ -203,7 +207,7 @@ function App() {
 
     if (result.success) {
       setSyncState('success');
-      setSyncSuccessMessage(makeSyncSuccessMessage(nextResetHostname));
+      setSyncSuccessMessage(makeSyncSuccessMessage(result.resetToHostname));
       setSyncSteps(result.steps || []);
       setTimeout(() => setSyncState('idle'), 2000);
     } else {

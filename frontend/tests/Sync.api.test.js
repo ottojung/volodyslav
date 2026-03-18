@@ -130,6 +130,30 @@ describe("postSync", () => {
         expect(result).toEqual({ success: true, steps });
     });
 
+    it("passes reset_to_hostname from the backend success state as resetToHostname", async () => {
+        global.fetch.mockResolvedValueOnce(
+            makeResponse(200, { status: "success", reset_to_hostname: "alice" })
+        );
+
+        let result;
+        await act(async () => {
+            result = await postSync("alice");
+        });
+
+        expect(result).toMatchObject({ success: true, resetToHostname: "alice" });
+    });
+
+    it("omits resetToHostname when backend success state has no reset_to_hostname", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(200, { status: "success" }));
+
+        let result;
+        await act(async () => {
+            result = await postSync();
+        });
+
+        expect(result.resetToHostname).toBeUndefined();
+    });
+
     it("returns steps from the final error response", async () => {
         const steps = [
             { name: "generators", status: "error" },

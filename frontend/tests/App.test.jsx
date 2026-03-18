@@ -246,7 +246,7 @@ describe("App", () => {
 
     it("sends a custom reset hostname and shows it in the success message", async () => {
         fetchVersion.mockResolvedValue("1.2.3");
-        postSync.mockResolvedValue({ success: true });
+        postSync.mockResolvedValue({ success: true, resetToHostname: "alice" });
 
         renderApp();
 
@@ -282,5 +282,67 @@ describe("App", () => {
         await waitFor(() => {
             expect(screen.getByLabelText("Reset hostname")).toBeInTheDocument();
         });
+    });
+
+    it("retries loading hostnames when Reset to Host mode is re-opened after an initial failure", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        // First open: returns [] (failure); second open: returns hostnames (recovery)
+        fetchSyncHostnames
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce(["alice", "test-host"]);
+
+        renderApp();
+
+        // No fetch yet — dropdown not open
+        expect(fetchSyncHostnames).not.toHaveBeenCalled();
+
+        // Open Reset to Host mode — first fetch, returns empty
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+
+        await waitFor(() => {
+            expect(fetchSyncHostnames).toHaveBeenCalledTimes(1);
+        });
+
+        // Close the dropdown
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "" },
+        });
+
+        // Re-open Reset to Host — triggers retry
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+        });
+        expect(fetchSyncHostnames).toHaveBeenCalledTimes(2);
+    });
+
+    it("shows success message from backend's reset_to_hostname, not frontend state", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        // Backend reports the sync ran without any reset (concurrent sync already in flight)
+        postSync.mockResolvedValue({ success: true, resetToHostname: undefined });
+
+        renderApp();
+
+        fireEvent.change(screen.getByLabelText("Sync mode"), {
+            target: { value: "reset-to-hostname" },
+        });
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "alice" })).toBeInTheDocument();
+        });
+        fireEvent.change(screen.getByLabelText("Reset hostname"), { target: { value: "alice" } });
+        fireEvent.click(screen.getByText("Sync"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync complete")).toBeInTheDocument();
+        });
+        // Backend said no reset happened — message should reflect that
+        expect(
+            screen.getByText("Your local and remote data are now in sync.")
+        ).toBeInTheDocument();
     });
 });

@@ -12,11 +12,11 @@ const SYNC_STATUS_POLL_INTERVAL_MS = 1000;
  */
 
 /**
- * @typedef {{ status: "idle" | "running" | "success" | "error", steps?: SyncStepResult[], error?: { message: string, details: SyncErrorDetail[] } }} SyncResponse
+ * @typedef {{ status: "idle" | "running" | "success" | "error", steps?: SyncStepResult[], error?: { message: string, details: SyncErrorDetail[] }, reset_to_hostname?: string }} SyncResponse
  */
 
 /**
- * @typedef {{ success: boolean, error?: string, details?: SyncErrorDetail[], steps?: SyncStepResult[] }} PostSyncResult
+ * @typedef {{ success: boolean, error?: string, details?: SyncErrorDetail[], steps?: SyncStepResult[], resetToHostname?: string }} PostSyncResult
  */
 
 /**
@@ -61,7 +61,7 @@ async function readSyncErrorResponse(response) {
  */
 function toSyncResult(data) {
     if (data?.status === "success") {
-        return { success: true, steps: data.steps };
+        return { success: true, steps: data.steps, resetToHostname: data.reset_to_hostname };
     }
 
     if (data?.status === "error") {
