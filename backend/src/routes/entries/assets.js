@@ -9,6 +9,7 @@
 const path = require("path");
 const { getEntryById } = require("../../entry");
 const { isDirScannerError } = require("../../filesystem").dirscanner;
+const { targetDir } = require("../../event").asset;
 
 /** @typedef {import('../../environment').Environment} Environment */
 /** @typedef {import('../../logger').Logger} Logger */
@@ -61,20 +62,6 @@ function mediaTypeFromFilename(filename) {
 }
 
 /**
- * Computes the directory path where an entry's assets are stored.
- * @param {string} assetsDir
- * @param {import('../../event/structure').Event} entry
- * @returns {string}
- */
-function entryAssetsDir(assetsDir, entry) {
-    const date = entry.date;
-    const year = date.year;
-    const month = date.month.toString().padStart(2, "0");
-    const day = date.day.toString().padStart(2, "0");
-    return path.join(assetsDir, `${year}-${month}`, day, entry.id.identifier);
-}
-
-/**
  * Computes the URL path for an asset file (relative to /api).
  * @param {import('../../event/structure').Event} entry
  * @param {string} filename
@@ -113,8 +100,7 @@ async function handleEntryAssets(req, res, capabilities, reqId) {
             return;
         }
 
-        const assetsDir = capabilities.environment.eventLogAssetsDirectory();
-        const dirPath = entryAssetsDir(assetsDir, entry);
+        const dirPath = targetDir(capabilities, entry);
 
         const dirProof = await capabilities.checker.directoryExists(dirPath);
 

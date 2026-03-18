@@ -53,27 +53,39 @@ function make(event, file) {
 }
 
 /**
+ * Computes the target directory path for an asset based on its event's date and ID.
  * @param {Capabilities} capabilities
- * @param {Asset} asset
+ * @param {Event} event
  * @returns {string}
  */
-function targetPath(capabilities, asset) {
+function targetDir(capabilities, event) {
     const baseDir = capabilities.environment.eventLogAssetsDirectory();
     
     // Extract date components using proper DateTime methods
-    const date = asset.event.date;
+    const date = event.date;
     const year = date.year;
     const month = date.month.toString().padStart(2, '0');
     const day = date.day.toString().padStart(2, '0');
     
     const firstPart = `${year}-${month}`;
     const secondPart = `${day}`;
-    const thirdPart = `${asset.event.id.identifier}`;
+    const thirdPart = `${event.id.identifier}`;
+    return path.join(baseDir, firstPart, secondPart, thirdPart);
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @param {Asset} asset
+ * @returns {string}
+ */
+function targetPath(capabilities, asset) {
+    const dir = targetDir(capabilities, asset.event);
     const filename = path.basename(asset.file.path);
-    return path.join(baseDir, firstPart, secondPart, thirdPart, filename);
+    return path.join(dir, filename);
 }
 
 module.exports = {
+    targetDir,
     targetPath,
     make,
 };
