@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Button,
@@ -194,6 +194,17 @@ function App() {
     setSyncResetHostname(e.target.value);
   };
 
+  const resetTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current !== null) {
+        clearTimeout(resetTimeoutRef.current);
+        resetTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleSyncClick = async () => {
     const trimmedResetHostname = syncResetHostname.trim();
     if (syncMode === 'reset-to-hostname' && trimmedResetHostname === '') {
@@ -216,7 +227,15 @@ function App() {
       setSyncState('success');
       setSyncSuccessMessage(makeSyncSuccessMessage(result.resetToHostname));
       setSyncSteps(result.steps || []);
-      setTimeout(() => setSyncState('idle'), 2000);
+
+      if (resetTimeoutRef.current !== null) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+
+      resetTimeoutRef.current = setTimeout(() => {
+        setSyncState('idle');
+        resetTimeoutRef.current = null;
+      }, 2000);
     } else {
       setSyncState('error');
       setSyncSuccessMessage('');
