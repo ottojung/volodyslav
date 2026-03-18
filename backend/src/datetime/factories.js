@@ -34,7 +34,7 @@ function fromObject(spec, options = {}) {
  */
 function format(dateTime, pattern, timezone) {
     if (!dateTime || !dateTime._luxonDateTime) {
-        throw new Error("Invalid DateTime object: missing _luxonDateTime property");
+        throw new Error("Invalid DateTime object provided");
     }
     
     let luxonDateTime = dateTime._luxonDateTime;
@@ -44,7 +44,21 @@ function format(dateTime, pattern, timezone) {
     return luxonDateTime.toFormat(pattern);
 }
 
+/**
+ * Convert a DateTime to a different timezone while preserving the instant.
+ * @param {DateTime} dateTime
+ * @param {string} timezone
+ * @returns {DateTime}
+ */
+function setZone(dateTime, timezone) {
+    if (!dateTime || !dateTime._luxonDateTime) {
+        throw new Error("Invalid DateTime object provided");
+    }
+    return fromLuxon(dateTime._luxonDateTime.setZone(timezone));
+}
+
 module.exports = {
     fromObject,
     format,
+    setZone,
 };
