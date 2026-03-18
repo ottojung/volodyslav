@@ -118,7 +118,7 @@ function FieldRow({ fieldKey, value }) {
                         />
                     </Tooltip>
                 </HStack>
-                <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{displayedValue}</Text>
+                <Text {...TEXT_STYLES.entryText} wordBreak="normal">{displayedValue}</Text>
                 {isCollapsible && (
                     <Button
                         size="xs"
@@ -506,7 +506,7 @@ export default function EntryDetail() {
                             <VStack spacing={SPACING.sm} align="stretch">
                                 {basicContextInputs.map((input, index) => (
                                     <Box key={index} {...CARD_STYLES.entry}>
-                                        <Text {...TEXT_STYLES.entryText} wordBreak="break-all">{input}</Text>
+                                        <Text {...TEXT_STYLES.entryText} wordBreak="normal">{input}</Text>
                                     </Box>
                                 ))}
                             </VStack>
