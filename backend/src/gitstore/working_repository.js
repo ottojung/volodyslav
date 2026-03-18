@@ -184,7 +184,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 }
             }
 
-            if (mergeHostBranches) {
+            if (mergeHostBranches && resetToHostname === undefined) {
                 await gitmethod.mergeRemoteHostBranches(capabilities, workDir);
             }
         } catch (error) {

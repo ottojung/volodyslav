@@ -127,4 +127,64 @@ describe("working_repository reset semantics", () => {
             await capabilities.deleter.deleteDirectory(verifyTree);
         }
     });
+
+    test("resetToHostname does not merge host branches when local repository already exists", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+
+        const remoteRepoPath = capabilities.environment.eventLogRepository();
+        const currentBranch = defaultBranch(capabilities);
+        await capabilities.git.call("init", "--bare", "--", remoteRepoPath);
+        await pushBranch(capabilities, currentBranch, [["current.txt", "current host"]]);
+        await pushBranch(capabilities, "alice-main", [["alice.txt", "alice host"]]);
+        await pushBranch(capabilities, "zed-main", [["zed.txt", "zed host"]]);
+
+        await workingRepository.synchronize(
+            capabilities,
+            "working-git-repository",
+            { url: remoteRepoPath }
+        );
+
+        const originalGitCall = capabilities.git.call;
+        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+            if (args.includes("merge")) {
+                throw new Error("merge must not run in reset mode");
+            }
+            return originalGitCall.apply(capabilities.git, args);
+        });
+
+        await expect(workingRepository.synchronize(
+            capabilities,
+            "working-git-repository",
+            { url: remoteRepoPath },
+            { resetToHostname: "alice", mergeHostBranches: true }
+        )).resolves.toBeUndefined();
+    });
+
+    test("resetToHostname does not merge host branches when local repository does not exist", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+
+        const remoteRepoPath = capabilities.environment.eventLogRepository();
+        const currentBranch = defaultBranch(capabilities);
+        await capabilities.git.call("init", "--bare", "--", remoteRepoPath);
+        await pushBranch(capabilities, currentBranch, [["current.txt", "current host"]]);
+        await pushBranch(capabilities, "alice-main", [["alice.txt", "alice host"]]);
+        await pushBranch(capabilities, "zed-main", [["zed.txt", "zed host"]]);
+
+        const originalGitCall = capabilities.git.call;
+        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+            if (args.includes("merge")) {
+                throw new Error("merge must not run in reset mode");
+            }
+            return originalGitCall.apply(capabilities.git, args);
+        });
+
+        await expect(workingRepository.synchronize(
+            capabilities,
+            "working-git-repository",
+            { url: remoteRepoPath },
+            { resetToHostname: "alice", mergeHostBranches: true }
+        )).resolves.toBeUndefined();
+    });
 });
