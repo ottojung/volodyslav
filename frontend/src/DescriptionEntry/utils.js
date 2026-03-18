@@ -10,7 +10,7 @@ import { DateTime } from 'luxon';
  * @returns {string} Formatted date string
  */
 export const formatRelativeDate = (dateString) => {
-    const date = DateTime.fromISO(dateString);
+    const date = DateTime.fromISO(dateString, { setZone: true });
     if (!date.isValid) {
         return "just now";
     }
