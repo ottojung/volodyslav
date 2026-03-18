@@ -74,6 +74,7 @@ const { scanFromFilesystem } = require('./render');
 async function synchronizeNoLock(capabilities, options) {
     const remotePath = capabilities.environment.generatorsRepository();
     const remoteLocation = { url: remotePath };
+    const resetToHostname = options && options.resetToHostname;
     const { getRootDatabase } = require('./index');
     const rootDatabase = await getRootDatabase(capabilities);
     /** @type {Error | null} */
@@ -117,11 +118,18 @@ async function synchronizeNoLock(capabilities, options) {
                 );
             }
         );
-        if (mergeHostBranchesError !== null) {
+        if (mergeHostBranchesError !== null && resetToHostname === undefined) {
             throw mergeHostBranchesError;
         }
     } finally {
         await rootDatabase.close();
+    }
+
+    if (mergeHostBranchesError !== null) {
+        capabilities.logger.logWarning(
+            { remotePath, resetToHostname, error: mergeHostBranchesError },
+            "Reset-to-host synchronization finished with merge failures"
+        );
     }
 
     capabilities.logger.logInfo(
