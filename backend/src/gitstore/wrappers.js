@@ -127,10 +127,11 @@ async function makePushable(capabilities, workDirectory) {
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
  * @param {string} work_directory - The repository directory to pull to
+ * @param {{ branch?: string }} [options] - Optional clone options.
  * @returns {Promise<void>}
  */
-async function clone(capabilities, remote_uri, work_directory) {
-    const branch = defaultBranch(capabilities);
+async function clone(capabilities, remote_uri, work_directory, options) {
+    const branch = (options && options.branch) ? options.branch : defaultBranch(capabilities);
     await capabilities.git.call(
         "-c",
         "safe.directory=*",
@@ -190,11 +191,18 @@ async function pull(capabilities, workDirectory) {
     );
 }
 
-/** @param {Capabilities} capabilities @param {string} workDirectory @returns {Promise<void>} */
-async function push(capabilities, workDirectory) {
+/**
+ * @param {Capabilities} capabilities
+ * @param {string} workDirectory
+ * @param {boolean} [force]
+ * @returns {Promise<void>}
+ */
+async function push(capabilities, workDirectory, force) {
     const branch = defaultBranch(capabilities);
     try {
         await ensureCurrentBranch(capabilities, workDirectory);
+        /** @type {string[]} */
+        const forceArgs = force ? ["--force"] : [];
         await capabilities.git.call(
             "-C",
             workDirectory,
@@ -205,6 +213,7 @@ async function push(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "push",
+            ...forceArgs,
             "-u",
             "origin",
             branch
@@ -223,11 +232,14 @@ async function push(capabilities, workDirectory) {
  * Fetch from the remote and hard-reset the local branch to the remote state (discard all local changes).
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to reset
+ * @param {string} [resetToHostname] - Optional hostname branch to reset to.
  * @returns {Promise<void>}
  * @throws {Error} When git fetch or reset operation fails
  */
-async function fetchAndResetHard(capabilities, workDirectory) {
-    const branch = defaultBranch(capabilities);
+async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
+    const branch = resetToHostname === undefined
+        ? defaultBranch(capabilities)
+        : `${resetToHostname}-main`;
     await configureRemoteForAllBranches(capabilities, workDirectory);
     await capabilities.git.call(
         "-C",

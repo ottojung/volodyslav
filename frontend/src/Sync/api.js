@@ -12,11 +12,11 @@ const SYNC_STATUS_POLL_INTERVAL_MS = 1000;
  */
 
 /**
- * @typedef {{ status: "idle" | "running" | "success" | "error", steps?: SyncStepResult[], error?: { message: string, details: SyncErrorDetail[] } }} SyncResponse
+ * @typedef {{ status: "idle" | "running" | "success" | "error", steps?: SyncStepResult[], error?: { message: string, details: SyncErrorDetail[] }, reset_to_hostname?: string }} SyncResponse
  */
 
 /**
- * @typedef {{ success: boolean, error?: string, details?: SyncErrorDetail[], steps?: SyncStepResult[] }} PostSyncResult
+ * @typedef {{ success: boolean, error?: string, details?: SyncErrorDetail[], steps?: SyncStepResult[], resetToHostname?: string }} PostSyncResult
  */
 
 /**
@@ -61,7 +61,13 @@ async function readSyncErrorResponse(response) {
  */
 function toSyncResult(data) {
     if (data?.status === "success") {
-        return { success: true, steps: data.steps };
+        /** @type {PostSyncResult} */
+        const success = { success: true, steps: data.steps };
+        const resetToHostname = data.reset_to_hostname;
+        if (typeof resetToHostname === "string" && resetToHostname.trim() !== "") {
+            return { ...success, resetToHostname };
+        }
+        return success;
     }
 
     if (data?.status === "error") {
@@ -88,16 +94,16 @@ function toSyncResult(data) {
 
 /**
  * Calls POST /api/sync to synchronize persisted application state.
- * @param {boolean} [resetToTheirs] - When true, resets local state to the remote (theirs) version.
+ * @param {string} [resetToHostname] - Optional hostname branch target for reset mode.
  * @param {(steps: SyncStepResult[]) => void} [onProgress] - Called with current step results whenever the running state is polled.
  * @returns {Promise<PostSyncResult>}
  */
-export async function postSync(resetToTheirs, onProgress) {
+export async function postSync(resetToHostname, onProgress) {
     try {
-        /** @type {{ reset_to_theirs?: boolean }} */
+        /** @type {{ reset_to_hostname?: string }} */
         const body = {};
-        if (resetToTheirs === true) {
-            body.reset_to_theirs = true;
+        if (typeof resetToHostname === "string" && resetToHostname.trim() !== "") {
+            body.reset_to_hostname = resetToHostname.trim();
         }
 
         const response = await fetch(`${API_BASE_URL}/sync`, {
@@ -136,5 +142,37 @@ export async function postSync(resetToTheirs, onProgress) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error("Error during sync:", error);
         return { success: false, error: `Network error: ${message}` };
+    }
+}
+
+/**
+ * Calls GET /api/sync/hostnames to obtain selectable reset hostnames.
+ * @returns {Promise<string[]>}
+ */
+export async function fetchSyncHostnames() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/sync/hostnames`);
+        if (!response.ok) {
+            logger.warn("Failed to fetch sync hostnames:", response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        if (!data || !Array.isArray(data.hostnames)) {
+            logger.warn("Sync hostnames response did not include an array");
+            return [];
+        }
+
+        /** @type {string[]} */
+        const hostnames = [];
+        for (const hostname of data.hostnames) {
+            if (typeof hostname === "string") {
+                hostnames.push(hostname);
+            }
+        }
+        return hostnames;
+    } catch (error) {
+        logger.error("Error fetching sync hostnames:", error);
+        return [];
     }
 }

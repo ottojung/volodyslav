@@ -104,7 +104,7 @@ async function hasOriginRemote(capabilities, workDir) {
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation} origin - Remote location or local location to sync with.
- * @param {{ resetToTheirs?: boolean, mergeHostBranches?: boolean }} [options] - Optional sync options.
+ * @param {{ resetToHostname?: string, mergeHostBranches?: boolean }} [options] - Optional sync options.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError} If synchronization of the working repository fails.
  * @throws {MergeHostBranchesError} If merging host branches during synchronization fails.
@@ -114,7 +114,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const headFile = path.join(gitDir, "HEAD");
     const remotePath = origin.url;
-    const resetToTheirs = options && options.resetToTheirs;
+    const resetToHostname = options && options.resetToHostname;
     const mergeHostBranches = options && options.mergeHostBranches;
 
     // Determine once, before any retry, whether the local repo exists without
@@ -146,16 +146,31 @@ async function synchronize(capabilities, workingPath, origin, options) {
         }
 
         try {
-            if (resetToTheirs || (exists && needsRemoteSetup)) {
+            if (resetToHostname !== undefined || (exists && needsRemoteSetup)) {
                 if (exists) {
                     // fetchAndResetHard reconciles the local repo with the remote,
                     // including the case where they have unrelated histories.
-                    await gitmethod.fetchAndResetHard(capabilities, workDir);
+                    await gitmethod.fetchAndResetHard(
+                        capabilities,
+                        workDir,
+                        resetToHostname
+                    );
+                    if (resetToHostname !== undefined) {
+                        await gitmethod.push(capabilities, workDir, true);
+                    }
                 } else {
                     await cloneAndConfigureRepository(
                         capabilities,
-                        { remotePath, workDir, headFile }
+                        { remotePath, workDir, headFile, resetToHostname }
                     );
+                    if (resetToHostname !== undefined) {
+                        await gitmethod.fetchAndResetHard(
+                            capabilities,
+                            workDir,
+                            resetToHostname
+                        );
+                        await gitmethod.push(capabilities, workDir, true);
+                    }
                 }
             } else {
                 if (exists) {

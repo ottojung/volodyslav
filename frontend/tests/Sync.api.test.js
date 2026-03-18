@@ -13,7 +13,7 @@ jest.mock("../src/api_base_url.js", () => ({
     API_BASE_URL: "/api",
 }));
 
-import { postSync } from "../src/Sync/api.js";
+import { postSync, fetchSyncHostnames } from "../src/Sync/api.js";
 
 function makeResponse(status, data) {
     return {
@@ -45,7 +45,7 @@ describe("postSync", () => {
 
         let result;
         await act(async () => {
-            result = await postSync(true);
+            result = await postSync();
         });
 
         expect(result).toEqual({ success: true, steps: undefined });
@@ -54,7 +54,7 @@ describe("postSync", () => {
             "/api/sync",
             expect.objectContaining({
                 method: "POST",
-                body: JSON.stringify({ reset_to_theirs: true }),
+                body: JSON.stringify({}),
             })
         );
         expect(global.fetch).toHaveBeenNthCalledWith(
@@ -64,6 +64,22 @@ describe("postSync", () => {
         expect(global.fetch).toHaveBeenNthCalledWith(
             3,
             "/api/sync"
+        );
+    });
+
+    it("sends reset_to_hostname when a custom hostname reset target is requested", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(200, { status: "success" }));
+
+        await act(async () => {
+            await postSync("alice");
+        });
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            "/api/sync",
+            expect.objectContaining({
+                method: "POST",
+                body: JSON.stringify({ reset_to_hostname: "alice" }),
+            })
         );
     });
 
@@ -112,6 +128,30 @@ describe("postSync", () => {
         });
 
         expect(result).toEqual({ success: true, steps });
+    });
+
+    it("passes reset_to_hostname from the backend success state as resetToHostname", async () => {
+        global.fetch.mockResolvedValueOnce(
+            makeResponse(200, { status: "success", reset_to_hostname: "alice" })
+        );
+
+        let result;
+        await act(async () => {
+            result = await postSync("alice");
+        });
+
+        expect(result).toMatchObject({ success: true, resetToHostname: "alice" });
+    });
+
+    it("omits resetToHostname when backend success state has no reset_to_hostname", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(200, { status: "success" }));
+
+        let result;
+        await act(async () => {
+            result = await postSync();
+        });
+
+        expect(result.resetToHostname).toBeUndefined();
     });
 
     it("returns steps from the final error response", async () => {
@@ -164,5 +204,19 @@ describe("postSync", () => {
 
         expect(onProgress).toHaveBeenCalledWith(intermediateSteps);
         expect(onProgress).toHaveBeenCalledTimes(2);
+    });
+
+    it("fetches reset hostname options for the sync dropdown", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(200, {
+            hostnames: ["alice", "test-host"],
+        }));
+
+        let result;
+        await act(async () => {
+            result = await fetchSyncHostnames();
+        });
+
+        expect(global.fetch).toHaveBeenCalledWith("/api/sync/hostnames");
+        expect(result).toEqual(["alice", "test-host"]);
     });
 });

@@ -1,5 +1,6 @@
 const express = require("express");
 const { synchronizeAll, isSynchronizeAllError } = require("../sync");
+const { isValidHostname, parseHeadsRefHostnameBranch } = require("../hostname");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
@@ -20,15 +21,15 @@ const { synchronizeAll, isSynchronizeAllError } = require("../sync");
  */
 
 /**
- * @typedef {{ status: "running", started_at: string, reset_to_theirs: boolean, steps: SyncStepResult[] }} RunningSyncState
+ * @typedef {{ status: "running", started_at: string, reset_to_hostname?: string, steps: SyncStepResult[] }} RunningSyncState
  */
 
 /**
- * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_theirs: boolean, steps: SyncStepResult[] }} SuccessfulSyncState
+ * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_hostname?: string, steps: SyncStepResult[] }} SuccessfulSyncState
  */
 
 /**
- * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_theirs: boolean, error: SyncErrorResponse, steps: SyncStepResult[] }} FailedSyncState
+ * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_hostname?: string, error: SyncErrorResponse, steps: SyncStepResult[] }} FailedSyncState
  */
 
 /**
@@ -92,14 +93,14 @@ function makeSyncErrorResponse(error) {
 
 /**
  * @param {Capabilities} capabilities
- * @returns {{ getState: () => SyncState, start: (options: { resetToTheirs?: boolean }) => SyncState }}
+ * @returns {{ getState: () => SyncState, start: (options: { resetToHostname?: string }) => SyncState }}
  */
 function makeSyncController(capabilities) {
     /** @type {SyncState} */
     let currentState = { status: "idle" };
 
     /**
-     * @param {{ resetToTheirs?: boolean }} options
+     * @param {{ resetToHostname?: string }} options
      * @returns {SyncState}
      */
     function start(options) {
@@ -108,14 +109,15 @@ function makeSyncController(capabilities) {
         }
 
         const started_at = capabilities.datetime.now().toISOString();
-        const reset_to_theirs = options.resetToTheirs === true;
+        const runningHostname = capabilities.environment.hostname();
+        const reset_to_hostname = options.resetToHostname;
 
         /** @type {RunningSyncState} */
-        const runningState = { status: "running", started_at, reset_to_theirs, steps: [] };
+        const runningState = { status: "running", started_at, reset_to_hostname, steps: [] };
         currentState = runningState;
 
         capabilities.logger.logInfo(
-            { started_at, reset_to_theirs },
+            { started_at, reset_to_hostname, runningHostname },
             "Sync started in background"
         );
 
@@ -137,11 +139,11 @@ function makeSyncController(capabilities) {
                     status: "success",
                     started_at,
                     finished_at,
-                    reset_to_theirs,
+                    reset_to_hostname,
                     steps: runningState.steps,
                 };
                 capabilities.logger.logInfo(
-                    { started_at, finished_at, reset_to_theirs },
+                    { started_at, finished_at, reset_to_hostname, runningHostname },
                     "Sync finished successfully"
                 );
             })
@@ -156,7 +158,7 @@ function makeSyncController(capabilities) {
                     status: "error",
                     started_at,
                     finished_at,
-                    reset_to_theirs,
+                    reset_to_hostname,
                     error: syncError,
                     steps: runningState.steps,
                 };
@@ -193,6 +195,42 @@ function sendSyncState(res, state) {
 
 /**
  * @param {Capabilities} capabilities
+ * @returns {Promise<string[]>}
+ */
+async function listResetHostnames(capabilities) {
+    const remotePath = capabilities.environment.generatorsRepository();
+    const result = await capabilities.git.call(
+        "-c",
+        "safe.directory=*",
+        "ls-remote",
+        "--heads",
+        "--",
+        remotePath
+    );
+
+    /** @type {string[]} */
+    const hostnames = [];
+    for (const line of result.stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed === "") {
+            continue;
+        }
+        const parts = trimmed.split(/\s+/);
+        const refName = parts[1] ?? null;
+        if (refName === null) {
+            continue;
+        }
+        const hostname = parseHeadsRefHostnameBranch(refName);
+        if (hostname !== null) {
+            hostnames.push(hostname);
+        }
+    }
+
+    return [...new Set(hostnames)].sort();
+}
+
+/**
+ * @param {Capabilities} capabilities
  * @returns {import('express').Router}
  */
 function makeRouter(capabilities) {
@@ -201,19 +239,19 @@ function makeRouter(capabilities) {
 
     router.post("/sync", async (req, res) => {
         const body = req.body || {};
-        const resetToTheirs = body.reset_to_theirs;
+        const resetToHostname = body.reset_to_hostname;
 
-        if (resetToTheirs !== undefined && resetToTheirs !== true) {
+        if (resetToHostname !== undefined && (typeof resetToHostname !== "string" || !isValidHostname(resetToHostname))) {
             return res.status(400).json({
-                error: `Invalid reset_to_theirs value: ${JSON.stringify(resetToTheirs)}. Must be true or absent.`,
+                error: `Invalid reset_to_hostname value: ${JSON.stringify(resetToHostname)}. Must match [0-9A-Za-z_-]+.`,
             });
         }
 
-        /** @type {{ resetToTheirs?: boolean }} */
-        const options = resetToTheirs === true ? { resetToTheirs: true } : {};
+        /** @type {{ resetToHostname?: string }} */
+        const options = resetToHostname !== undefined ? { resetToHostname } : {};
 
         capabilities.logger.logDebug(
-            { method: req.method, url: req.originalUrl, resetToTheirs, client_ip: req.ip },
+            { method: req.method, url: req.originalUrl, resetToHostname, client_ip: req.ip },
             "Sync endpoint called"
         );
 
@@ -222,6 +260,20 @@ function makeRouter(capabilities) {
 
     router.get("/sync", async (_req, res) => {
         return sendSyncState(res, syncController.getState());
+    });
+
+    router.get("/sync/hostnames", async (_req, res) => {
+        try {
+            return res.status(200).json({
+                hostnames: await listResetHostnames(capabilities),
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            capabilities.logger.logError({ error }, "Failed to list reset hostnames");
+            return res.status(500).json({
+                error: `Failed to list reset hostnames: ${message}`,
+            });
+        }
     });
 
     return router;

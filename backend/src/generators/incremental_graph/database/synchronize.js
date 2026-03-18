@@ -59,7 +59,7 @@ const { scanFromFilesystem } = require('./render');
  *
  * Steps:
  * 1. `git add --all && git commit` — capture the latest in-memory state on disk.
- * 2. `git pull && git push` (or reset-to-theirs variant) — sync with the remote.
+ * 2. `git pull && git push` (or reset-to-hostname variant) — sync with the remote.
  * 3. `git fetch origin` and merge every matching `origin/<hostname>-main`
  *    branch into the local hostname branch, collecting merge failures by host.
  *
@@ -67,7 +67,7 @@ const { scanFromFilesystem } = require('./render');
  * duration of this call.
  *
  * @param {Capabilities} capabilities 
- * @param {{ resetToTheirs?: boolean }} [options] 
+ * @param {{ resetToHostname?: string }} [options] 
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
  */

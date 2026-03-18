@@ -40,6 +40,13 @@ async function makeApp() {
     return app;
 }
 
+async function makeAppWithCapabilities() {
+    const capabilities = getTestCapabilities();
+    const app = expressApp.make();
+    app.use("/api", makeRouter(capabilities));
+    return { app, capabilities };
+}
+
 describe("sync route", () => {
     beforeEach(() => {
         synchronizeAll.mockReset();
@@ -82,7 +89,7 @@ describe("sync route", () => {
 
         const startResponse = await request(app)
             .post("/api/sync")
-            .send({ reset_to_theirs: true });
+            .send({ reset_to_hostname: "test-host" });
         expect(startResponse.statusCode).toBe(202);
 
         await new Promise((resolve) => setImmediate(resolve));
@@ -91,7 +98,7 @@ describe("sync route", () => {
         expect(failedResponse.statusCode).toBe(500);
         expect(failedResponse.body).toMatchObject({
             status: "error",
-            reset_to_theirs: true,
+            reset_to_hostname: "test-host",
             error: {
                 message: "Sync failed: Generators database sync failed: git push failed",
                 details: [
@@ -181,5 +188,59 @@ describe("sync route", () => {
         expect(failedResponse.body.steps).toEqual([
             { name: "generators", status: "error" },
         ]);
+    });
+
+    it("starts sync with reset_to_hostname when a custom hostname is provided", async () => {
+        synchronizeAll.mockResolvedValue(undefined);
+        const app = await makeApp();
+
+        const response = await request(app)
+            .post("/api/sync")
+            .send({ reset_to_hostname: "alice" });
+
+        expect(response.statusCode).toBe(202);
+        expect(synchronizeAll).toHaveBeenCalledWith(
+            expect.anything(),
+            { resetToHostname: "alice" },
+            expect.any(Function)
+        );
+    });
+
+    it("rejects invalid reset_to_hostname values", async () => {
+        const app = await makeApp();
+
+        const response = await request(app)
+            .post("/api/sync")
+            .send({ reset_to_hostname: "bad host" });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.body.error).toContain("Invalid reset_to_hostname value");
+    });
+
+    it("lists reset hostnames for the reset dropdown", async () => {
+        const { app, capabilities } = await makeAppWithCapabilities();
+        capabilities.git.call = jest.fn().mockResolvedValue({
+            stdout: [
+                "sha refs/heads/alice-main",
+                "sha refs/heads/test-host-main",
+                "sha refs/heads/not-a-host",
+                "",
+            ].join("\n"),
+        });
+
+        const response = await request(app).get("/api/sync/hostnames");
+
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toEqual({
+            hostnames: ["alice", "test-host"],
+        });
+        expect(capabilities.git.call).toHaveBeenCalledWith(
+            "-c",
+            "safe.directory=*",
+            "ls-remote",
+            "--heads",
+            "--",
+            expect.any(String)
+        );
     });
 });

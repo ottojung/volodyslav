@@ -190,6 +190,35 @@ branches may have diverged from separate roots. Merge failures are collected per
 hostname so synchronisation can keep merging the remaining branches and then
 report an organized summary of the hosts that failed.
 
+### Sync reset targets (`Reset to Host`)
+
+The sync API supports one reset payload form:
+
+- `{"reset_to_hostname": "<hostname>"}` — reset to the specific hostname branch (`<hostname>-main`).
+
+When `reset_to_hostname` is provided, the local working branch remains the
+current host branch, but its contents are hard-reset to `origin/<hostname>-main`.
+This is what powers the frontend **Reset to Host** mode.
+
+To power the **Reset to Host** UI, the backend also exposes a hostname discovery
+endpoint:
+
+- `GET /api/sync/hostnames` — returns a JSON object with a `hostnames` array of
+  available hostnames that can be used as `<hostname>` values in the
+  `reset_to_hostname` payload.
+
+Example response:
+
+```json
+{
+  "hostnames": [
+    "laptop",
+    "desktop",
+    "workstation"
+  ]
+}
+```
+
 ---
 
 ## Module Map

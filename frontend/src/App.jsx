@@ -17,7 +17,7 @@ import {
   ListItem,
 } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
-import { postSync } from './Sync/api.js';
+import { postSync, fetchSyncHostnames } from './Sync/api.js';
 import { SyncStepList } from './Sync/SyncStepList.jsx';
 import { fetchVersion } from './version_api.js';
 
@@ -33,12 +33,12 @@ function makeEmptySyncError() {
 }
 
 /**
- * @param {boolean} resetToTheirs
+ * @param {string | undefined} resetToHostname
  * @returns {string}
  */
-function makeSyncSuccessMessage(resetToTheirs) {
-  if (resetToTheirs) {
-    return 'Your local data was reset to match the remote copy.';
+function makeSyncSuccessMessage(resetToHostname) {
+  if (resetToHostname !== undefined) {
+    return `Your local data was reset to match ${resetToHostname}-main.`;
   }
 
   return 'Your local and remote data are now in sync.';
@@ -51,10 +51,20 @@ function makeEmptySyncSteps() {
   return [];
 }
 
+/**
+ * @returns {string[]}
+ */
+function makeEmptySyncHostnames() {
+  return [];
+}
+
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
-  const [syncResetToTheirs, setSyncResetToTheirs] = useState(false);
+  const [syncMode, setSyncMode] = useState('');
+  const [syncResetHostname, setSyncResetHostname] = useState('');
+  const [syncHostnames, setSyncHostnames] = useState(makeEmptySyncHostnames());
+  const [syncHostnamesState, setSyncHostnamesState] = useState('loading');
   const [syncState, setSyncState] = useState('idle');
   const [syncError, setSyncError] = useState(makeEmptySyncError());
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
@@ -86,6 +96,32 @@ function App() {
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
+
+  useEffect(() => {
+    if (syncMode !== 'reset-to-hostname') {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadSyncHostnames() {
+      setSyncHostnamesState('loading');
+      setSyncHostnames(makeEmptySyncHostnames());
+      setSyncResetHostname('');
+      const nextHostnames = await fetchSyncHostnames();
+      if (!isMounted) {
+        return;
+      }
+      setSyncHostnames(nextHostnames);
+      setSyncHostnamesState('ready');
+    }
+
+    void loadSyncHostnames();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [syncMode]);
 
   useEffect(() => {
     let isMounted = true;
@@ -142,28 +178,58 @@ function App() {
 
   /** @param {{ target: { value: string } }} e */
   const handleSyncModeChange = (e) => {
-    setSyncResetToTheirs(e.target.value === 'reset-to-theirs');
+    const nextMode = e.target.value;
+    setSyncMode(nextMode);
+    if (nextMode !== 'reset-to-hostname') {
+      setSyncResetHostname('');
+    }
     setSyncState('idle');
     setSyncError(makeEmptySyncError());
     setSyncSuccessMessage('');
     setSyncSteps([]);
   };
 
+  /** @param {{ target: { value: string } }} e */
+  const handleSyncHostnameChange = (e) => {
+    setSyncResetHostname(e.target.value);
+  };
+
+  useEffect(() => {
+    if (syncState !== 'success') {
+      return undefined;
+    }
+
+    const resetTimer = setTimeout(() => {
+      setSyncState('idle');
+    }, 2000);
+
+    return () => {
+      clearTimeout(resetTimer);
+    };
+  }, [syncState]);
+
   const handleSyncClick = async () => {
+    const trimmedResetHostname = syncResetHostname.trim();
+    if (syncMode === 'reset-to-hostname' && trimmedResetHostname === '') {
+      return;
+    }
+
     setSyncState('loading');
     setSyncError(makeEmptySyncError());
     setSyncSuccessMessage('');
     setSyncSteps([]);
 
-    const result = await postSync(syncResetToTheirs || undefined, (steps) => {
+    const nextResetHostname = syncMode === 'reset-to-hostname'
+      ? trimmedResetHostname
+      : undefined;
+    const result = await postSync(nextResetHostname, (steps) => {
       setSyncSteps(steps);
     });
 
     if (result.success) {
       setSyncState('success');
-      setSyncSuccessMessage(makeSyncSuccessMessage(syncResetToTheirs));
+      setSyncSuccessMessage(makeSyncSuccessMessage(result.resetToHostname));
       setSyncSteps(result.steps || []);
-      setTimeout(() => setSyncState('idle'), 2000);
     } else {
       setSyncState('error');
       setSyncSuccessMessage('');
@@ -212,20 +278,41 @@ function App() {
 
         <VStack spacing={2}>
           <Select
+            aria-label="Sync mode"
             size="sm"
-            value={syncResetToTheirs ? 'reset-to-theirs' : ''}
+            value={syncMode}
             onChange={handleSyncModeChange}
             w="200px"
           >
             <option value="">Normal sync</option>
-            <option value="reset-to-theirs">Reset to Theirs</option>
+            <option value="reset-to-hostname">Reset to Host</option>
           </Select>
+          {syncMode === 'reset-to-hostname' && (
+            <Select
+              aria-label="Reset hostname"
+              size="sm"
+              value={syncResetHostname}
+              onChange={handleSyncHostnameChange}
+              w="260px"
+            >
+              <option value="" disabled={syncHostnames.length > 0}>
+                {syncHostnamesState === 'loading'
+                  ? 'Loading hostnames...'
+                  : syncHostnames.length === 0
+                    ? 'No hostnames available'
+                    : 'Select hostname'}
+              </option>
+              {syncHostnames.map((hostname) => (
+                <option key={hostname} value={hostname}>{hostname}</option>
+              ))}
+            </Select>
+          )}
           <Button
             colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
             variant="outline"
             w="200px"
             onClick={handleSyncClick}
-            isDisabled={syncState === 'loading'}
+            isDisabled={syncState === 'loading' || (syncMode === 'reset-to-hostname' && syncResetHostname.trim() === '')}
             leftIcon={syncState === 'loading' ? <Spinner size="sm" /> : undefined}
           >
             {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}

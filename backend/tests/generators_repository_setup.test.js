@@ -106,6 +106,41 @@ async function currentBranch(capabilities, workDirectory) {
 }
 
 /**
+ * @param {object} capabilities
+ * @param {string} workDirectory
+ * @param {string} filePath
+ * @returns {Promise<boolean>}
+ */
+async function hasFileInHead(capabilities, workDirectory, filePath) {
+    return capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "show",
+        `HEAD:${filePath}`
+    ).then(() => true).catch(() => false);
+}
+
+/**
+ * @param {object} capabilities
+ * @param {string} workDirectory
+ * @param {string} filePath
+ * @returns {Promise<string>}
+ */
+async function readFileInHead(capabilities, workDirectory, filePath) {
+    const result = await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "show",
+        `HEAD:${filePath}`
+    );
+    return result.stdout.trim();
+}
+
+/**
  * Returns true when the git call args are a "git clone" command.
  * Since clones now go to a temp dir (for atomicity), we match any clone
  * call instead of requiring a specific destination path.
@@ -126,20 +161,12 @@ describe("generators repository setup", () => {
             ["other", "other.txt", "other branch"],
         ]);
 
-        await workingRepository.synchronize(
-            capabilities,
-            "generators-working",
-            { url: capabilities.environment.generatorsRepository() }
-        );
-
-        capabilities.environment.hostname.mockReturnValue("hello");
-
         await expect(
             workingRepository.synchronize(
                 capabilities,
                 "generators-working",
                 { url: capabilities.environment.generatorsRepository() },
-                { resetToTheirs: true }
+                { resetToHostname: "hello" }
             )
         ).resolves.toBeUndefined();
 
@@ -161,10 +188,13 @@ describe("generators repository setup", () => {
                 "refs/remotes/origin/other-main"
             )
         ).toBe(true);
-        expect(await currentBranch(capabilities, workDirectory)).toBe("hello-main");
+        expect(await currentBranch(capabilities, workDirectory)).toBe("test-host-main");
+        expect(await hasFileInHead(capabilities, workDirectory, "hello.txt")).toBe(true);
+        expect(await hasFileInHead(capabilities, workDirectory, "test-host.txt")).toBe(false);
+        expect(await readFileInHead(capabilities, workDirectory, "hello.txt")).toBe("hello branch");
     });
 
-    test("synchronize repairs existing single-branch clones so resetToTheirs can use another branch", async () => {
+    test("synchronize repairs existing single-branch clones so resetToHostname can use another branch", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
         await seedGeneratorsRemote(capabilities, [
@@ -201,7 +231,7 @@ describe("generators repository setup", () => {
                 capabilities,
                 "generators-working",
                 { url: capabilities.environment.generatorsRepository() },
-                { resetToTheirs: true }
+                { resetToHostname: "hello" }
             )
         ).resolves.toBeUndefined();
 
@@ -220,6 +250,38 @@ describe("generators repository setup", () => {
             )
         ).toBe(true);
         expect(await currentBranch(capabilities, workDirectory)).toBe("hello-main");
+    });
+
+    test("resetToHostname hard-resets current hostname branch to a different hostname branch", async () => {
+        const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
+        await seedGeneratorsRemote(capabilities, [
+            ["test-host", "test-host.txt", "test host branch"],
+            ["alice", "alice.txt", "alice branch"],
+        ]);
+
+        await workingRepository.synchronize(
+            capabilities,
+            "generators-working",
+            { url: capabilities.environment.generatorsRepository() }
+        );
+
+        await expect(
+            workingRepository.synchronize(
+                capabilities,
+                "generators-working",
+                { url: capabilities.environment.generatorsRepository() },
+                { resetToHostname: "alice" }
+            )
+        ).resolves.toBeUndefined();
+
+        const workDirectory = path.join(
+            capabilities.environment.workingDirectory(),
+            "generators-working"
+        );
+        expect(await currentBranch(capabilities, workDirectory)).toBe("test-host-main");
+        expect(await hasFileInHead(capabilities, workDirectory, "alice.txt")).toBe(true);
+        expect(await hasFileInHead(capabilities, workDirectory, "test-host.txt")).toBe(false);
     });
 
     test("clone setup retries atomically when configuring fetch refspec fails once", async () => {
