@@ -1,13 +1,8 @@
 const { format: formatDateTime } = require("../datetime");
 
 /**
- * @typedef {object} Capabilities
- * @property {import('../datetime').Datetime} datetime - Datetime capability.
- */
-
-/**
  * Formats a date while preserving the date timezone.
- * @param {Capabilities} capabilities
+ * @param {object} capabilities - Unused legacy compatibility parameter.
  * @param {import('../datetime').DateTime} date - The date to format.
  * @returns {string} - The formatted date string in the format YYYY-MM-DDTHH:mm:ssZZ.
  */

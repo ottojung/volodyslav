@@ -23,6 +23,7 @@ function makeSerializedEvent(date) {
 
 /**
  * @param {import("../src/datetime").DateTime} date
+ * @returns {import("../src/event/structure").Event}
  */
 function makeEvent(date) {
     return {
@@ -39,6 +40,10 @@ function makeEvent(date) {
     };
 }
 
+/**
+ * Capabilities fixture with a non-UTC timezone to ensure serialization does
+ * not depend on the capability timezone.
+ */
 const losAngelesCapabilities = {
     datetime: {
         timeZone: () => "America/Los_Angeles",
@@ -47,18 +52,20 @@ const losAngelesCapabilities = {
 
 describe("event date timezone preservation", () => {
     test("deserialize keeps UTC date components for +0000 input", () => {
-        const deserialized = event.deserialize(makeSerializedEvent("2026-03-18T02:06:19+0000"));
+        const originalDate = "2026-03-18T02:06:19+0000";
+        const deserialized = event.deserialize(makeSerializedEvent(originalDate));
         expect(deserialized.date.day).toBe(18);
         expect(deserialized.date.hour).toBe(2);
         expect(deserialized.date.minute).toBe(6);
-        expect(deserialized.date._luxonDateTime.offset).toBe(0);
+        expect(event.serialize(losAngelesCapabilities, deserialized).date).toBe(originalDate);
     });
 
     test("deserialize keeps non-UTC offsets unchanged", () => {
-        const deserialized = event.deserialize(makeSerializedEvent("2026-03-18T02:06:19-0700"));
+        const originalDate = "2026-03-18T02:06:19-0700";
+        const deserialized = event.deserialize(makeSerializedEvent(originalDate));
         expect(deserialized.date.day).toBe(18);
         expect(deserialized.date.hour).toBe(2);
-        expect(deserialized.date._luxonDateTime.offset).toBe(-420);
+        expect(event.serialize(losAngelesCapabilities, deserialized).date).toBe(originalDate);
     });
 
     test("serialize preserves +0000 instead of converting to capability timezone", () => {
@@ -94,7 +101,6 @@ describe("event date timezone preservation", () => {
 
     test("tryDeserialize accepts +0000 and serialization preserves timezone", () => {
         const result = event.tryDeserialize(makeSerializedEvent("2026-03-18T02:06:19+0000"));
-        expect(event.isTryDeserializeError(result)).toBe(false);
         if (event.isTryDeserializeError(result)) {
             throw new Error("unexpected deserialization error");
         }
