@@ -120,7 +120,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
     // Determine once, before any retry, whether the local repo exists without
     // a remote configured.  Repos initialised via initializeEmptyRepository
     // have no remote; we must add origin and accept the remote state via
-    // fetchAndResetHard to reconcile the otherwise unrelated local history.
+    // fetchAndReconcile to reconcile the otherwise unrelated local history.
     // Computing this flag here (rather than lazily inside the retry loop)
     // keeps the retry logic simple and free of nullable state.
     const localExists = (await capabilities.checker.fileExists(headFile)) !== null;
@@ -148,9 +148,9 @@ async function synchronize(capabilities, workingPath, origin, options) {
         try {
             if (resetToHostname !== undefined || (exists && needsRemoteSetup)) {
                 if (exists) {
-                    // fetchAndResetHard reconciles the local repo with the remote,
+                    // fetchAndReconcile reconciles the local repo with the remote,
                     // including the case where they have unrelated histories.
-                    await gitmethod.fetchAndResetHard(
+                    await gitmethod.fetchAndReconcile(
                         capabilities,
                         workDir,
                         resetToHostname
@@ -164,7 +164,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                         { remotePath, workDir, headFile, resetToHostname }
                     );
                     if (resetToHostname !== undefined) {
-                        await gitmethod.fetchAndResetHard(
+                        await gitmethod.fetchAndReconcile(
                             capabilities,
                             workDir,
                             resetToHostname

@@ -241,7 +241,7 @@ async function push(capabilities, workDirectory, force) {
  * @returns {Promise<void>}
  * @throws {Error} When git fetch or merge operation fails
  */
-async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
+async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
     const branch = resetToHostname === undefined
         ? defaultBranch(capabilities)
         : `${resetToHostname}-main`;
@@ -259,6 +259,25 @@ async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
         "origin"
     );
     await ensureCurrentBranch(capabilities, workDirectory);
+    const currentHead = (await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "rev-parse",
+        "HEAD"
+    )).stdout.trim();
+    const targetHead = (await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "rev-parse",
+        `origin/${branch}`
+    )).stdout.trim();
+    if (currentHead === targetHead) {
+        return;
+    }
     await capabilities.git.call(
         "-C",
         workDirectory,
@@ -299,7 +318,9 @@ async function fetchAndResetHard(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "commit",
-        "--no-edit"
+        "--allow-empty",
+        "--message",
+        `Reset contents to origin/${branch}`
     );
 }
 
@@ -336,7 +357,7 @@ module.exports = {
     pull,
     mergeRemoteHostBranches,
     push,
-    fetchAndResetHard,
+    fetchAndReconcile,
     init,
     PushError,
     isPushError,
