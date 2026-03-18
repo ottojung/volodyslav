@@ -200,6 +200,22 @@ When `reset_to_hostname` is provided, the local working branch remains the
 current host branch, but its contents are hard-reset to `origin/<hostname>-main`.
 This is what powers the frontend **Reset to Host** mode.
 
+To power the **Reset to Host** UI, the backend also exposes a hostname discovery
+endpoint:
+
+- `GET /api/sync/hostnames` — returns a JSON array of available hostnames that
+  can be used as `<hostname>` values in the `reset_to_hostname` payload.
+
+Example response:
+
+```json
+[
+  "laptop",
+  "desktop",
+  "workstation"
+]
+```
+
 ---
 
 ## Module Map
