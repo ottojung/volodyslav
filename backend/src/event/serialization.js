@@ -72,9 +72,13 @@ function serialize(capabilities, event) {
  * @returns {Event} - The deserialized event object.
  */
 function deserialize(serializedEvent) {
+    const date = fromISOString(serializedEvent.date);
+    if (serializedEvent.id === 'p4qjfqpn8elsqn9t') {
+        console.debug({ serializedEvent, date });
+    }
     return {
         id: eventId.fromString(serializedEvent.id),
-        date: fromISOString(serializedEvent.date),
+        date,
         original: serializedEvent.original,
         input: serializedEvent.input,
         creator: serializedEvent.creator,
