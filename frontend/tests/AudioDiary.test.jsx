@@ -298,7 +298,10 @@ describe("AudioDiary page", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId("pause-resume-button")).toHaveTextContent("Resume");
+            expect(screen.getByTestId("pause-resume-button")).toHaveAttribute(
+                "aria-label",
+                "Resume recording"
+            );
         });
 
         act(() => {
@@ -679,5 +682,75 @@ describe("AudioDiary page", () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+
+    // ── Icon buttons ─────────────────────────────────────────────────────────
+
+    it("start button has aria-label 'Start recording'", () => {
+        renderAudioDiary();
+        expect(screen.getByTestId("start-button")).toHaveAttribute(
+            "aria-label",
+            "Start recording"
+        );
+    });
+
+    it("shows pause icon button with aria-label 'Pause recording' while recording", async () => {
+        renderAudioDiary();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId("pause-resume-button")).toHaveAttribute(
+                "aria-label",
+                "Pause recording"
+            );
+        });
+    });
+
+    it("stop button has aria-label 'Stop recording' while recording", async () => {
+        renderAudioDiary();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId("stop-button")).toHaveAttribute(
+                "aria-label",
+                "Stop recording"
+            );
+        });
+    });
+
+    it("shows resume icon button with aria-label 'Resume recording' while paused", async () => {
+        renderAudioDiary();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId("pause-resume-button")).toBeInTheDocument();
+        });
+
+        act(() => {
+            fireEvent.click(screen.getByTestId("pause-resume-button"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId("pause-resume-button")).toHaveAttribute(
+                "aria-label",
+                "Resume recording"
+            );
+        });
+    });
+
+    it("shows 'Tap the microphone to start' hint in idle state", () => {
+        renderAudioDiary();
+        expect(
+            screen.getByText(/Tap the microphone to start/i)
+        ).toBeInTheDocument();
     });
 });
