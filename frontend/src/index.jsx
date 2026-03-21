@@ -8,6 +8,7 @@ import DescriptionEntry from './DescriptionEntry/DescriptionEntry.jsx';
 import Search from './Search/Search.jsx';
 import EntryDetail from './EntryDetail/EntryDetail.jsx';
 import ConfigPage from './ConfigPage/ConfigPage.jsx';
+import AudioDiary from './AudioDiary/AudioDiary.jsx';
 import { ChakraProvider } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 
@@ -40,6 +41,7 @@ ReactDOM.createRoot(root).render(
           <Route path="/search" element={<Search />} />
           <Route path="/entry/:id" element={<EntryDetail />} />
           <Route path="/config" element={<ConfigPage />} />
+          <Route path="/record-diary" element={<AudioDiary />} />
           <Route path="*" element={<App />} />
         </Routes>
       </BrowserRouter>

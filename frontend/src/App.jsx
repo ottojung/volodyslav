@@ -271,6 +271,9 @@ function App() {
           <Link to="/search">
             <Button colorScheme="purple" variant="outline" w="200px">Search Entries</Button>
           </Link>
+          <Link to="/record-diary">
+            <Button colorScheme="orange" variant="outline" w="200px">Record Diary</Button>
+          </Link>
           <Link to="/config">
             <Button colorScheme="gray" variant="outline" w="200px">Manage Config</Button>
           </Link>
