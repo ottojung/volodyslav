@@ -111,6 +111,8 @@ let mockRevokeObjectURL;
 
 /** @type {typeof global.MediaRecorder | undefined} */
 let originalMediaRecorder;
+/** @type {typeof navigator.mediaDevices | undefined} */
+let originalMediaDevices;
 /** @type {typeof navigator.mediaDevices.getUserMedia | undefined} */
 let originalGetUserMedia;
 /** @type {typeof URL.createObjectURL} */
@@ -119,6 +121,8 @@ let originalCreateObjectURL;
 let originalRevokeObjectURL;
 /** @type {typeof HTMLCanvasElement.prototype.getContext} */
 let originalCanvasGetContext;
+/** @type {boolean} */
+let hadMediaDevices;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -156,6 +160,8 @@ function renderApp() {
 
 beforeAll(() => {
     originalMediaRecorder = global.MediaRecorder;
+    originalMediaDevices = global.navigator.mediaDevices;
+    hadMediaDevices = typeof originalMediaDevices !== "undefined";
     originalGetUserMedia = global.navigator.mediaDevices?.getUserMedia;
     originalCreateObjectURL = global.URL.createObjectURL;
     originalRevokeObjectURL = global.URL.revokeObjectURL;
@@ -173,6 +179,7 @@ beforeAll(() => {
         Object.defineProperty(global.navigator, "mediaDevices", {
             value: {},
             writable: true,
+            configurable: true,
         });
     }
     global.navigator.mediaDevices.getUserMedia = mockGetUserMedia;
@@ -198,12 +205,10 @@ beforeAll(() => {
 afterAll(() => {
     jest.restoreAllMocks();
     global.MediaRecorder = originalMediaRecorder;
-    if (global.navigator.mediaDevices) {
-        if (originalGetUserMedia === undefined) {
-            delete global.navigator.mediaDevices.getUserMedia;
-        } else {
-            global.navigator.mediaDevices.getUserMedia = originalGetUserMedia;
-        }
+    if (hadMediaDevices) {
+        global.navigator.mediaDevices = originalMediaDevices;
+    } else {
+        delete global.navigator.mediaDevices;
     }
     global.URL.createObjectURL = originalCreateObjectURL;
     global.URL.revokeObjectURL = originalRevokeObjectURL;

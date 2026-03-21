@@ -102,22 +102,39 @@ export default function AudioDiary() {
     /** @type {React.MutableRefObject<string>} */
     const mimeTypeRef = useRef("");
 
+    /** @type {React.MutableRefObject<boolean>} */
+    const isMountedRef = useRef(false);
+
     // Build recorder on mount, discard on unmount
     useEffect(() => {
+        isMountedRef.current = true;
+
         const recorder = makeRecorder({
             onStateChange: (state) => {
+                if (!isMountedRef.current) {
+                    return;
+                }
                 setRecorderState(state);
             },
             onStop: (blob) => {
+                if (!isMountedRef.current) {
+                    return;
+                }
                 mimeTypeRef.current = blob.type;
                 setAudioBlob(blob);
                 const url = URL.createObjectURL(blob);
                 setAudioUrl(url);
             },
             onError: (message) => {
+                if (!isMountedRef.current) {
+                    return;
+                }
                 setErrorMessage(message);
             },
             onAnalyser: (node) => {
+                if (!isMountedRef.current) {
+                    return;
+                }
                 setAnalyser(node);
             },
         });
@@ -125,6 +142,7 @@ export default function AudioDiary() {
         recorderRef.current = recorder;
 
         return () => {
+            isMountedRef.current = false;
             if (isRecorder(recorderRef.current)) {
                 recorderRef.current.discard();
             }

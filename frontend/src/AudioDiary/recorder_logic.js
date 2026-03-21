@@ -257,6 +257,7 @@ class RecorderClass {
         }
         this._stopStream();
         this._stopAudioGraph();
+        this._callbacks.onAnalyser(null);
         this._chunks = [];
         this._setState("idle");
     }
