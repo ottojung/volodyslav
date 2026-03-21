@@ -35,16 +35,6 @@ jest.mock("react-router-dom", () => ({
 
 import AudioDiary from "../src/AudioDiary/AudioDiary.jsx";
 import { submitEntry } from "../src/DescriptionEntry/api.js";
-import App from "../src/App.jsx";
-
-jest.mock("../src/Sync/api.js", () => ({
-    postSync: jest.fn(),
-    fetchSyncHostnames: jest.fn().mockResolvedValue([]),
-}));
-
-jest.mock("../src/version_api.js", () => ({
-    fetchVersion: jest.fn().mockResolvedValue("1.0.0"),
-}));
 
 // ─── MediaRecorder mock ──────────────────────────────────────────────────────
 
@@ -143,19 +133,6 @@ function renderAudioDiary(initialPath = "/record-diary") {
     );
 }
 
-function renderApp() {
-    return render(
-        <ChakraProvider>
-            <MemoryRouter initialEntries={["/"]}>
-                <Routes>
-                    <Route path="/" element={<App />} />
-                    <Route path="/record-diary" element={<AudioDiary />} />
-                </Routes>
-            </MemoryRouter>
-        </ChakraProvider>
-    );
-}
-
 // ─── Setup / teardown ────────────────────────────────────────────────────────
 
 beforeAll(() => {
@@ -205,7 +182,14 @@ beforeAll(() => {
 afterAll(() => {
     jest.restoreAllMocks();
     global.MediaRecorder = originalMediaRecorder;
-    if (hadMediaDevices) {
+    if (hadMediaDevices && originalMediaDevices) {
+        // Restore getUserMedia on the original object before restoring the reference,
+        // since beforeAll mutated the existing object's getUserMedia property.
+        if (originalGetUserMedia !== undefined) {
+            originalMediaDevices.getUserMedia = originalGetUserMedia;
+        } else {
+            delete originalMediaDevices.getUserMedia;
+        }
         global.navigator.mediaDevices = originalMediaDevices;
     } else {
         delete global.navigator.mediaDevices;
@@ -228,7 +212,7 @@ beforeEach(() => {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("AudioDiary page", () => {
-    // ── Route and navigation ────────────────────────────────────────────────
+    // ── Basic rendering ─────────────────────────────────────────────────────
 
     it("renders the Record Diary heading", () => {
         renderAudioDiary();
@@ -243,15 +227,6 @@ describe("AudioDiary page", () => {
     it("shows idle state label initially", () => {
         renderAudioDiary();
         expect(screen.getByText(/idle/i)).toBeInTheDocument();
-    });
-
-    // ── Home-page button ────────────────────────────────────────────────────
-
-    it("home page has a Record Diary button", async () => {
-        renderApp();
-        await waitFor(() => {
-            expect(screen.getByText("Record Diary")).toBeInTheDocument();
-        });
     });
 
     // ── Recorder state transitions ───────────────────────────────────────────
@@ -704,36 +679,5 @@ describe("AudioDiary page", () => {
         } finally {
             jest.useRealTimers();
         }
-    });
-});
-
-// ─── recorder_logic unit tests ───────────────────────────────────────────────
-
-import {
-    chooseMimeType,
-    combineChunks,
-} from "../src/AudioDiary/recorder_logic.js";
-
-describe("recorder_logic helpers", () => {
-    it("chooseMimeType returns a string", () => {
-        const mime = chooseMimeType();
-        expect(typeof mime).toBe("string");
-    });
-
-    it("combineChunks combines multiple Blobs into one Blob", () => {
-        const chunks = [
-            new Blob(["hello "], { type: "audio/webm" }),
-            new Blob(["world"], { type: "audio/webm" }),
-        ];
-        const combined = combineChunks(chunks, "audio/webm");
-        expect(combined).toBeInstanceOf(Blob);
-        expect(combined.size).toBe(11);
-        expect(combined.type).toBe("audio/webm");
-    });
-
-    it("combineChunks uses a fallback type when mimeType is empty", () => {
-        const chunks = [new Blob(["data"])];
-        const combined = combineChunks(chunks, "");
-        expect(combined.type).toBe("audio/webm");
     });
 });

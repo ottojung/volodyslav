@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Alert,
@@ -16,47 +16,9 @@ import {
     VStack,
 } from "@chakra-ui/react";
 import { submitEntry } from "../DescriptionEntry/api.js";
-import { makeRecorder, isRecorder } from "./recorder_logic.js";
+import { useAudioRecorder } from "./useAudioRecorder.js";
+import { formatTime, extensionForMime } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
-
-/** @typedef {import('./recorder_logic.js').RecorderState} RecorderState */
-
-/**
- * Format seconds as mm:ss.
- * @param {number} totalSeconds
- * @returns {string}
- */
-function formatTime(totalSeconds) {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-/**
- * Derive a file extension from a MIME type string.
- * @param {string} mimeType
- * @returns {string}
- */
-function extensionForMime(mimeType) {
-    if (mimeType.includes("ogg")) return "ogg";
-    if (mimeType.includes("mp4")) return "mp4";
-    return "webm";
-}
-
-/** @returns {RecorderState} */
-function initialRecorderState() {
-    return "idle";
-}
-
-/** @returns {Blob | null} */
-function initialAudioBlob() {
-    return null;
-}
-
-/** @returns {AnalyserNode | null} */
-function initialAnalyser() {
-    return null;
-}
 
 /**
  * Audio diary recording page.
@@ -69,161 +31,26 @@ function initialAnalyser() {
 export default function AudioDiary() {
     const navigate = useNavigate();
 
-    /** @type {[RecorderState, React.Dispatch<React.SetStateAction<RecorderState>>]} */
-    const [recorderState, setRecorderState] = useState(initialRecorderState());
-
-    /** @type {[Blob | null, React.Dispatch<React.SetStateAction<Blob | null>>]} */
-    const [audioBlob, setAudioBlob] = useState(initialAudioBlob());
-
-    /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
-    const [audioUrl, setAudioUrl] = useState("");
-
-    /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
-    const [note, setNote] = useState("");
-
-    /** @type {[number, React.Dispatch<React.SetStateAction<number>>]} */
-    const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-    /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
-    const [errorMessage, setErrorMessage] = useState("");
+    const {
+        recorderState,
+        audioBlob,
+        audioUrl,
+        note,
+        elapsedSeconds,
+        errorMessage,
+        analyser,
+        mimeTypeRef,
+        isMountedRef,
+        setNote,
+        setErrorMessage,
+        handleStart,
+        handlePauseResume,
+        handleStop,
+        handleDiscard,
+    } = useAudioRecorder();
 
     /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} */
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    /** @type {[AnalyserNode | null, React.Dispatch<React.SetStateAction<AnalyserNode | null>>]} */
-    const [analyser, setAnalyser] = useState(initialAnalyser());
-
-    /** @type {React.MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
-    const recorderRef = useRef(null);
-
-    /** @type {React.MutableRefObject<number | null>} */
-    const timerRef = useRef(null);
-
-    /** @type {React.MutableRefObject<string>} */
-    const mimeTypeRef = useRef("");
-
-    /** @type {React.MutableRefObject<boolean>} */
-    const isMountedRef = useRef(false);
-
-    // Build recorder on mount, discard on unmount
-    useEffect(() => {
-        isMountedRef.current = true;
-
-        const recorder = makeRecorder({
-            onStateChange: (state) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
-                setRecorderState(state);
-            },
-            onStop: (blob) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
-                mimeTypeRef.current = blob.type;
-                setAudioBlob(blob);
-                const url = URL.createObjectURL(blob);
-                setAudioUrl(url);
-            },
-            onError: (message) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
-                setErrorMessage(message);
-            },
-            onAnalyser: (node) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
-                setAnalyser(node);
-            },
-        });
-
-        recorderRef.current = recorder;
-
-        return () => {
-            isMountedRef.current = false;
-            if (isRecorder(recorderRef.current)) {
-                recorderRef.current.discard();
-            }
-            recorderRef.current = null;
-        };
-    }, []);
-
-    // Revoke object URL on unmount / when blob changes
-    useEffect(() => {
-        return () => {
-            if (audioUrl) {
-                URL.revokeObjectURL(audioUrl);
-            }
-        };
-    }, [audioUrl]);
-
-    // Live timer while recording
-    useEffect(() => {
-        if (recorderState === "recording") {
-            timerRef.current = window.setInterval(() => {
-                setElapsedSeconds((s) => s + 1);
-            }, 1000);
-        } else {
-            if (timerRef.current !== null) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-        }
-
-        return () => {
-            if (timerRef.current !== null) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-        };
-    }, [recorderState]);
-
-    const handleStart = useCallback(async () => {
-        setErrorMessage("");
-        setElapsedSeconds(0);
-        setAudioBlob(null);
-        if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
-            setAudioUrl("");
-        }
-        if (isRecorder(recorderRef.current)) {
-            await recorderRef.current.start();
-        }
-    }, [audioUrl]);
-
-    const handlePauseResume = useCallback(() => {
-        if (!isRecorder(recorderRef.current)) {
-            return;
-        }
-        if (recorderState === "recording") {
-            recorderRef.current.pause();
-        } else if (recorderState === "paused") {
-            recorderRef.current.resume();
-        }
-    }, [recorderState]);
-
-    const handleStop = useCallback(() => {
-        if (isRecorder(recorderRef.current)) {
-            recorderRef.current.stop();
-        }
-    }, []);
-
-    const handleDiscard = useCallback(() => {
-        if (isRecorder(recorderRef.current)) {
-            recorderRef.current.discard();
-        }
-        setAudioBlob(null);
-        if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
-            setAudioUrl("");
-        }
-        setElapsedSeconds(0);
-        setNote("");
-        setErrorMessage("");
-        setAnalyser(null);
-    }, [audioUrl]);
 
     const handleSubmit = useCallback(async () => {
         if (!audioBlob) {
@@ -252,11 +79,16 @@ export default function AudioDiary() {
                 navigate("/search");
             }
         } catch (err) {
+            if (!isMountedRef.current) {
+                return;
+            }
             const message =
                 err instanceof Error ? err.message : String(err);
             setErrorMessage(`Submission failed: ${message}`);
         } finally {
-            setIsSubmitting(false);
+            if (isMountedRef.current) {
+                setIsSubmitting(false);
+            }
         }
     }, [audioBlob, note, navigate]);
 
