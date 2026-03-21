@@ -135,7 +135,10 @@ class RecorderClass {
                 this._callbacks.onAnalyser(this._analyserNode);
             }
         } catch {
-            // Visualisation is optional; ignore errors here.
+            // Visualisation is optional; clean up any partially-created
+            // audio graph nodes to prevent resource leaks.
+            this._stopAudioGraph();
+            this._callbacks.onAnalyser(null);
         }
 
         this._mimeType = chooseMimeType();
@@ -165,6 +168,7 @@ class RecorderClass {
         this._mediaRecorder.onstop = () => {
             this._stopStream();
             const blob = combineChunks(this._chunks, this._mimeType);
+            this._chunks = [];
             this._mediaRecorder = null;
             this._stopAudioGraph();
             this._callbacks.onAnalyser(null);

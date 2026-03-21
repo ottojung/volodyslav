@@ -73,6 +73,10 @@ export default function AudioDiary() {
 
             const result = await submitEntry(rawInput, undefined, [file]);
 
+            if (!isMountedRef.current) {
+                return;
+            }
+
             if (result.entry && result.entry.id) {
                 navigate(`/entry/${result.entry.id}`);
             } else {
