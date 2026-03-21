@@ -23,6 +23,7 @@ afterAll(() => {
 import {
     chooseMimeType,
     combineChunks,
+    mediaRecorderErrorMessage,
 } from "../src/AudioDiary/recorder_helpers.js";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -93,5 +94,23 @@ describe("recorder_helpers: combineChunks", () => {
         const chunks = [new Blob(["data"])];
         const combined = combineChunks(chunks, "audio/ogg");
         expect(combined.type).toBe("audio/ogg");
+    });
+});
+
+describe("recorder_helpers: mediaRecorderErrorMessage", () => {
+    it("extracts message from Error instance", () => {
+        expect(mediaRecorderErrorMessage(new Error("boom"))).toBe("boom");
+    });
+
+    it("extracts message from event-like payload with error field", () => {
+        expect(
+            mediaRecorderErrorMessage({ error: { message: "inner failure" } })
+        ).toBe("inner failure");
+    });
+
+    it("falls back to unknown message", () => {
+        expect(mediaRecorderErrorMessage(undefined)).toBe(
+            "Unknown MediaRecorder error"
+        );
     });
 });

@@ -9,10 +9,9 @@
  * @module recorder_logic
  */
 
-import { chooseMimeType, combineChunks } from "./recorder_helpers.js";
+import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 
 /** @typedef {'idle' | 'recording' | 'paused' | 'stopped'} RecorderState */
-
 const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
 
 /**
@@ -179,27 +178,7 @@ class RecorderClass {
         };
 
         this._mediaRecorder.onerror = (e) => {
-            let message = "Unknown MediaRecorder error";
-            if (typeof ErrorEvent !== "undefined" && e instanceof ErrorEvent) {
-                message = e.message || message;
-            } else if (e && typeof e === "object") {
-                const inner = "error" in e ? e.error : null;
-                const extracted =
-                    inner instanceof Error
-                        ? inner.message
-                        : inner != null
-                          ? String(inner)
-                          : ("message" in e && typeof e.message === "string"
-                              ? e.message
-                              : "name" in e && typeof e.name === "string"
-                                ? e.name
-                                : null);
-                if (extracted) {
-                    message = extracted;
-                }
-            } else if (e != null) {
-                message = String(e);
-            }
+            const message = mediaRecorderErrorMessage(e);
             this._callbacks.onError(`Recording error: ${message}`);
 
             // Detach handlers before cleanup to prevent re-entry from onstop/onerror.

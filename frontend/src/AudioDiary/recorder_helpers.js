@@ -60,3 +60,39 @@ export function combineChunks(chunks, mimeType) {
 
     return new Blob(chunks, { type: finalType });
 }
+
+/**
+ * Extract a readable message from a MediaRecorder error event payload.
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function mediaRecorderErrorMessage(error) {
+    let message = "Unknown MediaRecorder error";
+    if (typeof ErrorEvent !== "undefined" && error instanceof ErrorEvent) {
+        return error.message || message;
+    }
+    if (error && typeof error === "object") {
+        const inner = "error" in error ? error.error : null;
+        const extracted =
+            inner instanceof Error
+                ? inner.message
+                : inner &&
+                    typeof inner === "object" &&
+                    "message" in inner &&
+                    typeof inner.message === "string"
+                  ? inner.message
+                : inner != null
+                  ? String(inner)
+                  : ("message" in error && typeof error.message === "string"
+                      ? error.message
+                      : "name" in error && typeof error.name === "string"
+                        ? error.name
+                        : null);
+        if (extracted) {
+            message = extracted;
+        }
+    } else if (error != null) {
+        message = String(error);
+    }
+    return message;
+}

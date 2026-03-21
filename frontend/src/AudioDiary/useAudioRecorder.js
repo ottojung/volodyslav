@@ -154,7 +154,6 @@ export function useAudioRecorder() {
         setElapsedSeconds(0);
         setAudioBlob(null);
         if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
             setAudioUrl("");
         }
         if (isRecorder(recorderRef.current)) {
@@ -185,7 +184,6 @@ export function useAudioRecorder() {
         }
         setAudioBlob(null);
         if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
             setAudioUrl("");
         }
         setElapsedSeconds(0);
