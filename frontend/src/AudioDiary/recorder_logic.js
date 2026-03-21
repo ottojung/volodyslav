@@ -123,6 +123,13 @@ class RecorderClass {
             return;
         }
 
+        if (typeof MediaRecorder === "undefined") {
+            this._callbacks.onError(
+                "MediaRecorder is not supported in this browser."
+            );
+            return;
+        }
+
         let stream;
         try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -186,7 +193,7 @@ class RecorderClass {
             this._mediaRecorder = null;
             this._stopAudioGraph();
             this._callbacks.onAnalyser(null);
-            if (this._state !== "idle") {
+            if (this._state === "recording" || this._state === "paused") {
                 this._setState("stopped");
             }
             this._callbacks.onStop(blob);
@@ -227,7 +234,6 @@ class RecorderClass {
         ) {
             return;
         }
-        this._stopStream();
         this._mediaRecorder.stop();
         this._setState("stopped");
     }

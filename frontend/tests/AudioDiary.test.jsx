@@ -678,26 +678,27 @@ describe("AudioDiary page", () => {
 
     it("shows a timer while recording", async () => {
         jest.useFakeTimers();
+        try {
+            renderAudioDiary();
 
-        renderAudioDiary();
+            await act(async () => {
+                fireEvent.click(screen.getByTestId("start-button"));
+            });
 
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("start-button"));
-        });
+            await waitFor(() => {
+                expect(screen.getByTestId("timer")).toBeInTheDocument();
+            });
 
-        await waitFor(() => {
-            expect(screen.getByTestId("timer")).toBeInTheDocument();
-        });
+            act(() => {
+                jest.advanceTimersByTime(3000);
+            });
 
-        act(() => {
-            jest.advanceTimersByTime(3000);
-        });
-
-        await waitFor(() => {
-            expect(screen.getByTestId("timer")).toHaveTextContent("00:03");
-        });
-
-        jest.useRealTimers();
+            await waitFor(() => {
+                expect(screen.getByTestId("timer")).toHaveTextContent("00:03");
+            });
+        } finally {
+            jest.useRealTimers();
+        }
     });
 });
 
