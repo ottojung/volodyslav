@@ -9,18 +9,6 @@
 
 /** @typedef {'idle' | 'recording' | 'paused' | 'stopped'} RecorderState */
 
-/**
- * @typedef {object} RecorderHandle
- * @property {() => Promise<void>} start - Start recording.
- * @property {() => void} pause - Pause recording.
- * @property {() => void} resume - Resume recording.
- * @property {() => void} stop - Stop recording and finalise the Blob.
- * @property {() => void} discard - Discard the recording and reset.
- * @property {Blob | null} audioBlob - Final audio blob after stop, or null.
- * @property {RecorderState} state - Current recorder state.
- * @property {string} errorMessage - Error message, empty string when no error.
- */
-
 const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
 
 /**
@@ -28,6 +16,13 @@ const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
  * @returns {string}
  */
 export function chooseMimeType() {
+    if (
+        typeof MediaRecorder === "undefined" ||
+        typeof MediaRecorder.isTypeSupported !== "function"
+    ) {
+        return "";
+    }
+
     const candidates = [
         "audio/webm;codecs=opus",
         "audio/webm",
@@ -61,7 +56,7 @@ export function combineChunks(chunks, mimeType) {
  * @property {(state: RecorderState) => void} onStateChange
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
- * @property {(analyser: AnalyserNode) => void} onAnalyser
+ * @property {(analyser: AnalyserNode | null) => void} onAnalyser
  */
 
 class RecorderClass {
@@ -174,6 +169,8 @@ class RecorderClass {
                 `MediaRecorder is not supported in this browser: ${message}`
             );
             this._stopStream();
+            this._stopAudioGraph();
+            this._callbacks.onAnalyser(null);
             return;
         }
 
@@ -184,8 +181,14 @@ class RecorderClass {
         };
 
         this._mediaRecorder.onstop = () => {
+            this._stopStream();
             const blob = combineChunks(this._chunks, this._mimeType);
+            this._mediaRecorder = null;
             this._stopAudioGraph();
+            this._callbacks.onAnalyser(null);
+            if (this._state !== "idle") {
+                this._setState("stopped");
+            }
             this._callbacks.onStop(blob);
         };
 

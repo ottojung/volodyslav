@@ -284,7 +284,7 @@ export default function AudioDiary() {
                 {/* Live timer */}
                 {(isRecording || isPaused) && (
                     <Box textAlign="center">
-                        <Text fontSize="3xl" fontWeight="mono" data-testid="timer">
+                        <Text fontSize="3xl" fontFamily="mono" data-testid="timer">
                             {formatTime(elapsedSeconds)}
                         </Text>
                     </Box>

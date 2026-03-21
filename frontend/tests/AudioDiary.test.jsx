@@ -109,6 +109,17 @@ let mockCreateObjectURL;
 /** @type {jest.Mock} */
 let mockRevokeObjectURL;
 
+/** @type {typeof global.MediaRecorder | undefined} */
+let originalMediaRecorder;
+/** @type {typeof navigator.mediaDevices.getUserMedia | undefined} */
+let originalGetUserMedia;
+/** @type {typeof URL.createObjectURL} */
+let originalCreateObjectURL;
+/** @type {typeof URL.revokeObjectURL} */
+let originalRevokeObjectURL;
+/** @type {typeof HTMLCanvasElement.prototype.getContext} */
+let originalCanvasGetContext;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -144,6 +155,12 @@ function renderApp() {
 // ─── Setup / teardown ────────────────────────────────────────────────────────
 
 beforeAll(() => {
+    originalMediaRecorder = global.MediaRecorder;
+    originalGetUserMedia = global.navigator.mediaDevices?.getUserMedia;
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
+    originalCanvasGetContext = HTMLCanvasElement.prototype.getContext;
+
     // Mock MediaRecorder
     global.MediaRecorder = MockMediaRecorder;
 
@@ -180,6 +197,17 @@ beforeAll(() => {
 
 afterAll(() => {
     jest.restoreAllMocks();
+    global.MediaRecorder = originalMediaRecorder;
+    if (global.navigator.mediaDevices) {
+        if (originalGetUserMedia === undefined) {
+            delete global.navigator.mediaDevices.getUserMedia;
+        } else {
+            global.navigator.mediaDevices.getUserMedia = originalGetUserMedia;
+        }
+    }
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
+    HTMLCanvasElement.prototype.getContext = originalCanvasGetContext;
 });
 
 beforeEach(() => {
@@ -586,29 +614,64 @@ describe("AudioDiary page", () => {
 
     it("shows an error when MediaRecorder constructor throws", async () => {
         const OriginalMock = global.MediaRecorder;
-        global.MediaRecorder = class {
-            static isTypeSupported() {
-                return false;
-            }
+        try {
+            Object.defineProperty(global, "MediaRecorder", {
+                value: class {
+                    static isTypeSupported() {
+                        return false;
+                    }
 
-            constructor() {
-                throw new Error("MediaRecorder not supported");
-            }
-        };
+                    constructor() {
+                        throw new Error("MediaRecorder not supported");
+                    }
+                },
+                configurable: true,
+                writable: true,
+            });
 
-        renderAudioDiary();
+            renderAudioDiary();
 
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("start-button"));
-        });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId("start-button"));
+            });
 
-        await waitFor(() => {
-            expect(
-                screen.getByText(/MediaRecorder is not supported/i)
-            ).toBeInTheDocument();
-        });
+            await waitFor(() => {
+                expect(
+                    screen.getByText(/MediaRecorder is not supported/i)
+                ).toBeInTheDocument();
+            });
+        } finally {
+            global.MediaRecorder = OriginalMock;
+        }
+    });
 
-        global.MediaRecorder = OriginalMock;
+    it("shows unsupported-browser error when MediaRecorder is unavailable", async () => {
+        const originalMediaRecorderLocal = global.MediaRecorder;
+        try {
+            Object.defineProperty(global, "MediaRecorder", {
+                value: undefined,
+                configurable: true,
+                writable: true,
+            });
+
+            renderAudioDiary();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId("start-button"));
+            });
+
+            await waitFor(() => {
+                expect(
+                    screen.getByText(/MediaRecorder is not supported/i)
+                ).toBeInTheDocument();
+            });
+        } finally {
+            Object.defineProperty(global, "MediaRecorder", {
+                value: originalMediaRecorderLocal,
+                configurable: true,
+                writable: true,
+            });
+        }
     });
 
     // ── Timer ────────────────────────────────────────────────────────────────
