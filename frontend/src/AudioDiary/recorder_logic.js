@@ -20,6 +20,7 @@ const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
+ * @property {(chunk: Blob) => void} [onChunk] - called whenever a data chunk arrives
  */
 
 class RecorderClass {
@@ -161,6 +162,9 @@ class RecorderClass {
         this._mediaRecorder.ondataavailable = (e) => {
             if (e.data && e.data.size > 0) {
                 this._chunks.push(e.data);
+                if (this._callbacks.onChunk) {
+                    this._callbacks.onChunk(e.data);
+                }
             }
         };
 
@@ -209,6 +213,19 @@ class RecorderClass {
         }
         this._mediaRecorder.resume();
         this._setState("recording");
+    }
+
+    /**
+     * Request any buffered audio data to be made available immediately via
+     * the ondataavailable event.  Useful before persisting state on page hide.
+     */
+    requestData() {
+        if (
+            this._mediaRecorder &&
+            (this._state === "recording" || this._state === "paused")
+        ) {
+            this._mediaRecorder.requestData();
+        }
     }
 
     stop() {

@@ -50,12 +50,14 @@ export default function AudioDiary() {
         analyser,
         mimeTypeRef,
         isMountedRef,
+        hasRestoredSession,
         setNote,
         setErrorMessage,
         handleStart,
         handlePauseResume,
         handleStop,
         handleDiscard,
+        clearPersistedSession,
     } = useAudioRecorder();
 
     /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} */
@@ -87,8 +89,10 @@ export default function AudioDiary() {
             }
 
             if (result.entry && result.entry.id) {
+                clearPersistedSession();
                 navigate(`/entry/${result.entry.id}`);
             } else {
+                clearPersistedSession();
                 navigate("/search");
             }
         } catch (err) {
@@ -103,7 +107,7 @@ export default function AudioDiary() {
                 setIsSubmitting(false);
             }
         }
-    }, [audioBlob, note, navigate]);
+    }, [audioBlob, note, navigate, clearPersistedSession]);
 
     const isRecording = recorderState === "recording";
     const isPaused = recorderState === "paused";
@@ -116,6 +120,19 @@ export default function AudioDiary() {
                 <Text fontSize="xl" fontWeight="bold" textAlign="center">
                     Record Diary
                 </Text>
+
+                {/* Restored session banner */}
+                {hasRestoredSession && (
+                    <Alert status="info" borderRadius="md" data-testid="restored-session-banner">
+                        <AlertIcon />
+                        <Box>
+                            <AlertTitle>Session Restored</AlertTitle>
+                            <AlertDescription>
+                                Your previous recording session was restored.
+                            </AlertDescription>
+                        </Box>
+                    </Alert>
+                )}
 
                 {/* Recorder state badge */}
                 <Box textAlign="center">
