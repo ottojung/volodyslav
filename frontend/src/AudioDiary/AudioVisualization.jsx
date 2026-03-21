@@ -7,8 +7,14 @@ import { Box } from "@chakra-ui/react";
  * @property {boolean} isActive - Whether the recorder is currently recording.
  */
 
+/** Number of frequency bars to display. */
+const BAR_COUNT = 32;
+
 /**
- * Simple audio level meter that reads from a Web Audio AnalyserNode.
+ * Frequency-spectrum bar visualizer that reads from a Web Audio AnalyserNode.
+ *
+ * Renders a row of animated vertical bars whose heights reflect the live
+ * audio frequency content captured by the microphone.
  *
  * @param {AudioVisualizationProps} props
  * @returns {import("react").JSX.Element}
@@ -31,47 +37,61 @@ export default function AudioVisualization({ analyser, isActive }) {
         }
 
         if (!analyser || !isActive) {
-            // Draw empty bar
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#E2E8F0";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Draw idle placeholder bars at a low uniform height
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#1A202C";
+            ctx.fillRect(0, 0, w, h);
+            const gap = 2;
+            const barWidth = Math.floor((w - gap * (BAR_COUNT - 1)) / BAR_COUNT);
+            for (let i = 0; i < BAR_COUNT; i++) {
+                const x = i * (barWidth + gap);
+                const barH = 3;
+                ctx.fillStyle = "#4A5568";
+                ctx.beginPath();
+                ctx.roundRect(x, h - barH, barWidth, barH, 1);
+                ctx.fill();
+            }
             return undefined;
         }
 
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
 
+        /**
+         * Draw one animation frame.
+         */
         const draw = () => {
             rafRef.current = requestAnimationFrame(draw);
 
             analyser.getByteFrequencyData(dataArray);
 
-            // Calculate RMS level
-            let sum = 0;
-            for (let i = 0; i < bufferLength; i++) {
-                const sample = dataArray[i] ?? 0;
-                sum += (sample / 255) ** 2;
-            }
-            const rms = Math.sqrt(sum / bufferLength);
-            const level = Math.min(1, rms * 4);
-
             const w = canvas.width;
             const h = canvas.height;
+            const gap = 2;
+            const barWidth = Math.floor((w - gap * (BAR_COUNT - 1)) / BAR_COUNT);
 
             ctx.clearRect(0, 0, w, h);
-
-            // Background
-            ctx.fillStyle = "#E2E8F0";
+            ctx.fillStyle = "#1A202C";
             ctx.fillRect(0, 0, w, h);
 
-            // Level bar
-            const barWidth = Math.round(w * level);
-            const gradient = ctx.createLinearGradient(0, 0, w, 0);
-            gradient.addColorStop(0, "#48BB78");
-            gradient.addColorStop(0.6, "#ECC94B");
-            gradient.addColorStop(1, "#FC8181");
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, barWidth, h);
+            for (let i = 0; i < BAR_COUNT; i++) {
+                // Sample the frequency array distributed across the buffer
+                const index = Math.floor((i / BAR_COUNT) * bufferLength);
+                const value = dataArray[index] ?? 0;
+                const barH = Math.max(3, Math.round((value / 255) * h));
+                const x = i * (barWidth + gap);
+                const y = h - barH;
+
+                // Color gradient: green → yellow → red based on bar height
+                const ratio = value / 255;
+                const hue = Math.round(120 - ratio * 120);
+                ctx.fillStyle = `hsl(${hue}, 80%, 55%)`;
+                ctx.beginPath();
+                ctx.roundRect(x, y, barWidth, barH, 1);
+                ctx.fill();
+            }
         };
 
         draw();
@@ -88,15 +108,14 @@ export default function AudioVisualization({ analyser, isActive }) {
         <Box
             borderRadius="md"
             overflow="hidden"
-            border="1px solid"
-            borderColor="gray.200"
+            bg="#1A202C"
             aria-label="Audio level meter"
         >
             <canvas
                 ref={canvasRef}
-                width={300}
-                height={24}
-                style={{ display: "block", width: "100%", height: "24px" }}
+                width={320}
+                height={56}
+                style={{ display: "block", width: "100%", height: "56px" }}
             />
         </Box>
     );

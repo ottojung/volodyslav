@@ -7,18 +7,28 @@ import {
     AlertDescription,
     Box,
     Button,
+    Circle,
     Container,
     FormControl,
     FormLabel,
     HStack,
+    IconButton,
     Text,
     Textarea,
     VStack,
 } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 import { submitEntry } from "../DescriptionEntry/api.js";
 import { useAudioRecorder } from "./useAudioRecorder.js";
 import { formatTime, extensionForMime } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
+import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
+
+const pulseRing = keyframes`
+    0%   { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.5); }
+    70%  { box-shadow: 0 0 0 16px rgba(229, 62, 62, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0); }
+`;
 
 /**
  * Audio diary recording page.
@@ -150,48 +160,90 @@ export default function AudioDiary() {
                 )}
 
                 {/* Controls */}
-                <VStack spacing={3}>
+                <VStack spacing={4}>
+                    {/* Primary action: mic / pause icon button */}
+                    {(isIdle || isRecording || isPaused) && (
+                        <HStack spacing={4} justify="center" align="center">
+                            {isIdle && (
+                                <Circle
+                                    size="72px"
+                                    bg="red.500"
+                                    _hover={{ bg: "red.600" }}
+                                    cursor="pointer"
+                                    onClick={handleStart}
+                                    data-testid="start-button"
+                                    aria-label="Start recording"
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            handleStart();
+                                        }
+                                    }}
+                                >
+                                    <MicrophoneIcon
+                                        width="32px"
+                                        height="32px"
+                                        color="white"
+                                    />
+                                </Circle>
+                            )}
+
+                            {(isRecording || isPaused) && (
+                                <>
+                                    <IconButton
+                                        aria-label={isRecording ? "Pause recording" : "Resume recording"}
+                                        icon={
+                                            isRecording ? (
+                                                <PauseIcon width="28px" height="28px" />
+                                            ) : (
+                                                <MicrophoneIcon width="28px" height="28px" />
+                                            )
+                                        }
+                                        isRound
+                                        size="lg"
+                                        w="72px"
+                                        h="72px"
+                                        colorScheme={isRecording ? "yellow" : "red"}
+                                        onClick={handlePauseResume}
+                                        data-testid="pause-resume-button"
+                                        animation={
+                                            isRecording
+                                                ? `${pulseRing} 1.5s ease-out infinite`
+                                                : undefined
+                                        }
+                                    />
+                                    <IconButton
+                                        aria-label="Stop recording"
+                                        icon={<StopIcon width="24px" height="24px" />}
+                                        isRound
+                                        size="md"
+                                        colorScheme="gray"
+                                        onClick={handleStop}
+                                        data-testid="stop-button"
+                                    />
+                                </>
+                            )}
+                        </HStack>
+                    )}
+
                     {isIdle && (
-                        <Button
-                            colorScheme="red"
-                            w="full"
-                            onClick={handleStart}
-                            data-testid="start-button"
-                        >
-                            Start Recording
-                        </Button>
+                        <Text fontSize="sm" color="gray.500" textAlign="center">
+                            Tap the microphone to start
+                        </Text>
                     )}
 
                     {(isRecording || isPaused) && (
-                        <>
-                            <HStack w="full" spacing={3}>
-                                <Button
-                                    colorScheme="yellow"
-                                    flex={1}
-                                    onClick={handlePauseResume}
-                                    data-testid="pause-resume-button"
-                                >
-                                    {isRecording ? "Pause" : "Resume"}
-                                </Button>
-                                <Button
-                                    colorScheme="gray"
-                                    flex={1}
-                                    onClick={handleStop}
-                                    data-testid="stop-button"
-                                >
-                                    Stop
-                                </Button>
-                            </HStack>
-                            <Button
-                                colorScheme="red"
-                                variant="outline"
-                                w="full"
-                                onClick={handleDiscard}
-                                data-testid="discard-button"
-                            >
-                                Discard
-                            </Button>
-                        </>
+                        <Button
+                            colorScheme="red"
+                            variant="outline"
+                            size="sm"
+                            w="full"
+                            onClick={handleDiscard}
+                            data-testid="discard-button"
+                        >
+                            Discard
+                        </Button>
                     )}
 
                     {isStopped && audioBlob && (
