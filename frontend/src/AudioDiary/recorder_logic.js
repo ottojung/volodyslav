@@ -11,7 +11,7 @@
 
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 
-/** @typedef {'idle' | 'recording' | 'paused' | 'stopped'} RecorderState */
+/** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
 const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
 
 /**
