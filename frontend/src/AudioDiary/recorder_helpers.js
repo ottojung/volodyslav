@@ -38,10 +38,25 @@ export function chooseMimeType() {
 
 /**
  * Combine an array of Blobs into one Blob with the given MIME type.
+ * If mimeType is empty, derives it from the first chunk's type,
+ * and only falls back to "audio/webm" when that is also unavailable.
  * @param {Blob[]} chunks
  * @param {string} mimeType
  * @returns {Blob}
  */
 export function combineChunks(chunks, mimeType) {
-    return new Blob(chunks, { type: mimeType || "audio/webm" });
+    let finalType = mimeType;
+
+    if (!finalType && chunks.length > 0) {
+        const firstChunk = chunks[0];
+        if (firstChunk && typeof firstChunk.type === "string" && firstChunk.type) {
+            finalType = firstChunk.type;
+        }
+    }
+
+    if (!finalType) {
+        finalType = "audio/webm";
+    }
+
+    return new Blob(chunks, { type: finalType });
 }

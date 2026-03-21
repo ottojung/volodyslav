@@ -26,10 +26,10 @@ import {
  * @property {number} elapsedSeconds - elapsed recording seconds
  * @property {string} errorMessage - latest error message
  * @property {AnalyserNode | null} analyser - live audio analyser node
- * @property {React.MutableRefObject<string>} mimeTypeRef - current MIME type ref
- * @property {React.MutableRefObject<boolean>} isMountedRef - mount status ref
- * @property {React.Dispatch<React.SetStateAction<string>>} setNote
- * @property {React.Dispatch<React.SetStateAction<string>>} setErrorMessage
+ * @property {import("react").MutableRefObject<string>} mimeTypeRef - current MIME type ref
+ * @property {import("react").MutableRefObject<boolean>} isMountedRef - mount status ref
+ * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setNote
+ * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setErrorMessage
  * @property {() => Promise<void>} handleStart
  * @property {() => void} handlePauseResume
  * @property {() => void} handleStop
@@ -41,37 +41,37 @@ import {
  * @returns {UseAudioRecorderResult}
  */
 export function useAudioRecorder() {
-    /** @type {[RecorderState, React.Dispatch<React.SetStateAction<RecorderState>>]} */
+    /** @type {[RecorderState, import("react").Dispatch<import("react").SetStateAction<RecorderState>>]} */
     const [recorderState, setRecorderState] = useState(initialRecorderState());
 
-    /** @type {[Blob | null, React.Dispatch<React.SetStateAction<Blob | null>>]} */
+    /** @type {[Blob | null, import("react").Dispatch<import("react").SetStateAction<Blob | null>>]} */
     const [audioBlob, setAudioBlob] = useState(initialAudioBlob());
 
-    /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
+    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [audioUrl, setAudioUrl] = useState("");
 
-    /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
+    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [note, setNote] = useState("");
 
-    /** @type {[number, React.Dispatch<React.SetStateAction<number>>]} */
+    /** @type {[number, import("react").Dispatch<import("react").SetStateAction<number>>]} */
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-    /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} */
+    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [errorMessage, setErrorMessage] = useState("");
 
-    /** @type {[AnalyserNode | null, React.Dispatch<React.SetStateAction<AnalyserNode | null>>]} */
+    /** @type {[AnalyserNode | null, import("react").Dispatch<import("react").SetStateAction<AnalyserNode | null>>]} */
     const [analyser, setAnalyser] = useState(initialAnalyser());
 
-    /** @type {React.MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
+    /** @type {import("react").MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
     const recorderRef = useRef(null);
 
-    /** @type {React.MutableRefObject<number | null>} */
+    /** @type {import("react").MutableRefObject<number | null>} */
     const timerRef = useRef(null);
 
-    /** @type {React.MutableRefObject<string>} */
+    /** @type {import("react").MutableRefObject<string>} */
     const mimeTypeRef = useRef("");
 
-    /** @type {React.MutableRefObject<boolean>} */
+    /** @type {import("react").MutableRefObject<boolean>} */
     const isMountedRef = useRef(false);
 
     // Build recorder on mount, discard on unmount

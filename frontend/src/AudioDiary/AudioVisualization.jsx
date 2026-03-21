@@ -11,12 +11,12 @@ import { Box } from "@chakra-ui/react";
  * Simple audio level meter that reads from a Web Audio AnalyserNode.
  *
  * @param {AudioVisualizationProps} props
- * @returns {React.JSX.Element}
+ * @returns {import("react").JSX.Element}
  */
 export default function AudioVisualization({ analyser, isActive }) {
-    /** @type {React.RefObject<HTMLCanvasElement | null>} */
+    /** @type {import("react").RefObject<HTMLCanvasElement | null>} */
     const canvasRef = useRef(null);
-    /** @type {React.MutableRefObject<number | null>} */
+    /** @type {import("react").MutableRefObject<number | null>} */
     const rafRef = useRef(null);
 
     useEffect(() => {

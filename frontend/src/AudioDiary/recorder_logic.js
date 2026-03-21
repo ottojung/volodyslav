@@ -175,10 +175,27 @@ class RecorderClass {
         };
 
         this._mediaRecorder.onerror = (e) => {
-            const message =
-                e instanceof ErrorEvent
-                    ? e.message
-                    : "Unknown MediaRecorder error";
+            let message = "Unknown MediaRecorder error";
+            if (typeof ErrorEvent !== "undefined" && e instanceof ErrorEvent) {
+                message = e.message || message;
+            } else if (e && typeof e === "object") {
+                const inner = "error" in e ? e.error : null;
+                const extracted =
+                    inner instanceof Error
+                        ? inner.message
+                        : inner != null
+                          ? String(inner)
+                          : ("message" in e && typeof e.message === "string"
+                              ? e.message
+                              : "name" in e && typeof e.name === "string"
+                                ? e.name
+                                : null);
+                if (extracted) {
+                    message = extracted;
+                }
+            } else if (e != null) {
+                message = String(e);
+            }
             this._callbacks.onError(`Recording error: ${message}`);
 
             // Detach handlers before cleanup to prevent re-entry from onstop/onerror.
