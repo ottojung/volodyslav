@@ -7,7 +7,6 @@ import {
     AlertDescription,
     Box,
     Button,
-    Circle,
     Container,
     FormControl,
     FormLabel,
@@ -165,28 +164,22 @@ export default function AudioDiary() {
                     {(isIdle || isRecording || isPaused) && (
                         <HStack spacing={4} justify="center" align="center">
                             {isIdle && (
-                                <Circle
-                                    size="72px"
-                                    bg="red.500"
-                                    _hover={{ bg: "red.600" }}
-                                    cursor="pointer"
+                                <IconButton
+                                    aria-label="Start recording"
+                                    icon={
+                                        <MicrophoneIcon
+                                            width="32px"
+                                            height="32px"
+                                        />
+                                    }
+                                    isRound
+                                    size="lg"
+                                    w="72px"
+                                    h="72px"
+                                    colorScheme="red"
                                     onClick={handleStart}
                                     data-testid="start-button"
-                                    aria-label="Start recording"
-                                    role="button"
-                                    tabIndex={0}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter" || e.key === " ") {
-                                            handleStart();
-                                        }
-                                    }}
-                                >
-                                    <MicrophoneIcon
-                                        width="32px"
-                                        height="32px"
-                                        color="white"
-                                    />
-                                </Circle>
+                                />
                             )}
 
                             {(isRecording || isPaused) && (

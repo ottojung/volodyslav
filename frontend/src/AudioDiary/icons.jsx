@@ -2,8 +2,8 @@ import React from "react";
 
 /**
  * Microphone SVG icon.
- * @param {React.SVGProps<SVGSVGElement>} props
- * @returns {React.JSX.Element}
+ * @param {import('react').SVGProps<SVGSVGElement>} props
+ * @returns {import('react').JSX.Element}
  */
 export function MicrophoneIcon(props) {
     return (
@@ -21,8 +21,8 @@ export function MicrophoneIcon(props) {
 
 /**
  * Pause SVG icon.
- * @param {React.SVGProps<SVGSVGElement>} props
- * @returns {React.JSX.Element}
+ * @param {import('react').SVGProps<SVGSVGElement>} props
+ * @returns {import('react').JSX.Element}
  */
 export function PauseIcon(props) {
     return (
@@ -39,8 +39,8 @@ export function PauseIcon(props) {
 
 /**
  * Stop (square) SVG icon.
- * @param {React.SVGProps<SVGSVGElement>} props
- * @returns {React.JSX.Element}
+ * @param {import('react').SVGProps<SVGSVGElement>} props
+ * @returns {import('react').JSX.Element}
  */
 export function StopIcon(props) {
     return (

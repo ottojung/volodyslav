@@ -7,6 +7,26 @@ import { Box } from "@chakra-ui/react";
  * @property {boolean} isActive - Whether the recorder is currently recording.
  */
 
+/**
+ * Draw a rounded rectangle, falling back to a plain rect when roundRect
+ * is not available in the current browser/environment.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x
+ * @param {number} y
+ * @param {number} w
+ * @param {number} h
+ * @param {number} r
+ */
+function drawBar(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.fill();
+    } else {
+        ctx.fillRect(x, y, w, h);
+    }
+}
+
 /** Number of frequency bars to display. */
 const BAR_COUNT = 32;
 
@@ -49,9 +69,7 @@ export default function AudioVisualization({ analyser, isActive }) {
                 const x = i * (barWidth + gap);
                 const barH = 3;
                 ctx.fillStyle = "#4A5568";
-                ctx.beginPath();
-                ctx.roundRect(x, h - barH, barWidth, barH, 1);
-                ctx.fill();
+                drawBar(ctx, x, h - barH, barWidth, barH, 1);
             }
             return undefined;
         }
@@ -88,9 +106,7 @@ export default function AudioVisualization({ analyser, isActive }) {
                 const ratio = value / 255;
                 const hue = Math.round(120 - ratio * 120);
                 ctx.fillStyle = `hsl(${hue}, 80%, 55%)`;
-                ctx.beginPath();
-                ctx.roundRect(x, y, barWidth, barH, 1);
-                ctx.fill();
+                drawBar(ctx, x, y, barWidth, barH, 1);
             }
         };
 
@@ -109,7 +125,8 @@ export default function AudioVisualization({ analyser, isActive }) {
             borderRadius="md"
             overflow="hidden"
             bg="#1A202C"
-            aria-label="Audio level meter"
+            role="img"
+            aria-label="Live audio frequency spectrum visualization"
         >
             <canvas
                 ref={canvasRef}
