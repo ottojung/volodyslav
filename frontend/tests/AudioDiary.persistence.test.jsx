@@ -703,8 +703,8 @@ describe("AudioDiary persistence: saving on pause", () => {
         });
 
         expect(mockIDB.store.has("current")).toBe(true);
-        const snapshot = /** @type {any} */ (mockIDB.store.get("current"));
-        expect(snapshot.recorderState).toBe("paused");
+        const rawSnapshot = mockIDB.store.get("current");
+        expect(rawSnapshot).toMatchObject({ recorderState: "paused" });
     });
 });
 

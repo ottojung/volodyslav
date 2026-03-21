@@ -97,11 +97,11 @@ export function useAudioRecorder() {
     /** @type {import("react").MutableRefObject<Blob | null>} */
     const restoredAudioRef = useRef(null);
 
+    /** @type {import("react").MutableRefObject<Blob | null>} */
+    const audioBlobRef = useRef(null);
+
     /** @type {import("react").MutableRefObject<boolean>} */
     const isRestoredPauseRef = useRef(false);
-
-    /** @type {import("react").MutableRefObject<ArrayBuffer>} */
-    const persistentBufferRef = useRef(new ArrayBuffer(0));
 
     // Mirror refs for reading latest values inside stable event-listener closures
     /** @type {import("react").MutableRefObject<RecorderState>} */
@@ -116,25 +116,48 @@ export function useAudioRecorder() {
     const noteRef = useRef(note);
     noteRef.current = note;
 
-    /** @returns {RecordingSnapshot | null} */
-    const buildSnapshot = useCallback(() => {
+    /**
+     * Build and save the current recording snapshot to IndexedDB.
+     * Combines the restored audio (if any) with newly recorded chunks,
+     * or uses the final blob when in stopped state.
+     * @returns {Promise<void>}
+     */
+    const persistSnapshot = useCallback(async () => {
         const state = recorderStateRef.current;
-        if (state === "idle") return null;
-        return {
+        if (state === "idle") return;
+
+        let audioBuffer = new ArrayBuffer(0);
+        try {
+            /** @type {Blob | null} */
+            let blobToStore = null;
+            if (state === "stopped") {
+                blobToStore = audioBlobRef.current;
+            } else {
+                // recording or paused: combine restored audio + live chunks
+                const parts = [];
+                if (restoredAudioRef.current) {
+                    parts.push(restoredAudioRef.current);
+                }
+                parts.push(...chunksRef.current);
+                if (parts.length > 0) {
+                    blobToStore = combineChunks(parts, mimeTypeRef.current);
+                }
+            }
+            if (blobToStore) {
+                audioBuffer = await blobToArrayBuffer(blobToStore);
+            }
+        } catch {
+            // Conversion failed; save with empty buffer (metadata is still useful)
+        }
+
+        void saveRecordingSnapshot({
             recorderState: state,
             elapsedSeconds: elapsedSecondsRef.current,
             note: noteRef.current,
             mimeType: mimeTypeRef.current,
-            audioBuffer: persistentBufferRef.current,
-        };
+            audioBuffer,
+        });
     }, []);
-
-    const persistSnapshot = useCallback(() => {
-        const snapshot = buildSnapshot();
-        if (snapshot) {
-            void saveRecordingSnapshot(snapshot);
-        }
-    }, [buildSnapshot]);
 
     // Build recorder on mount, discard on unmount
     useEffect(() => {
@@ -156,13 +179,10 @@ export function useAudioRecorder() {
                     restoredAudioRef.current = null;
                 }
                 mimeTypeRef.current = finalBlob.type;
+                audioBlobRef.current = finalBlob;
                 setAudioBlob(finalBlob);
                 setAudioUrl(URL.createObjectURL(finalBlob));
-                // Persist the final blob so it survives until submission
-                void blobToArrayBuffer(finalBlob).then((buf) => {
-                    persistentBufferRef.current = buf;
-                    persistSnapshot();
-                });
+                void persistSnapshot();
             },
             onError: (message) => {
                 if (!isMountedRef.current) return;
@@ -174,15 +194,9 @@ export function useAudioRecorder() {
             },
             onChunk: (chunk) => {
                 if (!isMountedRef.current) return;
+                // Accumulate chunk; persistSnapshot will combine all chunks on demand
                 chunksRef.current.push(chunk);
-                const parts = restoredAudioRef.current
-                    ? [restoredAudioRef.current, ...chunksRef.current]
-                    : [...chunksRef.current];
-                const combined = combineChunks(parts, mimeTypeRef.current);
-                void blobToArrayBuffer(combined).then((buf) => {
-                    persistentBufferRef.current = buf;
-                    persistSnapshot();
-                });
+                void persistSnapshot();
             },
         });
 
@@ -195,7 +209,7 @@ export function useAudioRecorder() {
             }
             recorderRef.current = null;
         };
-    }, []);
+    }, []); // runs once – recorder instance is stable
 
     // Revoke object URL on unmount / when blob changes
     useEffect(() => {
@@ -237,8 +251,8 @@ export function useAudioRecorder() {
                     type: snapshot.mimeType,
                 });
                 mimeTypeRef.current = snapshot.mimeType;
-                persistentBufferRef.current = snapshot.audioBuffer;
                 if (snapshot.recorderState === "stopped") {
+                    audioBlobRef.current = blob;
                     setAudioBlob(blob);
                     setAudioUrl(URL.createObjectURL(blob));
                     setRecorderState("stopped");
@@ -251,16 +265,16 @@ export function useAudioRecorder() {
                 setNote(snapshot.note);
                 setHasRestoredSession(true);
             } catch {
-                // If loading fails, start fresh silently
+                // Loading failed; start fresh silently
             }
         }
         void tryRestore();
-    }, []);
+    }, []); // runs once on mount
 
     // Save when state transitions to paused (ensures pauses are always captured)
     useEffect(() => {
         if (recorderState === "paused") {
-            persistSnapshot();
+            void persistSnapshot();
         }
     }, [recorderState, persistSnapshot]);
 
@@ -268,16 +282,16 @@ export function useAudioRecorder() {
     useEffect(() => {
         const onHidden = () => {
             if (document.visibilityState === "hidden") {
-                persistSnapshot();
-                // Also request latest buffered data; the onChunk handler will
-                // update persistentBufferRef and save again when it arrives.
+                void persistSnapshot();
+                // Request latest buffered data; onChunk will call persistSnapshot
+                // again once the data arrives, giving the most up-to-date snapshot.
                 if (isRecorder(recorderRef.current)) {
                     recorderRef.current.requestData();
                 }
             }
         };
         const onBeforeUnload = () => {
-            persistSnapshot();
+            void persistSnapshot();
         };
         document.addEventListener("visibilitychange", onHidden);
         window.addEventListener("beforeunload", onBeforeUnload);
@@ -290,11 +304,11 @@ export function useAudioRecorder() {
     const handleStart = useCallback(async () => {
         setErrorMessage("");
         setElapsedSeconds(0);
+        audioBlobRef.current = null;
         setAudioBlob(null);
         chunksRef.current = [];
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
-        persistentBufferRef.current = new ArrayBuffer(0);
         if (audioUrl) {
             setAudioUrl("");
         }
@@ -329,13 +343,11 @@ export function useAudioRecorder() {
             if (blob) {
                 restoredAudioRef.current = null;
                 mimeTypeRef.current = blob.type;
+                audioBlobRef.current = blob;
                 setAudioBlob(blob);
                 setAudioUrl(URL.createObjectURL(blob));
                 setRecorderState("stopped");
-                void blobToArrayBuffer(blob).then((buf) => {
-                    persistentBufferRef.current = buf;
-                    persistSnapshot();
-                });
+                void persistSnapshot();
             }
             return;
         }
@@ -347,8 +359,8 @@ export function useAudioRecorder() {
     const handleDiscard = useCallback(() => {
         isRestoredPauseRef.current = false;
         restoredAudioRef.current = null;
+        audioBlobRef.current = null;
         chunksRef.current = [];
-        persistentBufferRef.current = new ArrayBuffer(0);
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
         }
