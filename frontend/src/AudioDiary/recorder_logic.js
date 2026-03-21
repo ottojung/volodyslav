@@ -94,6 +94,17 @@ class RecorderClass {
             return;
         }
 
+        if (
+            typeof navigator === "undefined" ||
+            !navigator.mediaDevices ||
+            typeof navigator.mediaDevices.getUserMedia !== "function"
+        ) {
+            this._callbacks.onError(
+                "Microphone access is not supported in this browser."
+            );
+            return;
+        }
+
         let stream;
         try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -169,6 +180,15 @@ class RecorderClass {
                     ? e.message
                     : "Unknown MediaRecorder error";
             this._callbacks.onError(`Recording error: ${message}`);
+
+            // Detach handlers before cleanup to prevent re-entry from onstop/onerror.
+            if (this._mediaRecorder) {
+                this._mediaRecorder.ondataavailable = null;
+                this._mediaRecorder.onstop = null;
+                this._mediaRecorder.onerror = null;
+                this._mediaRecorder = null;
+            }
+            this._cleanupResources();
         };
 
         this._mediaRecorder.start(CHUNK_INTERVAL_MS);
@@ -198,8 +218,8 @@ class RecorderClass {
         ) {
             return;
         }
+        // State transitions to "stopped" in onstop once the final blob is ready.
         this._mediaRecorder.stop();
-        this._setState("stopped");
     }
 
     discard() {
@@ -219,6 +239,14 @@ class RecorderClass {
             }
             this._mediaRecorder = null;
         }
+        this._cleanupResources();
+    }
+
+    /**
+     * Stop stream, close audio graph, clear chunks, and reset state to idle.
+     * Called from both discard() and the onerror handler.
+     */
+    _cleanupResources() {
         this._stopStream();
         this._stopAudioGraph();
         this._callbacks.onAnalyser(null);

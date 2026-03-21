@@ -49,12 +49,18 @@ let originalMediaDevices;
 let hadMediaDevices;
 let mockGetUserMedia;
 let originalGetUserMedia;
+/** @type {typeof URL.createObjectURL} */
+let originalCreateObjectURL;
+/** @type {typeof URL.revokeObjectURL} */
+let originalRevokeObjectURL;
 
 beforeAll(() => {
     originalMediaRecorder = global.MediaRecorder;
     originalMediaDevices = global.navigator.mediaDevices;
     hadMediaDevices = typeof originalMediaDevices !== "undefined";
     originalGetUserMedia = global.navigator.mediaDevices?.getUserMedia;
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
 
     const MockMR = class {
         constructor() {
@@ -106,6 +112,8 @@ afterAll(() => {
     } else {
         delete global.navigator.mediaDevices;
     }
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
