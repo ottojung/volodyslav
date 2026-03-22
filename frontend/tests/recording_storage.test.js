@@ -129,7 +129,7 @@ describe("recording_storage: blobToArrayBuffer", () => {
 });
 
 describe("recording_storage: isRecordingStorageError", () => {
-    it("returns true for RecordingStorageError when IndexedDB open fails", async () => {
+    it("returns null when IndexedDB open fails", async () => {
         // Force an error by making open() fail
         mockIDB.open.mockImplementationOnce(() => {
             const req = {

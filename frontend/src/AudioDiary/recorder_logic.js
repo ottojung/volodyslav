@@ -10,7 +10,7 @@
  */
 
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
-
+import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
 const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
 
@@ -26,31 +26,22 @@ const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
 class RecorderClass {
     /** @type {undefined} */
     __brand = undefined;
-
     /** @type {MediaRecorder | null} */
     _mediaRecorder = null;
-
     /** @type {Blob[]} */
     _chunks = [];
-
     /** @type {string} */
     _mimeType = "";
-
     /** @type {RecorderState} */
     _state = "idle";
-
     /** @type {RecorderCallbacks} */
     _callbacks;
-
     /** @type {AudioContext | null} */
     _audioContext = null;
-
     /** @type {MediaStreamAudioSourceNode | null} */
     _sourceNode = null;
-
     /** @type {AnalyserNode | null} */
     _analyserNode = null;
-
     /** @type {MediaStream | null} */
     _stream = null;
 
@@ -217,7 +208,9 @@ class RecorderClass {
 
     /**
      * Request any buffered audio data to be made available immediately via
-     * the ondataavailable event.  Useful before persisting state on page hide.
+     * the ondataavailable event. The data arrives asynchronously via the
+     * `ondataavailable` callback and is not available immediately.
+     * Useful before persisting state on page hide.
      */
     requestData() {
         if (
@@ -272,26 +265,14 @@ class RecorderClass {
     }
 
     _stopStream() {
-        if (this._stream) {
-            this._stream.getTracks().forEach((t) => t.stop());
-            this._stream = null;
-        }
+        this._stream = stopStream(this._stream);
     }
 
     _stopAudioGraph() {
-        try {
-            if (this._sourceNode) {
-                this._sourceNode.disconnect();
-                this._sourceNode = null;
-            }
-            if (this._audioContext) {
-                void this._audioContext.close();
-                this._audioContext = null;
-            }
-        } catch {
-            // Ignore errors during cleanup
-        }
-        this._analyserNode = null;
+        const next = stopAudioGraph(this._sourceNode, this._audioContext);
+        this._sourceNode = next.sourceNode;
+        this._audioContext = next.audioContext;
+        this._analyserNode = next.analyserNode;
     }
 }
 
