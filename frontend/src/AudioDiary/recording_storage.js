@@ -82,6 +82,23 @@ function openDatabase() {
                 if (db && !db.objectStoreNames.contains(STORE_NAME)) {
                     db.createObjectStore(STORE_NAME);
                 }
+                return;
+            }
+
+            // Fallback for environments where IDBOpenDBRequest is not defined
+            /** @type {unknown} */
+            const maybeDb = target.result;
+            const db = /** @type {IDBDatabase | null | undefined} */ (maybeDb);
+            if (
+                db &&
+                typeof db === "object" &&
+                "objectStoreNames" in db &&
+                db.objectStoreNames &&
+                typeof db.objectStoreNames.contains === "function" &&
+                typeof db.createObjectStore === "function" &&
+                !db.objectStoreNames.contains(STORE_NAME)
+            ) {
+                db.createObjectStore(STORE_NAME);
             }
         };
     });
