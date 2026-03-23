@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
-import { ChakraProvider } from "@chakra-ui/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 jest.mock("../src/Sync/api.js", () => ({
     postSync: jest.fn(),
@@ -28,7 +28,7 @@ import { fetchVersion } from "../src/version_api.js";
 
 function renderApp() {
     return render(
-        <ChakraProvider>
+        <ChakraProvider value={defaultSystem}>
             <MemoryRouter>
                 <App />
             </MemoryRouter>
@@ -273,18 +273,14 @@ describe("App", () => {
 
         renderApp();
 
-        expect(
-            screen.queryByRole("radiogroup", { name: "Reset hostname" })
-        ).not.toBeInTheDocument();
+        expect(screen.queryByRole("radio", { name: "alice" })).not.toBeInTheDocument();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), {
             target: { value: "reset-to-hostname" },
         });
 
         await waitFor(() => {
-            expect(
-                screen.getByRole("radiogroup", { name: "Reset hostname" })
-            ).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
     });
 

@@ -1,19 +1,14 @@
 import React from "react";
-import {
-    Card,
-    CardBody,
-    FormControl,
-    FormLabel,
-    HStack,
-    IconButton,
-    Input,
-    Text,
-    VStack,
-} from "@chakra-ui/react";
+import { Card, HStack, IconButton, Input, Text, VStack, Field } from "@chakra-ui/react";
 
 /**
  * @typedef {import('../DescriptionEntry/api.js').Shortcut} Shortcut
  */
+
+const labelStyle = {
+    fontSize: "0.75rem",
+    marginBottom: "0.25rem",
+};
 
 /**
  * A single shortcut row in the editor.
@@ -57,50 +52,51 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
     }
 
     return (
-        <Card variant="outline" size="sm" w="full">
-            <CardBody>
-                <VStack spacing={2} align="stretch">
-                    <HStack spacing={2} align="flex-end">
-                        <FormControl flex="1">
-                            <FormLabel fontSize="xs" mb={1}>Pattern (regex)</FormLabel>
+        <Card.Root variant="outline" size="sm" w="full">
+            <Card.Body>
+                <VStack gap={2} align="stretch">
+                    <HStack gap={2} align="flex-end">
+                        <Field.Root flex="1">
+                            <label htmlFor={`shortcut-pattern-${rowKey}`} style={labelStyle}>Pattern (regex)</label>
                             <Input
+                                id={`shortcut-pattern-${rowKey}`}
                                 size="sm"
                                 value={pattern}
                                 onChange={(e) => handleChange("pattern", e.target.value)}
                                 placeholder="e.g. breakfast"
                                 fontFamily="mono"
                             />
-                        </FormControl>
-                        <FormControl flex="1">
-                            <FormLabel fontSize="xs" mb={1}>Replacement</FormLabel>
+                        </Field.Root>
+                        <Field.Root flex="1">
+                            <label htmlFor={`shortcut-replacement-${rowKey}`} style={labelStyle}>Replacement</label>
                             <Input
+                                id={`shortcut-replacement-${rowKey}`}
                                 size="sm"
                                 value={replacement}
                                 onChange={(e) => handleChange("replacement", e.target.value)}
                                 placeholder="e.g. food [when this morning]"
                                 fontFamily="mono"
                             />
-                        </FormControl>
+                        </Field.Root>
                         <IconButton
                             aria-label="Delete shortcut"
-                            icon={<Text>✕</Text>}
                             size="sm"
                             colorScheme="red"
                             variant="ghost"
-                            onClick={() => onDelete(rowKey)}
-                        />
+                            onClick={() => onDelete(rowKey)}><Text>✕</Text></IconButton>
                     </HStack>
-                    <FormControl>
-                        <FormLabel fontSize="xs" mb={1}>Description (optional)</FormLabel>
+                    <Field.Root>
+                        <label htmlFor={`shortcut-description-${rowKey}`} style={labelStyle}>Description (optional)</label>
                         <Input
+                            id={`shortcut-description-${rowKey}`}
                             size="sm"
                             value={description || ""}
                             onChange={(e) => handleChange("description", e.target.value)}
                             placeholder="What does this shortcut do?"
                         />
-                    </FormControl>
+                    </Field.Root>
                 </VStack>
-            </CardBody>
-        </Card>
+            </Card.Body>
+        </Card.Root>
     );
 }

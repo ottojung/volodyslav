@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, AlertIcon, AlertTitle, AlertDescription, Box } from "@chakra-ui/react";
+import { Alert, Box } from "@chakra-ui/react";
 
 /**
  * @param {{ hasRestoredSession: boolean }} props
@@ -10,14 +10,14 @@ export default function RestoredSessionBanner({ hasRestoredSession }) {
         return null;
     }
     return (
-        <Alert status="info" borderRadius="md" data-testid="restored-session-banner">
-            <AlertIcon />
+        <Alert.Root status="info" borderRadius="md" data-testid="restored-session-banner">
+            <Alert.Indicator />
             <Box>
-                <AlertTitle>Session Restored</AlertTitle>
-                <AlertDescription>
+                <Alert.Title>Session Restored</Alert.Title>
+                <Alert.Description>
                     Your previous recording session was restored.
-                </AlertDescription>
+                </Alert.Description>
             </Box>
-        </Alert>
+        </Alert.Root>
     );
 }

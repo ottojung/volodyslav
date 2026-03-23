@@ -1,7 +1,8 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { screen, waitFor, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { renderWithProviders } from "./renderWithProviders.jsx";
 
 // Mock the Search API module
 jest.mock("../src/Search/api", () => ({
@@ -58,7 +59,7 @@ function makeDeferred() {
 }
 
 function renderWithRoute(pathname, state = undefined) {
-    return render(
+    return renderWithProviders(
         <MemoryRouter initialEntries={[{ pathname, state }]}>
             <Routes>
                 <Route path="/entry/:id" element={<EntryDetail />} />
@@ -292,7 +293,7 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123");
 
         expect(screen.queryByText("id")).not.toBeInTheDocument();
-        expect(screen.getAllByText("Loading...")).toHaveLength(1);
+        expect(screen.getByLabelText("Loading entry")).toBeInTheDocument();
 
         await act(async () => { resolveEntry(mockEntry); });
 
@@ -364,7 +365,7 @@ describe("EntryDetail page", () => {
     it("calls deleteEntryById with the entry id when delete button is clicked", async () => {
         deleteEntryById.mockResolvedValue(true);
 
-        render(
+        renderWithProviders(
             <MemoryRouter initialEntries={[{ pathname: "/entry/entry-123", state: { entry: mockEntry } }]}>
                 <Routes>
                     <Route path="/entry/:id" element={<EntryDetail />} />
@@ -382,7 +383,7 @@ describe("EntryDetail page", () => {
     it("navigates to /search after successful deletion", async () => {
         deleteEntryById.mockResolvedValue(true);
 
-        render(
+        renderWithProviders(
             <MemoryRouter initialEntries={[{ pathname: "/entry/entry-123", state: { entry: mockEntry } }]}>
                 <Routes>
                     <Route path="/entry/:id" element={<EntryDetail />} />

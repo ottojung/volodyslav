@@ -17,18 +17,18 @@ const syntaxExamples = [
  * @returns {React.JSX.Element}
  */
 export const HelpTab = ({ helpText, onShortcutClick }) => (
-    <VStack spacing={SPACING.lg} align="stretch">
+    <VStack gap={SPACING.lg} align="stretch">
         {/* Syntax Section */}
-        <VStack spacing={SPACING.md} align="stretch">
+        <VStack gap={SPACING.md} align="stretch">
             <Text {...TEXT_STYLES.helper} fontWeight="medium">
                 Syntax: TYPE [MODIFIERS...] DESCRIPTION
             </Text>
             <Text fontSize="sm" color="gray.600">
                 Examples:
             </Text>
-            <VStack spacing={SPACING.sm} align="stretch">
+            <VStack gap={SPACING.sm} align="stretch">
                 {syntaxExamples.map((example, index) => (
-                    <HStack key={index} spacing={SPACING.sm}>
+                    <HStack key={index} gap={SPACING.sm}>
                         <Code
                             fontSize="sm"
                             px={3}

@@ -1,15 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-    VStack,
-    Card,
-    CardBody,
-    Tabs,
-    TabList,
-    TabPanels,
-    Tab,
-    TabPanel,
-    Skeleton,
-} from "@chakra-ui/react";
+import { VStack, Card, Skeleton, HStack, Button } from "@chakra-ui/react";
 
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, SPACING } from "./styles.js";
@@ -40,6 +30,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     const configState = useState(getInitialConfig());
     const [config, setConfig] = configState;
     const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState("help");
 
     useEffect(() => {
         const loadConfig = async () => {
@@ -53,15 +44,15 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
 
     if (isLoading) {
         return (
-            <Card {...CARD_STYLES.main}>
-                <CardBody p={SPACING.lg}>
-                    <VStack spacing={SPACING.md}>
+            <Card.Root {...CARD_STYLES.main}>
+                <Card.Body p={SPACING.lg}>
+                    <VStack gap={SPACING.md}>
                         <Skeleton height="20px" />
                         <Skeleton height="16px" />
                         <Skeleton height="16px" />
                     </VStack>
-                </CardBody>
-            </Card>
+                </Card.Body>
+            </Card.Root>
         );
     }
 
@@ -70,40 +61,44 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     }
 
     return (
-        <Card {...CARD_STYLES.main}>
-            <CardBody p={SPACING.lg}>
-                <VStack spacing={SPACING.lg} align="stretch">
-                    <Tabs
-                        variant="soft-rounded"
-                        colorScheme="blue"
-                        defaultIndex={0}
-                    >
-                        <TabList>
-                            {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
-                            <Tab>Help</Tab>
-                        </TabList>
+        <Card.Root {...CARD_STYLES.main}>
+            <Card.Body p={SPACING.lg}>
+                <VStack gap={SPACING.lg} align="stretch">
+                    <HStack gap={2}>
+                        {config.shortcuts.length > 0 && (
+                            <Button
+                                size="sm"
+                                variant={activeTab === "shortcuts" ? "solid" : "outline"}
+                                colorPalette="blue"
+                                onClick={() => setActiveTab("shortcuts")}
+                            >
+                                Shortcuts
+                            </Button>
+                        )}
+                        <Button
+                            size="sm"
+                            variant={activeTab === "help" ? "solid" : "outline"}
+                            colorPalette="blue"
+                            onClick={() => setActiveTab("help")}
+                        >
+                            Help
+                        </Button>
+                    </HStack>
 
-                        <TabPanels>
-                            {config.shortcuts.length > 0 && (
-                                <TabPanel px={0}>
-                                    <ShortcutsTab 
-                                        shortcuts={config.shortcuts}
-                                        onShortcutClick={onShortcutClick}
-                                        currentInput={currentInput}
-                                    />
-                                </TabPanel>
-                            )}
-
-                            <TabPanel px={0}>
-                                <HelpTab 
-                                    helpText={config.help}
-                                    onShortcutClick={onShortcutClick}
-                                />
-                            </TabPanel>
-                        </TabPanels>
-                    </Tabs>
+                    {activeTab === "shortcuts" && config.shortcuts.length > 0 ? (
+                        <ShortcutsTab
+                            shortcuts={config.shortcuts}
+                            onShortcutClick={onShortcutClick}
+                            currentInput={currentInput}
+                        />
+                    ) : (
+                        <HelpTab
+                            helpText={config.help}
+                            onShortcutClick={onShortcutClick}
+                        />
+                    )}
                 </VStack>
-            </CardBody>
-        </Card>
+            </Card.Body>
+        </Card.Root>
     );
 };

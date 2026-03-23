@@ -45,13 +45,11 @@ export default function Camera() {
         <Box {...containerProps}>
             <Box {...videoContainerProps}>
                 <Box
-                    as="video"
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
                     display={mode === "camera" ? "block" : "none"}
                     {...videoProps}
-                />
+                >
+                    <video ref={videoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </Box>
                 <Image
                     src={previewUrl}
                     alt="Preview"

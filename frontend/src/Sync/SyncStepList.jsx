@@ -33,7 +33,7 @@ function SyncStepList({ steps, isRunning }) {
   const completedByName = Object.fromEntries(steps.map((s) => [s.name, s.status]));
 
   return (
-    <VStack spacing={1} align="stretch" w="200px">
+    <VStack gap={1} align="stretch" w="200px">
       {SYNC_STEPS.map((step, index) => {
         const status = completedByName[step.name];
         const isPending = !status;
@@ -41,7 +41,7 @@ function SyncStepList({ steps, isRunning }) {
         const colorKey = status ?? 'pending';
 
         return (
-          <HStack key={step.name} spacing={2} px={2} py={1} borderRadius="md" bg={STEP_BG_COLOR[colorKey]}>
+          <HStack key={step.name} gap={2} px={2} py={1} borderRadius="md" bg={STEP_BG_COLOR[colorKey]}>
             {status === 'success' && <Text fontSize="xs" color="green.500">✓</Text>}
             {status === 'error' && <Text fontSize="xs" color="red.500">✗</Text>}
             {isPending && !isCurrentStep && <Text fontSize="xs" color="gray.400">○</Text>}

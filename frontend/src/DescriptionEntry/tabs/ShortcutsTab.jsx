@@ -1,5 +1,5 @@
 import React from "react";
-import { VStack, HStack, Text, Code, Card, CardBody, Box } from "@chakra-ui/react";
+import { VStack, HStack, Text, Code, Card, Box } from "@chakra-ui/react";
 import { SPACING } from "../styles.js";
 
 /** @typedef {import('../api.js').Shortcut} Shortcut */
@@ -52,16 +52,16 @@ const getShortcutPreview = (shortcut, currentInput) => {
  * @returns {React.JSX.Element}
  */
 export const ShortcutsTab = ({ shortcuts, onShortcutClick, currentInput }) => (
-    <VStack spacing={SPACING.md} align="stretch">
+    <VStack gap={SPACING.md} align="stretch">
         <Text fontSize="sm" color="gray.600">
             Click a shortcut to use its pattern:
         </Text>
         {shortcuts.map((shortcut, index) => {
             const preview = getShortcutPreview(shortcut, currentInput);
             return (
-                <Card key={index} variant="outline" size="sm">
-                    <CardBody p={SPACING.md}>
-                        <VStack spacing={SPACING.sm} align="stretch">
+                <Card.Root key={index} variant="outline" size="sm">
+                    <Card.Body p={SPACING.md}>
+                        <VStack gap={SPACING.sm} align="stretch">
                             <HStack
                                 justify="space-between"
                                 cursor="pointer"
@@ -70,7 +70,7 @@ export const ShortcutsTab = ({ shortcuts, onShortcutClick, currentInput }) => (
                                 p={2}
                                 borderRadius="md"
                             >
-                                <HStack spacing={SPACING.sm}>
+                                <HStack gap={SPACING.sm}>
                                     <Code colorScheme="blue" fontSize="xs">
                                         {shortcut[0]}
                                     </Code>
@@ -104,8 +104,8 @@ export const ShortcutsTab = ({ shortcuts, onShortcutClick, currentInput }) => (
                                 </Box>
                             )}
                         </VStack>
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
             );
         })}
     </VStack>

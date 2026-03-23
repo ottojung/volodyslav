@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useToast } from "@chakra-ui/react";
+import { useToast } from "../toast.jsx";
 import {
     isPhotoStorageError,
     isPhotoConversionError,

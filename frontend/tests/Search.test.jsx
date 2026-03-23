@@ -1,7 +1,8 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
+import { renderWithProviders } from "./renderWithProviders.jsx";
 
 // Mock the Search API module
 jest.mock("../src/Search/api", () => ({
@@ -45,7 +46,7 @@ describe("Search page", () => {
     });
 
     it("renders the search input", () => {
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -59,7 +60,7 @@ describe("Search page", () => {
     it("shows recent entries on initial load", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry({ input: "food - Recent entry" })] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -77,7 +78,7 @@ describe("Search page", () => {
     it("searches with empty pattern to fetch all entries when input is empty", async () => {
         searchEntries.mockResolvedValue({ results: [] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -88,7 +89,7 @@ describe("Search page", () => {
     });
 
     it("does not show 'no results' message when input is empty", () => {
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -100,7 +101,7 @@ describe("Search page", () => {
     it("shows no results message when search returns nothing", async () => {
         searchEntries.mockResolvedValue({ results: [] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -119,7 +120,7 @@ describe("Search page", () => {
     it("calls searchEntries with the typed pattern", async () => {
         searchEntries.mockResolvedValue({ results: [], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -138,7 +139,7 @@ describe("Search page", () => {
     it("shows matching entries from search results", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry()] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -157,7 +158,7 @@ describe("Search page", () => {
     it("shows type badge for each matching entry", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry()] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -180,7 +181,7 @@ describe("Search page", () => {
         ];
         searchEntries.mockResolvedValue({ results: entries });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -203,7 +204,7 @@ describe("Search page", () => {
             error: "search must be a valid regular expression",
         });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -227,7 +228,7 @@ describe("Search page", () => {
             error: "Network error",
         });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -249,7 +250,7 @@ describe("Search page", () => {
             .mockResolvedValueOnce({ results: [mockEntry()] })
             .mockResolvedValueOnce({ results: [] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -281,7 +282,7 @@ describe("Search page", () => {
             error: "search must be a valid regular expression",
         });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -312,7 +313,7 @@ describe("Search page", () => {
 
         searchEntries.mockResolvedValue({ results: [mockEntry()] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -336,7 +337,7 @@ describe("Search page", () => {
         let resolveSearch;
         searchEntries.mockImplementation(() => new Promise(resolve => { resolveSearch = resolve; }));
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -360,7 +361,7 @@ describe("Search page", () => {
     it("debounces search calls so only one API call fires", async () => {
         searchEntries.mockResolvedValue({ results: [], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -385,7 +386,7 @@ describe("Search page", () => {
     it("shows 'Load more' button when hasMore is true", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: true });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -404,7 +405,7 @@ describe("Search page", () => {
     it("does not show 'Load more' button when hasMore is false", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -423,7 +424,7 @@ describe("Search page", () => {
     it("shows 'All matching entries are displayed' when hasMore is false and results exist", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -442,7 +443,7 @@ describe("Search page", () => {
     it("does not show 'All matching entries are displayed' when there are no results", async () => {
         searchEntries.mockResolvedValue({ results: [], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -463,7 +464,7 @@ describe("Search page", () => {
             .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })
             .mockResolvedValueOnce({ results: [mockEntry({ id: "2" })], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -498,7 +499,7 @@ describe("Search page", () => {
                 hasMore: false,
             });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -532,7 +533,7 @@ describe("Search page", () => {
             })
             .mockImplementationOnce(() => new Promise(resolve => { resolveLoadMore = resolve; }));
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -571,7 +572,7 @@ describe("Search page", () => {
             .mockResolvedValueOnce({ results: [mockEntry({ id: "1" })], hasMore: true })
             .mockResolvedValueOnce({ results: [mockEntry({ id: "2" })], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -604,7 +605,7 @@ describe("Search page", () => {
             .mockImplementationOnce(() => initialPromise)
             .mockResolvedValueOnce({ results: [mockEntry({ input: "food - Food entry" })], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -639,7 +640,7 @@ describe("Search page", () => {
             .mockResolvedValueOnce({ results: [mockEntry({ id: "2" })], hasMore: false })
             .mockResolvedValueOnce({ results: [mockEntry({ id: "3" })], hasMore: false });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -675,7 +676,7 @@ describe("Search page", () => {
     it("renders entry rows as anchor links with correct href", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry()] });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -700,7 +701,7 @@ describe("Search page", () => {
             hasMore: false,
         });
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -737,7 +738,7 @@ describe("Search page", () => {
         }));
 
         // MemoryRouter starts with navigationType "POP", matching the back-navigation case.
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>
@@ -765,7 +766,7 @@ describe("Search page", () => {
             error: null,
         }));
 
-        render(
+        renderWithProviders(
             <MemoryRouter>
                 <Search />
             </MemoryRouter>

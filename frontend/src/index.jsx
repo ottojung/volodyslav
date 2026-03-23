@@ -9,8 +9,9 @@ import Search from './Search/Search.jsx';
 import EntryDetail from './EntryDetail/EntryDetail.jsx';
 import ConfigPage from './ConfigPage/ConfigPage.jsx';
 import AudioDiary from './AudioDiary/AudioDiary.jsx';
-import { ChakraProvider } from '@chakra-ui/react';
+import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
+import { ToastProvider } from './toast.jsx';
 
 const root = document.getElementById('root');
 if (root === null) {
@@ -31,20 +32,22 @@ const updateSW = registerSW({
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <ChakraProvider>
-      <BrowserRouter basename={__BASE_PATH__}>
-        <Routes>
-          <Route path="/" element={<App />} />
-          <Route path="/camera" element={<Camera />} />
-          <Route path="/camera.html" element={<Camera />} />
-          <Route path="/describe" element={<DescriptionEntry />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/entry/:id" element={<EntryDetail />} />
-          <Route path="/config" element={<ConfigPage />} />
-          <Route path="/record-diary" element={<AudioDiary />} />
-          <Route path="*" element={<App />} />
-        </Routes>
-      </BrowserRouter>
+    <ChakraProvider value={defaultSystem}>
+      <ToastProvider>
+        <BrowserRouter basename={__BASE_PATH__}>
+          <Routes>
+            <Route path="/" element={<App />} />
+            <Route path="/camera" element={<Camera />} />
+            <Route path="/camera.html" element={<Camera />} />
+            <Route path="/describe" element={<DescriptionEntry />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/entry/:id" element={<EntryDetail />} />
+            <Route path="/config" element={<ConfigPage />} />
+            <Route path="/record-diary" element={<AudioDiary />} />
+            <Route path="*" element={<App />} />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
     </ChakraProvider>
   </React.StrictMode>
 );

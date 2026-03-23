@@ -2,19 +2,15 @@ import React, { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Alert,
-    AlertIcon,
-    AlertTitle,
-    AlertDescription,
     Box,
     Button,
     Container,
-    FormControl,
-    FormLabel,
     HStack,
     IconButton,
     Text,
     Textarea,
     VStack,
+    Field,
 } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 import { submitEntry } from "../DescriptionEntry/api.js";
@@ -118,7 +114,7 @@ export default function AudioDiary() {
 
     return (
         <Container maxW="sm" px={4} py={8}>
-            <VStack spacing={6} align="stretch">
+            <VStack gap={6} align="stretch">
                 <Text fontSize="xl" fontWeight="bold" textAlign="center">
                     Record Diary
                 </Text>
@@ -143,40 +139,29 @@ export default function AudioDiary() {
                     <AudioVisualization analyser={analyser} isActive={isRecording} />
                 )}
 
-                <VStack spacing={4}>
+                <VStack gap={4}>
                     {(isIdle || isRecording || isPaused) && (
-                        <HStack spacing={4} justify="center" align="center">
+                        <HStack gap={4} justify="center" align="center">
                             {isIdle && (
                                 <IconButton
                                     aria-label="Start recording"
-                                    icon={
-                                        <MicrophoneIcon
-                                            width="32px"
-                                            height="32px"
-                                        />
-                                    }
-                                    isRound
+                                    rounded="full"
                                     size="lg"
                                     w="72px"
                                     h="72px"
                                     colorScheme="red"
                                     onClick={handleStart}
-                                    data-testid="start-button"
-                                />
+                                    data-testid="start-button"><MicrophoneIcon
+                                        width="32px"
+                                        height="32px"
+                                    /></IconButton>
                             )}
 
                             {(isRecording || isPaused) && (
                                 <>
                                     <IconButton
                                         aria-label={isRecording ? "Pause recording" : "Resume recording"}
-                                        icon={
-                                            isRecording ? (
-                                                <PauseIcon width="28px" height="28px" />
-                                            ) : (
-                                                <MicrophoneIcon width="28px" height="28px" />
-                                            )
-                                        }
-                                        isRound
+                                        rounded="full"
                                         size="lg"
                                         w="72px"
                                         h="72px"
@@ -187,17 +172,18 @@ export default function AudioDiary() {
                                             isRecording
                                                 ? `${pulseRing} 1.5s ease-out infinite`
                                                 : undefined
-                                        }
-                                    />
+                                        }>{isRecording ? (
+                                            <PauseIcon width="28px" height="28px" />
+                                        ) : (
+                                            <MicrophoneIcon width="28px" height="28px" />
+                                        )}</IconButton>
                                     <IconButton
                                         aria-label="Stop recording"
-                                        icon={<StopIcon width="24px" height="24px" />}
-                                        isRound
+                                        rounded="full"
                                         size="md"
                                         colorScheme="gray"
                                         onClick={handleStop}
-                                        data-testid="stop-button"
-                                    />
+                                        data-testid="stop-button"><StopIcon width="24px" height="24px" /></IconButton>
                                 </>
                             )}
                         </HStack>
@@ -211,7 +197,7 @@ export default function AudioDiary() {
 
                     {(isRecording || isPaused) && (
                         <Button
-                            colorScheme="red"
+                            colorPalette="red"
                             variant="outline"
                             size="sm"
                             w="full"
@@ -236,10 +222,10 @@ export default function AudioDiary() {
                                 />
                             </Box>
 
-                            <FormControl>
-                                <FormLabel fontSize="sm">
+                            <Field.Root>
+                                <Text fontSize="sm">
                                     Add a note (optional)
-                                </FormLabel>
+                                </Text>
                                 <Textarea
                                     value={note}
                                     onChange={(e) => setNote(e.target.value)}
@@ -248,11 +234,11 @@ export default function AudioDiary() {
                                     rows={2}
                                     data-testid="note-input"
                                 />
-                            </FormControl>
+                            </Field.Root>
 
-                            <HStack w="full" spacing={3}>
+                            <HStack w="full" gap={3}>
                                 <Button
-                                    colorScheme="red"
+                                    colorPalette="red"
                                     variant="outline"
                                     flex={1}
                                     onClick={handleDiscard}
@@ -261,10 +247,10 @@ export default function AudioDiary() {
                                     Discard
                                 </Button>
                                 <Button
-                                    colorScheme="green"
+                                    colorPalette="green"
                                     flex={1}
                                     onClick={handleSubmit}
-                                    isLoading={isSubmitting}
+                                    loading={isSubmitting}
                                     loadingText="Submitting…"
                                     data-testid="submit-button"
                                 >
@@ -276,13 +262,13 @@ export default function AudioDiary() {
                 </VStack>
 
                 {errorMessage && (
-                    <Alert status="error" borderRadius="md">
-                        <AlertIcon />
+                    <Alert.Root status="error" borderRadius="md">
+                        <Alert.Indicator />
                         <Box>
-                            <AlertTitle>Error</AlertTitle>
-                            <AlertDescription>{errorMessage}</AlertDescription>
+                            <Alert.Title>Error</Alert.Title>
+                            <Alert.Description>{errorMessage}</Alert.Description>
                         </Box>
-                    </Alert>
+                    </Alert.Root>
                 )}
 
                 <Button

@@ -1,13 +1,5 @@
 import React, { useState } from "react";
-import {
-    Box,
-    VStack,
-    HStack,
-    Text,
-    IconButton,
-    Tooltip,
-    Button,
-} from "@chakra-ui/react";
+import { Box, VStack, HStack, Text, IconButton, Button } from "@chakra-ui/react";
 import {
     CARD_STYLES,
     TEXT_STYLES,
@@ -84,28 +76,32 @@ export function FieldRow({ fieldKey, value }) {
 
     return (
         <Box {...CARD_STYLES.entry}>
-            <VStack align="flex-start" spacing={1} minW={0}>
+            <VStack align="flex-start" gap={1} minW={0}>
                 <HStack justify="space-between" align="flex-start" w="full">
                     <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase">
                         {fieldKey}
                     </Text>
-                    <Tooltip label={copied ? "Copied!" : "Copy"} placement="left">
-                        <IconButton
-                            aria-label={`Copy ${fieldKey}`}
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleCopy}
-                            icon={<span>{copied ? "✓" : "⎘"}</span>}
-                            flexShrink={0}
-                        />
-                    </Tooltip>
+                    <IconButton
+                        aria-label={`Copy ${fieldKey}`}
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleCopy}
+                        flexShrink={0}
+                    >
+                        <span>{copied ? "✓" : "⎘"}</span>
+                    </IconButton>
                 </HStack>
+                {copied ? (
+                    <Text as="span" fontSize="xs" color="gray.500" role="status" aria-live="polite">
+                        Copied!
+                    </Text>
+                ) : null}
                 <Text {...TEXT_STYLES.entryText} wordBreak="normal">{displayedValue}</Text>
                 {isCollapsible && (
                     <Button
                         size="xs"
-                        variant="link"
-                        colorScheme="blue"
+                        variant='plain'
+                        colorPalette="blue"
                         onClick={() => setIsExpanded((currentValue) => !currentValue)}
                         aria-label={`${isExpanded ? "Show less" : "Show full"} ${fieldKey}`}
                     >

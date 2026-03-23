@@ -4,17 +4,12 @@ import {
   Box,
   VStack,
   Text,
-  Select,
-  RadioGroup,
-  Radio,
+  NativeSelect,
   Spinner,
   Alert,
-  AlertIcon,
-  AlertTitle,
-  AlertDescription,
   Code,
-  UnorderedList,
-  ListItem,
+  List,
+  HStack,
 } from '@chakra-ui/react';
 import { postSync, fetchSyncHostnames } from './api.js';
 import { SyncStepList } from './SyncStepList.jsx';
@@ -163,17 +158,18 @@ export function SyncSection() {
   };
 
   return (
-    <VStack spacing={2}>
-      <Select
-        aria-label="Sync mode"
-        size="sm"
-        value={syncMode}
-        onChange={handleSyncModeChange}
-        w="200px"
-      >
-        <option value="">Normal sync</option>
-        <option value="reset-to-hostname">Reset to Host</option>
-      </Select>
+    <VStack gap={2}>
+      <NativeSelect.Root>
+        <NativeSelect.Field
+          aria-label="Sync mode"
+          value={syncMode}
+          onChange={handleSyncModeChange}
+          w="200px">
+          <option value="">Normal sync</option>
+          <option value="reset-to-hostname">Reset to Host</option>
+        </NativeSelect.Field>
+        <NativeSelect.Indicator />
+      </NativeSelect.Root>
       {syncMode === 'reset-to-hostname' && (
         <Box w="200px" borderWidth="1px" borderRadius="md" p={2}>
           {syncHostnamesState === 'loading' ? (
@@ -181,59 +177,59 @@ export function SyncSection() {
           ) : syncHostnames.length === 0 ? (
             <Text fontSize="sm">No hostnames available</Text>
           ) : (
-            <RadioGroup
-              aria-label="Reset hostname"
-              size="sm"
-              value={syncResetHostname}
-              onChange={handleSyncHostnameChange}
-            >
-              <VStack align="stretch" spacing={1}>
-                {syncHostnames.map((hostname) => (
-                  <Radio key={hostname} value={hostname}>
-                    {hostname}
-                  </Radio>
-                ))}
-              </VStack>
-            </RadioGroup>
+            <VStack align="stretch" gap={1} role="radiogroup" aria-label="Reset host">
+              {syncHostnames.map((hostname) => (
+                <Button
+                  key={hostname}
+                  size="sm"
+                  variant={syncResetHostname === hostname ? "solid" : "outline"}
+                  colorPalette={syncResetHostname === hostname ? "blue" : "gray"}
+                  onClick={() => handleSyncHostnameChange(hostname)}
+                  role="radio"
+                  aria-checked={syncResetHostname === hostname}
+                >
+                  <HStack justify="space-between" w="full">
+                    <Text>{hostname}</Text>
+                    {syncResetHostname === hostname ? <Text aria-hidden="true">●</Text> : null}
+                  </HStack>
+                </Button>
+              ))}
+            </VStack>
           )}
         </Box>
       )}
       <Button
-        colorScheme={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
+        colorPalette={syncState === 'success' ? 'green' : syncState === 'error' ? 'red' : 'orange'}
         variant="outline"
         w="200px"
         onClick={handleSyncClick}
-        isDisabled={syncState === 'loading' || (syncMode === 'reset-to-hostname' && syncResetHostname.trim() === '')}
-        leftIcon={syncState === 'loading' ? <Spinner size="sm" /> : undefined}
-      >
-        {syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}
-      </Button>
+        disabled={syncState === 'loading' || (syncMode === 'reset-to-hostname' && syncResetHostname.trim() === '')}>{syncState === 'loading' ? <Spinner size="sm" /> : undefined}{syncState === 'loading' ? 'Syncing…' : syncState === 'success' ? 'Synced!' : 'Sync'}</Button>
       {(syncState === 'loading' || syncState === 'success' || syncState === 'error') && (
         <SyncStepList steps={syncSteps} isRunning={syncState === 'loading'} />
       )}
       {syncSuccessMessage && (
-        <Alert status="success" borderRadius="md" alignItems="flex-start">
-          <AlertIcon mt={1} />
+        <Alert.Root status="success" borderRadius="md" alignItems="flex-start">
+          <Alert.Indicator mt={1} />
           <Box>
-            <AlertTitle>Sync complete</AlertTitle>
-            <AlertDescription>{syncSuccessMessage}</AlertDescription>
+            <Alert.Title>Sync complete</Alert.Title>
+            <Alert.Description>{syncSuccessMessage}</Alert.Description>
           </Box>
-        </Alert>
+        </Alert.Root>
       )}
       {syncState === 'error' && syncError.message !== '' && (
-        <Alert status="error" borderRadius="md" alignItems="flex-start">
-          <AlertIcon mt={1} />
+        <Alert.Root status="error" borderRadius="md" alignItems="flex-start">
+          <Alert.Indicator mt={1} />
           <Box>
-            <AlertTitle>Sync failed</AlertTitle>
-            <AlertDescription>
-              <VStack spacing={3} align="stretch" mt={2}>
+            <Alert.Title>Sync failed</Alert.Title>
+            <Alert.Description>
+              <VStack gap={3} align="stretch" mt={2}>
                 <Text whiteSpace="pre-wrap">{syncError.message}</Text>
                 {syncError.details.length > 0 && (
                   <Box>
                     <Text fontWeight="semibold" mb={2}>Details</Text>
-                    <UnorderedList spacing={2} ml={4}>
+                    <List.Root as='ul' gap={2} ml={4}>
                       {syncError.details.map((detail, index) => (
-                        <ListItem key={`${detail.name}-${index}`}>
+                        <List.Item key={`${detail.name}-${index}`}>
                           <Text fontWeight="medium">{detail.name}</Text>
                           <Text>{detail.message}</Text>
                           {detail.causes.length > 0 && (
@@ -241,15 +237,15 @@ export function SyncSection() {
                               {detail.causes.join('\n')}
                             </Code>
                           )}
-                        </ListItem>
+                        </List.Item>
                       ))}
-                    </UnorderedList>
+                    </List.Root>
                   </Box>
                 )}
               </VStack>
-            </AlertDescription>
+            </Alert.Description>
           </Box>
-        </Alert>
+        </Alert.Root>
       )}
     </VStack>
   );

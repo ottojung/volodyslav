@@ -9,7 +9,7 @@ import {
     IconButton,
 } from "@chakra-ui/react";
 import { formatRelativeDate } from "./utils.js";
-import { CARD_STYLES, TEXT_STYLES, BADGE_STYLES } from "./styles.js";
+import { CARD_STYLES, TEXT_STYLES } from "./styles.js";
 import { getEntryType, getEntryDescription } from "./entry.js";
 
 /**
@@ -30,9 +30,9 @@ import { getEntryType, getEntryDescription } from "./entry.js";
 export const EntryItem = ({ entry, index, onDelete }) => (
     <Box key={entry.id || index} {...CARD_STYLES.entry}>
         <HStack justify="space-between" align="flex-start">
-            <VStack align="flex-start" spacing={1} flex={1}>
-                <HStack spacing={2}>
-                    <Badge {...BADGE_STYLES}>
+            <VStack align="flex-start" gap={1} flex={1}>
+                <HStack gap={2}>
+                    <Badge colorPalette="blue" variant="subtle">
                         {getEntryType(entry)}
                     </Badge>
                     <Text {...TEXT_STYLES.entryMeta}>
@@ -48,9 +48,7 @@ export const EntryItem = ({ entry, index, onDelete }) => (
                     aria-label="Delete entry"
                     size="sm"
                     variant="ghost"
-                    onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
-                    icon={<span>&times;</span>}
-                />
+                    onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}><span>&times;</span></IconButton>
             )}
         </HStack>
     </Box>
@@ -62,8 +60,8 @@ export const EntryItem = ({ entry, index, onDelete }) => (
  */
 export const EntryItemSkeleton = () => (
     <Box {...CARD_STYLES.entry}>
-        <VStack align="flex-start" spacing={2}>
-            <HStack spacing={2}>
+        <VStack align="flex-start" gap={2}>
+            <HStack gap={2}>
                 <Skeleton height="16px" width="60px" />
                 <Skeleton height="14px" width="50px" />
             </HStack>

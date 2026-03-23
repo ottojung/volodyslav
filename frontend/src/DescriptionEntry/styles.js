@@ -72,39 +72,6 @@ export const CARD_STYLES = {
     },
 };
 
-export const INPUT_STYLES = {
-    size: "lg",
-    border: "2px",
-    borderColor: COLORS.border.default,
-    focusBorderColor: "blue.400",
-    bg: COLORS.background.input,
-    fontSize: "lg",
-    py: SIZES.inputHeight,
-    _placeholder: {
-        color: COLORS.text.muted,
-        fontSize: "lg",
-    },
-    _focus: {
-        bg: COLORS.background.inputFocus,
-        shadow: "md",
-        borderColor: COLORS.border.focus,
-    },
-};
-
-export const BUTTON_STYLES = {
-    primary: {
-        colorScheme: COLORS.primaryScheme,
-        size: "md",
-        px: SIZES.buttonPadding,
-        borderRadius: "xl",
-    },
-    secondary: {
-        variant: "ghost",
-        size: "md",
-        color: COLORS.text.secondary,
-    },
-};
-
 export const TEXT_STYLES = {
     heading: {
         size: "xl",
@@ -140,8 +107,14 @@ export const TEXT_STYLES = {
     },
 };
 
-export const BADGE_STYLES = {
-    colorScheme: COLORS.primaryScheme,
-    variant: "subtle",
-    fontSize: "xs",
+/** @type {import("@chakra-ui/react").InputProps} */
+export const INPUT_STYLES = {
+    size: "lg",
+    border: "2px",
+    borderColor: "gray.200",
+    bg: "gray.50",
+    fontSize: "lg",
+    py: 6,
+    _placeholder: { color: "gray.500", fontSize: "lg" },
+    _focus: { bg: "white", shadow: "md", borderColor: "blue.500" },
 };
