@@ -52,7 +52,8 @@ const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac
  * @returns {boolean}
  */
 function isAudioFilename(filename) {
-    if (filename.endsWith("diary-audio.webm")) {
+    const basename = path.basename(filename).toLocaleLowerCase();
+    if (basename === "diary-audio.webm") {
         return true;
     }
     if (AUDIO_EXTENSIONS.has(path.extname(filename).toLowerCase())) {
