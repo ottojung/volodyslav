@@ -5,14 +5,14 @@
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
-const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
+const FRAGMENT_MS = 10 * 1000; // 10-second fragments for chunk collection
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob) => void} [onChunk] - called whenever a data chunk arrives
+ * @property {(chunk: Blob, startMs: number, endMs: number) => void} [onChunk] - called with each fragment and its relative timestamps
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -38,6 +38,9 @@ class RecorderClass {
     /** Resolve callbacks awaiting requestData-delivered chunks. */
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
+    /** Cumulative ms of non-empty audio fragments emitted so far. */
+    /** @type {number} */
+    _fragmentCumulativeMs = 0;
     /**
      * @param {RecorderCallbacks} callbacks
      */
@@ -115,6 +118,7 @@ class RecorderClass {
         }
         this._mimeType = chooseMimeType();
         this._chunks = [];
+        this._fragmentCumulativeMs = 0;
         try {
             const options = this._mimeType ? { mimeType: this._mimeType } : {};
             this._mediaRecorder = new MediaRecorder(stream, options);
@@ -136,9 +140,12 @@ class RecorderClass {
                 resolvers.forEach((resolve) => resolve());
             }
             if (e.data && e.data.size > 0) {
+                const fragStart = this._fragmentCumulativeMs;
+                this._fragmentCumulativeMs += FRAGMENT_MS;
+                const fragEnd = this._fragmentCumulativeMs;
                 this._chunks.push(e.data);
                 if (this._callbacks.onChunk) {
-                    this._callbacks.onChunk(e.data);
+                    this._callbacks.onChunk(e.data, fragStart, fragEnd);
                 }
             }
         };
@@ -175,7 +182,7 @@ class RecorderClass {
             }
             this._cleanupResources();
         };
-        this._mediaRecorder.start(CHUNK_INTERVAL_MS);
+        this._mediaRecorder.start(FRAGMENT_MS);
         this._setState("recording");
     }
     pause() {

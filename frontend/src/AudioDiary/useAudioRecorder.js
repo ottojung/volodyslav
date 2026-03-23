@@ -22,10 +22,13 @@ import { combineChunks } from "./recorder_helpers.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
 import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
+import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
+/** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
 /**
  * @typedef {object} UseAudioRecorderResult
+ * @property {AudioChunk[]} audioChunks - overlapping 5-minute chunks collected during recording
  * @property {RecorderState} recorderState - current recorder state
  * @property {Blob | null} audioBlob - final recorded blob (after stop)
  * @property {string} audioUrl - object URL for the recorded blob
@@ -56,26 +59,22 @@ export function useAudioRecorder() {
     /** @type {[Blob | null, import("react").Dispatch<import("react").SetStateAction<Blob | null>>]} */
     const [audioBlob, setAudioBlob] = useState(initialAudioBlob());
 
-    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [audioUrl, setAudioUrl] = useState("");
-    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [note, setNote] = useState("");
-    /** @type {[number, import("react").Dispatch<import("react").SetStateAction<number>>]} */
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
-    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [errorMessage, setErrorMessage] = useState("");
     /** @type {[AnalyserNode | null, import("react").Dispatch<import("react").SetStateAction<AnalyserNode | null>>]} */
     const [analyser, setAnalyser] = useState(initialAnalyser());
-    /** @type {[boolean, import("react").Dispatch<import("react").SetStateAction<boolean>>]} */
     const [hasRestoredSession, setHasRestoredSession] = useState(false);
     /** @type {import("react").MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
     const recorderRef = useRef(null);
     /** @type {import("react").MutableRefObject<number | null>} */
     const timerRef = useRef(null);
-    /** @type {import("react").MutableRefObject<string>} */
     const mimeTypeRef = useRef("");
-    /** @type {import("react").MutableRefObject<boolean>} */
     const isMountedRef = useRef(false);
+
+    const { audioChunks, pushChunk, resetAudioChunks } =
+        useAudioChunkCollector(isMountedRef);
 
     const {
         chunksRef,
@@ -140,12 +139,13 @@ export function useAudioRecorder() {
                 if (!isMountedRef.current) return;
                 setAnalyser(node);
             },
-            onChunk: (chunk) => {
+            onChunk: (chunk, startMs, endMs) => {
                 if (!isMountedRef.current) return;
                 if (chunk.type) {
                     mimeTypeRef.current = chunk.type;
                 }
                 chunksRef.current.push(chunk);
+                pushChunk(chunk, startMs, endMs);
                 queuePersistSnapshot();
             },
         });
@@ -199,13 +199,14 @@ export function useAudioRecorder() {
         chunksRef.current = [];
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
+        resetAudioChunks();
         if (audioUrl) {
             setAudioUrl("");
         }
         if (isRecorder(recorderRef.current)) {
             await recorderRef.current.start();
         }
-    }, [audioUrl]);
+    }, [audioUrl, resetAudioChunks]);
 
     const handlePauseResume = useCallback(async () => {
         if (!isRecorder(recorderRef.current)) {
@@ -256,6 +257,7 @@ export function useAudioRecorder() {
         restoredAudioRef.current = null;
         audioBlobRef.current = null;
         chunksRef.current = [];
+        resetAudioChunks();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
         }
@@ -269,7 +271,7 @@ export function useAudioRecorder() {
         setAnalyser(null);
         setHasRestoredSession(false);
         void clearRecordingSnapshot();
-    }, [audioUrl]);
+    }, [audioUrl, resetAudioChunks]);
 
     const clearPersistedSession = useCallback(() => {
         setHasRestoredSession(false);
@@ -277,6 +279,7 @@ export function useAudioRecorder() {
     }, []);
 
     return {
+        audioChunks,
         recorderState,
         audioBlob,
         audioUrl,
