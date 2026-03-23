@@ -11,7 +11,6 @@ import {
 } from './errors.js';
 import { logger } from './logger.js';
 import { retrievePhotos as getStoredPhotos, removePhotos as deleteStoredPhotos } from './photoStorage.js';
-import { API_BASE_URL } from '../api_base_url.js';
 
 /**
  * Generates a unique request identifier for camera sessions
@@ -31,7 +30,8 @@ export const navigateToCamera = (requestIdentifier, currentDescription = '') => 
         sessionStorage.setItem(`description_${requestIdentifier}`, currentDescription);
     }
 
-    const url = new URL(`${API_BASE_URL}/camera`, window.location.origin);
+    const base = __BASE_PATH__;
+    const url = new URL(`${base}/camera`, window.location.origin);
     url.searchParams.set('request_identifier', requestIdentifier);
     url.searchParams.set('return_to', '/describe');
     window.location.href = url.toString();
