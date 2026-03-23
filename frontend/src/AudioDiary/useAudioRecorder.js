@@ -22,20 +22,23 @@ import { combineChunks } from "./recorder_helpers.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
 import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
+import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
+/** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
 /**
  * @typedef {object} UseAudioRecorderResult
- * @property {RecorderState} recorderState - current recorder state
- * @property {Blob | null} audioBlob - final recorded blob (after stop)
- * @property {string} audioUrl - object URL for the recorded blob
- * @property {string} note - user-entered note text
- * @property {number} elapsedSeconds - elapsed recording seconds
- * @property {string} errorMessage - latest error message
- * @property {AnalyserNode | null} analyser - live audio analyser node
- * @property {import("react").MutableRefObject<string>} mimeTypeRef - current MIME type ref
- * @property {import("react").MutableRefObject<boolean>} isMountedRef - mount status ref
- * @property {boolean} hasRestoredSession - true when state was loaded from storage
+ * @property {AudioChunk[]} audioChunks
+ * @property {RecorderState} recorderState
+ * @property {Blob | null} audioBlob
+ * @property {string} audioUrl
+ * @property {string} note
+ * @property {number} elapsedSeconds
+ * @property {string} errorMessage
+ * @property {AnalyserNode | null} analyser
+ * @property {import("react").MutableRefObject<string>} mimeTypeRef
+ * @property {import("react").MutableRefObject<boolean>} isMountedRef
+ * @property {boolean} hasRestoredSession
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setNote
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setErrorMessage
  * @property {() => Promise<void>} handleStart
@@ -45,10 +48,7 @@ import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
  * @property {() => void} clearPersistedSession
  */
 
-/**
- * Custom hook for managing audio recorder lifecycle and controls.
- * @returns {UseAudioRecorderResult}
- */
+/** @returns {UseAudioRecorderResult} */
 export function useAudioRecorder() {
     /** @type {[RecorderState, import("react").Dispatch<import("react").SetStateAction<RecorderState>>]} */
     const [recorderState, setRecorderState] = useState(initialRecorderState());
@@ -56,26 +56,24 @@ export function useAudioRecorder() {
     /** @type {[Blob | null, import("react").Dispatch<import("react").SetStateAction<Blob | null>>]} */
     const [audioBlob, setAudioBlob] = useState(initialAudioBlob());
 
-    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [audioUrl, setAudioUrl] = useState("");
-    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [note, setNote] = useState("");
-    /** @type {[number, import("react").Dispatch<import("react").SetStateAction<number>>]} */
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
-    /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [errorMessage, setErrorMessage] = useState("");
     /** @type {[AnalyserNode | null, import("react").Dispatch<import("react").SetStateAction<AnalyserNode | null>>]} */
     const [analyser, setAnalyser] = useState(initialAnalyser());
-    /** @type {[boolean, import("react").Dispatch<import("react").SetStateAction<boolean>>]} */
     const [hasRestoredSession, setHasRestoredSession] = useState(false);
     /** @type {import("react").MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
     const recorderRef = useRef(null);
     /** @type {import("react").MutableRefObject<number | null>} */
     const timerRef = useRef(null);
-    /** @type {import("react").MutableRefObject<string>} */
     const mimeTypeRef = useRef("");
-    /** @type {import("react").MutableRefObject<boolean>} */
     const isMountedRef = useRef(false);
+    /** @type {import("react").MutableRefObject<number>} */
+    const restoredOffsetMsRef = useRef(0);
+
+    const { audioChunks, pushChunk, resetAudioChunks } =
+        useAudioChunkCollector(isMountedRef);
 
     const {
         chunksRef,
@@ -140,12 +138,25 @@ export function useAudioRecorder() {
                 if (!isMountedRef.current) return;
                 setAnalyser(node);
             },
-            onChunk: (chunk) => {
+            onChunk: (chunk, startMs, endMs) => {
                 if (!isMountedRef.current) return;
                 if (chunk.type) {
                     mimeTypeRef.current = chunk.type;
                 }
+                // When resuming a restored paused session the underlying MediaRecorder
+                // restarts its timestamps at 0. Apply the stable offset captured at
+                // resume time so all fragments stay on a continuous timeline.
+                const offsetMs = restoredOffsetMsRef.current;
                 chunksRef.current.push(chunk);
+                pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
+                // Call queuePersistSnapshot() on every 10 s fragment. This is
+                // fine performance-wise because queuePersistSnapshot() is
+                // debounced (250 ms) and IndexedDB writes are async (off the
+                // main thread), so the UI is never blocked. The Blob
+                // combination that precedes the write is the only real cost,
+                // and it is proportional to recording length, but runs at most
+                // once per 10 s — well within acceptable limits for a typical
+                // diary recording session.
                 queuePersistSnapshot();
             },
         });
@@ -162,11 +173,7 @@ export function useAudioRecorder() {
     }, []); // runs once – recorder instance is stable
 
     useEffect(() => {
-        return () => {
-            if (audioUrl) {
-                URL.revokeObjectURL(audioUrl);
-            }
-        };
+        return () => { if (audioUrl) { URL.revokeObjectURL(audioUrl); } };
     }, [audioUrl]);
 
     useEffect(() => {
@@ -199,13 +206,15 @@ export function useAudioRecorder() {
         chunksRef.current = [];
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
+        restoredOffsetMsRef.current = 0;
+        resetAudioChunks();
         if (audioUrl) {
             setAudioUrl("");
         }
         if (isRecorder(recorderRef.current)) {
             await recorderRef.current.start();
         }
-    }, [audioUrl]);
+    }, [audioUrl, resetAudioChunks]);
 
     const handlePauseResume = useCallback(async () => {
         if (!isRecorder(recorderRef.current)) {
@@ -217,6 +226,8 @@ export function useAudioRecorder() {
             if (isRestoredPauseRef.current) {
                 // Restored session: resume by starting a fresh MediaRecorder.
                 // New chunks will be combined with the restored audio in onStop.
+                // Capture the stable offset here so all fragments use the same base.
+                restoredOffsetMsRef.current = elapsedSecondsRef.current * 1000;
                 isRestoredPauseRef.current = false;
                 await recorderRef.current.start();
             } else {
@@ -227,35 +238,19 @@ export function useAudioRecorder() {
 
     const handleStop = useCallback(() => {
         if (stopRestoredPausedSession({
-            isRestoredPauseRef,
-            restoredAudioRef,
-            mimeTypeRef,
-            audioBlobRef,
-            recorderStateRef,
-            setAudioBlob,
-            setAudioUrl,
-            setRecorderState,
-            persistSnapshot,
-        })) {
-            return;
-        }
-        if (isRecorder(recorderRef.current)) {
-            recorderRef.current.stop();
-        }
-    }, [
-        audioBlobRef,
-        isRestoredPauseRef,
-        mimeTypeRef,
-        persistSnapshot,
-        recorderStateRef,
-        restoredAudioRef,
-    ]);
+            isRestoredPauseRef, restoredAudioRef, mimeTypeRef, audioBlobRef,
+            recorderStateRef, setAudioBlob, setAudioUrl, setRecorderState, persistSnapshot,
+        })) { return; }
+        if (isRecorder(recorderRef.current)) { recorderRef.current.stop(); }
+    }, [audioBlobRef, isRestoredPauseRef, mimeTypeRef, persistSnapshot, recorderStateRef, restoredAudioRef]);
 
     const handleDiscard = useCallback(() => {
         isRestoredPauseRef.current = false;
         restoredAudioRef.current = null;
         audioBlobRef.current = null;
         chunksRef.current = [];
+        restoredOffsetMsRef.current = 0;
+        resetAudioChunks();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
         }
@@ -269,7 +264,7 @@ export function useAudioRecorder() {
         setAnalyser(null);
         setHasRestoredSession(false);
         void clearRecordingSnapshot();
-    }, [audioUrl]);
+    }, [audioUrl, resetAudioChunks]);
 
     const clearPersistedSession = useCallback(() => {
         setHasRestoredSession(false);
@@ -277,6 +272,7 @@ export function useAudioRecorder() {
     }, []);
 
     return {
+        audioChunks,
         recorderState,
         audioBlob,
         audioUrl,

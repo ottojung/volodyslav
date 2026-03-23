@@ -5,14 +5,14 @@
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
-const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
+export const FRAGMENT_MS = 10 * 1000; // 10-second fragments for chunk collection
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob) => void} [onChunk] - called whenever a data chunk arrives
+ * @property {(chunk: Blob, startMs: number, endMs: number) => void} [onChunk] - called with each fragment and its relative timestamps
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -35,34 +35,34 @@ class RecorderClass {
     _analyserNode = null;
     /** @type {MediaStream | null} */
     _stream = null;
-    /** Resolve callbacks awaiting requestData-delivered chunks. */
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
-    /**
-     * @param {RecorderCallbacks} callbacks
-     */
+    // Active-recording ms counter (FRAGMENT_MS per regular timeslice).
+    /** @type {number} */
+    _activeRecordedMs = 0;
+    /** @type {number} */
+    _recordingStartMs = 0;
+    /** @type {number} */
+    _totalPausedMs = 0;
+    /** @type {number} */
+    _pauseStartMs = 0;
+    /** @param {RecorderCallbacks} callbacks */
     constructor(callbacks) {
         if (this.__brand !== undefined) {
             throw new Error("RecorderClass is a nominal type");
         }
         this._callbacks = callbacks;
     }
-    /**
-     * @returns {RecorderState}
-     */
+    /** @returns {RecorderState} */
     get state() {
         return this._state;
     }
-    /**
-     * @param {RecorderState} next
-     */
+    /** @param {RecorderState} next */
     _setState(next) {
         this._state = next;
         this._callbacks.onStateChange(next);
     }
-    /**
-     * @returns {Promise<void>}
-     */
+    /** @returns {Promise<void>} */
     async start() {
         if (this._state !== "idle") {
             return;
@@ -115,6 +115,10 @@ class RecorderClass {
         }
         this._mimeType = chooseMimeType();
         this._chunks = [];
+        this._activeRecordedMs = 0;
+        this._recordingStartMs = performance.now();
+        this._totalPausedMs = 0;
+        this._pauseStartMs = 0;
         try {
             const options = this._mimeType ? { mimeType: this._mimeType } : {};
             this._mediaRecorder = new MediaRecorder(stream, options);
@@ -130,15 +134,34 @@ class RecorderClass {
             return;
         }
         this._mediaRecorder.ondataavailable = (e) => {
+            const isRequestDataFlush = this._requestDataResolvers.length > 0;
             if (this._requestDataResolvers.length > 0) {
                 const resolvers = this._requestDataResolvers;
                 this._requestDataResolvers = [];
                 resolvers.forEach((resolve) => resolve());
             }
             if (e.data && e.data.size > 0) {
+                const fragStart = this._activeRecordedMs;
+                // A stop()-triggered dataavailable fires with state "inactive"
+                // (before onstop). Use wall-clock elapsed time for it too, since
+                // the final fragment is often shorter than FRAGMENT_MS.
+                const isStopFlush = this._mediaRecorder?.state === "inactive";
+                if (isRequestDataFlush || isStopFlush) {
+                    // Forced flush: compute actual active elapsed time via wall-clock.
+                    const now = performance.now();
+                    const ongoingPausedMs =
+                        this._state === "paused" ? now - this._pauseStartMs : 0;
+                    const wallClockMs =
+                        now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
+                    // Clamp to fragStart so that endMs is never less than startMs.
+                    this._activeRecordedMs = Math.max(fragStart, wallClockMs);
+                } else {
+                    this._activeRecordedMs += FRAGMENT_MS; // regular timeslice event
+                }
+                const fragEnd = this._activeRecordedMs;
                 this._chunks.push(e.data);
                 if (this._callbacks.onChunk) {
-                    this._callbacks.onChunk(e.data);
+                    this._callbacks.onChunk(e.data, fragStart, fragEnd);
                 }
             }
         };
@@ -175,13 +198,14 @@ class RecorderClass {
             }
             this._cleanupResources();
         };
-        this._mediaRecorder.start(CHUNK_INTERVAL_MS);
+        this._mediaRecorder.start(FRAGMENT_MS);
         this._setState("recording");
     }
     pause() {
         if (this._state !== "recording" || !this._mediaRecorder) {
             return;
         }
+        this._pauseStartMs = performance.now();
         this._mediaRecorder.pause();
         this._setState("paused");
     }
@@ -189,14 +213,14 @@ class RecorderClass {
         if (this._state !== "paused" || !this._mediaRecorder) {
             return;
         }
+        if (this._pauseStartMs > 0) {
+            this._totalPausedMs += performance.now() - this._pauseStartMs;
+            this._pauseStartMs = 0;
+        }
         this._mediaRecorder.resume();
         this._setState("recording");
     }
-    /**
-     * Request buffered audio delivery and resolve when ondataavailable arrives,
-     * or resolve immediately when recorder is inactive.
-     * @returns {Promise<void>}
-     */
+    /** @returns {Promise<void>} */
     requestData() {
         if (
             this._mediaRecorder &&
@@ -223,7 +247,6 @@ class RecorderClass {
         ) {
             return;
         }
-        // State transitions to "stopped" in onstop once the final blob is ready.
         this._mediaRecorder.stop();
     }
     discard() {
@@ -267,18 +290,11 @@ class RecorderClass {
         this._analyserNode = next.analyserNode;
     }
 }
-/**
- * Create a new recorder instance.
- * @param {RecorderCallbacks} callbacks
- * @returns {RecorderClass}
- */
+/** @param {RecorderCallbacks} callbacks @returns {RecorderClass} */
 export function makeRecorder(callbacks) {
     return new RecorderClass(callbacks);
 }
-/**
- * @param {unknown} object
- * @returns {object is RecorderClass}
- */
+/** @param {unknown} object @returns {object is RecorderClass} */
 export function isRecorder(object) {
     return object instanceof RecorderClass;
 }
