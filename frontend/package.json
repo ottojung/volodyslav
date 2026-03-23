@@ -8,7 +8,7 @@
     "test": "tsc --noEmit && eslint . && jest"
   },
   "dependencies": {
-    "@chakra-ui/react": "^2.8.0",
+    "@chakra-ui/react": "^3.34.0",
     "@emotion/react": "^11.11.0",
     "@emotion/styled": "^11.11.0",
     "framer-motion": "^12.37.0",
