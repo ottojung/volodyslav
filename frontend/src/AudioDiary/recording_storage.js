@@ -69,26 +69,8 @@ function openDatabase() {
             resolve(request.result);
         };
 
-        request.onupgradeneeded = (event) => {
-            const target = event.target;
-            if (!target) {
-                return;
-            }
-            if (
-                typeof IDBOpenDBRequest !== "undefined" &&
-                target instanceof IDBOpenDBRequest
-            ) {
-                const db = target.result;
-                if (db && !db.objectStoreNames.contains(STORE_NAME)) {
-                    db.createObjectStore(STORE_NAME);
-                }
-                return;
-            }
-
-            // Fallback for environments where IDBOpenDBRequest is not defined
-            /** @type {unknown} */
-            const maybeDb = target.result;
-            const db = /** @type {IDBDatabase | null | undefined} */ (maybeDb);
+        request.onupgradeneeded = () => {
+            const db = request.result;
             if (
                 db &&
                 typeof db === "object" &&
