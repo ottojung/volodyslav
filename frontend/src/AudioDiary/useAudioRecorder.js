@@ -27,12 +27,6 @@ import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 /** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
 /**
- * Persist a snapshot every this many fragments (~60 s at 10 s/fragment) to
- * avoid repeatedly recombining the full recording Blob on every timeslice.
- */
-const PERSIST_INTERVAL_FRAGMENTS = 6;
-
-/**
  * @typedef {object} UseAudioRecorderResult
  * @property {AudioChunk[]} audioChunks
  * @property {RecorderState} recorderState
@@ -77,8 +71,6 @@ export function useAudioRecorder() {
     const isMountedRef = useRef(false);
     /** @type {import("react").MutableRefObject<number>} */
     const restoredOffsetMsRef = useRef(0);
-    /** @type {import("react").MutableRefObject<number>} */
-    const fragmentCountRef = useRef(0);
 
     const { audioChunks, pushChunk, resetAudioChunks } =
         useAudioChunkCollector(isMountedRef);
@@ -157,13 +149,15 @@ export function useAudioRecorder() {
                 const offsetMs = restoredOffsetMsRef.current;
                 chunksRef.current.push(chunk);
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
-                // Persist every PERSIST_INTERVAL_FRAGMENTS fragments (~60 s) instead
-                // of on every 10 s fragment to avoid repeatedly recombining the full
-                // recording.
-                fragmentCountRef.current += 1;
-                if (fragmentCountRef.current % PERSIST_INTERVAL_FRAGMENTS === 0) {
-                    queuePersistSnapshot();
-                }
+                // Call queuePersistSnapshot() on every 10 s fragment. This is
+                // fine performance-wise because queuePersistSnapshot() is
+                // debounced (250 ms) and IndexedDB writes are async (off the
+                // main thread), so the UI is never blocked. The Blob
+                // combination that precedes the write is the only real cost,
+                // and it is proportional to recording length, but runs at most
+                // once per 10 s — well within acceptable limits for a typical
+                // diary recording session.
+                queuePersistSnapshot();
             },
         });
 
@@ -213,7 +207,6 @@ export function useAudioRecorder() {
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
         restoredOffsetMsRef.current = 0;
-        fragmentCountRef.current = 0;
         resetAudioChunks();
         if (audioUrl) {
             setAudioUrl("");
@@ -257,7 +250,6 @@ export function useAudioRecorder() {
         audioBlobRef.current = null;
         chunksRef.current = [];
         restoredOffsetMsRef.current = 0;
-        fragmentCountRef.current = 0;
         resetAudioChunks();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();

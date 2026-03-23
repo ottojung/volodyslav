@@ -5,7 +5,7 @@
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
-const FRAGMENT_MS = 10 * 1000; // 10-second fragments for chunk collection
+export const FRAGMENT_MS = 10 * 1000; // 10-second fragments for chunk collection
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange
@@ -37,7 +37,7 @@ class RecorderClass {
     _stream = null;
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
-    /** Active-recording ms counter (FRAGMENT_MS per regular timeslice event). */
+    // Active-recording ms counter (FRAGMENT_MS per regular timeslice).
     /** @type {number} */
     _activeRecordedMs = 0;
     /** @type {number} */
@@ -142,16 +142,18 @@ class RecorderClass {
             }
             if (e.data && e.data.size > 0) {
                 const fragStart = this._activeRecordedMs;
-                if (isRequestDataFlush) {
+                // A stop()-triggered dataavailable fires with state "inactive"
+                // (before onstop). Use wall-clock elapsed time for it too, since
+                // the final fragment is often shorter than FRAGMENT_MS.
+                const isStopFlush = this._mediaRecorder?.state === "inactive";
+                if (isRequestDataFlush || isStopFlush) {
                     // Forced flush: compute actual active elapsed time via wall-clock.
                     const now = performance.now();
                     const ongoingPausedMs =
                         this._state === "paused" ? now - this._pauseStartMs : 0;
                     const wallClockMs =
                         now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
-                    // Clamp to fragStart so that endMs is never less than startMs,
-                    // guarding against delayed event delivery making the wall-clock
-                    // value appear earlier than the counter-based fragStart.
+                    // Clamp to fragStart so that endMs is never less than startMs.
                     this._activeRecordedMs = Math.max(fragStart, wallClockMs);
                 } else {
                     this._activeRecordedMs += FRAGMENT_MS; // regular timeslice event
