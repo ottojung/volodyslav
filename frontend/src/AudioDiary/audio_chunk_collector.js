@@ -1,9 +1,17 @@
 /**
- * Collects raw audio fragments and emits timed 5-minute chunks with
- * 10-second overlaps between consecutive chunks.
+ * Collects raw audio fragments and emits timed audio chunks on a nominal
+ * 5-minute window grid with 10-second overlaps between consecutive windows.
  *
- * Each emitted AudioChunk covers CHUNK_DURATION_MS of audio and overlaps
- * the previous chunk by OVERLAP_MS at the start.
+ * CHUNK_DURATION_MS and OVERLAP_MS define this emission grid, but the
+ * actual `start` and `end` of each emitted AudioChunk are expanded to the
+ * minimum and maximum timestamps of the fragments it contains. This means a
+ * single AudioChunk can cover more than CHUNK_DURATION_MS of audio, and the
+ * effective overlap with the previous chunk can be larger than OVERLAP_MS
+ * when fragments span multiple nominal windows.
+ *
+ * API consumers should treat CHUNK_DURATION_MS and OVERLAP_MS as describing
+ * the intended windowing configuration, not strict upper bounds on chunk
+ * duration or inter-chunk overlap.
  *
  * @module audio_chunk_collector
  */

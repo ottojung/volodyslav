@@ -69,6 +69,8 @@ export function useAudioRecorder() {
     const timerRef = useRef(null);
     const mimeTypeRef = useRef("");
     const isMountedRef = useRef(false);
+    /** @type {import("react").MutableRefObject<number>} */
+    const restoredOffsetMsRef = useRef(0);
 
     const { audioChunks, pushChunk, resetAudioChunks } =
         useAudioChunkCollector(isMountedRef);
@@ -142,12 +144,9 @@ export function useAudioRecorder() {
                     mimeTypeRef.current = chunk.type;
                 }
                 // When resuming a restored paused session the underlying MediaRecorder
-                // restarts its timestamps at 0. Offset the fragment times by the
-                // already-elapsed active duration so audioChunks stay continuous.
-                let offsetMs = 0;
-                if (restoredAudioRef.current) {
-                    offsetMs = elapsedSecondsRef.current * 1000 - endMs;
-                }
+                // restarts its timestamps at 0. Apply the stable offset captured at
+                // resume time so all fragments stay on a continuous timeline.
+                const offsetMs = restoredOffsetMsRef.current;
                 chunksRef.current.push(chunk);
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
                 queuePersistSnapshot();
@@ -199,6 +198,7 @@ export function useAudioRecorder() {
         chunksRef.current = [];
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
+        restoredOffsetMsRef.current = 0;
         resetAudioChunks();
         if (audioUrl) {
             setAudioUrl("");
@@ -218,6 +218,8 @@ export function useAudioRecorder() {
             if (isRestoredPauseRef.current) {
                 // Restored session: resume by starting a fresh MediaRecorder.
                 // New chunks will be combined with the restored audio in onStop.
+                // Capture the stable offset here so all fragments use the same base.
+                restoredOffsetMsRef.current = elapsedSecondsRef.current * 1000;
                 isRestoredPauseRef.current = false;
                 await recorderRef.current.start();
             } else {
@@ -239,6 +241,7 @@ export function useAudioRecorder() {
         restoredAudioRef.current = null;
         audioBlobRef.current = null;
         chunksRef.current = [];
+        restoredOffsetMsRef.current = 0;
         resetAudioChunks();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
