@@ -9,7 +9,9 @@ export {
     OVERLAP_MS,
 } from "../src/AudioDiary/audio_chunk_collector.js";
 
-export const FRAGMENT_MS = 10 * 1000; // 10-second fragments (same as recorder_logic)
+// Import from recorder_logic so tests stay in sync if the fragment duration changes.
+import { FRAGMENT_MS } from "../src/AudioDiary/recorder_logic.js";
+export { FRAGMENT_MS };
 
 /**
  * @param {string} content
