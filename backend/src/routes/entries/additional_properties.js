@@ -109,6 +109,10 @@ async function tryGetTranscriptionText(entryId, capabilities) {
     const dirPath = entryAssetsDir(assetsDir, entry);
     const dirProof = await capabilities.checker.directoryExists(dirPath);
     if (dirProof === null) {
+        capabilities.logger.logDebug(
+            { entry },
+            "No assets directory for entry, skipping transcription",
+        );
         return null;
     }
 
@@ -117,10 +121,19 @@ async function tryGetTranscriptionText(entryId, capabilities) {
         files = await capabilities.scanner.scanDirectory(dirPath);
     } catch (error) {
         if (isDirScannerError(error)) {
+            capabilities.logger.logError(
+                { entry, error },
+                "Failed to scan assets directory for entry, skipping transcription",
+            );
             return null;
         }
         throw error;
     }
+
+    capabilities.logger.logDebug(
+        { entry, files },
+        "Scanned assets directory for entry, attempting transcription on audio files",
+    );
 
     /** @type {string | null} */
     let transcriptionError = null;
