@@ -49,6 +49,9 @@ const { targetDir } = require("../../event").asset;
  * @returns {'image'|'audio'|'other'}
  */
 function mediaTypeFromFilename(filename) {
+    if (filename.endsWith("diary-recording.webm")) {
+        return "audio";
+    }
     const ext = path.extname(filename).toLowerCase();
     const imageExtensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp", ".tiff", ".tif"];
     const audioExtensions = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"];
