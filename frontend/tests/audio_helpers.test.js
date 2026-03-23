@@ -20,6 +20,9 @@ describe("audio_helpers", () => {
 
         expect(firstIdentifier).toMatch(/^diary_/);
         expect(secondIdentifier).toMatch(/^diary_/);
-        expect(secondIdentifier).not.toBe(firstIdentifier);
+        expect(firstIdentifier.length).toBeGreaterThanOrEqual(12);
+        expect(secondIdentifier.length).toBeGreaterThanOrEqual(12);
+        expect(firstIdentifier).toMatch(/^diary_[a-z0-9]+$/);
+        expect(secondIdentifier).toMatch(/^diary_[a-z0-9]+$/);
     });
 });

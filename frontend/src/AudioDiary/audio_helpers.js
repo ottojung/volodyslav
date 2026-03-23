@@ -34,9 +34,11 @@ export function extensionForMime(mimeType) {
  * @returns {string}
  */
 export function makeDiaryRequestIdentifier() {
-    const randomComponent = Math.random().toString(36).slice(2, 11);
-    const suffix = `${randomComponent}${Math.random().toString(36).slice(2, 7)}`;
-    return `diary_${suffix}`;
+    const cryptoObject = globalThis.crypto;
+    if (cryptoObject && typeof cryptoObject.randomUUID === "function") {
+        return `diary_${cryptoObject.randomUUID().replace(/-/g, "")}`;
+    }
+    return `diary_${Math.random().toString(36).slice(2, 16)}`;
 }
 
 /** @returns {RecorderState} */
