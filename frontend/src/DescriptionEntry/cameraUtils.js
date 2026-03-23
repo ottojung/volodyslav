@@ -31,7 +31,8 @@ export const navigateToCamera = (requestIdentifier, currentDescription = '') => 
     }
 
     const base = __BASE_PATH__;
-    const url = new URL(`${base}/camera`, window.location.origin);
+    const prefix = base.endsWith('/') ? base.slice(0, -1) : base;
+    const url = new URL(`${prefix}/camera`, window.location.origin);
     url.searchParams.set('request_identifier', requestIdentifier);
     url.searchParams.set('return_to', '/describe');
     window.location.href = url.toString();
