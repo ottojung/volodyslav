@@ -101,6 +101,10 @@ async function tryGetTranscriptionText(entryId, capabilities) {
         return null;
     }
 
+    capabilities.logger.logDebug(
+        { entry }, "Attempting to get transcription for entry",
+    );
+
     const assetsDir = capabilities.environment.eventLogAssetsDirectory();
     const dirPath = entryAssetsDir(assetsDir, entry);
     const dirProof = await capabilities.checker.directoryExists(dirPath);
