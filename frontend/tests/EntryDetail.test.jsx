@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { screen, waitFor, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { renderWithProviders } from "./renderWithProviders.jsx";
@@ -293,7 +293,7 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123");
 
         expect(screen.queryByText("id")).not.toBeInTheDocument();
-        expect(document.querySelectorAll(".chakra-spinner").length).toBeGreaterThan(0);
+        expect(screen.getByLabelText("Loading entry")).toBeInTheDocument();
 
         await act(async () => { resolveEntry(mockEntry); });
 

@@ -136,7 +136,7 @@ export default function EntryDetail() {
         return (
             <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
                 <Box textAlign="center" py={SPACING.xxl}>
-                    <Spinner size="md" color="blue.400" />
+                    <Spinner size="md" color="blue.400" aria-label="Loading entry" />
                 </Box>
             </Container>
         );

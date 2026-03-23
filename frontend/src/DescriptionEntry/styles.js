@@ -106,3 +106,15 @@ export const TEXT_STYLES = {
         color: COLORS.text.muted,
     },
 };
+
+/** @type {import("@chakra-ui/react").InputProps} */
+export const INPUT_STYLES = {
+    size: "lg",
+    border: "2px",
+    borderColor: "gray.200",
+    bg: "gray.50",
+    fontSize: "lg",
+    py: 6,
+    _placeholder: { color: "gray.500", fontSize: "lg" },
+    _focus: { bg: "white", shadow: "md", borderColor: "blue.500" },
+};

@@ -9,6 +9,7 @@ import {
   Alert,
   Code,
   List,
+  HStack,
 } from '@chakra-ui/react';
 import { postSync, fetchSyncHostnames } from './api.js';
 import { SyncStepList } from './SyncStepList.jsx';
@@ -176,7 +177,7 @@ export function SyncSection() {
           ) : syncHostnames.length === 0 ? (
             <Text fontSize="sm">No hostnames available</Text>
           ) : (
-            <VStack align="stretch" gap={1}>
+            <VStack align="stretch" gap={1} role="radiogroup" aria-label="Reset host">
               {syncHostnames.map((hostname) => (
                 <Button
                   key={hostname}
@@ -184,8 +185,13 @@ export function SyncSection() {
                   variant={syncResetHostname === hostname ? "solid" : "outline"}
                   colorPalette={syncResetHostname === hostname ? "blue" : "gray"}
                   onClick={() => handleSyncHostnameChange(hostname)}
+                  role="radio"
+                  aria-checked={syncResetHostname === hostname}
                 >
-                  {hostname}
+                  <HStack justify="space-between" w="full">
+                    <Text>{hostname}</Text>
+                    {syncResetHostname === hostname ? <Text aria-hidden="true">●</Text> : null}
+                  </HStack>
                 </Button>
               ))}
             </VStack>

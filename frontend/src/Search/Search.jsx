@@ -9,6 +9,7 @@ import {
     SIZES,
     CARD_STYLES,
     TEXT_STYLES,
+    INPUT_STYLES,
 } from "../DescriptionEntry/styles.js";
 
 const SEARCH_STATE_KEY = "volodyslav_search_state";
@@ -146,7 +147,7 @@ export default function Search() {
                             value={pattern}
                             onChange={(e) => setPattern(e.target.value)}
                             ref={inputRef}
-                            size="lg" border="2px" borderColor="gray.200" bg="gray.50" fontSize="lg" py={6} _placeholder={{ color: "gray.500", fontSize: "lg" }} _focus={{ bg: "white", shadow: "md", borderColor: "blue.500" }}
+                            {...INPUT_STYLES}
                         />
                     </Card.Body>
                 </Card.Root>

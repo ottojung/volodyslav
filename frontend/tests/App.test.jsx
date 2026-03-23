@@ -254,9 +254,9 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
-        fireEvent.click(screen.getByRole("button", { name: "alice" }));
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {
@@ -273,14 +273,14 @@ describe("App", () => {
 
         renderApp();
 
-        expect(screen.queryByRole("button", { name: "alice" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("radio", { name: "alice" })).not.toBeInTheDocument();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), {
             target: { value: "reset-to-hostname" },
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
     });
 
@@ -299,10 +299,10 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
 
-        fireEvent.click(screen.getByRole("button", { name: "alice" }));
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         expect(screen.getByText("Sync")).not.toBeDisabled();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), { target: { value: "" } });
@@ -311,11 +311,11 @@ describe("App", () => {
         });
 
         expect(screen.getByText("Loading hostnames...")).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "alice" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("radio", { name: "alice" })).not.toBeInTheDocument();
         expect(screen.getByText("Sync")).toBeDisabled();
 
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "bob" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "bob" })).toBeInTheDocument();
         });
     });
 
@@ -351,7 +351,7 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
         expect(fetchSyncHostnames).toHaveBeenCalledTimes(2);
     });
@@ -366,9 +366,9 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
-        fireEvent.click(screen.getByRole("button", { name: "alice" }));
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         expect(screen.getByText("Sync")).not.toBeDisabled();
 
         fireEvent.change(screen.getByLabelText("Sync mode"), { target: { value: "" } });
@@ -377,7 +377,7 @@ describe("App", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
         expect(screen.getByText("Sync")).toBeDisabled();
     });
@@ -393,9 +393,9 @@ describe("App", () => {
             target: { value: "reset-to-hostname" },
         });
         await waitFor(() => {
-            expect(screen.getByRole("button", { name: "alice" })).toBeInTheDocument();
+            expect(screen.getByRole("radio", { name: "alice" })).toBeInTheDocument();
         });
-        fireEvent.click(screen.getByRole("button", { name: "alice" }));
+        fireEvent.click(screen.getByRole("radio", { name: "alice" }));
         fireEvent.click(screen.getByText("Sync"));
 
         await waitFor(() => {

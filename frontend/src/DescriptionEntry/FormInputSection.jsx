@@ -2,7 +2,8 @@ import React from "react";
 import { VStack, Input, Button, HStack, Card, Badge } from "@chakra-ui/react";
 import { 
     CARD_STYLES, 
-    SPACING 
+    SPACING,
+    INPUT_STYLES,
 } from "./styles.js";
 
 /**
@@ -38,7 +39,7 @@ export const FormInputSection = ({
                         onChange={(e) => onDescriptionChange(e.target.value)}
                         onKeyUp={onKeyUp}
                         ref={inputRef}
-                        size="lg" border="2px" borderColor="gray.200" bg="gray.50" fontSize="lg" py={6} _placeholder={{ color: "gray.500", fontSize: "lg" }} _focus={{ bg: "white", shadow: "md", borderColor: "blue.500" }}
+                        {...INPUT_STYLES}
                     />
 
                     {photoCount > 0 && (

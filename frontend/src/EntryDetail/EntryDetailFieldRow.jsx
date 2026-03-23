@@ -87,11 +87,13 @@ export function FieldRow({ fieldKey, value }) {
                         variant="ghost"
                         onClick={handleCopy}
                         flexShrink={0}
-                        title={copied ? "Copied!" : "Copy"}
                     >
                         <span>{copied ? "✓" : "⎘"}</span>
                     </IconButton>
                 </HStack>
+                <Text as="span" fontSize="xs" color="gray.500" role="status" aria-live="polite">
+                    {copied ? "Copied!" : ""}
+                </Text>
                 <Text {...TEXT_STYLES.entryText} wordBreak="normal">{displayedValue}</Text>
                 {isCollapsible && (
                     <Button

@@ -52,8 +52,9 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                 <VStack gap={2} align="stretch">
                     <HStack gap={2} align="flex-end">
                         <Field.Root flex="1">
-                            <Text fontSize="xs" mb={1}>Pattern (regex)</Text>
+                            <label htmlFor={`shortcut-pattern-${rowKey}`} style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}>Pattern (regex)</label>
                             <Input
+                                id={`shortcut-pattern-${rowKey}`}
                                 size="sm"
                                 value={pattern}
                                 onChange={(e) => handleChange("pattern", e.target.value)}
@@ -62,8 +63,9 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                             />
                         </Field.Root>
                         <Field.Root flex="1">
-                            <Text fontSize="xs" mb={1}>Replacement</Text>
+                            <label htmlFor={`shortcut-replacement-${rowKey}`} style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}>Replacement</label>
                             <Input
+                                id={`shortcut-replacement-${rowKey}`}
                                 size="sm"
                                 value={replacement}
                                 onChange={(e) => handleChange("replacement", e.target.value)}
@@ -79,8 +81,9 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                             onClick={() => onDelete(rowKey)}><Text>✕</Text></IconButton>
                     </HStack>
                     <Field.Root>
-                        <Text fontSize="xs" mb={1}>Description (optional)</Text>
+                        <label htmlFor={`shortcut-description-${rowKey}`} style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}>Description (optional)</label>
                         <Input
+                            id={`shortcut-description-${rowKey}`}
                             size="sm"
                             value={description || ""}
                             onChange={(e) => handleChange("description", e.target.value)}
