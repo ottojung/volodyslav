@@ -145,6 +145,32 @@ describe("POST /api/entries", () => {
         fs.rmdirSync(tmpDir);
     });
 
+    it("accepts uploaded assets under the legacy photos field", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const tmpDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "entries-http-legacy-photos-test-")
+        );
+        const tmpFilePath = path.join(tmpDir, "upload-photo.txt");
+        fs.writeFileSync(tmpFilePath, "uploaded content");
+        const requestBody = {
+            rawInput: "legacyphoto - Legacy photo field description",
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .field("rawInput", requestBody.rawInput)
+            .attach("photos", tmpFilePath);
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(getType(res.body.entry)).toBe("legacyphoto");
+        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "legacyphoto", fileCount: 1 }),
+            expect.stringContaining("Entry created")
+        );
+        fs.unlinkSync(tmpFilePath);
+        fs.rmdirSync(tmpDir);
+    });
+
     it("returns 400 for empty rawInput", async () => {
         const { app } = await makeTestApp();
 

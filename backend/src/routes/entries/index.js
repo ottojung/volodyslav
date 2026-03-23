@@ -60,6 +60,7 @@ const { handleEntryAssets } = require("./assets");
 function makeRouter(capabilities) {
     const uploadMiddleware = upload.makeUpload(capabilities);
     const router = express.Router();
+    const uploadFields = [{ name: "files" }, { name: "photos" }];
 
     /**
      * POST /entries - Create a new entry
@@ -69,8 +70,9 @@ function makeRouter(capabilities) {
         const reqId = randomRequestId(capabilities);
         req.query["request_identifier"] = reqId.identifier;
 
-        // Call multer upload middleware for multiple files
-        uploadMiddleware.array("files")(req, res, async (err) => {
+        // Accept both the current "files" field and the legacy "photos" field
+        // so cached frontend bundles do not fail with a server-side 500.
+        uploadMiddleware.fields(uploadFields)(req, res, async (err) => {
             if (err) {
                 capabilities.logger.logError(
                     {

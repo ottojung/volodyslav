@@ -140,7 +140,13 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         if (Array.isArray(req.files)) {
             files = req.files;
         } else if (req.files && typeof req.files === 'object') {
-            files = req.files['files'] || [];
+            const currentFiles = Array.isArray(req.files["files"])
+                ? req.files["files"]
+                : [];
+            const legacyPhotos = Array.isArray(req.files["photos"])
+                ? req.files["photos"]
+                : [];
+            files = [...currentFiles, ...legacyPhotos];
         }
 
         const { rawInput } = req.body;
