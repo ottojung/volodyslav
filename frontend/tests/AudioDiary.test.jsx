@@ -470,6 +470,38 @@ describe("AudioDiary page", () => {
         expect(files[0]).toBeInstanceOf(File);
     });
 
+    it("submitted audio file has webm extension and audio/webm MIME type", async () => {
+        renderAudioDiary();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId("stop-button")).toBeInTheDocument();
+        });
+
+        act(() => {
+            fireEvent.click(screen.getByTestId("stop-button"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId("submit-button")).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("submit-button"));
+        });
+
+        await waitFor(() => {
+            expect(submitEntry).toHaveBeenCalledTimes(1);
+        });
+
+        const [, , files] = submitEntry.mock.calls[0];
+        expect(files[0].name).toBe("diary-recording.webm");
+        expect(files[0].type).toMatch(/^audio\/webm/);
+    });
+
     it("submit with a note includes the note in rawInput", async () => {
         renderAudioDiary();
 
