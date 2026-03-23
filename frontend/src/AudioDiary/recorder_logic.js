@@ -35,30 +35,28 @@ class RecorderClass {
     _analyserNode = null;
     /** @type {MediaStream | null} */
     _stream = null;
-    /** Resolve callbacks awaiting requestData-delivered chunks. */
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
-    /** Cumulative ms of non-empty audio fragments emitted so far. */
     /** @type {number} */
-    _fragmentCumulativeMs = 0;
-    /**
-     * @param {RecorderCallbacks} callbacks
-     */
+    _recordingStartMs = 0;
+    /** @type {number} */
+    _totalPausedMs = 0;
+    /** @type {number} */
+    _pauseStartMs = 0;
+    /** @type {number} */
+    _fragmentStartMs = 0;
+    /** @param {RecorderCallbacks} callbacks */
     constructor(callbacks) {
         if (this.__brand !== undefined) {
             throw new Error("RecorderClass is a nominal type");
         }
         this._callbacks = callbacks;
     }
-    /**
-     * @returns {RecorderState}
-     */
+    /** @returns {RecorderState} */
     get state() {
         return this._state;
     }
-    /**
-     * @param {RecorderState} next
-     */
+    /** @param {RecorderState} next */
     _setState(next) {
         this._state = next;
         this._callbacks.onStateChange(next);
@@ -118,7 +116,10 @@ class RecorderClass {
         }
         this._mimeType = chooseMimeType();
         this._chunks = [];
-        this._fragmentCumulativeMs = 0;
+        this._recordingStartMs = performance.now();
+        this._totalPausedMs = 0;
+        this._pauseStartMs = 0;
+        this._fragmentStartMs = 0;
         try {
             const options = this._mimeType ? { mimeType: this._mimeType } : {};
             this._mediaRecorder = new MediaRecorder(stream, options);
@@ -140,9 +141,16 @@ class RecorderClass {
                 resolvers.forEach((resolve) => resolve());
             }
             if (e.data && e.data.size > 0) {
-                const fragStart = this._fragmentCumulativeMs;
-                this._fragmentCumulativeMs += FRAGMENT_MS;
-                const fragEnd = this._fragmentCumulativeMs;
+                const fragStart = this._fragmentStartMs;
+                // Compute active (non-paused) elapsed ms as the fragment's end time.
+                const now = performance.now();
+                const ongoingPausedMs =
+                    this._state === "paused"
+                        ? now - this._pauseStartMs
+                        : 0;
+                const fragEnd =
+                    now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
+                this._fragmentStartMs = fragEnd;
                 this._chunks.push(e.data);
                 if (this._callbacks.onChunk) {
                     this._callbacks.onChunk(e.data, fragStart, fragEnd);
@@ -189,6 +197,7 @@ class RecorderClass {
         if (this._state !== "recording" || !this._mediaRecorder) {
             return;
         }
+        this._pauseStartMs = performance.now();
         this._mediaRecorder.pause();
         this._setState("paused");
     }
@@ -196,14 +205,14 @@ class RecorderClass {
         if (this._state !== "paused" || !this._mediaRecorder) {
             return;
         }
+        if (this._pauseStartMs > 0) {
+            this._totalPausedMs += performance.now() - this._pauseStartMs;
+            this._pauseStartMs = 0;
+        }
         this._mediaRecorder.resume();
         this._setState("recording");
     }
-    /**
-     * Request buffered audio delivery and resolve when ondataavailable arrives,
-     * or resolve immediately when recorder is inactive.
-     * @returns {Promise<void>}
-     */
+    /** @returns {Promise<void>} */
     requestData() {
         if (
             this._mediaRecorder &&
@@ -230,7 +239,6 @@ class RecorderClass {
         ) {
             return;
         }
-        // State transitions to "stopped" in onstop once the final blob is ready.
         this._mediaRecorder.stop();
     }
     discard() {

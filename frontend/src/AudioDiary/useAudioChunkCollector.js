@@ -24,13 +24,17 @@ export function useAudioChunkCollector(isMountedRef) {
     /** @type {[AudioChunk[], import("react").Dispatch<import("react").SetStateAction<AudioChunk[]>>]} */
     const [audioChunks, setAudioChunks] = useState(initialAudioChunks());
 
-    /** @type {import("react").MutableRefObject<ReturnType<typeof makeAudioChunkCollector>>} */
-    const chunkCollectorRef = useRef(
-        makeAudioChunkCollector((chunk) => {
+    /** @type {import("react").MutableRefObject<ReturnType<typeof makeAudioChunkCollector> | null>} */
+    const chunkCollectorRef = useRef(null);
+
+    // Lazy initialization: create collector only on first render so that
+    // makeAudioChunkCollector() is not called on every re-render.
+    if (chunkCollectorRef.current === null) {
+        chunkCollectorRef.current = makeAudioChunkCollector((chunk) => {
             if (!isMountedRef.current) return;
             setAudioChunks((prev) => [...prev, chunk]);
-        })
-    );
+        });
+    }
 
     const pushChunk = useCallback(
         /**
@@ -39,14 +43,18 @@ export function useAudioChunkCollector(isMountedRef) {
          * @param {number} endMs
          */
         (data, startMs, endMs) => {
-            chunkCollectorRef.current.push(data, startMs, endMs);
+            if (chunkCollectorRef.current !== null) {
+                chunkCollectorRef.current.push(data, startMs, endMs);
+            }
         },
         []
     );
 
     const resetAudioChunks = useCallback(() => {
         setAudioChunks(initialAudioChunks());
-        chunkCollectorRef.current.reset();
+        if (chunkCollectorRef.current !== null) {
+            chunkCollectorRef.current.reset();
+        }
     }, []);
 
     return { audioChunks, pushChunk, resetAudioChunks };
