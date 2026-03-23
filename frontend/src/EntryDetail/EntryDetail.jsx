@@ -7,18 +7,12 @@ import {
     CardBody,
     HStack,
     Text,
-    IconButton,
-    Tooltip,
     Spinner,
     Box,
     Badge,
     Button,
-    SimpleGrid,
-    Image,
-    Link,
 } from "@chakra-ui/react";
 import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../Search/api.js";
-import { API_BASE_URL } from "../api_base_url.js";
 import { getEntryParsed } from "../DescriptionEntry/entry.js";
 import {
     SPACING,
@@ -27,6 +21,8 @@ import {
     TEXT_STYLES,
     BADGE_STYLES,
 } from "../DescriptionEntry/styles.js";
+import { FieldRow, entryToFields } from "./EntryDetailFieldRow.jsx";
+import { EntryDetailMediaCard, filterAssetsByType, mergeAdditionalProperties, hasAdditionalPropertyValue } from "./EntryDetailMediaCard.jsx";
 
 /**
  * @typedef {import('../DescriptionEntry/entry.js').Entry} Entry
@@ -35,145 +31,6 @@ import {
 /**
  * @typedef {import('../Search/api.js').AdditionalPropertyName} AdditionalPropertyName
  */
-
-const COLLAPSED_FIELD_VALUE_LENGTH = 100;
-
-/**
- * Converts an entry field value into a display string.
- * @param {string|object} value
- * @returns {string}
- */
-function stringifyFieldValue(value) {
-    if (typeof value === "string") {
-        return value;
-    }
-
-    return JSON.stringify(value);
-}
-
-/**
- * Splits an entry into summary and derived key-value pairs for display.
- * @param {Entry} entry
- * @returns {{primaryFields: Array<{key: string, value: string}>, derivedFields: Array<{key: string, value: string}>}}
- */
-function entryToFields(entry) {
-    const primaryFields = [
-        { key: "original", value: entry.original },
-        { key: "date", value: entry.date },
-        { key: "id", value: entry.id },
-    ];
-
-    const { type: entryType, description: entryDescription, modifiers: entryModifiers } = getEntryParsed(entry);
-    const derivedFields = [
-        { key: "type", value: entryType },
-        { key: "description", value: entryDescription },
-        { key: "input", value: entry.input },
-    ];
-
-    for (const [k, v] of Object.entries(entry.creator)) {
-        derivedFields.push({ key: `creator.${k}`, value: stringifyFieldValue(v) });
-    }
-
-    for (const [k, v] of Object.entries(entryModifiers)) {
-        derivedFields.push({ key: `modifiers.${k}`, value: v });
-    }
-
-    return { primaryFields, derivedFields };
-}
-
-/**
- * A single field row with a copy button.
- * @param {{ fieldKey: string, value: string }} props
- * @returns {React.JSX.Element}
- */
-function FieldRow({ fieldKey, value }) {
-    const [copied, setCopied] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(false);
-    const isCollapsible = value.length > COLLAPSED_FIELD_VALUE_LENGTH;
-    const displayedValue = !isCollapsible || isExpanded
-        ? value
-        : `${value.slice(0, COLLAPSED_FIELD_VALUE_LENGTH)}…`;
-
-    async function handleCopy() {
-        await navigator.clipboard.writeText(value);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-    }
-
-    return (
-        <Box {...CARD_STYLES.entry}>
-            <VStack align="flex-start" spacing={1} minW={0}>
-                <HStack justify="space-between" align="flex-start" w="full">
-                    <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase">
-                        {fieldKey}
-                    </Text>
-                    <Tooltip label={copied ? "Copied!" : "Copy"} placement="left">
-                        <IconButton
-                            aria-label={`Copy ${fieldKey}`}
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleCopy}
-                            icon={<span>{copied ? "✓" : "⎘"}</span>}
-                            flexShrink={0}
-                        />
-                    </Tooltip>
-                </HStack>
-                <Text {...TEXT_STYLES.entryText} wordBreak="normal">{displayedValue}</Text>
-                {isCollapsible && (
-                    <Button
-                        size="xs"
-                        variant="link"
-                        colorScheme="blue"
-                        onClick={() => setIsExpanded((currentValue) => !currentValue)}
-                        aria-label={`${isExpanded ? "Show less" : "Show full"} ${fieldKey}`}
-                    >
-                        {isExpanded ? "Show less" : "Show more"}
-                    </Button>
-                )}
-            </VStack>
-        </Box>
-    );
-}
-
-/**
- * Filters assets by media type.
- * @param {import('../Search/api.js').AssetInfo[] | null} assets
- * @param {import('../Search/api.js').MediaType} mediaType
- * @returns {import('../Search/api.js').AssetInfo[] | null}
- */
-function filterAssetsByType(assets, mediaType) {
-    if (assets === null) return null;
-    return assets.filter((a) => a.mediaType === mediaType);
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function hasAdditionalPropertyValue(value) {
-    return value !== undefined && value !== null;
-}
-
-/**
- * Merges two AdditionalProperties objects, deeply merging the `errors` sub-object.
- * @param {import('../Search/api.js').AdditionalProperties} current
- * @param {import('../Search/api.js').AdditionalProperties} incoming
- * @returns {import('../Search/api.js').AdditionalProperties}
- */
-function mergeAdditionalProperties(current, incoming) {
-    const mergedErrors = {
-        ...(current.errors ?? {}),
-        ...(incoming.errors ?? {}),
-    };
-    /** @type {import('../Search/api.js').AdditionalProperties} */
-    const merged = { ...current, ...incoming };
-    if (Object.keys(mergedErrors).length > 0) {
-        merged.errors = mergedErrors;
-    } else {
-        delete merged.errors;
-    }
-    return merged;
-}
 
 /** @type {AdditionalPropertyName[]} */
 const ADDITIONAL_PROPERTY_NAMES = ["calories", "transcription", "basic_context"];
@@ -369,74 +226,11 @@ export default function EntryDetail() {
                     </CardBody>
                 </Card>
 
-                <Card {...CARD_STYLES.secondary}>
-                    <CardBody p={SPACING.lg}>
-                        <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
-                            Media
-                        </Text>
-                        {imageAssets === null || audioAssets === null || otherAssets === null ? (
-                            <Box textAlign="center" py={SPACING.md}>
-                                <Spinner size="sm" color="blue.400" />
-                            </Box>
-                        ) : imageAssets.length === 0 && audioAssets.length === 0 && otherAssets.length === 0 ? (
-                            <Text {...TEXT_STYLES.helper}>None</Text>
-                        ) : (
-                            <VStack spacing={SPACING.md} align="stretch">
-                                {imageAssets.length > 0 && (
-                                    <Box>
-                                        <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Photos</Text>
-                                        <SimpleGrid columns={[2, 3, 4]} spacing={SPACING.sm}>
-                                            {imageAssets.map((asset) => (
-                                                <Link
-                                                    key={asset.filename}
-                                                    href={`${API_BASE_URL}${asset.url}`}
-                                                >
-                                                    <Image
-                                                        src={`${API_BASE_URL}${asset.url}`}
-                                                        alt={asset.filename}
-                                                        objectFit="cover"
-                                                        borderRadius="md"
-                                                        w="100%"
-                                                        h="120px"
-                                                    />
-                                                </Link>
-                                            ))}
-                                        </SimpleGrid>
-                                    </Box>
-                                )}
-                                {audioAssets.length > 0 && (
-                                    <Box>
-                                        <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Audio</Text>
-                                        <VStack spacing={SPACING.sm} align="stretch">
-                                            {audioAssets.map((asset) => (
-                                                <Box key={asset.filename}>
-                                                    <Text fontSize="xs" color="gray.500" mb={1}>{asset.filename}</Text>
-                                                    <Box as="audio" controls w="100%" src={`${API_BASE_URL}${asset.url}`} />
-                                                </Box>
-                                            ))}
-                                        </VStack>
-                                    </Box>
-                                )}
-                                {otherAssets.length > 0 && (
-                                    <Box>
-                                        <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Other files</Text>
-                                        <VStack spacing={SPACING.sm} align="stretch">
-                                            {otherAssets.map((asset) => (
-                                                <Link
-                                                    key={asset.filename}
-                                                    href={`${API_BASE_URL}${asset.url}`}
-                                                    isExternal
-                                                >
-                                                    <Text fontSize="sm">{asset.filename}</Text>
-                                                </Link>
-                                            ))}
-                                        </VStack>
-                                    </Box>
-                                )}
-                            </VStack>
-                        )}
-                    </CardBody>
-                </Card>
+                <EntryDetailMediaCard
+                    imageAssets={imageAssets}
+                    audioAssets={audioAssets}
+                    otherAssets={otherAssets}
+                />
 
                 <Card {...CARD_STYLES.secondary}>
                     <CardBody p={SPACING.lg}>

@@ -102,6 +102,14 @@ module.exports = {
                 __BASE_PATH__: "readonly",
             },
         },
+        {
+            // Test files are excluded from the max-lines-per-file rule because they
+            // often need many test cases in a single file.
+            files: ["**/*.test.js", "**/*.test.jsx", "**/*.spec.js", "**/*.spec.jsx", "**/tests/**"],
+            rules: {
+                "volodyslav/max-lines-per-file": "off",
+            },
+        },
     ],
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav", "**/*.d.ts"],
 };

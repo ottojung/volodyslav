@@ -240,10 +240,6 @@ function isPathLike(object) {
 }
 ```
 
-## Size
-
-- **File size limit**: 300 lines of code per file.
-
 ## Testing
 
 ### Running Tests
