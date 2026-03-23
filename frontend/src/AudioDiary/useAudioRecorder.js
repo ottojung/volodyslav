@@ -27,6 +27,12 @@ import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 /** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
 /**
+ * Persist a snapshot every this many fragments (~60 s at 10 s/fragment) to
+ * avoid repeatedly recombining the full recording Blob on every timeslice.
+ */
+const PERSIST_INTERVAL_FRAGMENTS = 6;
+
+/**
  * @typedef {object} UseAudioRecorderResult
  * @property {AudioChunk[]} audioChunks
  * @property {RecorderState} recorderState
@@ -151,10 +157,11 @@ export function useAudioRecorder() {
                 const offsetMs = restoredOffsetMsRef.current;
                 chunksRef.current.push(chunk);
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
-                // Persist every 6 fragments (~60 s) instead of on every 10 s fragment
-                // to avoid repeatedly recombining the full recording.
+                // Persist every PERSIST_INTERVAL_FRAGMENTS fragments (~60 s) instead
+                // of on every 10 s fragment to avoid repeatedly recombining the full
+                // recording.
                 fragmentCountRef.current += 1;
-                if (fragmentCountRef.current % 6 === 0) {
+                if (fragmentCountRef.current % PERSIST_INTERVAL_FRAGMENTS === 0) {
                     queuePersistSnapshot();
                 }
             },
