@@ -2,22 +2,6 @@
 
 const MAX_CODE_LINES = 300;
 
-/**
- * Returns true if the given filename should be excluded from this rule.
- * Test files are excluded because they often need many test cases in one file.
- *
- * @param {string} filename
- * @returns {boolean}
- */
-function isTestFile(filename) {
-    // Matches files inside any /tests/ directory or with .test.js/.test.jsx extension
-    return (
-        /[/\\]tests[/\\]/.test(filename) ||
-        /\.test\.[jt]sx?$/.test(filename) ||
-        /\.spec\.[jt]sx?$/.test(filename)
-    );
-}
-
 module.exports = {
     meta: {
         type: "suggestion",
@@ -36,12 +20,6 @@ module.exports = {
     },
 
     create(context) {
-        const filename = context.getFilename();
-
-        if (isTestFile(filename)) {
-            return {};
-        }
-
         return {
             Program(node) {
                 const sourceCode = context.getSourceCode();

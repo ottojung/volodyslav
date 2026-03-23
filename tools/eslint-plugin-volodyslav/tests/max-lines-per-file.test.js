@@ -58,28 +58,6 @@ tester.run("max-lines-per-file", rule, {
     {
       code: makeCodeLines(300) + "\n" + makeCommentLines(500),
     },
-
-    // Test files are excluded regardless of size
-    {
-      code: makeCodeLines(500),
-      filename: "/project/tests/some.test.js",
-    },
-    {
-      code: makeCodeLines(500),
-      filename: "/project/backend/tests/foo.js",
-    },
-    {
-      code: makeCodeLines(500),
-      filename: "some.test.js",
-    },
-    {
-      code: makeCodeLines(500),
-      filename: "some.spec.js",
-    },
-    {
-      code: makeCodeLines(500),
-      filename: "some.test.jsx",
-    },
   ],
 
   invalid: [
