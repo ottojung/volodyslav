@@ -3,12 +3,12 @@ PREFIX = /usr/local
 
 all: install
 
-install: build/packages-token
+install: dist/packages-token
 	sh scripts/install-post-npm $(PREFIX)
 
-build/packages-token: package.json package-lock.json backend/package.json frontend/package.json
+dist/packages-token: package.json package-lock.json backend/package.json frontend/package.json
 	npm ci
-	mkdir -p -- build/
+	mkdir -p -- dist/
 	touch "$@"
 
 uninstall:
