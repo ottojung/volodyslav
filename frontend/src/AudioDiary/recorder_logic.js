@@ -147,8 +147,12 @@ class RecorderClass {
                     const now = performance.now();
                     const ongoingPausedMs =
                         this._state === "paused" ? now - this._pauseStartMs : 0;
-                    this._activeRecordedMs =
+                    const wallClockMs =
                         now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
+                    // Clamp to fragStart so that endMs is never less than startMs,
+                    // guarding against delayed event delivery making the wall-clock
+                    // value appear earlier than the counter-based fragStart.
+                    this._activeRecordedMs = Math.max(fragStart, wallClockMs);
                 } else {
                     this._activeRecordedMs += FRAGMENT_MS; // regular timeslice event
                 }

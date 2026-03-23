@@ -71,6 +71,8 @@ export function useAudioRecorder() {
     const isMountedRef = useRef(false);
     /** @type {import("react").MutableRefObject<number>} */
     const restoredOffsetMsRef = useRef(0);
+    /** @type {import("react").MutableRefObject<number>} */
+    const fragmentCountRef = useRef(0);
 
     const { audioChunks, pushChunk, resetAudioChunks } =
         useAudioChunkCollector(isMountedRef);
