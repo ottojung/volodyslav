@@ -12,7 +12,7 @@ import {
     VStack,
     Field,
 } from "@chakra-ui/react";
-import { useToast } from "../toast.js";
+import { useToast } from "../toast.jsx";
 import { fetchConfig, updateConfig } from "../DescriptionEntry/api.js";
 import { ShortcutRow } from "./ShortcutRow.jsx";
 

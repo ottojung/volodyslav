@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 
 /**
  * @typedef {object} ToastOptions
@@ -33,10 +33,16 @@ export function useToast() {
  * @returns {React.JSX.Element}
  */
 export function ToastProvider({ children }) {
+    const nextToastIdRef = useRef(0);
     /** @type {[Array<{ id: number, title?: string, description?: string }>, React.Dispatch<React.SetStateAction<Array<{ id: number, title?: string, description?: string }>>>]} */
-    const [toasts, setToasts] = useState([]);
-    const toast = useCallback((options) => {
-        const id = Date.now() + Math.floor(Math.random() * 1000);
+    const [toasts, setToasts] = useState(makeEmptyToasts());
+    const toast = useCallback(
+        /**
+         * @param {ToastOptions} options
+         */
+        (options) => {
+        nextToastIdRef.current += 1;
+        const id = nextToastIdRef.current;
         setToasts((current) => [...current, { id, title: options.title, description: options.description }]);
         if (options.duration !== null) {
             const duration = options.duration ?? 3000;
@@ -44,7 +50,9 @@ export function ToastProvider({ children }) {
                 setToasts((current) => current.filter((item) => item.id !== id));
             }, duration);
         }
-    }, []);
+    },
+        [],
+    );
 
     const contextValue = useMemo(() => toast, [toast]);
 
@@ -61,4 +69,11 @@ export function ToastProvider({ children }) {
             </div>
         </ToastContext.Provider>
     );
+}
+
+/**
+ * @returns {Array<{ id: number, title?: string, description?: string }>}
+ */
+function makeEmptyToasts() {
+    return [];
 }

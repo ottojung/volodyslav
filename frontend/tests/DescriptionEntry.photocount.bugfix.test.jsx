@@ -5,7 +5,7 @@ import { renderWithChakra } from "./renderWithChakra.jsx";
 
 // Mock toast hook
 const mockToast = jest.fn();
-jest.mock("../src/toast.js", () => ({
+jest.mock("../src/toast.jsx", () => ({
     useToast: () => mockToast,
     ToastProvider: ({ children }) => children,
 }));

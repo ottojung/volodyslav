@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { ToastProvider } from "../src/toast.js";
+import { ToastProvider } from "../src/toast.jsx";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({

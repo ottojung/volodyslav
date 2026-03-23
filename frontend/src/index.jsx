@@ -11,7 +11,7 @@ import ConfigPage from './ConfigPage/ConfigPage.jsx';
 import AudioDiary from './AudioDiary/AudioDiary.jsx';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
-import { ToastProvider } from './toast.js';
+import { ToastProvider } from './toast.jsx';
 
 const root = document.getElementById('root');
 if (root === null) {
