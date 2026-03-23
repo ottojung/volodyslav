@@ -88,13 +88,23 @@ class AudioChunkCollectorClass {
                 (f) => f.end > windowStart && f.start < windowEnd
             );
 
+            // Align declared bounds to actual fragment coverage so that AudioChunk.data
+            // does not contain audio outside the declared [start, end] range.
+            const chunkStart = windowFragments.length > 0
+                ? Math.min(...windowFragments.map((f) => f.start))
+                : windowStart;
+            const chunkEnd = windowFragments.length > 0
+                ? Math.max(...windowFragments.map((f) => f.end))
+                : windowEnd;
+
             const chunkData = combineChunks(
                 windowFragments.map((f) => f.data),
                 this._mimeType
             );
 
-            this._onChunk({ start: windowStart, end: windowEnd, data: chunkData });
+            this._onChunk({ start: chunkStart, end: chunkEnd, data: chunkData });
 
+            // Advance window based on fixed grid to maintain proper overlap structure.
             this._nextWindowStart = windowEnd - OVERLAP_MS;
             this._nextEmitAt = this._nextWindowStart + CHUNK_DURATION_MS;
 

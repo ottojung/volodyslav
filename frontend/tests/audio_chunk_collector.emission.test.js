@@ -196,14 +196,16 @@ describe("AudioChunkCollector: fragment spanning boundary", () => {
         expect(chunks).toHaveLength(1);
     });
 
-    it("single fragment spanning two chunk windows triggers two emissions", () => {
+    it("single fragment spanning two chunk windows produces two chunks with actual fragment coverage", () => {
         const chunks = [];
         const collector = makeAudioChunkCollector((c) => chunks.push(c));
+        // A single fragment spanning 0–600 s: both windows include it, so
+        // declared bounds reflect actual fragment coverage (not the ideal window).
         collector.push(makeBlob("huge"), 0, 600000);
         expect(chunks).toHaveLength(2);
         expect(chunks[0].start).toBe(0);
-        expect(chunks[0].end).toBe(CHUNK_DURATION_MS);
-        expect(chunks[1].start).toBe(CHUNK_DURATION_MS - OVERLAP_MS);
-        expect(chunks[1].end).toBe(2 * CHUNK_DURATION_MS - OVERLAP_MS);
+        expect(chunks[0].end).toBe(600000); // actual fragment end (not CHUNK_DURATION_MS)
+        expect(chunks[1].start).toBe(0);    // actual fragment start (not CHUNK_DURATION_MS - OVERLAP_MS)
+        expect(chunks[1].end).toBe(600000); // actual fragment end
     });
 });

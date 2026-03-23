@@ -37,14 +37,15 @@ class RecorderClass {
     _stream = null;
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
+    /** Active-recording ms counter (FRAGMENT_MS per regular timeslice event). */
+    /** @type {number} */
+    _activeRecordedMs = 0;
     /** @type {number} */
     _recordingStartMs = 0;
     /** @type {number} */
     _totalPausedMs = 0;
     /** @type {number} */
     _pauseStartMs = 0;
-    /** @type {number} */
-    _fragmentStartMs = 0;
     /** @param {RecorderCallbacks} callbacks */
     constructor(callbacks) {
         if (this.__brand !== undefined) {
@@ -61,9 +62,7 @@ class RecorderClass {
         this._state = next;
         this._callbacks.onStateChange(next);
     }
-    /**
-     * @returns {Promise<void>}
-     */
+    /** @returns {Promise<void>} */
     async start() {
         if (this._state !== "idle") {
             return;
@@ -116,10 +115,10 @@ class RecorderClass {
         }
         this._mimeType = chooseMimeType();
         this._chunks = [];
+        this._activeRecordedMs = 0;
         this._recordingStartMs = performance.now();
         this._totalPausedMs = 0;
         this._pauseStartMs = 0;
-        this._fragmentStartMs = 0;
         try {
             const options = this._mimeType ? { mimeType: this._mimeType } : {};
             this._mediaRecorder = new MediaRecorder(stream, options);
@@ -135,22 +134,25 @@ class RecorderClass {
             return;
         }
         this._mediaRecorder.ondataavailable = (e) => {
+            const isRequestDataFlush = this._requestDataResolvers.length > 0;
             if (this._requestDataResolvers.length > 0) {
                 const resolvers = this._requestDataResolvers;
                 this._requestDataResolvers = [];
                 resolvers.forEach((resolve) => resolve());
             }
             if (e.data && e.data.size > 0) {
-                const fragStart = this._fragmentStartMs;
-                // Compute active (non-paused) elapsed ms as the fragment's end time.
-                const now = performance.now();
-                const ongoingPausedMs =
-                    this._state === "paused"
-                        ? now - this._pauseStartMs
-                        : 0;
-                const fragEnd =
-                    now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
-                this._fragmentStartMs = fragEnd;
+                const fragStart = this._activeRecordedMs;
+                if (isRequestDataFlush) {
+                    // Forced flush: compute actual active elapsed time via wall-clock.
+                    const now = performance.now();
+                    const ongoingPausedMs =
+                        this._state === "paused" ? now - this._pauseStartMs : 0;
+                    this._activeRecordedMs =
+                        now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
+                } else {
+                    this._activeRecordedMs += FRAGMENT_MS; // regular timeslice event
+                }
+                const fragEnd = this._activeRecordedMs;
                 this._chunks.push(e.data);
                 if (this._callbacks.onChunk) {
                     this._callbacks.onChunk(e.data, fragStart, fragEnd);
@@ -282,18 +284,11 @@ class RecorderClass {
         this._analyserNode = next.analyserNode;
     }
 }
-/**
- * Create a new recorder instance.
- * @param {RecorderCallbacks} callbacks
- * @returns {RecorderClass}
- */
+/** @param {RecorderCallbacks} callbacks @returns {RecorderClass} */
 export function makeRecorder(callbacks) {
     return new RecorderClass(callbacks);
 }
-/**
- * @param {unknown} object
- * @returns {object is RecorderClass}
- */
+/** @param {unknown} object @returns {object is RecorderClass} */
 export function isRecorder(object) {
     return object instanceof RecorderClass;
 }
