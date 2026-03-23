@@ -25,6 +25,7 @@ export function formatTime(totalSeconds) {
 export function extensionForMime(mimeType) {
     if (mimeType.includes("ogg")) return "ogg";
     if (mimeType.includes("mp4")) return "mp4";
+    if (mimeType.includes("weba")) return "weba";
     return "webm";
 }
 

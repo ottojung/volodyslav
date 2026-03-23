@@ -45,7 +45,7 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  * @typedef {'calories' | 'transcription' | 'basic_context'} AdditionalPropertyName
  */
 
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"]);
+const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba", ".webm"]);
 
 /**
  * @param {string} filename
