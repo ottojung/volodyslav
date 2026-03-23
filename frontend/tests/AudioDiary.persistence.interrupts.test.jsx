@@ -1,4 +1,3 @@
-import React from "react";
 import { screen, waitFor, act, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
@@ -43,6 +42,10 @@ describe("AudioDiary persistence: interrupt handling", () => {
             await passThread();
         });
         expect(currentStore().has("current")).toBe(true);
+        const rawSnapshot = currentStore().get("current");
+        expect(rawSnapshot).toBeTruthy();
+        expect(typeof rawSnapshot?.mimeType).toBe("string");
+        expect(rawSnapshot?.mimeType).toContain("audio/");
         Object.defineProperty(document, "visibilityState", {
             value: "visible",
             writable: true,
@@ -157,5 +160,36 @@ describe("AudioDiary persistence: interrupt handling", () => {
         });
         expect(screen.queryByTestId("restored-session-banner")).not.toBeInTheDocument();
         expect(screen.getByText(/idle/i)).toBeInTheDocument();
+    });
+
+    it("clears stale persisted snapshot before starting a new recording", async () => {
+        renderAudioDiary();
+        await act(async () => {
+            await passThread();
+        });
+        currentStore().set("current", {
+            recorderState: "paused",
+            elapsedSeconds: 99,
+            note: "stale",
+            mimeType: "audio/ogg",
+            audioBuffer: new TextEncoder().encode("stale").buffer,
+        });
+        const originalMediaDevices = global.navigator.mediaDevices;
+        Object.defineProperty(global.navigator, "mediaDevices", {
+            value: undefined,
+            writable: true,
+            configurable: true,
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+            await passThread();
+            await passThread();
+        });
+        expect(currentStore().has("current")).toBe(false);
+        Object.defineProperty(global.navigator, "mediaDevices", {
+            value: originalMediaDevices,
+            writable: true,
+            configurable: true,
+        });
     });
 });

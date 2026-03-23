@@ -74,10 +74,14 @@ function openDatabase() {
             if (!target) {
                 return;
             }
-            // @ts-expect-error - target.result is available on IDBOpenDBRequest
-            const db = target.result;
-            if (db && !db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME);
+            if (
+                typeof IDBOpenDBRequest !== "undefined" &&
+                target instanceof IDBOpenDBRequest
+            ) {
+                const db = target.result;
+                if (db && !db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
             }
         };
     });

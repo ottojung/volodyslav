@@ -142,7 +142,9 @@ export function useAudioRecorder() {
             },
             onChunk: (chunk) => {
                 if (!isMountedRef.current) return;
-                // Accumulate chunk; persistSnapshot will combine all chunks on demand
+                if (chunk.type) {
+                    mimeTypeRef.current = chunk.type;
+                }
                 chunksRef.current.push(chunk);
                 queuePersistSnapshot();
             },
@@ -188,6 +190,8 @@ export function useAudioRecorder() {
     }, [recorderState]);
 
     const handleStart = useCallback(async () => {
+        await clearRecordingSnapshot();
+        setHasRestoredSession(false);
         setErrorMessage("");
         setElapsedSeconds(0);
         audioBlobRef.current = null;
