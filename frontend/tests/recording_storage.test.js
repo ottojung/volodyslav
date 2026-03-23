@@ -128,7 +128,7 @@ describe("recording_storage: blobToArrayBuffer", () => {
     });
 });
 
-describe("recording_storage: isRecordingStorageError", () => {
+describe("recording_storage: loadRecordingSnapshot error handling", () => {
     it("returns null when IndexedDB open fails", async () => {
         // Force an error by making open() fail
         mockIDB.open.mockImplementationOnce(() => {
@@ -152,6 +152,9 @@ describe("recording_storage: isRecordingStorageError", () => {
         expect(result).toBeNull();
     });
 
+});
+
+describe("recording_storage: isRecordingStorageError", () => {
     it("returns false for plain Error", () => {
         expect(isRecordingStorageError(new Error("test"))).toBe(false);
     });

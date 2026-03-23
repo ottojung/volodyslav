@@ -22,6 +22,8 @@ import { useAudioRecorder } from "./useAudioRecorder.js";
 import { formatTime, extensionForMime } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
 import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
+import RestoredSessionBanner from "./RestoredSessionBanner.jsx";
+import RecorderStatusBadge from "./RecorderStatusBadge.jsx";
 
 const pulseRing = keyframes`
     0%   { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.5); }
@@ -121,47 +123,14 @@ export default function AudioDiary() {
                     Record Diary
                 </Text>
 
-                {/* Restored session banner */}
-                {hasRestoredSession && (
-                    <Alert status="info" borderRadius="md" data-testid="restored-session-banner">
-                        <AlertIcon />
-                        <Box>
-                            <AlertTitle>Session Restored</AlertTitle>
-                            <AlertDescription>
-                                Your previous recording session was restored.
-                            </AlertDescription>
-                        </Box>
-                    </Alert>
-                )}
+                <RestoredSessionBanner hasRestoredSession={hasRestoredSession} />
 
-                {/* Recorder state badge */}
-                <Box textAlign="center">
-                    <Text
-                        fontSize="sm"
-                        fontWeight="semibold"
-                        color={
-                            isRecording
-                                ? "red.500"
-                                : isPaused
-                                ? "yellow.600"
-                                : isStopped
-                                ? "green.600"
-                                : "gray.500"
-                        }
-                        textTransform="uppercase"
-                        letterSpacing="wide"
-                    >
-                        {isRecording
-                            ? "● Recording"
-                            : isPaused
-                            ? "⏸ Paused"
-                            : isStopped
-                            ? "■ Stopped"
-                            : "Idle"}
-                    </Text>
-                </Box>
+                <RecorderStatusBadge
+                    isRecording={isRecording}
+                    isPaused={isPaused}
+                    isStopped={isStopped}
+                />
 
-                {/* Live timer */}
                 {(isRecording || isPaused) && (
                     <Box textAlign="center">
                         <Text fontSize="3xl" fontFamily="mono" data-testid="timer">
@@ -170,14 +139,11 @@ export default function AudioDiary() {
                     </Box>
                 )}
 
-                {/* Audio level meter */}
                 {(isRecording || isPaused) && (
                     <AudioVisualization analyser={analyser} isActive={isRecording} />
                 )}
 
-                {/* Controls */}
                 <VStack spacing={4}>
-                    {/* Primary action: mic / pause icon button */}
                     {(isIdle || isRecording || isPaused) && (
                         <HStack spacing={4} justify="center" align="center">
                             {isIdle && (
@@ -258,7 +224,6 @@ export default function AudioDiary() {
 
                     {isStopped && audioBlob && (
                         <>
-                            {/* Playback */}
                             <Box w="full">
                                 <Text fontSize="sm" mb={1} color="gray.600">
                                     Preview
@@ -271,7 +236,6 @@ export default function AudioDiary() {
                                 />
                             </Box>
 
-                            {/* Optional note */}
                             <FormControl>
                                 <FormLabel fontSize="sm">
                                     Add a note (optional)
@@ -311,7 +275,6 @@ export default function AudioDiary() {
                     )}
                 </VStack>
 
-                {/* Error display */}
                 {errorMessage && (
                     <Alert status="error" borderRadius="md">
                         <AlertIcon />
@@ -322,7 +285,6 @@ export default function AudioDiary() {
                     </Alert>
                 )}
 
-                {/* Back link */}
                 <Button
                     variant="ghost"
                     size="sm"

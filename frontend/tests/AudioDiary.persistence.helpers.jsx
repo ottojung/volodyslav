@@ -30,8 +30,12 @@ class MockMediaRecorder {
     resume() { this.state = "recording"; }
     requestData() {
         if (this.ondataavailable && this.state !== "inactive") {
-            this.ondataavailable({
-                data: new Blob(["partial-audio"], { type: this.mimeType }),
+            passThread().then(() => {
+                if (this.ondataavailable && this.state !== "inactive") {
+                    this.ondataavailable({
+                        data: new Blob(["partial-audio"], { type: this.mimeType }),
+                    });
+                }
             });
         }
     }

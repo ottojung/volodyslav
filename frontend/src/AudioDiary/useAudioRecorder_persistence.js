@@ -188,19 +188,25 @@ export function useAudioRecorderPersistence(args) {
     }, [persistSnapshot, recorderState]);
 
     useEffect(() => {
-        const flushAndPersist = () => {
+        /**
+         * Request pending recorder data and persist once the requested chunk has
+         * been delivered (or immediately if no active recorder exists).
+         */
+        const flushAndPersist = async () => {
             if (isRecorder(recorderRef.current)) {
-                recorderRef.current.requestData();
+                await recorderRef.current.requestData();
+                await persistSnapshot();
+                return;
             }
-            void persistSnapshot();
+            await persistSnapshot();
         };
         const onHidden = () => {
             if (document.visibilityState === "hidden") {
-                flushAndPersist();
+                void flushAndPersist();
             }
         };
         const onBeforeUnload = () => {
-            flushAndPersist();
+            void flushAndPersist();
         };
         document.addEventListener("visibilitychange", onHidden);
         window.addEventListener("beforeunload", onBeforeUnload);

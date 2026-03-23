@@ -39,6 +39,8 @@ describe("AudioDiary persistence: interrupt handling", () => {
         await act(async () => {
             await passThread();
             await passThread();
+            await passThread();
+            await passThread();
         });
         expect(currentStore().has("current")).toBe(true);
         Object.defineProperty(document, "visibilityState", {
@@ -50,7 +52,10 @@ describe("AudioDiary persistence: interrupt handling", () => {
 
     it("does not persist when idle and hidden", async () => {
         renderAudioDiary();
-        await act(async () => { await passThread(); });
+        await act(async () => {
+            await passThread();
+            await passThread();
+        });
         Object.defineProperty(document, "visibilityState", {
             value: "hidden",
             writable: true,
@@ -66,6 +71,46 @@ describe("AudioDiary persistence: interrupt handling", () => {
             writable: true,
             configurable: true,
         });
+    });
+
+    it("saves state on pagehide while recording", async () => {
+        renderAudioDiary();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+        });
+        await waitFor(() => {
+            expect(screen.getByText(/● Recording/i)).toBeInTheDocument();
+        });
+        act(() => {
+            window.dispatchEvent(new Event("pagehide"));
+        });
+        await act(async () => {
+            await passThread();
+            await passThread();
+            await passThread();
+            await passThread();
+        });
+        expect(currentStore().has("current")).toBe(true);
+    });
+
+    it("saves state on beforeunload while recording", async () => {
+        renderAudioDiary();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId("start-button"));
+        });
+        await waitFor(() => {
+            expect(screen.getByText(/● Recording/i)).toBeInTheDocument();
+        });
+        act(() => {
+            window.dispatchEvent(new Event("beforeunload"));
+        });
+        await act(async () => {
+            await passThread();
+            await passThread();
+            await passThread();
+            await passThread();
+        });
+        expect(currentStore().has("current")).toBe(true);
     });
 
     it("saves on pause", async () => {
