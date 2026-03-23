@@ -5,6 +5,11 @@ import { Card, HStack, IconButton, Input, Text, VStack, Field } from "@chakra-ui
  * @typedef {import('../DescriptionEntry/api.js').Shortcut} Shortcut
  */
 
+const labelStyle = {
+    fontSize: "0.75rem",
+    marginBottom: "0.25rem",
+};
+
 /**
  * A single shortcut row in the editor.
  * @param {Object} props
@@ -52,7 +57,7 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                 <VStack gap={2} align="stretch">
                     <HStack gap={2} align="flex-end">
                         <Field.Root flex="1">
-                            <label htmlFor={`shortcut-pattern-${rowKey}`} style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}>Pattern (regex)</label>
+                            <label htmlFor={`shortcut-pattern-${rowKey}`} style={labelStyle}>Pattern (regex)</label>
                             <Input
                                 id={`shortcut-pattern-${rowKey}`}
                                 size="sm"
@@ -63,7 +68,7 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                             />
                         </Field.Root>
                         <Field.Root flex="1">
-                            <label htmlFor={`shortcut-replacement-${rowKey}`} style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}>Replacement</label>
+                            <label htmlFor={`shortcut-replacement-${rowKey}`} style={labelStyle}>Replacement</label>
                             <Input
                                 id={`shortcut-replacement-${rowKey}`}
                                 size="sm"
@@ -81,7 +86,7 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                             onClick={() => onDelete(rowKey)}><Text>✕</Text></IconButton>
                     </HStack>
                     <Field.Root>
-                        <label htmlFor={`shortcut-description-${rowKey}`} style={{ fontSize: "0.75rem", marginBottom: "0.25rem" }}>Description (optional)</label>
+                        <label htmlFor={`shortcut-description-${rowKey}`} style={labelStyle}>Description (optional)</label>
                         <Input
                             id={`shortcut-description-${rowKey}`}
                             size="sm"

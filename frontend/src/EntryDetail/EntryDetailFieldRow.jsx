@@ -91,9 +91,11 @@ export function FieldRow({ fieldKey, value }) {
                         <span>{copied ? "✓" : "⎘"}</span>
                     </IconButton>
                 </HStack>
-                <Text as="span" fontSize="xs" color="gray.500" role="status" aria-live="polite">
-                    {copied ? "Copied!" : ""}
-                </Text>
+                {copied ? (
+                    <Text as="span" fontSize="xs" color="gray.500" role="status" aria-live="polite">
+                        Copied!
+                    </Text>
+                ) : null}
                 <Text {...TEXT_STYLES.entryText} wordBreak="normal">{displayedValue}</Text>
                 {isCollapsible && (
                     <Button

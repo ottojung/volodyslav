@@ -48,9 +48,6 @@ export function ToastProvider({ children }) {
         };
     }, []);
 
-    /**
-     * @param {number} id
-     */
     const removeToast = useCallback(
         /**
          * @param {number} id
