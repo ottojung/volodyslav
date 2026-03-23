@@ -1,17 +1,7 @@
 import React from "react";
-import {
-    VStack,
-    Input,
-    Button,
-    HStack,
-    Card,
-    CardBody,
-    Badge,
-} from "@chakra-ui/react";
+import { VStack, Input, Button, HStack, Card, Badge } from "@chakra-ui/react";
 import { 
     CARD_STYLES, 
-    INPUT_STYLES, 
-    BUTTON_STYLES, 
     SPACING 
 } from "./styles.js";
 
@@ -39,47 +29,50 @@ export const FormInputSection = ({
     photoCount = 0,
 }) => {
     return (
-        <Card {...CARD_STYLES.main}>
-            <CardBody p={SPACING.xl}>
-                <VStack spacing={SPACING.lg} align="stretch">
+        <Card.Root {...CARD_STYLES.main}>
+            <Card.Body p={SPACING.xl}>
+                <VStack gap={SPACING.lg} align="stretch">
                     <Input
                         placeholder="Type your event description here..."
                         value={description}
                         onChange={(e) => onDescriptionChange(e.target.value)}
                         onKeyUp={onKeyUp}
                         ref={inputRef}
-                        {...INPUT_STYLES}
+                        size="lg" border="2px" borderColor="gray.200" bg="gray.50" fontSize="lg" py={6} _placeholder={{ color: "gray.500", fontSize: "lg" }} _focus={{ bg: "white", shadow: "md", borderColor: "blue.500" }}
                     />
 
                     {photoCount > 0 && (
                         <HStack justify="flex-start">
-                            <Badge colorScheme="green" fontSize="xs">
+                            <Badge colorPalette="green" fontSize="xs">
                                 📸 +{photoCount} {photoCount === 1 ? 'photo' : 'photos'}
                             </Badge>
                         </HStack>
                     )}
 
-                    <HStack justify="flex-end" spacing={2}>
+                    <HStack justify="flex-end" gap={2}>
                         <Button
-                            {...BUTTON_STYLES.secondary}
+                            variant="ghost"
+                            color="gray.600"
                             onClick={onTakePhotos}
                             size="sm"
-                            isDisabled={isSubmitting}
+                            disabled={isSubmitting}
                         >
                             📸 Take Photos
                         </Button>
                         <Button
-                            {...BUTTON_STYLES.primary}
+                            colorPalette="blue"
+                            px={8}
+                            borderRadius="xl"
                             onClick={onSubmit}
                             size="sm"
-                            isLoading={isSubmitting}
+                            loading={isSubmitting}
                             loadingText="Submitting..."
                         >
                             Submit
                         </Button>
                     </HStack>
                 </VStack>
-            </CardBody>
-        </Card>
+            </Card.Body>
+        </Card.Root>
     );
 };

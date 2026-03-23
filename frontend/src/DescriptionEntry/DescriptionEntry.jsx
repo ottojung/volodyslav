@@ -36,7 +36,7 @@ export default function DescriptionEntry() {
     return (
         <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
             <VStack
-                spacing={SPACING.xxl}
+                gap={SPACING.xxl}
                 align="stretch"
                 justify="flex-start"
                 minH="70vh"

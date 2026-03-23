@@ -1,18 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigationType } from "react-router-dom";
-import {
-    Container,
-    VStack,
-    Card,
-    CardBody,
-    Input,
-    Text,
-    Box,
-    HStack,
-    Badge,
-    Spinner,
-    Button,
-} from "@chakra-ui/react";
+import { Container, VStack, Card, Input, Text, Box, HStack, Badge, Spinner, Button } from "@chakra-ui/react";
 import { searchEntries } from "./api.js";
 import { formatRelativeDate } from "../DescriptionEntry/utils.js";
 import { getEntryParsed } from "../DescriptionEntry/entry.js";
@@ -20,10 +8,7 @@ import {
     SPACING,
     SIZES,
     CARD_STYLES,
-    INPUT_STYLES,
     TEXT_STYLES,
-    BADGE_STYLES,
-    BUTTON_STYLES,
 } from "../DescriptionEntry/styles.js";
 
 const SEARCH_STATE_KEY = "volodyslav_search_state";
@@ -153,18 +138,18 @@ export default function Search() {
 
     return (
         <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
-            <VStack spacing={SPACING.xxl} align="stretch" justify="flex-start" minH="70vh">
-                <Card {...CARD_STYLES.main}>
-                    <CardBody p={SPACING.xl}>
+            <VStack gap={SPACING.xxl} align="stretch" justify="flex-start" minH="70vh">
+                <Card.Root {...CARD_STYLES.main}>
+                    <Card.Body p={SPACING.xl}>
                         <Input
                             placeholder="Search entries by regex..."
                             value={pattern}
                             onChange={(e) => setPattern(e.target.value)}
                             ref={inputRef}
-                            {...INPUT_STYLES}
+                            size="lg" border="2px" borderColor="gray.200" bg="gray.50" fontSize="lg" py={6} _placeholder={{ color: "gray.500", fontSize: "lg" }} _focus={{ bg: "white", shadow: "md", borderColor: "blue.500" }}
                         />
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
 
                 {isLoading && (
                     <Box textAlign="center" py={SPACING.lg}>
@@ -173,55 +158,55 @@ export default function Search() {
                 )}
 
                 {error !== null && (
-                    <Card {...CARD_STYLES.secondary}>
-                        <CardBody p={SPACING.lg}>
+                    <Card.Root {...CARD_STYLES.secondary}>
+                        <Card.Body p={SPACING.lg}>
                             <Text color="red.500" fontSize="sm">{error}</Text>
-                        </CardBody>
-                    </Card>
+                        </Card.Body>
+                    </Card.Root>
                 )}
 
                 {!isLoading && error === null && results.length > 0 && (
-                    <Card {...CARD_STYLES.main}>
-                        <CardBody p={SPACING.lg}>
-                            <VStack spacing={SPACING.sm} align="stretch">
+                    <Card.Root {...CARD_STYLES.main}>
+                        <Card.Body p={SPACING.lg}>
+                            <VStack gap={SPACING.sm} align="stretch">
                                 {results.map((entry, index) => {
                                     const { type: entryType, description: entryDescription } = getEntryParsed(entry);
                                     return (
-                                    <Link
-                                        key={entry.id || index}
-                                        to={`/entry/${entry.id}`}
-                                        state={{ entry }}
-                                        onClick={handleEntryLinkClick}
-                                        style={{ textDecoration: "none", color: "inherit", display: "block" }}
-                                    >
-                                        <Box
-                                            {...CARD_STYLES.entry}
-                                            cursor="pointer"
-                                            _hover={{ bg: "gray.100" }}
+                                        <Link
+                                            key={entry.id || index}
+                                            to={`/entry/${entry.id}`}
+                                            state={{ entry }}
+                                            onClick={handleEntryLinkClick}
+                                            style={{ textDecoration: "none", color: "inherit", display: "block" }}
                                         >
-                                            <HStack justify="space-between" align="flex-start">
-                                                <VStack align="flex-start" spacing={1} flex={1}>
-                                                    <HStack spacing={2}>
-                                                        <Badge {...BADGE_STYLES}>{entryType}</Badge>
-                                                        <Text {...TEXT_STYLES.entryMeta}>
-                                                            {formatRelativeDate(entry.date)}
-                                                        </Text>
-                                                    </HStack>
-                                                    <Text {...TEXT_STYLES.entryText}>{entryDescription}</Text>
-                                                </VStack>
-                                            </HStack>
-                                        </Box>
-                                    </Link>
+                                            <Box
+                                                {...CARD_STYLES.entry}
+                                                cursor="pointer"
+                                                _hover={{ bg: "gray.100" }}
+                                            >
+                                                <HStack justify="space-between" align="flex-start">
+                                                    <VStack align="flex-start" gap={1} flex={1}>
+                                                        <HStack gap={2}>
+                                                            <Badge colorPalette="blue" variant="subtle">{entryType}</Badge>
+                                                            <Text {...TEXT_STYLES.entryMeta}>
+                                                                {formatRelativeDate(entry.date)}
+                                                            </Text>
+                                                        </HStack>
+                                                        <Text {...TEXT_STYLES.entryText}>{entryDescription}</Text>
+                                                    </VStack>
+                                                </HStack>
+                                            </Box>
+                                        </Link>
                                     );
                                 })}
                             </VStack>
-                        </CardBody>
-                    </Card>
+                        </Card.Body>
+                    </Card.Root>
                 )}
 
                 {!isLoading && error === null && hasMore && !isLoadingMore && (
                     <Box textAlign="center">
-                        <Button {...BUTTON_STYLES.primary} onClick={handleLoadMore}>
+                        <Button colorPalette="blue" size="md" px={8} borderRadius="xl" onClick={handleLoadMore}>
                             Load more
                         </Button>
                     </Box>
@@ -234,23 +219,23 @@ export default function Search() {
                 )}
 
                 {!isLoading && !isLoadingMore && error === null && results.length > 0 && !hasMore && (
-                    <Card {...CARD_STYLES.secondary}>
-                        <CardBody p={SPACING.lg}>
+                    <Card.Root {...CARD_STYLES.secondary}>
+                        <Card.Body p={SPACING.lg}>
                             <Text {...TEXT_STYLES.helper} textAlign="center">
                                 All matching entries are displayed.
                             </Text>
-                        </CardBody>
-                    </Card>
+                        </Card.Body>
+                    </Card.Root>
                 )}
 
                 {!isLoading && error === null && pattern.trim() !== "" && results.length === 0 && (
-                    <Card {...CARD_STYLES.secondary}>
-                        <CardBody p={SPACING.lg}>
+                    <Card.Root {...CARD_STYLES.secondary}>
+                        <Card.Body p={SPACING.lg}>
                             <Text {...TEXT_STYLES.helper} textAlign="center">
                                 No entries match your search.
                             </Text>
-                        </CardBody>
-                    </Card>
+                        </Card.Body>
+                    </Card.Root>
                 )}
             </VStack>
         </Container>

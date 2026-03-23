@@ -3,16 +3,12 @@ import { screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { renderWithChakra } from "./renderWithChakra.jsx";
 
-// Mock Chakra UI useToast
+// Mock toast hook
 const mockToast = jest.fn();
-jest.mock('@chakra-ui/react', () => {
-    const actual = jest.requireActual('@chakra-ui/react');
-    return {
-        __esModule: true,
-        ...actual,
-        useToast: () => mockToast,
-    };
-});
+jest.mock("../src/toast.js", () => ({
+    useToast: () => mockToast,
+    ToastProvider: ({ children }) => children,
+}));
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({

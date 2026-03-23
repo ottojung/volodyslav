@@ -1,15 +1,5 @@
 import React from "react";
-import {
-    Card,
-    CardBody,
-    FormControl,
-    FormLabel,
-    HStack,
-    IconButton,
-    Input,
-    Text,
-    VStack,
-} from "@chakra-ui/react";
+import { Card, HStack, IconButton, Input, Text, VStack, Field } from "@chakra-ui/react";
 
 /**
  * @typedef {import('../DescriptionEntry/api.js').Shortcut} Shortcut
@@ -57,12 +47,12 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
     }
 
     return (
-        <Card variant="outline" size="sm" w="full">
-            <CardBody>
-                <VStack spacing={2} align="stretch">
-                    <HStack spacing={2} align="flex-end">
-                        <FormControl flex="1">
-                            <FormLabel fontSize="xs" mb={1}>Pattern (regex)</FormLabel>
+        <Card.Root variant="outline" size="sm" w="full">
+            <Card.Body>
+                <VStack gap={2} align="stretch">
+                    <HStack gap={2} align="flex-end">
+                        <Field.Root flex="1">
+                            <Text fontSize="xs" mb={1}>Pattern (regex)</Text>
                             <Input
                                 size="sm"
                                 value={pattern}
@@ -70,9 +60,9 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                                 placeholder="e.g. breakfast"
                                 fontFamily="mono"
                             />
-                        </FormControl>
-                        <FormControl flex="1">
-                            <FormLabel fontSize="xs" mb={1}>Replacement</FormLabel>
+                        </Field.Root>
+                        <Field.Root flex="1">
+                            <Text fontSize="xs" mb={1}>Replacement</Text>
                             <Input
                                 size="sm"
                                 value={replacement}
@@ -80,27 +70,25 @@ export function ShortcutRow({ shortcut, rowKey, onChange, onDelete }) {
                                 placeholder="e.g. food [when this morning]"
                                 fontFamily="mono"
                             />
-                        </FormControl>
+                        </Field.Root>
                         <IconButton
                             aria-label="Delete shortcut"
-                            icon={<Text>✕</Text>}
                             size="sm"
                             colorScheme="red"
                             variant="ghost"
-                            onClick={() => onDelete(rowKey)}
-                        />
+                            onClick={() => onDelete(rowKey)}><Text>✕</Text></IconButton>
                     </HStack>
-                    <FormControl>
-                        <FormLabel fontSize="xs" mb={1}>Description (optional)</FormLabel>
+                    <Field.Root>
+                        <Text fontSize="xs" mb={1}>Description (optional)</Text>
                         <Input
                             size="sm"
                             value={description || ""}
                             onChange={(e) => handleChange("description", e.target.value)}
                             placeholder="What does this shortcut do?"
                         />
-                    </FormControl>
+                    </Field.Root>
                 </VStack>
-            </CardBody>
-        </Card>
+            </Card.Body>
+        </Card.Root>
     );
 }

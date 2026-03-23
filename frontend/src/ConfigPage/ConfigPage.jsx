@@ -3,17 +3,16 @@ import { Link } from "react-router-dom";
 import {
     Button,
     Card,
-    CardBody,
     Container,
-    FormControl,
     Heading,
     HStack,
     Spinner,
     Text,
     Textarea,
     VStack,
-    useToast,
+    Field,
 } from "@chakra-ui/react";
+import { useToast } from "../toast.js";
 import { fetchConfig, updateConfig } from "../DescriptionEntry/api.js";
 import { ShortcutRow } from "./ShortcutRow.jsx";
 
@@ -156,7 +155,7 @@ export default function ConfigPage() {
     if (isLoading) {
         return (
             <Container maxW="2xl" py={8}>
-                <VStack spacing={4} align="center">
+                <VStack gap={4} align="center">
                     <Spinner size="xl" />
                     <Text>Loading configuration...</Text>
                 </VStack>
@@ -166,7 +165,7 @@ export default function ConfigPage() {
 
     return (
         <Container maxW="2xl" py={6}>
-            <VStack spacing={6} align="stretch">
+            <VStack gap={6} align="stretch">
                 <HStack justify="space-between">
                     <Heading size="lg">Configuration</Heading>
                     <Link to="/">
@@ -174,25 +173,25 @@ export default function ConfigPage() {
                     </Link>
                 </HStack>
 
-                <Card shadow="md" borderRadius="xl">
-                    <CardBody>
-                        <VStack spacing={4} align="stretch">
+                <Card.Root shadow="md" borderRadius="xl">
+                    <Card.Body>
+                        <VStack gap={4} align="stretch">
                             <Heading size="sm">Help Text</Heading>
-                            <FormControl>
+                            <Field.Root>
                                 <Textarea
                                     value={help}
                                     onChange={(e) => setHelp(e.target.value)}
                                     placeholder="Help text shown to users..."
                                     rows={4}
                                 />
-                            </FormControl>
+                            </Field.Root>
                         </VStack>
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
 
-                <Card shadow="md" borderRadius="xl">
-                    <CardBody>
-                        <VStack spacing={4} align="stretch">
+                <Card.Root shadow="md" borderRadius="xl">
+                    <Card.Body>
+                        <VStack gap={4} align="stretch">
                             <Heading size="sm">Shortcuts</Heading>
 
                             {keyedShortcuts.length === 0 && (
@@ -213,21 +212,21 @@ export default function ConfigPage() {
 
                             <Button
                                 size="sm"
-                                colorScheme="blue"
+                                colorPalette="blue"
                                 onClick={handleAddShortcut}
                                 alignSelf="flex-start"
                             >
                                 + Add Shortcut
                             </Button>
                         </VStack>
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
 
                 <Button
-                    colorScheme="blue"
+                    colorPalette="blue"
                     size="lg"
                     onClick={handleSave}
-                    isLoading={isSaving}
+                    loading={isSaving}
                     loadingText="Saving..."
                 >
                     Save Configuration

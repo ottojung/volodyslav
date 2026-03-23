@@ -5,7 +5,7 @@ import {
   Box,
   VStack,
   Text,
-  Divider,
+  Separator,
 } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { SyncSection } from './Sync/SyncSection.jsx';
@@ -97,14 +97,14 @@ function App() {
 
   return (
     <Box p={6}>
-      <VStack spacing={4} align="stretch">
+      <VStack gap={4} align="stretch">
         {isInstallable && (
           <Box p={4} bg="blue.50" borderRadius="md" border="1px" borderColor="blue.200">
             <Text mb={2} fontSize="sm" color="blue.800">
               Install this app on your device for a better experience!
             </Text>
             <Button
-              colorScheme="blue"
+              colorPalette="blue"
               size="sm"
               onClick={handleInstallClick}
             >
@@ -113,30 +113,30 @@ function App() {
           </Box>
         )}
 
-        <VStack spacing={3}>
+        <VStack gap={3}>
           <Link to="/camera">
-            <Button colorScheme="teal" w="200px">Open Camera</Button>
+            <Button colorPalette="teal" w="200px">Open Camera</Button>
           </Link>
           <Link to="/describe">
-            <Button colorScheme="blue" variant="outline" w="200px">Log an Event</Button>
+            <Button colorPalette="blue" variant="outline" w="200px">Log an Event</Button>
           </Link>
           <Link to="/search">
-            <Button colorScheme="purple" variant="outline" w="200px">Search Entries</Button>
+            <Button colorPalette="purple" variant="outline" w="200px">Search Entries</Button>
           </Link>
           <Link to="/record-diary">
-            <Button colorScheme="orange" variant="outline" w="200px">Record Diary</Button>
+            <Button colorPalette="orange" variant="outline" w="200px">Record Diary</Button>
           </Link>
           <Link to="/config">
-            <Button colorScheme="gray" variant="outline" w="200px">Manage Config</Button>
+            <Button colorPalette="gray" variant="outline" w="200px">Manage Config</Button>
           </Link>
         </VStack>
 
-        <Divider />
+        <Separator />
 
         <SyncSection />
 
         <Box pt={4}>
-          <Divider mb={4} />
+          <Separator mb={4} />
           <Box
             alignSelf="center"
             bg="gray.50"

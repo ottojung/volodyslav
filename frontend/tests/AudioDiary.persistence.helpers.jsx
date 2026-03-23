@@ -1,7 +1,7 @@
 import React from "react";
 import { render, cleanup } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { ChakraProvider } from "@chakra-ui/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { submitEntry } from "../src/DescriptionEntry/api.js";
 import AudioDiary from "../src/AudioDiary/AudioDiary.jsx";
 
@@ -204,7 +204,7 @@ export function setupAudioDiaryPersistenceHarness() {
  */
 export function renderAudioDiary(initialPath = "/record-diary") {
     return render(
-        <ChakraProvider>
+        <ChakraProvider value={defaultSystem}>
             <MemoryRouter initialEntries={[initialPath]}>
                 <Routes>
                     <Route path="/record-diary" element={<AudioDiary />} />

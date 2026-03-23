@@ -1,19 +1,13 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-
-// Mock Chakra UI useToast
-const mockToast = jest.fn();
-jest.mock('@chakra-ui/react', () => {
-    const actual = jest.requireActual('@chakra-ui/react');
-    return {
-        __esModule: true,
-        ...actual,
-        useToast: () => mockToast,
-    };
-});
+import { renderWithProviders } from "./renderWithProviders.jsx";
 
 import Camera from '../src/Camera/Camera.jsx';
+
+function renderCamera() {
+    return renderWithProviders(<Camera />);
+}
 
 const passThread = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -113,12 +107,11 @@ describe('Camera component', () => {
             writable: true
         });
         window.mockPhotoStore = mockStore;
-        mockToast.mockClear();
         global.fetch.mockClear();
     });
 
     test('initial render shows Take Photo and Done buttons', () => {
-        render(<Camera />);
+        renderCamera();
         expect(screen.getByText('Take Photo')).toBeInTheDocument();
         expect(screen.getByText('Done')).toBeInTheDocument();
         expect(screen.queryByText('Redo')).not.toBeInTheDocument();
@@ -126,7 +119,7 @@ describe('Camera component', () => {
     });
 
     test('takes photo and shows preview with controls', async () => {
-        render(<Camera />);
+        renderCamera();
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
         fireEvent.click(screen.getByText('Take Photo'));
 
@@ -143,7 +136,7 @@ describe('Camera component', () => {
     });
 
     test('More button returns to camera mode', async () => {
-        render(<Camera />);
+        renderCamera();
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
         fireEvent.click(screen.getByText('Take Photo'));
         await waitFor(() => screen.getByAltText('Preview'));
@@ -156,7 +149,7 @@ describe('Camera component', () => {
     });
 
     test('Redo button also returns to camera mode', async () => {
-        render(<Camera />);
+        renderCamera();
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
         fireEvent.click(screen.getByText('Take Photo'));
         await waitFor(() => screen.getByAltText('Preview'));
@@ -167,24 +160,16 @@ describe('Camera component', () => {
     });
 
     test('Done button without photos shows error toast', async () => {
-        render(<Camera />);
+        renderCamera();
         fireEvent.click(screen.getByText('Done'));
 
         await waitFor(() => {
-            expect(mockToast).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    title: 'No photos to upload',
-                    status: 'error',
-                    duration: 3000,
-                    isClosable: true,
-                    position: 'top',
-                })
-            );
+            expect(screen.getByText('No photos to upload')).toBeInTheDocument();
         });
     });
 
     test('Done button with one photo stores photos and shows success toast', async () => {
-        render(<Camera />);
+        renderCamera();
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
         fireEvent.click(screen.getByText('Take Photo'));
@@ -207,35 +192,19 @@ describe('Camera component', () => {
         expect(global.fetch).not.toHaveBeenCalled();
 
         await waitFor(() => {
-            expect(mockToast).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    title: 'Photos ready',
-                    status: 'success',
-                    duration: 3000,
-                    isClosable: true,
-                    position: 'top',
-                })
-            );
+            expect(screen.getByText('Photos ready')).toBeInTheDocument();
         });
     });
 
     test('Done button with no photos shows error toast', async () => {
-        render(<Camera />);
+        renderCamera();
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
         // Click done without taking any photos
         fireEvent.click(screen.getByText('Done'));
 
         await waitFor(() => {
-            expect(mockToast).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    title: 'No photos to upload',
-                    status: 'error',
-                    duration: 3000,
-                    isClosable: true,
-                    position: 'top',
-                })
-            );
+            expect(screen.getByText('No photos to upload')).toBeInTheDocument();
         });
 
         // Should not store anything
@@ -243,7 +212,7 @@ describe('Camera component', () => {
     });
 
     test('Done button stores multiple photos correctly and shows success toast', async () => {
-        render(<Camera />);
+        renderCamera();
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
         // Take first photo
@@ -266,15 +235,7 @@ describe('Camera component', () => {
         });
 
         await waitFor(() => {
-            expect(mockToast).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    title: 'Photos ready',
-                    status: 'success',
-                    duration: 3000,
-                    isClosable: true,
-                    position: 'top',
-                })
-            );
+            expect(screen.getByText('Photos ready')).toBeInTheDocument();
         });
     });
 });

@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import {
-    Container,
-    VStack,
-    Card,
-    CardBody,
-    HStack,
-    Text,
-    Spinner,
-    Box,
-    Badge,
-    Button,
-} from "@chakra-ui/react";
+import { Container, VStack, Card, HStack, Text, Spinner, Box, Badge, Button } from "@chakra-ui/react";
 import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../Search/api.js";
 import { getEntryParsed } from "../DescriptionEntry/entry.js";
 import {
@@ -19,7 +8,6 @@ import {
     SIZES,
     CARD_STYLES,
     TEXT_STYLES,
-    BADGE_STYLES,
 } from "../DescriptionEntry/styles.js";
 import { FieldRow, entryToFields } from "./EntryDetailFieldRow.jsx";
 import { EntryDetailMediaCard, filterAssetsByType, mergeAdditionalProperties, hasAdditionalPropertyValue } from "./EntryDetailMediaCard.jsx";
@@ -157,11 +145,11 @@ export default function EntryDetail() {
     if (notFound || entry === null) {
         return (
             <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
-                <Card {...CARD_STYLES.secondary}>
-                    <CardBody p={SPACING.lg}>
+                <Card.Root {...CARD_STYLES.secondary}>
+                    <Card.Body p={SPACING.lg}>
                         <Text {...TEXT_STYLES.helper} textAlign="center">Entry not found.</Text>
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
             </Container>
         );
     }
@@ -187,23 +175,23 @@ export default function EntryDetail() {
 
     return (
         <Container maxW={SIZES.containerMaxW} px={4} py={SPACING.xxl}>
-            <VStack spacing={SPACING.xxl} align="stretch" justify="flex-start">
-                <Card {...CARD_STYLES.main}>
-                    <CardBody p={SPACING.lg}>
-                        <HStack spacing={2} mb={SPACING.md} justify="space-between">
-                            <Badge {...BADGE_STYLES}>{entryType}</Badge>
+            <VStack gap={SPACING.xxl} align="stretch" justify="flex-start">
+                <Card.Root {...CARD_STYLES.main}>
+                    <Card.Body p={SPACING.lg}>
+                        <HStack gap={2} mb={SPACING.md} justify="space-between">
+                            <Badge colorPalette="blue" variant="subtle">{entryType}</Badge>
                             <Button
-                                colorScheme="red"
+                                colorPalette="red"
                                 size="sm"
                                 variant="outline"
                                 onClick={handleDelete}
-                                isLoading={isDeleting}
+                                loading={isDeleting}
                                 loadingText="Deleting..."
                             >
                                 Delete
                             </Button>
                         </HStack>
-                        <VStack spacing={SPACING.sm} align="stretch">
+                        <VStack gap={SPACING.sm} align="stretch">
                             {primaryFields.map((field) => (
                                 <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
                             ))}
@@ -223,8 +211,8 @@ export default function EntryDetail() {
                                 <FieldRow key={field.key} fieldKey={field.key} value={field.value} />
                             ))}
                         </VStack>
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
 
                 <EntryDetailMediaCard
                     imageAssets={imageAssets}
@@ -232,13 +220,13 @@ export default function EntryDetail() {
                     otherAssets={otherAssets}
                 />
 
-                <Card {...CARD_STYLES.secondary}>
-                    <CardBody p={SPACING.lg}>
+                <Card.Root {...CARD_STYLES.secondary}>
+                    <Card.Body p={SPACING.lg}>
                         <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
                             Computed Properties
                         </Text>
                         {additionalFields.length > 0 && (
-                            <VStack spacing={SPACING.sm} align="stretch" mb={loadingComputedProperties.length > 0 ? SPACING.md : 0}>
+                            <VStack gap={SPACING.sm} align="stretch" mb={loadingComputedProperties.length > 0 ? SPACING.md : 0}>
                                 {additionalFields.map(([key, value]) => (
                                     <FieldRow key={key} fieldKey={key} value={String(value)} />
                                 ))}
@@ -246,9 +234,9 @@ export default function EntryDetail() {
                         )}
                         {loadingComputedProperties.length > 0 ? (
                             <Box py={SPACING.md}>
-                                <HStack align="flex-start" spacing={SPACING.sm}>
+                                <HStack align="flex-start" gap={SPACING.sm}>
                                     <Spinner size="sm" color="blue.400" mt="2px" />
-                                    <VStack align="flex-start" spacing={1}>
+                                    <VStack align="flex-start" gap={1}>
                                         {loadingComputedProperties.map((propertyName) => (
                                             <Text key={propertyName} {...TEXT_STYLES.helper}>
                                                 Loading {propertyName}...
@@ -261,7 +249,7 @@ export default function EntryDetail() {
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : null}
                         {Object.keys(additionalPropertyErrors).length > 0 && loadingComputedProperties.length === 0 && (
-                            <VStack spacing={SPACING.sm} align="stretch" mt={additionalFields.length > 0 ? SPACING.sm : 0}>
+                            <VStack gap={SPACING.sm} align="stretch" mt={additionalFields.length > 0 ? SPACING.sm : 0}>
                                 {Object.entries(additionalPropertyErrors).map(([key, message]) => (
                                     <Box key={key} px={SPACING.sm} py={SPACING.xs} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200">
                                         <Text fontSize="xs" fontWeight="semibold" color="red.600" textTransform="uppercase" mb={1}>
@@ -272,17 +260,17 @@ export default function EntryDetail() {
                                 ))}
                             </VStack>
                         )}
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
 
-                <Card {...CARD_STYLES.secondary}>
-                    <CardBody p={SPACING.lg}>
+                <Card.Root {...CARD_STYLES.secondary}>
+                    <Card.Body p={SPACING.lg}>
                         <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
                             Basic Context
                         </Text>
                         {isLoadingBasicContext ? (
                             <Box py={SPACING.md}>
-                                <HStack align="flex-start" spacing={SPACING.sm}>
+                                <HStack align="flex-start" gap={SPACING.sm}>
                                     <Spinner size="sm" color="blue.400" mt="2px" />
                                     <Text {...TEXT_STYLES.helper}>Loading basic context...</Text>
                                 </HStack>
@@ -297,7 +285,7 @@ export default function EntryDetail() {
                         ) : !basicContextInputs || basicContextInputs.length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : (
-                            <VStack spacing={SPACING.sm} align="stretch">
+                            <VStack gap={SPACING.sm} align="stretch">
                                 {basicContextInputs.map((input, index) => (
                                     <Box key={index} {...CARD_STYLES.entry}>
                                         <Text {...TEXT_STYLES.entryText} wordBreak="normal">{input}</Text>
@@ -305,8 +293,8 @@ export default function EntryDetail() {
                                 ))}
                             </VStack>
                         )}
-                    </CardBody>
-                </Card>
+                    </Card.Body>
+                </Card.Root>
             </VStack>
         </Container>
     );

@@ -11,7 +11,7 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { ChakraProvider } from "@chakra-ui/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ afterAll(() => {
 
 function renderWithRouter(initialPath = "/") {
     return render(
-        <ChakraProvider>
+        <ChakraProvider value={defaultSystem}>
             <MemoryRouter initialEntries={[initialPath]}>
                 <Routes>
                     <Route path="/" element={<App />} />

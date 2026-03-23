@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { ChakraProvider } from "@chakra-ui/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -121,7 +121,7 @@ let hadMediaDevices;
  */
 function renderAudioDiary(initialPath = "/record-diary") {
     return render(
-        <ChakraProvider>
+        <ChakraProvider value={defaultSystem}>
             <MemoryRouter initialEntries={[initialPath]}>
                 <Routes>
                     <Route path="/record-diary" element={<AudioDiary />} />

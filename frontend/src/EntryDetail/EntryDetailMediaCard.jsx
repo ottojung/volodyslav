@@ -1,15 +1,5 @@
 import React from "react";
-import {
-    Card,
-    CardBody,
-    VStack,
-    Text,
-    Spinner,
-    Box,
-    SimpleGrid,
-    Image,
-    Link,
-} from "@chakra-ui/react";
+import { Card, VStack, Text, Spinner, Box, SimpleGrid, Image, Link } from "@chakra-ui/react";
 import { API_BASE_URL } from "../api_base_url.js";
 import {
     SPACING,
@@ -69,8 +59,8 @@ export function hasAdditionalPropertyValue(value) {
  */
 export function EntryDetailMediaCard({ imageAssets, audioAssets, otherAssets }) {
     return (
-        <Card {...CARD_STYLES.secondary}>
-            <CardBody p={SPACING.lg}>
+        <Card.Root {...CARD_STYLES.secondary}>
+            <Card.Body p={SPACING.lg}>
                 <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" mb={SPACING.sm}>
                     Media
                 </Text>
@@ -81,11 +71,11 @@ export function EntryDetailMediaCard({ imageAssets, audioAssets, otherAssets }) 
                 ) : imageAssets.length === 0 && audioAssets.length === 0 && otherAssets.length === 0 ? (
                     <Text {...TEXT_STYLES.helper}>None</Text>
                 ) : (
-                    <VStack spacing={SPACING.md} align="stretch">
+                    <VStack gap={SPACING.md} align="stretch">
                         {imageAssets.length > 0 && (
                             <Box>
                                 <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Photos</Text>
-                                <SimpleGrid columns={[2, 3, 4]} spacing={SPACING.sm}>
+                                <SimpleGrid columns={[2, 3, 4]} gap={SPACING.sm}>
                                     {imageAssets.map((asset) => (
                                         <Link
                                             key={asset.filename}
@@ -107,11 +97,11 @@ export function EntryDetailMediaCard({ imageAssets, audioAssets, otherAssets }) 
                         {audioAssets.length > 0 && (
                             <Box>
                                 <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Audio</Text>
-                                <VStack spacing={SPACING.sm} align="stretch">
+                                <VStack gap={SPACING.sm} align="stretch">
                                     {audioAssets.map((asset) => (
                                         <Box key={asset.filename}>
                                             <Text fontSize="xs" color="gray.500" mb={1}>{asset.filename}</Text>
-                                            <Box as="audio" controls w="100%" src={`${API_BASE_URL}${asset.url}`} />
+                                            <audio controls style={{ width: "100%" }} src={`${API_BASE_URL}${asset.url}`} />
                                         </Box>
                                     ))}
                                 </VStack>
@@ -120,12 +110,13 @@ export function EntryDetailMediaCard({ imageAssets, audioAssets, otherAssets }) 
                         {otherAssets.length > 0 && (
                             <Box>
                                 <Text fontSize="xs" color="gray.400" mb={SPACING.sm}>Other files</Text>
-                                <VStack spacing={SPACING.sm} align="stretch">
+                                <VStack gap={SPACING.sm} align="stretch">
                                     {otherAssets.map((asset) => (
                                         <Link
                                             key={asset.filename}
                                             href={`${API_BASE_URL}${asset.url}`}
-                                            isExternal
+                                            target="_blank"
+                                            rel="noreferrer"
                                         >
                                             <Text fontSize="sm">{asset.filename}</Text>
                                         </Link>
@@ -135,7 +126,7 @@ export function EntryDetailMediaCard({ imageAssets, audioAssets, otherAssets }) 
                         )}
                     </VStack>
                 )}
-            </CardBody>
-        </Card>
+            </Card.Body>
+        </Card.Root>
     );
 }

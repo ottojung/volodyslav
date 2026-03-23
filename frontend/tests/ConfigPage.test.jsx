@@ -2,7 +2,8 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
-import { ChakraProvider } from "@chakra-ui/react";
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { ToastProvider } from "../src/toast.js";
 
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
@@ -30,10 +31,12 @@ import { fetchConfig, updateConfig } from "../src/DescriptionEntry/api";
  */
 function renderConfigPage() {
     return render(
-        <ChakraProvider>
-            <MemoryRouter>
-                <ConfigPage />
-            </MemoryRouter>
+        <ChakraProvider value={defaultSystem}>
+            <ToastProvider>
+                <MemoryRouter>
+                    <ConfigPage />
+                </MemoryRouter>
+            </ToastProvider>
         </ChakraProvider>
     );
 }
