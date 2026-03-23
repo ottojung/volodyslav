@@ -19,6 +19,7 @@ import { retrievePhotos as getStoredPhotos, removePhotos as deleteStoredPhotos }
 export const generateRequestIdentifier = () => {
     return `camera_${Math.floor(Math.random() * 1000000000)}_${Math.random().toString(36).substr(2, 9)}`;
 };
+
 /**
  * Navigates to the camera page with a request identifier
  * @param {string} requestIdentifier - The unique request identifier
