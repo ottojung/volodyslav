@@ -498,7 +498,7 @@ describe("AudioDiary page", () => {
         });
 
         const [, , files] = submitEntry.mock.calls[0];
-        expect(files[0].name).toBe("diary-recording.webm");
+        expect(files[0].name).toBe("diary-audio.webm");
         expect(files[0].type).toMatch(/^audio\/webm/);
     });
 

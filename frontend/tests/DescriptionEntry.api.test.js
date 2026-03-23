@@ -131,7 +131,7 @@ describe("submitEntry", () => {
                 makeResponse(201, { success: true, entry: { id: "abc" } })
             );
 
-            const file = new File(["audio data"], "diary-recording.webm", {
+            const file = new File(["audio data"], "diary-audio.webm", {
                 type: "audio/webm",
             });
 
@@ -181,7 +181,7 @@ describe("submitEntry", () => {
                 makeResponse(201, { success: true, entry: { id: "abc" } })
             );
 
-            const file = new File(["audio"], "diary-recording.webm", {
+            const file = new File(["audio"], "diary-audio.webm", {
                 type: "audio/webm",
             });
 
@@ -192,7 +192,7 @@ describe("submitEntry", () => {
             const uploadedFiles = options.body.getAll("files");
             expect(uploadedFiles).toHaveLength(1);
             expect(uploadedFiles[0]).toBeInstanceOf(File);
-            expect(uploadedFiles[0].name).toBe("diary-recording.webm");
+            expect(uploadedFiles[0].name).toBe("diary-audio.webm");
         });
 
         it("appends multiple files under the 'files' field", async () => {
@@ -238,7 +238,7 @@ describe("submitEntry", () => {
                 makeResponse(201, { success: true, entry })
             );
 
-            const file = new File(["audio"], "diary-recording.webm", {
+            const file = new File(["audio"], "diary-audio.webm", {
                 type: "audio/webm",
             });
             const result = await submitEntry(

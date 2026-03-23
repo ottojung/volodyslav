@@ -71,7 +71,7 @@ export default function AudioDiary() {
 
         try {
             const ext = extensionForMime(mimeTypeRef.current);
-            const filename = `diary-recording.${ext}`;
+            const filename = `diary-audio.${ext}`;
             const file = new File([audioBlob], filename, {
                 type: mimeTypeRef.current || "audio/webm",
             });

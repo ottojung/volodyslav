@@ -49,7 +49,7 @@ const { targetDir } = require("../../event").asset;
  * @returns {'image'|'audio'|'other'}
  */
 function mediaTypeFromFilename(filename) {
-    if (filename.endsWith("diary-recording.webm")) {
+    if (filename.endsWith("diary-audio.webm")) {
         return "audio";
     }
     const ext = path.extname(filename).toLowerCase();

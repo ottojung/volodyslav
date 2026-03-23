@@ -136,24 +136,24 @@ describe("GET /api/entries/:id/assets", () => {
         });
     });
 
-    it("returns audio mediaType for diary-recording.webm files", async () => {
+    it("returns audio mediaType for diary-audio.webm files", async () => {
         const { app, capabilities } = await makeTestApp();
 
-        const event = makeEvent("entry-diary-recording", "2024-05-01T09:00:00.000Z");
+        const event = makeEvent("entry-diary-audio", "2024-05-01T09:00:00.000Z");
         await writeEventsToStore(capabilities, [event]);
 
         const assetsDir = capabilities.environment.eventLogAssetsDirectory();
-        const entryAssetsDir = path.join(assetsDir, "2024-05", "01", "entry-diary-recording");
+        const entryAssetsDir = path.join(assetsDir, "2024-05", "01", "entry-diary-audio");
         await fs.mkdir(entryAssetsDir, { recursive: true });
-        await fs.writeFile(path.join(entryAssetsDir, "diary-recording.webm"), "fake audio content");
+        await fs.writeFile(path.join(entryAssetsDir, "diary-audio.webm"), "fake audio content");
 
-        const res = await request(app).get("/api/entries/entry-diary-recording/assets");
+        const res = await request(app).get("/api/entries/entry-diary-audio/assets");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.assets).toHaveLength(1);
         expect(res.body.assets[0]).toMatchObject({
-            filename: "diary-recording.webm",
-            url: expect.stringContaining("diary-recording.webm"),
+            filename: "diary-audio.webm",
+            url: expect.stringContaining("diary-audio.webm"),
             mediaType: "audio",
         });
     });
