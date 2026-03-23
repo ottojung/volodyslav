@@ -151,7 +151,12 @@ export function useAudioRecorder() {
                 const offsetMs = restoredOffsetMsRef.current;
                 chunksRef.current.push(chunk);
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
-                queuePersistSnapshot();
+                // Persist every 6 fragments (~60 s) instead of on every 10 s fragment
+                // to avoid repeatedly recombining the full recording.
+                fragmentCountRef.current += 1;
+                if (fragmentCountRef.current % 6 === 0) {
+                    queuePersistSnapshot();
+                }
             },
         });
 
@@ -201,6 +206,7 @@ export function useAudioRecorder() {
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
         restoredOffsetMsRef.current = 0;
+        fragmentCountRef.current = 0;
         resetAudioChunks();
         if (audioUrl) {
             setAudioUrl("");
@@ -244,6 +250,7 @@ export function useAudioRecorder() {
         audioBlobRef.current = null;
         chunksRef.current = [];
         restoredOffsetMsRef.current = 0;
+        fragmentCountRef.current = 0;
         resetAudioChunks();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
