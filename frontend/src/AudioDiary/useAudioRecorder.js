@@ -4,6 +4,9 @@
  * Handles the MediaRecorder state machine, live timer, audio analyser, and
  * recorder controls (start, pause/resume, stop, discard).
  *
+ * Recording state is automatically persisted to IndexedDB on every pause and
+ * on page-visibility changes so that interrupted sessions can be restored.
+ *
  * @module useAudioRecorder
  */
 
@@ -14,7 +17,11 @@ import {
     initialAudioBlob,
     initialAnalyser,
 } from "./audio_helpers.js";
-
+import { clearRecordingSnapshot } from "./recording_storage.js";
+import { combineChunks } from "./recorder_helpers.js";
+import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
+import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
+import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
 
 /**
@@ -28,12 +35,14 @@ import {
  * @property {AnalyserNode | null} analyser - live audio analyser node
  * @property {import("react").MutableRefObject<string>} mimeTypeRef - current MIME type ref
  * @property {import("react").MutableRefObject<boolean>} isMountedRef - mount status ref
+ * @property {boolean} hasRestoredSession - true when state was loaded from storage
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setNote
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setErrorMessage
  * @property {() => Promise<void>} handleStart
- * @property {() => void} handlePauseResume
+ * @property {() => Promise<void>} handlePauseResume
  * @property {() => void} handleStop
  * @property {() => void} handleDiscard
+ * @property {() => void} clearPersistedSession
  */
 
 /**
@@ -49,62 +58,95 @@ export function useAudioRecorder() {
 
     /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [audioUrl, setAudioUrl] = useState("");
-
     /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [note, setNote] = useState("");
-
     /** @type {[number, import("react").Dispatch<import("react").SetStateAction<number>>]} */
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
     /** @type {[string, import("react").Dispatch<import("react").SetStateAction<string>>]} */
     const [errorMessage, setErrorMessage] = useState("");
-
     /** @type {[AnalyserNode | null, import("react").Dispatch<import("react").SetStateAction<AnalyserNode | null>>]} */
     const [analyser, setAnalyser] = useState(initialAnalyser());
-
+    /** @type {[boolean, import("react").Dispatch<import("react").SetStateAction<boolean>>]} */
+    const [hasRestoredSession, setHasRestoredSession] = useState(false);
     /** @type {import("react").MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
     const recorderRef = useRef(null);
-
     /** @type {import("react").MutableRefObject<number | null>} */
     const timerRef = useRef(null);
-
     /** @type {import("react").MutableRefObject<string>} */
     const mimeTypeRef = useRef("");
-
     /** @type {import("react").MutableRefObject<boolean>} */
     const isMountedRef = useRef(false);
 
-    // Build recorder on mount, discard on unmount
+    const {
+        chunksRef,
+        restoredAudioRef,
+        audioBlobRef,
+        isRestoredPauseRef,
+        recorderStateRef,
+        elapsedSecondsRef,
+        noteRef,
+    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds, note);
+
+    const { persistSnapshot, queuePersistSnapshot } = useAudioRecorderPersistence({
+        recorderStateRef,
+        elapsedSecondsRef,
+        noteRef,
+        mimeTypeRef,
+        chunksRef,
+        restoredAudioRef,
+        audioBlobRef,
+        isRestoredPauseRef,
+        recorderRef,
+        isMountedRef,
+        setRecorderState,
+        setAudioBlob,
+        setAudioUrl,
+        setElapsedSeconds,
+        setNote,
+        setHasRestoredSession,
+        recorderState,
+    });
+
     useEffect(() => {
         isMountedRef.current = true;
 
         const recorder = makeRecorder({
             onStateChange: (state) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
+                if (!isMountedRef.current) return;
+                recorderStateRef.current = state;
                 setRecorderState(state);
             },
             onStop: (blob) => {
-                if (!isMountedRef.current) {
-                    return;
+                if (!isMountedRef.current) return;
+                let finalBlob = blob;
+                if (restoredAudioRef.current) {
+                    finalBlob = combineChunks(
+                        [restoredAudioRef.current, blob],
+                        blob.type || mimeTypeRef.current
+                    );
+                    restoredAudioRef.current = null;
                 }
-                mimeTypeRef.current = blob.type;
-                setAudioBlob(blob);
-                const url = URL.createObjectURL(blob);
-                setAudioUrl(url);
+                mimeTypeRef.current = finalBlob.type;
+                audioBlobRef.current = finalBlob;
+                setAudioBlob(finalBlob);
+                setAudioUrl(URL.createObjectURL(finalBlob));
+                void persistSnapshot();
             },
             onError: (message) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
+                if (!isMountedRef.current) return;
                 setErrorMessage(message);
             },
             onAnalyser: (node) => {
-                if (!isMountedRef.current) {
-                    return;
-                }
+                if (!isMountedRef.current) return;
                 setAnalyser(node);
+            },
+            onChunk: (chunk) => {
+                if (!isMountedRef.current) return;
+                if (chunk.type) {
+                    mimeTypeRef.current = chunk.type;
+                }
+                chunksRef.current.push(chunk);
+                queuePersistSnapshot();
             },
         });
 
@@ -117,9 +159,8 @@ export function useAudioRecorder() {
             }
             recorderRef.current = null;
         };
-    }, []);
+    }, []); // runs once – recorder instance is stable
 
-    // Revoke object URL on unmount / when blob changes
     useEffect(() => {
         return () => {
             if (audioUrl) {
@@ -128,7 +169,6 @@ export function useAudioRecorder() {
         };
     }, [audioUrl]);
 
-    // Live timer while recording
     useEffect(() => {
         if (recorderState === "recording") {
             timerRef.current = window.setInterval(() => {
@@ -150,9 +190,15 @@ export function useAudioRecorder() {
     }, [recorderState]);
 
     const handleStart = useCallback(async () => {
+        await clearRecordingSnapshot();
+        setHasRestoredSession(false);
         setErrorMessage("");
         setElapsedSeconds(0);
+        audioBlobRef.current = null;
         setAudioBlob(null);
+        chunksRef.current = [];
+        restoredAudioRef.current = null;
+        isRestoredPauseRef.current = false;
         if (audioUrl) {
             setAudioUrl("");
         }
@@ -161,24 +207,55 @@ export function useAudioRecorder() {
         }
     }, [audioUrl]);
 
-    const handlePauseResume = useCallback(() => {
+    const handlePauseResume = useCallback(async () => {
         if (!isRecorder(recorderRef.current)) {
             return;
         }
         if (recorderState === "recording") {
             recorderRef.current.pause();
         } else if (recorderState === "paused") {
-            recorderRef.current.resume();
+            if (isRestoredPauseRef.current) {
+                // Restored session: resume by starting a fresh MediaRecorder.
+                // New chunks will be combined with the restored audio in onStop.
+                isRestoredPauseRef.current = false;
+                await recorderRef.current.start();
+            } else {
+                recorderRef.current.resume();
+            }
         }
     }, [recorderState]);
 
     const handleStop = useCallback(() => {
+        if (stopRestoredPausedSession({
+            isRestoredPauseRef,
+            restoredAudioRef,
+            mimeTypeRef,
+            audioBlobRef,
+            recorderStateRef,
+            setAudioBlob,
+            setAudioUrl,
+            setRecorderState,
+            persistSnapshot,
+        })) {
+            return;
+        }
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.stop();
         }
-    }, []);
+    }, [
+        audioBlobRef,
+        isRestoredPauseRef,
+        mimeTypeRef,
+        persistSnapshot,
+        recorderStateRef,
+        restoredAudioRef,
+    ]);
 
     const handleDiscard = useCallback(() => {
+        isRestoredPauseRef.current = false;
+        restoredAudioRef.current = null;
+        audioBlobRef.current = null;
+        chunksRef.current = [];
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
         }
@@ -190,7 +267,14 @@ export function useAudioRecorder() {
         setNote("");
         setErrorMessage("");
         setAnalyser(null);
+        setHasRestoredSession(false);
+        void clearRecordingSnapshot();
     }, [audioUrl]);
+
+    const clearPersistedSession = useCallback(() => {
+        setHasRestoredSession(false);
+        void clearRecordingSnapshot();
+    }, []);
 
     return {
         recorderState,
@@ -202,11 +286,13 @@ export function useAudioRecorder() {
         analyser,
         mimeTypeRef,
         isMountedRef,
+        hasRestoredSession,
         setNote,
         setErrorMessage,
         handleStart,
         handlePauseResume,
         handleStop,
         handleDiscard,
+        clearPersistedSession,
     };
 }

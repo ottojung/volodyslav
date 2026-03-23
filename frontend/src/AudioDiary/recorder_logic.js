@@ -1,58 +1,43 @@
 /**
  * Recorder logic for audio diary.
- *
- * Wraps MediaRecorder with chunk-based collection (5-minute chunks) and
- * provides a simple state machine: idle → recording → paused → stopped.
- *
- * Helper utilities (chooseMimeType, combineChunks) live in recorder_helpers.js.
- *
  * @module recorder_logic
  */
-
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
-
+import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
 const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5-minute chunks
-
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
+ * @property {(chunk: Blob) => void} [onChunk] - called whenever a data chunk arrives
  */
-
 class RecorderClass {
     /** @type {undefined} */
     __brand = undefined;
-
     /** @type {MediaRecorder | null} */
     _mediaRecorder = null;
-
     /** @type {Blob[]} */
     _chunks = [];
-
     /** @type {string} */
     _mimeType = "";
-
     /** @type {RecorderState} */
     _state = "idle";
-
     /** @type {RecorderCallbacks} */
     _callbacks;
-
     /** @type {AudioContext | null} */
     _audioContext = null;
-
     /** @type {MediaStreamAudioSourceNode | null} */
     _sourceNode = null;
-
     /** @type {AnalyserNode | null} */
     _analyserNode = null;
-
     /** @type {MediaStream | null} */
     _stream = null;
-
+    /** Resolve callbacks awaiting requestData-delivered chunks. */
+    /** @type {Array<() => void>} */
+    _requestDataResolvers = [];
     /**
      * @param {RecorderCallbacks} callbacks
      */
@@ -62,14 +47,12 @@ class RecorderClass {
         }
         this._callbacks = callbacks;
     }
-
     /**
      * @returns {RecorderState}
      */
     get state() {
         return this._state;
     }
-
     /**
      * @param {RecorderState} next
      */
@@ -77,7 +60,6 @@ class RecorderClass {
         this._state = next;
         this._callbacks.onStateChange(next);
     }
-
     /**
      * @returns {Promise<void>}
      */
@@ -85,14 +67,12 @@ class RecorderClass {
         if (this._state !== "idle") {
             return;
         }
-
         if (typeof MediaRecorder === "undefined") {
             this._callbacks.onError(
                 "MediaRecorder is not supported in this browser."
             );
             return;
         }
-
         if (
             typeof navigator === "undefined" ||
             !navigator.mediaDevices ||
@@ -103,7 +83,6 @@ class RecorderClass {
             );
             return;
         }
-
         let stream;
         try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -115,10 +94,7 @@ class RecorderClass {
             );
             return;
         }
-
         this._stream = stream;
-
-        // Set up Web Audio analyser for visualisation
         try {
             const AudioContextCtor =
                 window.AudioContext ||
@@ -134,15 +110,11 @@ class RecorderClass {
                 this._callbacks.onAnalyser(this._analyserNode);
             }
         } catch {
-            // Visualisation is optional; clean up any partially-created
-            // audio graph nodes to prevent resource leaks.
             this._stopAudioGraph();
             this._callbacks.onAnalyser(null);
         }
-
         this._mimeType = chooseMimeType();
         this._chunks = [];
-
         try {
             const options = this._mimeType ? { mimeType: this._mimeType } : {};
             this._mediaRecorder = new MediaRecorder(stream, options);
@@ -157,18 +129,29 @@ class RecorderClass {
             this._callbacks.onAnalyser(null);
             return;
         }
-
         this._mediaRecorder.ondataavailable = (e) => {
+            if (this._requestDataResolvers.length > 0) {
+                const resolvers = this._requestDataResolvers;
+                this._requestDataResolvers = [];
+                resolvers.forEach((resolve) => resolve());
+            }
             if (e.data && e.data.size > 0) {
                 this._chunks.push(e.data);
+                if (this._callbacks.onChunk) {
+                    this._callbacks.onChunk(e.data);
+                }
             }
         };
-
         this._mediaRecorder.onstop = () => {
             this._stopStream();
             const blob = combineChunks(this._chunks, this._mimeType);
             this._chunks = [];
             this._mediaRecorder = null;
+            if (this._requestDataResolvers.length > 0) {
+                const resolvers = this._requestDataResolvers;
+                this._requestDataResolvers = [];
+                resolvers.forEach((resolve) => resolve());
+            }
             this._stopAudioGraph();
             this._callbacks.onAnalyser(null);
             if (this._state === "recording" || this._state === "paused") {
@@ -176,25 +159,25 @@ class RecorderClass {
             }
             this._callbacks.onStop(blob);
         };
-
         this._mediaRecorder.onerror = (e) => {
             const message = mediaRecorderErrorMessage(e);
             this._callbacks.onError(`Recording error: ${message}`);
-
-            // Detach handlers before cleanup to prevent re-entry from onstop/onerror.
             if (this._mediaRecorder) {
                 this._mediaRecorder.ondataavailable = null;
                 this._mediaRecorder.onstop = null;
                 this._mediaRecorder.onerror = null;
                 this._mediaRecorder = null;
             }
+            if (this._requestDataResolvers.length > 0) {
+                const resolvers = this._requestDataResolvers;
+                this._requestDataResolvers = [];
+                resolvers.forEach((resolve) => resolve());
+            }
             this._cleanupResources();
         };
-
         this._mediaRecorder.start(CHUNK_INTERVAL_MS);
         this._setState("recording");
     }
-
     pause() {
         if (this._state !== "recording" || !this._mediaRecorder) {
             return;
@@ -202,7 +185,6 @@ class RecorderClass {
         this._mediaRecorder.pause();
         this._setState("paused");
     }
-
     resume() {
         if (this._state !== "paused" || !this._mediaRecorder) {
             return;
@@ -210,7 +192,30 @@ class RecorderClass {
         this._mediaRecorder.resume();
         this._setState("recording");
     }
-
+    /**
+     * Request buffered audio delivery and resolve when ondataavailable arrives,
+     * or resolve immediately when recorder is inactive.
+     * @returns {Promise<void>}
+     */
+    requestData() {
+        if (
+            this._mediaRecorder &&
+            (this._state === "recording" || this._state === "paused")
+        ) {
+            const mediaRecorder = this._mediaRecorder;
+            return new Promise((resolve) => {
+                this._requestDataResolvers.push(resolve);
+                try {
+                    mediaRecorder.requestData();
+                } catch {
+                    const resolvers = this._requestDataResolvers;
+                    this._requestDataResolvers = [];
+                    resolvers.forEach((nextResolve) => nextResolve());
+                }
+            });
+        }
+        return Promise.resolve();
+    }
     stop() {
         if (
             (this._state !== "recording" && this._state !== "paused") ||
@@ -221,7 +226,6 @@ class RecorderClass {
         // State transitions to "stopped" in onstop once the final blob is ready.
         this._mediaRecorder.stop();
     }
-
     discard() {
         if (this._mediaRecorder) {
             this._mediaRecorder.ondataavailable = null;
@@ -239,13 +243,13 @@ class RecorderClass {
             }
             this._mediaRecorder = null;
         }
+        if (this._requestDataResolvers.length > 0) {
+            const resolvers = this._requestDataResolvers;
+            this._requestDataResolvers = [];
+            resolvers.forEach((resolve) => resolve());
+        }
         this._cleanupResources();
     }
-
-    /**
-     * Stop stream, close audio graph, clear chunks, and reset state to idle.
-     * Called from both discard() and the onerror handler.
-     */
     _cleanupResources() {
         this._stopStream();
         this._stopAudioGraph();
@@ -253,31 +257,16 @@ class RecorderClass {
         this._chunks = [];
         this._setState("idle");
     }
-
     _stopStream() {
-        if (this._stream) {
-            this._stream.getTracks().forEach((t) => t.stop());
-            this._stream = null;
-        }
+        this._stream = stopStream(this._stream);
     }
-
     _stopAudioGraph() {
-        try {
-            if (this._sourceNode) {
-                this._sourceNode.disconnect();
-                this._sourceNode = null;
-            }
-            if (this._audioContext) {
-                void this._audioContext.close();
-                this._audioContext = null;
-            }
-        } catch {
-            // Ignore errors during cleanup
-        }
-        this._analyserNode = null;
+        const next = stopAudioGraph(this._sourceNode, this._audioContext);
+        this._sourceNode = next.sourceNode;
+        this._audioContext = next.audioContext;
+        this._analyserNode = next.analyserNode;
     }
 }
-
 /**
  * Create a new recorder instance.
  * @param {RecorderCallbacks} callbacks
@@ -286,7 +275,6 @@ class RecorderClass {
 export function makeRecorder(callbacks) {
     return new RecorderClass(callbacks);
 }
-
 /**
  * @param {unknown} object
  * @returns {object is RecorderClass}
