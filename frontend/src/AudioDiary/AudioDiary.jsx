@@ -19,7 +19,11 @@ import {
 import { keyframes } from "@emotion/react";
 import { submitEntry } from "../DescriptionEntry/api.js";
 import { useAudioRecorder } from "./useAudioRecorder.js";
-import { formatTime, extensionForMime } from "./audio_helpers.js";
+import {
+    formatTime,
+    extensionForMime,
+    makeDiaryRequestIdentifier,
+} from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
 import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
 import RestoredSessionBanner from "./RestoredSessionBanner.jsx";
@@ -76,6 +80,7 @@ export default function AudioDiary() {
         try {
             const ext = extensionForMime(mimeTypeRef.current);
             const filename = `diary-recording.${ext}`;
+            const requestIdentifier = makeDiaryRequestIdentifier();
             const file = new File([audioBlob], filename, {
                 type: mimeTypeRef.current || "audio/webm",
             });
@@ -84,7 +89,7 @@ export default function AudioDiary() {
                 ? `diary [audiorecording] ${note.trim()}`
                 : "diary [audiorecording]";
 
-            const result = await submitEntry(rawInput, undefined, [file]);
+            const result = await submitEntry(rawInput, requestIdentifier, [file]);
 
             if (!isMountedRef.current) {
                 return;

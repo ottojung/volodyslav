@@ -462,12 +462,13 @@ describe("AudioDiary page", () => {
             expect(submitEntry).toHaveBeenCalledTimes(1);
         });
 
-        const [rawInput, _reqId, files] = submitEntry.mock.calls[0];
+        const [rawInput, requestIdentifier, files] = submitEntry.mock.calls[0];
         expect(rawInput).toBe("diary [audiorecording]");
-        expect(_reqId).toBeUndefined();
+        expect(requestIdentifier).toMatch(/^diary_/);
         expect(Array.isArray(files)).toBe(true);
         expect(files).toHaveLength(1);
         expect(files[0]).toBeInstanceOf(File);
+        expect(files[0].name).toBe("diary-recording.weba");
     });
 
     it("submit with a note includes the note in rawInput", async () => {

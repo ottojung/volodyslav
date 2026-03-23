@@ -23,9 +23,20 @@ export function formatTime(totalSeconds) {
  * @returns {string}
  */
 export function extensionForMime(mimeType) {
+    if (mimeType.includes("webm")) return "weba";
     if (mimeType.includes("ogg")) return "ogg";
     if (mimeType.includes("mp4")) return "mp4";
-    return "webm";
+    return "weba";
+}
+
+/**
+ * Builds a request identifier for an audio diary submission.
+ * @returns {string}
+ */
+export function makeDiaryRequestIdentifier() {
+    const randomComponent = Math.random().toString(36).slice(2, 11);
+    const suffix = `${randomComponent}${Math.random().toString(36).slice(2, 7)}`;
+    return `diary_${suffix}`;
 }
 
 /** @returns {RecorderState} */
