@@ -159,7 +159,7 @@ export function SyncSection() {
 
   return (
     <VStack gap={2}>
-      <NativeSelect.Root>
+      <NativeSelect.Root w="200px">
         <NativeSelect.Field
           aria-label="Sync mode"
           value={syncMode}
@@ -208,7 +208,7 @@ export function SyncSection() {
         <SyncStepList steps={syncSteps} isRunning={syncState === 'loading'} />
       )}
       {syncSuccessMessage && (
-        <Alert.Root status="success" borderRadius="md" alignItems="flex-start">
+        <Alert.Root status="success" borderRadius="md" alignItems="flex-start" w="200px">
           <Alert.Indicator mt={1} />
           <Box>
             <Alert.Title>Sync complete</Alert.Title>
@@ -217,7 +217,7 @@ export function SyncSection() {
         </Alert.Root>
       )}
       {syncState === 'error' && syncError.message !== '' && (
-        <Alert.Root status="error" borderRadius="md" alignItems="flex-start">
+        <Alert.Root status="error" borderRadius="md" alignItems="flex-start" w="200px">
           <Alert.Indicator mt={1} />
           <Box>
             <Alert.Title>Sync failed</Alert.Title>
