@@ -6,6 +6,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../filesystem/dirscanner').DirScanner} DirScanner */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
@@ -19,6 +20,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
  * @property {FileChecker} checker
  * @property {DirScanner} scanner
  * @property {FileWriter} writer
+ * @property {FileDeleter} deleter
  * @property {NonDeterministicSeed} seed
  * @property {Command} git
  * @property {Environment} environment - An environment instance.

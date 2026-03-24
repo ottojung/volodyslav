@@ -44,17 +44,16 @@ function makeRouter(capabilities) {
 
         const files = Array.isArray(req.files) ? req.files : [];
 
-        // Store uploaded file buffers atomically in the temporary database.
-        for (const file of files) {
-            await capabilities.temporary.storeBlob(reqId, file.originalname, file.buffer);
-        }
+        // Store all uploaded file buffers and mark the request done in a
+        // single atomic LevelDB batch write.
+        const blobs = files.map((f) => ({ filename: f.originalname, data: f.buffer }));
+        await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
 
         const uploaded = files.map((f) => f.originalname);
         capabilities.logger.logInfo(
             { files: uploaded, request_identifier: reqId.identifier },
             'Files uploaded'
         );
-        await capabilities.temporary.markDone(reqId);
         return res.json({ success: true, files: uploaded });
     });
     return router;

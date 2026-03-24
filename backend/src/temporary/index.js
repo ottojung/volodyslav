@@ -16,6 +16,7 @@
  *   const finished = await capabilities.temporary.isDone(reqId);
  */
 
+const path = require("path");
 const { getTemporaryDatabase, stringToTempKey } = require("./database");
 
 /** @typedef {import('./database').TemporaryDatabase} TemporaryDatabase */
@@ -23,17 +24,41 @@ const { getTemporaryDatabase, stringToTempKey } = require("./database");
 /** @typedef {import('./database/types').DatabaseCapabilities} DatabaseCapabilities */
 
 // ---------------------------------------------------------------------------
+// Filename sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize a filename to prevent key-space abuse and path traversal when the
+ * same name is later used to write to the filesystem.
+ * Strips any leading directory components and rejects empty / dot names.
+ *
+ * @param {string} filename
+ * @returns {string}
+ */
+function sanitizeFilename(filename) {
+    const base = path.basename(filename);
+    if (base === "" || base === "." || base === "..") {
+        throw new Error(`Invalid filename for temporary storage: "${filename}"`);
+    }
+    return base;
+}
+
+// ---------------------------------------------------------------------------
 // Key builders
 // ---------------------------------------------------------------------------
 
 /**
  * Build the database key for a stored blob.
+ * The filename is sanitized via `sanitizeFilename` so that callers cannot
+ * create surprising key hierarchies or later trigger path traversal when the
+ * same name is used to write to disk.
  * @param {RequestIdentifier} reqId
  * @param {string} filename
  * @returns {import('./database/types').TempKey}
  */
 function blobKey(reqId, filename) {
-    return stringToTempKey(`blob/${reqId.identifier}/${filename}`);
+    const safe = sanitizeFilename(filename);
+    return stringToTempKey(`blob/${reqId.identifier}/${safe}`);
 }
 
 /**
@@ -118,6 +143,33 @@ async function isDone(database, reqId) {
     return entry !== undefined && entry.type === "done";
 }
 
+/**
+ * Atomically store multiple blobs and mark the request as done in a single
+ * LevelDB batch write.  Either all writes succeed or none of them do.
+ *
+ * @param {TemporaryDatabase} database
+ * @param {RequestIdentifier} reqId
+ * @param {Array<{filename: string, data: Buffer}>} blobs
+ * @returns {Promise<void>}
+ */
+async function storeBlobsAndMarkDone(database, reqId, blobs) {
+    /** @type {Array<{type: 'put', key: import('./database/types').TempKey, value: import('./database/types').TempEntry}>} */
+    const operations = [];
+    for (const { filename, data } of blobs) {
+        operations.push({
+            type: "put",
+            key: blobKey(reqId, filename),
+            value: { type: "blob", data: data.toString("base64") },
+        });
+    }
+    operations.push({
+        type: "put",
+        key: doneKey(reqId),
+        value: { type: "done" },
+    });
+    await database.batch(operations);
+}
+
 // ---------------------------------------------------------------------------
 // Temporary capability class (lazy database initialisation)
 // ---------------------------------------------------------------------------
@@ -130,30 +182,33 @@ class TemporaryClass {
     _getCapabilities;
 
     /**
+     * Stores the initialization promise so concurrent callers share a single
+     * open operation and do not race to open the database twice.
      * @private
-     * @type {TemporaryDatabase | null}
+     * @type {Promise<TemporaryDatabase> | null}
      */
-    _database;
+    _databasePromise;
 
     /**
      * @param {() => DatabaseCapabilities} getCapabilities
      */
     constructor(getCapabilities) {
         this._getCapabilities = getCapabilities;
-        this._database = null;
+        this._databasePromise = null;
     }
 
     /**
-     * Ensure the underlying LevelDB instance is open.
-     * Called automatically by every public method.
+     * Return (and lazily open) the underlying LevelDB instance.
+     * Concurrent callers share a single initialization promise so the database
+     * is never opened more than once.
      * @returns {Promise<TemporaryDatabase>}
      */
     async _getDatabase() {
-        if (this._database === null) {
+        if (this._databasePromise === null) {
             const capabilities = this._getCapabilities();
-            this._database = await getTemporaryDatabase(capabilities);
+            this._databasePromise = getTemporaryDatabase(capabilities);
         }
-        return this._database;
+        return this._databasePromise;
     }
 
     /**
@@ -166,6 +221,18 @@ class TemporaryClass {
     async storeBlob(reqId, filename, data) {
         const db = await this._getDatabase();
         await storeBlob(db, reqId, filename, data);
+    }
+
+    /**
+     * Atomically store multiple blobs and mark the request as done in a
+     * single LevelDB batch write.
+     * @param {RequestIdentifier} reqId
+     * @param {Array<{filename: string, data: Buffer}>} blobs
+     * @returns {Promise<void>}
+     */
+    async storeBlobsAndMarkDone(reqId, blobs) {
+        const db = await this._getDatabase();
+        await storeBlobsAndMarkDone(db, reqId, blobs);
     }
 
     /**
@@ -241,4 +308,6 @@ module.exports = {
     deleteBlob,
     markDone,
     isDone,
+    storeBlobsAndMarkDone,
+    sanitizeFilename,
 };

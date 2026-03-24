@@ -4,11 +4,10 @@
 
 const { commit, push, clone } = require("./wrappers");
 const path = require("path");
-const os = require("os");
-const fs = require("fs").promises;
 const workingRepository = require("./working_repository");
 
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../filesystem/mover').FileMover} FileMover */
@@ -27,7 +26,7 @@ const workingRepository = require("./working_repository");
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
- * @property {import('../filesystem/creator').FileCreator} creator - A file creator instance.
+ * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {FileMover} mover - A file mover instance.
@@ -40,11 +39,14 @@ const workingRepository = require("./working_repository");
  */
 
 /**
- * Creates a temporary work tree for Git operations in the OS temporary directory.
+ * Creates a temporary work tree for Git operations.
+ * Uses the capabilities creator so that filesystem side effects are injectable
+ * and consistently handled.
+ * @param {Capabilities} capabilities - The capabilities object.
  * @returns {Promise<string>} - A promise that resolves to the path of the temporary work tree.
  */
-async function makeTemporaryWorkTree() {
-    return fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-git-"));
+async function makeTemporaryWorkTree(capabilities) {
+    return capabilities.creator.createTemporaryDirectory();
 }
 
 class GitStoreClass {
@@ -90,7 +92,7 @@ class GitStoreClass {
  * @returns {Promise<T>}
  */
 async function executeTransactionAttempt(capabilities, workingPath, initial_state, transformation) {
-    const workTree = await makeTemporaryWorkTree();
+    const workTree = await makeTemporaryWorkTree(capabilities);
     try {
         const git_directory = await workingRepository.getRepository(capabilities, workingPath, initial_state);
         const store = new GitStoreClass(workTree, capabilities);

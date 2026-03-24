@@ -3,9 +3,9 @@ const { serialize } = require("../../event");
 const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
-const os = require("os");
 const path = require("path");
 const fs = require("fs").promises;
+const { sanitizeFilename } = require("../../temporary");
 
 /**
  * @typedef {import('../../environment').Environment} Environment
@@ -67,13 +67,13 @@ class FileValidationError extends Error {
 
 /**
  * Prepares ExistingFile objects from files previously stored in the temporary database.
- * Retrieves each blob, writes it to an OS temp directory, and wraps it as an ExistingFile.
- * The caller is responsible for deleting the written temp files after use.
+ * Retrieves each blob, writes it to a directory under workDir, and wraps it as an ExistingFile.
+ * Filenames are sanitized via path.basename to prevent path traversal attacks.
  *
  * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files (multer memory-storage objects).
  * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking.
- * @param {string} workDir - Temporary OS directory to write blobs into.
+ * @param {string} workDir - Temporary directory to write blobs into.
  * @returns {Promise<import('../../filesystem/file').ExistingFile[]>} - The file objects.
  */
 async function prepareFileObjects(capabilities, files, reqId, workDir) {
@@ -83,7 +83,8 @@ async function prepareFileObjects(capabilities, files, reqId, workDir) {
 
     const fileObjects = [];
     for (const file of files) {
-        const filename = file.originalname;
+        // Sanitize the filename before any use in key lookups or filesystem paths.
+        const filename = sanitizeFilename(file.originalname);
         let buffer;
         try {
             buffer = await capabilities.temporary.getBlob(reqId, filename);
@@ -177,12 +178,13 @@ function handleEntryError(error, capabilities, reqId) {
  * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
 async function handleEntryPost(req, res, capabilities, reqId) {
-    // Create a temporary OS directory to hold blobs during entry creation.
-    // This directory is always cleaned up in the finally block.
-    const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-entry-"));
+    // Create a temporary directory via capabilities for holding blobs during entry
+    // creation. Cleaned up (along with blobs in the temporary database) in the
+    // finally block regardless of outcome.
+    const workDir = await capabilities.creator.createTemporaryDirectory();
+    /** @type {Express.Multer.File[]} */
+    let files = [];
     try {
-        /** @type {Express.Multer.File[]} */
-        let files = [];
         if (Array.isArray(req.files)) {
             files = req.files;
         } else if (req.files && typeof req.files === 'object') {
@@ -233,11 +235,6 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         const fileObjects = await prepareFileObjects(capabilities, files, reqId, workDir);
         const event = await createEntry(capabilities, entryData, fileObjects);
 
-        // Clean up blobs from the temporary database.
-        for (const file of files) {
-            await capabilities.temporary.deleteBlob(reqId, file.originalname).catch(() => {});
-        }
-
         capabilities.logger.logDebug(
             {
                 request_identifier: reqId.identifier,
@@ -285,8 +282,12 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         const errorResponse = handleEntryError(error, capabilities, reqId);
         return res.status(500).json(errorResponse);
     } finally {
-        // Always remove the temporary OS working directory.
-        await fs.rm(workDir, { recursive: true }).catch(() => {});
+        // Clean up stored blobs for this request regardless of outcome.
+        for (const file of files) {
+            await capabilities.temporary.deleteBlob(reqId, file.originalname).catch(() => {});
+        }
+        // Remove the temporary working directory.
+        await capabilities.deleter.deleteDirectory(workDir).catch(() => {});
     }
 }
 

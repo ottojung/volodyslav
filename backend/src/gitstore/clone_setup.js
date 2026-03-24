@@ -2,10 +2,9 @@ const gitmethod = require("./wrappers");
 const { configureRemoteForAllBranches } = require("./branch_setup");
 const filesystem = require("../filesystem");
 const path = require("path");
-const os = require("os");
-const fs = require("fs").promises;
 
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../filesystem/mover').FileMover} FileMover */
@@ -15,6 +14,7 @@ const fs = require("fs").promises;
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
+ * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {FileMover} mover - A file mover instance.
@@ -56,13 +56,13 @@ async function cloneAndConfigureRepository(capabilities, options) {
     const cloneOptions = resetToHostname !== undefined
         ? { branch: `${resetToHostname}-main` }
         : undefined;
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-clone-"));
+    const tempDir = await capabilities.creator.createTemporaryDirectory();
     try {
         await gitmethod.clone(capabilities, remotePath, tempDir, cloneOptions);
         await configureRemoteForAllBranches(capabilities, tempDir);
         await gitmethod.makePushable(capabilities, tempDir);
         // Ensure the parent directory exists before the atomic rename.
-        await fs.mkdir(path.dirname(workDir), { recursive: true });
+        await capabilities.creator.createDirectory(path.dirname(workDir));
         await capabilities.mover.moveDirectory(tempDir, workDir);
     } catch (error) {
         await capabilities.deleter.deleteDirectory(tempDir).catch(cleanupError => {
