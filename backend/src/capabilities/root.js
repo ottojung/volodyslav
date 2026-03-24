@@ -28,11 +28,13 @@
 /** @typedef {import('../wifi').WifiConnectionChecker} WifiConnectionChecker */
 /** @typedef {import('../level_database').LevelDatabase} LevelDatabase */
 /** @typedef {import('../generators').Interface} Interface */
+/** @typedef {import('../temporary').Temporary} Temporary */
 
 
 /**
  * @typedef {object} Capabilities
  * @property {Interface} interface - The incremental graph interface capability.
+ * @property {Temporary} temporary - The temporary storage capability.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {DirScanner} scanner - A directory scanner instance.
@@ -90,6 +92,7 @@ const runtimeStateStorage = require('../runtime_state_storage');
 const threadingCapability = require('../threading');
 const levelDatabaseCapability = require('../level_database');
 const { makeInterface } = require('../generators');
+const { makeTemporary } = require('../temporary');
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -107,6 +110,7 @@ const make = () => {
     /** @type {Capabilities} */
     const ret = {
         interface: makeInterface(() => ret),
+        temporary: makeTemporary(() => ret),
         seed: random.seed.make(),
         datetime,
         deleter: deleterCapability.make(),

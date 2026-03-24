@@ -19,14 +19,8 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const os = require("os");
 const { makeEmpty } = require("./file");
-
-/** @typedef {import('../environment').Environment} Environment */
-
-/**
- * @typedef {object} Capabilities
- * @property {Environment} environment - An environment instance.
- */
 
 class FileCreatorError extends Error {
     /**
@@ -94,21 +88,27 @@ async function createDirectory(dirPath) {
 }
 
 /**
- * Creates a temporary directory in the system's temporary folder.
- * @param {Capabilities} capabilities - The capabilities instance.
- * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
+ * Creates a unique temporary directory.
+ * When `baseDir` is provided, the directory is created inside `baseDir`
+ * (which must already exist or be creatable).  When omitted, the OS temp
+ * directory (`os.tmpdir()`) is used.
+ *
+ * Creating the temp directory under the same mount point as the eventual
+ * destination is important when the directory will later be moved via a
+ * rename-based API (e.g. `moveDirectory`), which fails with EXDEV across
+ * different mount points.
+ *
+ * @param {string} [baseDir] - Optional base directory for the temporary directory.
+ * @returns {Promise<string>} - A promise that resolves to the path of the created temporary directory.
  */
-async function createTemporaryDirectory(capabilities) {
-    const tmpDir = path.join(capabilities.environment.workingDirectory(), "temporary");
-    const uniquePrefix = path.join(tmpDir, "tmp-");
+async function createTemporaryDirectory(baseDir) {
+    const base = baseDir !== undefined ? baseDir : os.tmpdir();
     try {
-        await fs.mkdir(tmpDir, { recursive: true });
-        const createdTmpDirPath = await fs.mkdtemp(uniquePrefix);
-        return createdTmpDirPath;
+        return await fs.mkdtemp(path.join(base, "volodyslav-tmp-"));
     } catch (err) {
         throw new FileCreatorError(
-            `Failed to create temporary directory with prefix: ${uniquePrefix}`,
-            uniquePrefix // Using uniquePrefix as filePath for the error
+            `Failed to create temporary directory`,
+            base
         );
     }
 }

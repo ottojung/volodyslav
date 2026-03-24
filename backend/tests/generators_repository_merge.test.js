@@ -22,7 +22,7 @@ function getTestCapabilities() {
 async function pushRemoteBranch(capabilities, hostname, files) {
     const branch = `${hostname}-main`;
     const remotePath = capabilities.environment.generatorsRepository();
-    const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const workTree = await capabilities.creator.createTemporaryDirectory();
 
     try {
         await capabilities.git.call(

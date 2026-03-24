@@ -28,7 +28,7 @@ function getTestCapabilities() {
 async function pushRemoteRepositoryBranch(capabilities, hostname, entries) {
     const branch = `${hostname}-main`;
     const remotePath = capabilities.environment.generatorsRepository();
-    const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const workTree = await capabilities.creator.createTemporaryDirectory();
     try {
         await capabilities.git.call(
             "init",
@@ -120,7 +120,7 @@ describe("synchronizeNoLock", () => {
             await reopened.close();
         }
 
-        const clonedRemote = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const clonedRemote = await capabilities.creator.createTemporaryDirectory();
         try {
             await capabilities.git.call(
                 "clone",

@@ -24,7 +24,7 @@ function getTestCapabilities() {
  */
 async function pushBranch(capabilities, branch, files) {
     const remotePath = capabilities.environment.eventLogRepository();
-    const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const workTree = await capabilities.creator.createTemporaryDirectory();
 
     try {
         await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
@@ -78,7 +78,7 @@ describe("working_repository reset semantics", () => {
             { resetToHostname: "alice" }
         );
 
-        const verifyTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const verifyTree = await capabilities.creator.createTemporaryDirectory();
         try {
             await capabilities.git.call(
                 "clone",
@@ -143,7 +143,7 @@ describe("working_repository reset semantics", () => {
             { url: remoteRepoPath }
         )).resolves.toBeUndefined();
 
-        const verifyTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const verifyTree = await capabilities.creator.createTemporaryDirectory();
         try {
             await capabilities.git.call(
                 "clone",

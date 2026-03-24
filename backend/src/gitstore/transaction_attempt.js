@@ -40,11 +40,13 @@ const workingRepository = require("./working_repository");
 
 /**
  * Creates a temporary work tree for Git operations.
+ * Uses the capabilities creator so that filesystem side effects are injectable
+ * and consistently handled.
  * @param {Capabilities} capabilities - The capabilities object.
  * @returns {Promise<string>} - A promise that resolves to the path of the temporary work tree.
  */
 async function makeTemporaryWorkTree(capabilities) {
-    return capabilities.creator.createTemporaryDirectory(capabilities);
+    return capabilities.creator.createTemporaryDirectory();
 }
 
 class GitStoreClass {

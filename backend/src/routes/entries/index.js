@@ -7,6 +7,7 @@ const { handleEntryDelete } = require("./delete");
 const { handleEntryGetById } = require("./get_by_id");
 const { handleAdditionalProperties } = require("./additional_properties");
 const { handleEntryAssets } = require("./assets");
+const { isFilenameValidationError } = require("../../temporary");
 
 /**
 /**
@@ -24,6 +25,7 @@ const { handleEntryAssets } = require("./assets");
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
  * @typedef {import('../../generators').Interface} Interface
  * @typedef {import('../../filesystem/dirscanner').DirScanner} DirScanner
+ * @typedef {import('../../temporary').Temporary} Temporary
  */
 
 /**
@@ -43,6 +45,7 @@ const { handleEntryAssets } = require("./assets");
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
  * @property {Interface} interface - The incremental graph interface capability.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 /**
@@ -58,7 +61,7 @@ const { handleEntryAssets } = require("./assets");
  * @returns {express.Router} - The configured router.
  */
 function makeRouter(capabilities) {
-    const uploadMiddleware = upload.makeUpload(capabilities);
+    const uploadMiddleware = upload.makeUpload();
     const router = express.Router();
 
     /**
@@ -86,8 +89,31 @@ function makeRouter(capabilities) {
                 return next(err);
             }
             try {
+                // Store all uploaded file buffers atomically in a single LevelDB batch.
+                // Either all blobs are stored or none, preventing partial leaks.
+                /** @type {Express.Multer.File[]} */
+                const files = Array.isArray(req.files)
+                    ? req.files
+                    : (req.files && req.files['files']) || [];
+                const blobs = files.map((f) => ({ filename: f.originalname, data: f.buffer }));
+                await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
                 await handleEntryPost(req, res, capabilities, reqId);
             } catch (error) {
+                // Invalid filename from user input → 400 Bad Request.
+                if (isFilenameValidationError(error)) {
+                    capabilities.logger.logInfo(
+                        {
+                            request_identifier: reqId.identifier,
+                            error: error instanceof Error ? error.message : String(error),
+                            client_ip: req.ip
+                        },
+                        "Entry creation failed - invalid filename"
+                    );
+                    if (!res.headersSent) {
+                        return res.status(400).json({ error: "Invalid filename in upload" });
+                    }
+                    return;
+                }
                 capabilities.logger.logError(
                     {
                         request_identifier: reqId.identifier,

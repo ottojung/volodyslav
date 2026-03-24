@@ -1,5 +1,4 @@
 const path = require("path");
-const { makeDirectory, markDone } = require("./request_identifier");
 const { transcribeFile } = require("./transcribe");
 
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
@@ -9,10 +8,13 @@ const { transcribeFile } = require("./transcribe");
 /** @typedef {import('./filesystem/checker').FileChecker} Checker */
 /** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('./filesystem/reader').FileReader} FileReader */
+/** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('./temporary').Temporary} Temporary */
 
 /**
  * @typedef {object} Capabilities
@@ -21,11 +23,13 @@ const { transcribeFile } = require("./transcribe");
  * @property {Checker} checker - A file system checker instance.
  * @property {DirScanner} scanner - A directory scanner instance.
  * @property {FileWriter} writer - A file writer instance.
+ * @property {FileReader} reader - A file reader instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
- * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 class InputDirectoryAccess extends Error {
@@ -52,6 +56,19 @@ class InputDirectoryAccess extends Error {
 
 /**
  * @typedef {{ successes: TranscriptionSuccess[], failures: TranscriptionFailure[] }} TranscriptionStatus
+ */
+
+/**
+ * One successful transcription entry within a `TranscriptionRequestStatus`.
+ * Unlike `TranscriptionSuccess`, this type omits `target` (the temporary
+ * output file is deleted before the result is returned) and exposes
+ * `filename` — the basename used as the LevelDB blob key — so callers can
+ * retrieve the transcription content from the temporary database.
+ * @typedef {{ source: ExistingFile, filename: string }} TranscriptionRequestSuccess
+ */
+
+/**
+ * @typedef {{ successes: TranscriptionRequestSuccess[], failures: TranscriptionFailure[] }} TranscriptionRequestStatus
  */
 
 /**
@@ -121,21 +138,50 @@ async function transcribeAllDirectory(capabilities, inputDir, targetDir) {
 }
 
 /**
- * Transcribe a request.
+ * Transcribe all files in a directory.
+ * Intermediate transcription files are written to a temporary directory managed
+ * via capabilities, then stored as a single atomic LevelDB batch (all blobs plus
+ * the done marker) and cleaned up.
+ *
+ * The returned result uses `filename` (the LevelDB blob key) instead of
+ * `target` (the now-deleted temp file path) so callers always receive valid
+ * references.
+ *
  * @param {Capabilities} capabilities
  * @param {string} inputDir
  * @param {import('./request_identifier').RequestIdentifier} reqId
- * @returns {Promise<TranscriptionStatus>}
+ * @returns {Promise<TranscriptionRequestStatus>}
  */
 async function transcribeAllRequest(capabilities, inputDir, reqId) {
-    const targetDir = await makeDirectory(capabilities, reqId);
-    const result = await transcribeAllDirectory(
-        capabilities,
-        inputDir,
-        targetDir
-    );
-    await markDone(capabilities, reqId);
-    return result;
+    const tmpDir = await capabilities.creator.createTemporaryDirectory();
+    try {
+        const result = await transcribeAllDirectory(capabilities, inputDir, tmpDir);
+
+        // Read successful transcription outputs and store them plus the done
+        // marker in a single atomic LevelDB batch write.
+        const blobs = [];
+        for (const success of result.successes) {
+            const filename = path.basename(success.target.path);
+            const data = await capabilities.reader.readFileAsBuffer(success.target.path);
+            blobs.push({ filename, data });
+        }
+        await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
+
+        // Replace target (a now-deleted temp file) with its filename so the
+        // returned result contains only live references.
+        // `success.target.path` was constructed as path.join(targetDir, filename)
+        // by transcribeAllDirectory, so path.basename always yields the bare
+        // filename (no directory components).
+        return {
+            successes: result.successes.map(success => ({
+                source: success.source,
+                filename: path.basename(success.target.path),
+            })),
+            failures: result.failures,
+        };
+    } finally {
+        await capabilities.deleter.deleteDirectory(tmpDir).catch(() => {});
+    }
 }
 
 module.exports = {

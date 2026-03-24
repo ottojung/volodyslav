@@ -1,6 +1,7 @@
 const gitmethod = require("./wrappers");
 const { configureRemoteForAllBranches } = require("./branch_setup");
 const filesystem = require("../filesystem");
+const path = require("path");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -55,7 +56,14 @@ async function cloneAndConfigureRepository(capabilities, options) {
     const cloneOptions = resetToHostname !== undefined
         ? { branch: `${resetToHostname}-main` }
         : undefined;
-    const tempDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+    // Create the parent directory first so the temp clone dir lives on the
+    // same filesystem mount as workDir.  This is required because
+    // moveDirectory uses fs.rename, which fails with EXDEV when source and
+    // destination are on different mounts (e.g. /tmp on tmpfs vs workDir on
+    // the main disk).
+    const workDirParent = path.dirname(workDir);
+    await capabilities.creator.createDirectory(workDirParent);
+    const tempDir = await capabilities.creator.createTemporaryDirectory(workDirParent);
     try {
         await gitmethod.clone(capabilities, remotePath, tempDir, cloneOptions);
         await configureRemoteForAllBranches(capabilities, tempDir);

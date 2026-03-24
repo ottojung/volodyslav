@@ -49,6 +49,7 @@ function isFileWriterError(object) {
 /**
  * @typedef {object} FileWriter
  * @property {typeof writeFile} writeFile
+ * @property {typeof writeBuffer} writeBuffer
  */
 
 /**
@@ -69,12 +70,30 @@ async function writeFile(file, content) {
 }
 
 /**
+ * Writes a binary buffer to an existing file.
+ * @param {ExistingFile} file - The existing file to write to.
+ * @param {Buffer} data - The binary data to write.
+ * @returns {Promise<void>} - A promise that resolves when the data is written.
+ */
+async function writeBuffer(file, data) {
+    try {
+        await fs.writeFile(file.path, data);
+    } catch (err) {
+        throw new FileWriterError(
+            `Failed to write buffer to file: ${file.path}`,
+            file.path
+        );
+    }
+}
+
+/**
  * Creates a FileWriter instance.
  * @returns {FileWriter} - A FileWriter instance.
  */
 function make() {
     return {
         writeFile,
+        writeBuffer,
     };
 }
 

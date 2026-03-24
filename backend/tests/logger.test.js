@@ -11,7 +11,7 @@ describe("logger capability", () => {
         const capabilities = getMockedRootCapabilities();
         stubEnvironment(capabilities);
         stubDatetime(capabilities);
-        const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const tmpDir = await capabilities.creator.createTemporaryDirectory();
         const logFilePath = path.join(tmpDir, "test.log");
         capabilities.environment.logFile = () => logFilePath;
         capabilities.environment.logLevel = () => "debug";
@@ -49,7 +49,7 @@ describe("logger capability", () => {
     it("respects log level", async () => {
         const capabilities = getMockedRootCapabilities();
         stubEnvironment(capabilities);
-        const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const tmpDir = await capabilities.creator.createTemporaryDirectory();
         const logFilePath = path.join(tmpDir, "test.log");
         capabilities.environment.logFile = () => logFilePath;
         capabilities.environment.logLevel = () => "error";

@@ -23,7 +23,7 @@ function makeEvent(id) {
 }
 
 async function makeAsset(capabilities, event, filename, content = "test content") {
-    const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const inputDir = await capabilities.creator.createTemporaryDirectory();
     const sourcePath = path.join(inputDir, filename);
     await fsp.mkdir(inputDir, { recursive: true });
     await fsp.writeFile(sourcePath, content);

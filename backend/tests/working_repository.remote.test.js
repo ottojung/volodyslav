@@ -71,7 +71,7 @@ describe("working_repository", () => {
 
         // Clone the bare remote repository as a non-bare repository
         const clonedRepoPath =
-            await capabilities.creator.createTemporaryDirectory(capabilities);
+            await capabilities.creator.createTemporaryDirectory();
         await capabilities.git.call(
             "clone",
             `--branch=${branch}`,
@@ -189,7 +189,7 @@ describe("working_repository", () => {
         // Clone the remote repository to verify the pushed changes
         const remoteRepoPath = capabilities.environment.eventLogRepository();
         const clonedRepoPath =
-            await capabilities.creator.createTemporaryDirectory(capabilities);
+            await capabilities.creator.createTemporaryDirectory();
         await capabilities.git.call(
             "clone",
             `--branch=${branch}`,
@@ -261,7 +261,7 @@ describe("working_repository", () => {
         const remoteRepoPath = capabilities.environment.eventLogRepository();
         await capabilities.git.call("init", "--bare", "--", remoteRepoPath);
 
-        const workTree = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const workTree = await capabilities.creator.createTemporaryDirectory();
         await capabilities.git.call("init", "--initial-branch", "alice-main", "--", workTree);
         const testFile = path.join(workTree, "test.txt");
         const testFileObj = await capabilities.creator.createFile(testFile);

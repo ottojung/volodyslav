@@ -75,7 +75,7 @@ async function writeEventsToStore(capabilities, events) {
  */
 async function writeDiaryEventWithAudioAssets(capabilities, entryId, filenames) {
     const diaryEvent = makeDiaryEvent(entryId);
-    const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const tmpDir = await capabilities.creator.createTemporaryDirectory();
     const assets = [];
 
     for (const filename of filenames) {
@@ -307,7 +307,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             const diaryEvent = makeDiaryEvent("diary-3");
-            const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+            const tmpDir = await capabilities.creator.createTemporaryDirectory();
             const imgPath = path.join(tmpDir, "photo.jpg");
             const imgFile = await capabilities.creator.createFile(imgPath);
             await capabilities.writer.writeFile(imgFile, "fake image");
