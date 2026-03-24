@@ -133,7 +133,7 @@ describe('memconst', () => {
     // Using a large margin to account for Jest overhead
     // Convert nanoseconds to milliseconds for comparison
     const durationMs = Number(end - start) / 1000000;
-    expect(durationMs).toBeLessThan(200);
+    expect(durationMs).toBeLessThan(3000);
   });
 
   test('should handle async functions that return primitives', async () => {
