@@ -233,7 +233,11 @@ class TemporaryClass {
     async _getDatabase() {
         if (this._databasePromise === null) {
             const capabilities = this._getCapabilities();
-            this._databasePromise = getTemporaryDatabase(capabilities);
+            this._databasePromise = getTemporaryDatabase(capabilities).catch((error) => {
+                // Reset so future calls can retry opening the database after a transient failure.
+                this._databasePromise = null;
+                throw error;
+            });
         }
         return this._databasePromise;
     }
