@@ -21,6 +21,7 @@ const { SORTED_EVENTS_CACHE_SIZE } = require('./constants');
  * @returns {Promise<CaloriesEntry>}
  */
 async function internalGetCaloriesForEventId(interfaceInstance, eventId) {
+    await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("calories", [eventId]);
@@ -41,6 +42,7 @@ async function internalGetEventTranscriptionForAudioPath(
     eventId,
     audioPath
 ) {
+    await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("event_transcription", [eventId, audioPath]);
@@ -58,6 +60,7 @@ async function internalGetEventTranscriptionForAudioPath(
  * @returns {Promise<import('../incremental_graph/database/types').BasicContextEntry>}
  */
 async function internalGetBasicContextForEventId(interfaceInstance, eventId) {
+    await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("basic_context", [eventId]);

@@ -66,6 +66,7 @@ function internalDebugGetSchemaByHead(interfaceInstance, head) {
  * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
  */
 async function internalDebugListMaterializedNodes(interfaceInstance) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
         .debugListMaterializedNodes();
@@ -78,6 +79,7 @@ async function internalDebugListMaterializedNodes(interfaceInstance) {
  * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
  */
 async function internalDebugGetFreshness(interfaceInstance, head, args = []) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
         .debugGetFreshness(head, args);
@@ -90,6 +92,7 @@ async function internalDebugGetFreshness(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
  */
 async function internalDebugGetValue(interfaceInstance, head, args = []) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance._requireInitializedGraph().debugGetValue(head, args);
 }
 
@@ -100,6 +103,7 @@ async function internalDebugGetValue(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
  */
 async function internalPullGraphNode(interfaceInstance, head, args = []) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance._requireInitializedGraph().pull(head, args);
 }
 
@@ -110,6 +114,7 @@ async function internalPullGraphNode(interfaceInstance, head, args = []) {
  * @returns {Promise<void>}
  */
 async function internalInvalidateGraphNode(interfaceInstance, head, args = []) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance._requireInitializedGraph().invalidate(head, args);
 }
 
@@ -120,6 +125,7 @@ async function internalInvalidateGraphNode(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../../datetime').DateTime>}
  */
 async function internalGetCreationTime(interfaceInstance, head, args = []) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
         .getCreationTime(head, args);
@@ -132,6 +138,7 @@ async function internalGetCreationTime(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../../datetime').DateTime>}
  */
 async function internalGetModificationTime(interfaceInstance, head, args = []) {
+    await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
         .getModificationTime(head, args);
