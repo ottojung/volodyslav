@@ -83,7 +83,10 @@ async function writeDiaryEventWithAudioAssets(capabilities, entryId, filenames) 
         const sourcePath = path.join(tmpDir, filename);
         const sourceFile = await capabilities.creator.createFile(sourcePath);
         await capabilities.writer.writeFile(sourceFile, "fake audio");
-        assets.push(event.asset.make(diaryEvent, makeFromExistingFile(sourceFile)));
+        assets.push(event.asset.make(diaryEvent, makeFromExistingFile(
+            sourceFile,
+            (p) => capabilities.reader.readFileAsBuffer(p)
+        )));
     }
 
     await transaction(capabilities, async (storage) => {
@@ -312,7 +315,10 @@ describe("GET /api/entries/:id/additional-properties", () => {
             const imgPath = path.join(tmpDir, "photo.jpg");
             const imgFile = await capabilities.creator.createFile(imgPath);
             await capabilities.writer.writeFile(imgFile, "fake image");
-            const assets = [event.asset.make(diaryEvent, makeFromExistingFile(imgFile))];
+            const assets = [event.asset.make(diaryEvent, makeFromExistingFile(
+                imgFile,
+                (p) => capabilities.reader.readFileAsBuffer(p)
+            ))];
 
             await transaction(capabilities, async (storage) => {
                 storage.addEntry(diaryEvent, assets);

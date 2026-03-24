@@ -3,7 +3,6 @@
 /** @typedef {import("../event").Asset} Asset */
 /** @typedef {import("../config/structure").Config} Config */
 /** @typedef {import("../filesystem/creator").FileCreator} FileCreator */
-/** @typedef {import("../filesystem/copier").FileCopier} FileCopier */
 /** @typedef {import("../filesystem/writer").FileWriter} FileWriter */
 /** @typedef {import("../filesystem/deleter").FileDeleter} FileDeleter */
 /** @typedef {import("../logger").Logger} Logger */
@@ -14,7 +13,6 @@
 /**
  * @typedef {object} EventLogStorageCapabilities
  * @property {FileCreator} creator
- * @property {FileCopier} copier
  * @property {FileWriter} writer
  * @property {FileDeleter} deleter
  * @property {Logger} logger

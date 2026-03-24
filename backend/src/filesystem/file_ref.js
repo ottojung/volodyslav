@@ -12,12 +12,28 @@
  * assets storage write.
  */
 
-const fs = require("fs").promises;
 const path = require("path");
 
 /**
  * @typedef {import('./file').ExistingFile} ExistingFile
  */
+
+/**
+ * Validate and return a safe basename for use as a FileRef filename.
+ * Strips any leading directory components and rejects empty / dot names
+ * to prevent path-traversal when `filename` is later joined to an assets
+ * directory path.
+ *
+ * @param {string} filename
+ * @returns {string}
+ */
+function validateFilename(filename) {
+    const base = path.basename(filename);
+    if (base === "" || base === "." || base === "..") {
+        throw new Error(`Invalid filename for FileRef: "${filename}"`);
+    }
+    return base;
+}
 
 class FileRefClass {
     /**
@@ -87,6 +103,7 @@ function isFileRef(object) {
 /**
  * Create a FileRef backed by an in-memory buffer.
  * No filesystem I/O occurs until the buffer is explicitly written elsewhere.
+ * The filename is validated as a safe basename (no path separators, not "." or "..").
  *
  * @param {string} filename - The basename for the file (no directory components).
  * @param {Buffer} buffer - The file content.
@@ -94,27 +111,48 @@ function isFileRef(object) {
  * @returns {FileRef}
  */
 function makeFromBuffer(filename, buffer, mimeType) {
+    const safeFilename = validateFilename(filename);
     return new FileRefClass(
         undefined,
         () => Promise.resolve(buffer),
-        filename,
+        safeFilename,
         mimeType
     );
 }
 
 /**
- * Create a FileRef from an existing on-disk file.
- * Content is read lazily from disk when `data()` is called.
+ * Create a FileRef with a custom data provider function.
+ * This is the general-purpose factory used when the content source is neither
+ * a plain buffer nor an existing file (e.g. a lazy LevelDB read).
+ * The filename is validated as a safe basename.
  *
- * @param {ExistingFile} file - The on-disk file to wrap.
+ * @param {string} filename - The basename for the file (no directory components).
+ * @param {() => Promise<Buffer>} dataFn - Function that returns the file content.
+ * @param {{path?: string, mimeType?: string}} [options] - Optional metadata.
  * @returns {FileRef}
  */
-function makeFromExistingFile(file) {
-    const filename = path.basename(file.path);
+function makeFromData(filename, dataFn, options = {}) {
+    const safeFilename = validateFilename(filename);
+    return new FileRefClass(options.path, dataFn, safeFilename, options.mimeType);
+}
+
+/**
+ * Create a FileRef from an existing on-disk file.
+ * Content is read lazily from disk when `data()` is called, using the supplied
+ * read function so that filesystem access is routed through capabilities.
+ *
+ * @param {ExistingFile} file - The on-disk file to wrap.
+ * @param {(filePath: string) => Promise<Buffer>} readFileFn - Function that reads
+ *   the file at `filePath` and returns its contents as a Buffer.
+ *   Typically `(p) => capabilities.reader.readFileAsBuffer(p)`.
+ * @returns {FileRef}
+ */
+function makeFromExistingFile(file, readFileFn) {
+    const safeFilename = validateFilename(path.basename(file.path));
     return new FileRefClass(
         file.path,
-        () => fs.readFile(file.path),
-        filename,
+        () => readFileFn(file.path),
+        safeFilename,
         undefined
     );
 }
@@ -122,5 +160,6 @@ function makeFromExistingFile(file) {
 module.exports = {
     isFileRef,
     makeFromBuffer,
+    makeFromData,
     makeFromExistingFile,
 };

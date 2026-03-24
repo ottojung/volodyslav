@@ -126,7 +126,7 @@ async function processDiaryAudios(capabilities) {
             creator,
         };
 
-        const fileRef = makeFromExistingFile(file);
+        const fileRef = makeFromExistingFile(file, (p) => capabilities.reader.readFileAsBuffer(p));
         const ass = asset.make(event, fileRef);
         return ass;
     }

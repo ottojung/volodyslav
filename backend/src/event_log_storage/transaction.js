@@ -8,7 +8,6 @@
  * the graph update and cleaned up again if the graph update fails.
  */
 
-const path = require("path");
 const event = require("../event");
 const asset = event.asset;
 const { targetPath } = asset;
@@ -48,7 +47,6 @@ function isEntryNotFoundError(object) {
 async function copyAssets(capabilities, assets) {
     for (const asset of assets) {
         const destination = targetPath(capabilities, asset);
-        await capabilities.creator.createDirectory(path.dirname(destination));
         const buffer = await asset.file.data();
         const destFile = await capabilities.creator.createFile(destination);
         await capabilities.writer.writeBuffer(destFile, buffer);

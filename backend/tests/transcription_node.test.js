@@ -59,7 +59,10 @@ async function writeDiaryEventWithAssets(capabilities, eventId, filenames) {
         const sourcePath = path.join(tmpDir, filename);
         const sourceFile = await capabilities.creator.createFile(sourcePath);
         await capabilities.writer.writeFile(sourceFile, "fake file");
-        assets.push(event.asset.make(diaryEvent, makeFromExistingFile(sourceFile)));
+        assets.push(event.asset.make(diaryEvent, makeFromExistingFile(
+            sourceFile,
+            (p) => capabilities.reader.readFileAsBuffer(p)
+        )));
     }
 
     await transaction(capabilities, async (storage) => {

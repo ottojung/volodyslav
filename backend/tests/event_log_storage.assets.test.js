@@ -1,7 +1,7 @@
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
 const { targetPath } = require("../src/event/asset");
-const { makeFromBuffer } = require("../src/filesystem/file_ref");
+const { makeFromBuffer, makeFromData } = require("../src/filesystem/file_ref");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
@@ -33,13 +33,9 @@ function makeAsset(event, filename, content = "test content") {
 function makeBadAsset(event, filename) {
     return {
         event,
-        file: {
-            path: undefined,
-            filename,
-            mimeType: undefined,
-            data: () => Promise.reject(new Error(`file not found: ${filename}`)),
-            __brand: undefined,
-        },
+        file: makeFromData(filename, () =>
+            Promise.reject(new Error(`file not found: ${filename}`))
+        ),
     };
 }
 
