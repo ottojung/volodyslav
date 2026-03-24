@@ -1,6 +1,7 @@
 const express = require('express');
 const upload = require('../storage');
 const { fromRequest } = require('../request_identifier');
+const { isFilenameValidationError } = require('../temporary');
 
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../environment').Environment} Environment */
@@ -47,7 +48,29 @@ function makeRouter(capabilities) {
         // Store all uploaded file buffers and mark the request done in a
         // single atomic LevelDB batch write.
         const blobs = files.map((f) => ({ filename: f.originalname, data: f.buffer }));
-        await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
+        try {
+            await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    error: error instanceof Error ? error.message : String(error),
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    path: req.path,
+                    request_identifier: reqId.identifier,
+                },
+                'Upload failed - temporary storage error'
+            );
+            if (isFilenameValidationError(error)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid filename in upload',
+                });
+            }
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to store uploaded files',
+            });
+        }
 
         const uploaded = files.map((f) => f.originalname);
         capabilities.logger.logInfo(

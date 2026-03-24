@@ -28,6 +28,31 @@ const { getTemporaryDatabase, stringToTempKey } = require("./database");
 // ---------------------------------------------------------------------------
 
 /**
+ * Thrown when a filename is invalid for use as a temporary storage key or
+ * filesystem path (e.g. empty, dot-only, or contains path separators that
+ * would allow path traversal).
+ */
+class FilenameValidationError extends Error {
+    /**
+     * @param {string} filename - The offending filename.
+     */
+    constructor(filename) {
+        super(`Invalid filename for temporary storage: "${filename}"`);
+        this.name = "FilenameValidationError";
+        this.filename = filename;
+    }
+}
+
+/**
+ * Type guard for FilenameValidationError.
+ * @param {unknown} object
+ * @returns {object is FilenameValidationError}
+ */
+function isFilenameValidationError(object) {
+    return object instanceof FilenameValidationError;
+}
+
+/**
  * Sanitize a filename to prevent key-space abuse and path traversal when the
  * same name is later used to write to the filesystem.
  * Strips any leading directory components and rejects empty / dot names.
@@ -38,7 +63,7 @@ const { getTemporaryDatabase, stringToTempKey } = require("./database");
 function sanitizeFilename(filename) {
     const base = path.basename(filename);
     if (base === "" || base === "." || base === "..") {
-        throw new Error(`Invalid filename for temporary storage: "${filename}"`);
+        throw new FilenameValidationError(filename);
     }
     return base;
 }
@@ -310,4 +335,6 @@ module.exports = {
     isDone,
     storeBlobsAndMarkDone,
     sanitizeFilename,
+    FilenameValidationError,
+    isFilenameValidationError,
 };

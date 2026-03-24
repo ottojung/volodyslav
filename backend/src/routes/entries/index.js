@@ -7,6 +7,7 @@ const { handleEntryDelete } = require("./delete");
 const { handleEntryGetById } = require("./get_by_id");
 const { handleAdditionalProperties } = require("./additional_properties");
 const { handleEntryAssets } = require("./assets");
+const { isFilenameValidationError } = require("../../temporary");
 
 /**
 /**
@@ -88,16 +89,31 @@ function makeRouter(capabilities) {
                 return next(err);
             }
             try {
-                // Store each uploaded file buffer atomically in the temporary database.
+                // Store all uploaded file buffers atomically in a single LevelDB batch.
+                // Either all blobs are stored or none, preventing partial leaks.
                 /** @type {Express.Multer.File[]} */
                 const files = Array.isArray(req.files)
                     ? req.files
                     : (req.files && req.files['files']) || [];
-                for (const file of files) {
-                    await capabilities.temporary.storeBlob(reqId, file.originalname, file.buffer);
-                }
+                const blobs = files.map((f) => ({ filename: f.originalname, data: f.buffer }));
+                await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
                 await handleEntryPost(req, res, capabilities, reqId);
             } catch (error) {
+                // Invalid filename from user input → 400 Bad Request.
+                if (isFilenameValidationError(error)) {
+                    capabilities.logger.logInfo(
+                        {
+                            request_identifier: reqId.identifier,
+                            error: error instanceof Error ? error.message : String(error),
+                            client_ip: req.ip
+                        },
+                        "Entry creation failed - invalid filename"
+                    );
+                    if (!res.headersSent) {
+                        return res.status(400).json({ error: "Invalid filename in upload" });
+                    }
+                    return;
+                }
                 capabilities.logger.logError(
                     {
                         request_identifier: reqId.identifier,

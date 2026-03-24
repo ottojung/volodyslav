@@ -1,14 +1,15 @@
 const multer = require("multer");
 
 /**
- * Maximum file size per upload in bytes (50 MiB — large enough for audio diary chunks).
+ * Maximum file size per upload in bytes (10 MiB — sufficient for compressed
+ * audio diary chunks at typical quality).
  */
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 /**
  * Maximum number of files accepted per request.
  */
-const MAX_FILES_PER_REQUEST = 10;
+const MAX_FILES_PER_REQUEST = 5;
 
 /**
  * Creates a multer upload middleware that stores uploaded files in memory.

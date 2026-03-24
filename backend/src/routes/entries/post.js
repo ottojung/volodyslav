@@ -4,7 +4,6 @@ const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
 const path = require("path");
-const fs = require("fs").promises;
 const { sanitizeFilename } = require("../../temporary");
 
 /**
@@ -120,9 +119,12 @@ async function prepareFileObjects(capabilities, files, reqId, workDir) {
 
         const tmpPath = path.join(workDir, filename);
         try {
-            await fs.writeFile(tmpPath, buffer);
-            const existingFile = await capabilities.checker.instantiate(tmpPath);
-            fileObjects.push(existingFile);
+            // Create the file via capabilities (returns an ExistingFile) and write the
+            // buffer into it. If writeBuffer fails, the empty file remains on disk; it
+            // will be cleaned up together with workDir in the outer finally block.
+            const fileObj = await capabilities.creator.createFile(tmpPath);
+            await capabilities.writer.writeBuffer(fileObj, buffer);
+            fileObjects.push(fileObj);
         } catch (error) {
             capabilities.logger.logError(
                 {
