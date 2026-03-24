@@ -488,7 +488,6 @@ describe('renderToFilesystem()', () => {
             ['!x!!values!{"head":"stale_node","args":[]}', { stale: true }],
         ]);
         const isolatedTmpDir = await secondCapabilities.creator.createTemporaryDirectory(
-            secondCapabilities
         );
         secondCapabilities.environment.workingDirectory = jest.fn().mockReturnValue(
             path.join(isolatedTmpDir, 'results')

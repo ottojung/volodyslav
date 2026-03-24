@@ -159,6 +159,17 @@ async function markDone(database, reqId) {
 }
 
 /**
+ * Delete the done marker for a request. No-op if the key does not exist.
+ *
+ * @param {TemporaryDatabase} database
+ * @param {RequestIdentifier} reqId
+ * @returns {Promise<void>}
+ */
+async function deleteDone(database, reqId) {
+    await database.del(doneKey(reqId));
+}
+
+/**
  * Check whether a request has been marked done.
  *
  * @param {TemporaryDatabase} database
@@ -289,6 +300,16 @@ class TemporaryClass {
     }
 
     /**
+     * Delete the done marker for a request.
+     * @param {RequestIdentifier} reqId
+     * @returns {Promise<void>}
+     */
+    async deleteDone(reqId) {
+        const db = await this._getDatabase();
+        await deleteDone(db, reqId);
+    }
+
+    /**
      * Atomically mark a request as done.
      * @param {RequestIdentifier} reqId
      * @returns {Promise<void>}
@@ -337,6 +358,7 @@ module.exports = {
     storeBlob,
     getBlob,
     deleteBlob,
+    deleteDone,
     markDone,
     isDone,
     storeBlobsAndMarkDone,

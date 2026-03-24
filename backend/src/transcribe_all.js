@@ -59,6 +59,19 @@ class InputDirectoryAccess extends Error {
  */
 
 /**
+ * One successful transcription entry within a `TranscriptionRequestStatus`.
+ * Unlike `TranscriptionSuccess`, this type omits `target` (the temporary
+ * output file is deleted before the result is returned) and exposes
+ * `filename` — the basename used as the LevelDB blob key — so callers can
+ * retrieve the transcription content from the temporary database.
+ * @typedef {{ source: ExistingFile, filename: string }} TranscriptionRequestSuccess
+ */
+
+/**
+ * @typedef {{ successes: TranscriptionRequestSuccess[], failures: TranscriptionFailure[] }} TranscriptionRequestStatus
+ */
+
+/**
  * Transcribe a request with a generic namer.
  * @param {Capabilities} capabilities
  * @param {string} inputDir
@@ -130,10 +143,14 @@ async function transcribeAllDirectory(capabilities, inputDir, targetDir) {
  * via capabilities, then stored as a single atomic LevelDB batch (all blobs plus
  * the done marker) and cleaned up.
  *
+ * The returned result uses `filename` (the LevelDB blob key) instead of
+ * `target` (the now-deleted temp file path) so callers always receive valid
+ * references.
+ *
  * @param {Capabilities} capabilities
  * @param {string} inputDir
  * @param {import('./request_identifier').RequestIdentifier} reqId
- * @returns {Promise<TranscriptionStatus>}
+ * @returns {Promise<TranscriptionRequestStatus>}
  */
 async function transcribeAllRequest(capabilities, inputDir, reqId) {
     const tmpDir = await capabilities.creator.createTemporaryDirectory();
@@ -150,7 +167,18 @@ async function transcribeAllRequest(capabilities, inputDir, reqId) {
         }
         await capabilities.temporary.storeBlobsAndMarkDone(reqId, blobs);
 
-        return result;
+        // Replace target (a now-deleted temp file) with its filename so the
+        // returned result contains only live references.
+        // `success.target.path` was constructed as path.join(targetDir, filename)
+        // by transcribeAllDirectory, so path.basename always yields the bare
+        // filename (no directory components).
+        return {
+            successes: result.successes.map(success => ({
+                source: success.source,
+                filename: path.basename(success.target.path),
+            })),
+            failures: result.failures,
+        };
     } finally {
         await capabilities.deleter.deleteDirectory(tmpDir).catch(() => {});
     }

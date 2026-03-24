@@ -51,7 +51,7 @@ async function getTestCapabilities() {
  */
 async function writeDiaryEventWithAssets(capabilities, eventId, filenames) {
     const diaryEvent = makeDiaryEvent(eventId);
-    const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+    const tmpDir = await capabilities.creator.createTemporaryDirectory();
     const assets = [];
 
     for (const filename of filenames) {

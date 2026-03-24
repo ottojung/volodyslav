@@ -88,18 +88,27 @@ async function createDirectory(dirPath) {
 }
 
 /**
- * Creates a unique temporary directory inside the OS temp directory.
- * The returned path is guaranteed to exist.
+ * Creates a unique temporary directory.
+ * When `baseDir` is provided, the directory is created inside `baseDir`
+ * (which must already exist or be creatable).  When omitted, the OS temp
+ * directory (`os.tmpdir()`) is used.
  *
+ * Creating the temp directory under the same mount point as the eventual
+ * destination is important when the directory will later be moved via a
+ * rename-based API (e.g. `moveDirectory`), which fails with EXDEV across
+ * different mount points.
+ *
+ * @param {string} [baseDir] - Optional base directory for the temporary directory.
  * @returns {Promise<string>} - A promise that resolves to the path of the created temporary directory.
  */
-async function createTemporaryDirectory() {
+async function createTemporaryDirectory(baseDir) {
+    const base = baseDir !== undefined ? baseDir : os.tmpdir();
     try {
-        return await fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-tmp-"));
+        return await fs.mkdtemp(path.join(base, "volodyslav-tmp-"));
     } catch (err) {
         throw new FileCreatorError(
             `Failed to create temporary directory`,
-            os.tmpdir()
+            base
         );
     }
 }

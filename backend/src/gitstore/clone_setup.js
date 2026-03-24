@@ -56,13 +56,18 @@ async function cloneAndConfigureRepository(capabilities, options) {
     const cloneOptions = resetToHostname !== undefined
         ? { branch: `${resetToHostname}-main` }
         : undefined;
-    const tempDir = await capabilities.creator.createTemporaryDirectory();
+    // Create the parent directory first so the temp clone dir lives on the
+    // same filesystem mount as workDir.  This is required because
+    // moveDirectory uses fs.rename, which fails with EXDEV when source and
+    // destination are on different mounts (e.g. /tmp on tmpfs vs workDir on
+    // the main disk).
+    const workDirParent = path.dirname(workDir);
+    await capabilities.creator.createDirectory(workDirParent);
+    const tempDir = await capabilities.creator.createTemporaryDirectory(workDirParent);
     try {
         await gitmethod.clone(capabilities, remotePath, tempDir, cloneOptions);
         await configureRemoteForAllBranches(capabilities, tempDir);
         await gitmethod.makePushable(capabilities, tempDir);
-        // Ensure the parent directory exists before the atomic rename.
-        await capabilities.creator.createDirectory(path.dirname(workDir));
         await capabilities.mover.moveDirectory(tempDir, workDir);
     } catch (error) {
         await capabilities.deleter.deleteDirectory(tempDir).catch(cleanupError => {
