@@ -1,5 +1,3 @@
-const path = require("path");
-const { makeDirectory, markDone } = require("./request_identifier");
 const creatorMake = require("./creator");
 
 /** @typedef {import("./filesystem/reader").FileReader} FileReader */
@@ -14,6 +12,7 @@ const creatorMake = require("./creator");
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('./temporary').Temporary} Temporary */
 
 /**
  * @typedef {object} Capabilities
@@ -89,6 +88,7 @@ function isInputNotFound(object) {
  * @property {Logger} logger - A logger instance
  * @property {Command} git - A command instance for Git operations
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance
+ * @property {Temporary} temporary - The temporary storage capability
  */
 
 /** @typedef {import('./creator').Creator} Creator */
@@ -149,15 +149,15 @@ async function transcribeFile(capabilities, inputFile, outputPath) {
 
 /**
  * Transcribe a request.
+ * The transcription result is stored in the temporary database under
+ * `<reqId>/transcription.json` and the request is marked done.
  * @param {TranscribeRequestCapabilities} capabilities
  * @param {string} inputPath
  * @param {import('./request_identifier').RequestIdentifier} reqId
  * @returns {Promise<void>}
  */
 async function transcribeRequest(capabilities, inputPath, reqId) {
-    const outputFile = "transcription.json";
-    const targetDir = await makeDirectory(capabilities, reqId);
-    const outputPath = path.join(targetDir, outputFile);
+    const outputFilename = "transcription.json";
 
     try {
         const inputFile = await capabilities.checker
@@ -169,9 +169,12 @@ async function transcribeRequest(capabilities, inputPath, reqId) {
                 );
             });
 
-        await transcribeFile(capabilities, inputFile, outputPath);
+        const file_stream = capabilities.reader.createReadStream(inputFile);
+        const transcription = await transcribeStream(capabilities, file_stream);
+        const data = Buffer.from(JSON.stringify(transcription, null, 2), "utf8");
+        await capabilities.temporary.storeBlob(reqId, outputFilename, data);
     } finally {
-        await markDone(capabilities, reqId);
+        await capabilities.temporary.markDone(reqId);
     }
 }
 

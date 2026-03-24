@@ -1,22 +1,7 @@
-const path = require("path");
 const {
     fromRequest,
-    makeDirectory,
-    markDone,
-    isDone,
     MissingRequestIdentifierError,
 } = require("../src/request_identifier");
-
-const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
-
-function getTestCapabilities() {
-    const capabilities = getMockedRootCapabilities();
-    stubEnvironment(capabilities);
-    stubLogger(capabilities);
-    stubDatetime(capabilities);
-    return capabilities;
-}
 
 describe("Request Identifier", () => {
     describe("fromRequest", () => {
@@ -45,68 +30,6 @@ describe("Request Identifier", () => {
         it("throws error when request_identifier is only whitespace", () => {
             const req = { query: { request_identifier: "   " } };
             expect(() => fromRequest(req)).toThrow(MissingRequestIdentifierError);
-        });
-    });
-
-    describe("makeDirectory", () => {
-        it("creates directory for request identifier", async () => {
-            const capabilities = getTestCapabilities();
-            const req = { query: { request_identifier: "test123" } };
-            const reqId = fromRequest(req);
-            const dirPath = await makeDirectory(capabilities, reqId);
-            const uploadDir = capabilities.environment.workingDirectory();
-
-            expect(capabilities.creator.createDirectory).toHaveBeenCalledWith(
-                dirPath
-            );
-            expect(dirPath).toBe(path.join(uploadDir, "requests", "test123"));
-        });
-
-        it("handles special characters in request identifier", async () => {
-            const capabilities = getTestCapabilities();
-            const req = { query: { request_identifier: "test#123" } };
-            const reqId = fromRequest(req);
-            const dirPath = await makeDirectory(capabilities, reqId);
-            const uploadDir = capabilities.environment.workingDirectory();
-
-            expect(capabilities.creator.createDirectory).toHaveBeenCalledWith(
-                dirPath
-            );
-            expect(dirPath).toBe(path.join(uploadDir, "requests", "test#123"));
-        });
-    });
-
-    describe("markDone and isDone", () => {
-        it("creates and checks done marker", async () => {
-            const capabilities = getTestCapabilities();
-            const req = { query: { request_identifier: "test123" } };
-            const reqId = fromRequest(req);
-            const uploadDir = capabilities.environment.workingDirectory();
-
-            await expect(isDone(capabilities, reqId)).resolves.toBe(false);
-
-            await markDone(capabilities, reqId);
-
-            await expect(isDone(capabilities, reqId)).resolves.toBe(true);
-            await expect(
-                capabilities.checker.fileExists(
-                    path.join(uploadDir, "requests", "test123.done")
-                )
-            ).resolves.not.toBeNull();
-        });
-
-        it("handles concurrent markDone calls", async () => {
-            const capabilities = getTestCapabilities();
-            const req = { query: { request_identifier: "test123" } };
-            const reqId = fromRequest(req);
-
-            await Promise.all([
-                markDone(capabilities, reqId),
-                markDone(capabilities, reqId),
-                markDone(capabilities, reqId),
-            ]);
-
-            await expect(isDone(capabilities, reqId)).resolves.toBe(true);
         });
     });
 });

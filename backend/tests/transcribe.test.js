@@ -1,9 +1,12 @@
 const path = require("path");
+const os = require("os");
+const fsp = require("fs/promises");
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubAiTranscriber, stubDatetime } = require("./stubs");
+const { fromRequest } = require("../src/request_identifier");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -54,35 +57,30 @@ describe("GET /api/transcribe", () => {
         expect(capabilities.logger.logError).toHaveBeenCalledTimes(1);
     });
 
-    it("transcribes and saves output file on valid input", async () => {
+    it("transcribes and stores result in temporary database on valid input", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
-        // Prepare a dummy input file
-        const inputDir = await capabilities.creator.createTemporaryDirectory(
-            capabilities
-        );
-        const inputPath = path.join(inputDir, "dummy.wav");
-        const inputFile = await capabilities.creator.createFile(inputPath);
-        await capabilities.writer.writeFile(inputFile, "dummy content");
 
-        const reqId = "testreq";
-        const outputFilename = "transcription.json";
+        // Prepare a dummy input file using OS tmpdir (no longer using createTemporaryDirectory).
+        const inputDir = await fsp.mkdtemp(path.join(os.tmpdir(), "transcribe-test-"));
+        const inputPath = path.join(inputDir, "dummy.wav");
+        await fsp.writeFile(inputPath, "dummy content");
+
+        const reqIdStr = "testreq";
         const res = await request(app)
             .get("/api/transcribe")
-            .query({ request_identifier: reqId, input: inputPath });
+            .query({ request_identifier: reqIdStr, input: inputPath });
 
         // Verify response
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true });
 
-        // Verify file was written to uploadDir under the request identifier
-        const uploadDir = capabilities.environment.workingDirectory();
-        const savedPath = path.join(uploadDir, "requests", reqId, outputFilename);
-        const savedFileProof = await capabilities.checker.fileExists(savedPath);
-        expect(savedFileProof).not.toBeNull();
-        const content = await capabilities.reader.readFileAsText(savedPath);
-        // Parsed content should match the stubbed response
-        expect(JSON.parse(content)).toEqual({
+        // Verify result was stored in the temporary database.
+        const reqId = fromRequest({ query: { request_identifier: reqIdStr } });
+        const buffer = await capabilities.temporary.getBlob(reqId, "transcription.json");
+        expect(buffer).not.toBeNull();
+        const content = JSON.parse(buffer.toString());
+        expect(content).toEqual({
             text: "mocked transcription result",
             transcriber: {
                 creator: "Mocked Creator",
@@ -90,5 +88,12 @@ describe("GET /api/transcribe", () => {
             },
             creator: expect.any(Object),
         });
+
+        // Verify the request is marked done.
+        const done = await capabilities.temporary.isDone(reqId);
+        expect(done).toBe(true);
+
+        // Cleanup
+        await fsp.rm(inputDir, { recursive: true }).catch(() => {});
     });
 });

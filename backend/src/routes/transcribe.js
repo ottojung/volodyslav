@@ -10,6 +10,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('../temporary').Temporary} Temporary */
 
 /**
  * @typedef {object} Capabilities
@@ -22,6 +23,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
  * @property {Logger} logger - A logger instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 /**

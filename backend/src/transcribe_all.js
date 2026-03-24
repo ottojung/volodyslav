@@ -1,5 +1,6 @@
 const path = require("path");
-const { makeDirectory, markDone } = require("./request_identifier");
+const os = require("os");
+const fs = require("fs").promises;
 const { transcribeFile } = require("./transcribe");
 
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
@@ -13,6 +14,7 @@ const { transcribeFile } = require("./transcribe");
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('./temporary').Temporary} Temporary */
 
 /**
  * @typedef {object} Capabilities
@@ -26,6 +28,7 @@ const { transcribeFile } = require("./transcribe");
  * @property {Logger} logger - A logger instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 class InputDirectoryAccess extends Error {
@@ -121,21 +124,33 @@ async function transcribeAllDirectory(capabilities, inputDir, targetDir) {
 }
 
 /**
- * Transcribe a request.
+ * Transcribe all files in a directory.
+ * Intermediate transcription files are written to a temporary OS directory,
+ * then stored atomically in the temporary database before being cleaned up.
+ * The request is marked done in the temporary database upon completion.
+ *
  * @param {Capabilities} capabilities
  * @param {string} inputDir
  * @param {import('./request_identifier').RequestIdentifier} reqId
  * @returns {Promise<TranscriptionStatus>}
  */
 async function transcribeAllRequest(capabilities, inputDir, reqId) {
-    const targetDir = await makeDirectory(capabilities, reqId);
-    const result = await transcribeAllDirectory(
-        capabilities,
-        inputDir,
-        targetDir
-    );
-    await markDone(capabilities, reqId);
-    return result;
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-transcribe-"));
+    try {
+        const result = await transcribeAllDirectory(capabilities, inputDir, tmpDir);
+
+        // Store successful transcription outputs in the temporary database atomically.
+        for (const success of result.successes) {
+            const filename = path.basename(success.target.path);
+            const data = await fs.readFile(success.target.path);
+            await capabilities.temporary.storeBlob(reqId, filename, data);
+        }
+
+        await capabilities.temporary.markDone(reqId);
+        return result;
+    } finally {
+        await fs.rm(tmpDir, { recursive: true }).catch(() => {});
+    }
 }
 
 module.exports = {

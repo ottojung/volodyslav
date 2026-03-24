@@ -1,5 +1,4 @@
 const request = require("supertest");
-const path = require("path");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
@@ -25,7 +24,6 @@ describe("POST /api/upload", () => {
     it("uploads a single file successfully", async () => {
         const capabilities = getTestCapabilities();    
         const app = await makeApp(capabilities);
-        const uploadDir = capabilities.environment.workingDirectory();
         const reqId = "testreq";
         const res = await request(app)
             .post(`/api/upload?request_identifier=${reqId}`)
@@ -33,16 +31,23 @@ describe("POST /api/upload", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: ["test1.jpg"] });
-        const uploadedFile1 = await capabilities.checker.fileExists(
-            path.join(uploadDir, "requests", reqId, "test1.jpg"),
-        );
-        expect(uploadedFile1).not.toBeNull();
+
+        // Verify the file was stored in the temporary database.
+        const { fromRequest } = require("../src/request_identifier");
+        const reqIdObj = fromRequest({ query: { request_identifier: reqId } });
+        const buffer = await capabilities.temporary.getBlob(reqIdObj, "test1.jpg");
+        expect(buffer).not.toBeNull();
+        expect(buffer.toString()).toBe("test content");
+
+        // Verify the request is marked done.
+        const done = await capabilities.temporary.isDone(reqIdObj);
+        expect(done).toBe(true);
     });
 
     it("uploads multiple files successfully", async () => {
         const capabilities = getTestCapabilities();    
         const app = await makeApp(capabilities);
-        const uploadDir = capabilities.environment.workingDirectory();
+
         // Upload first file with a unique request_identifier
         const reqId1 = "testreq1";
         const res1 = await request(app)
@@ -51,10 +56,12 @@ describe("POST /api/upload", () => {
 
         expect(res1.statusCode).toBe(200);
         expect(res1.body).toEqual({ success: true, files: ["first.jpg"] });
-        const firstFile = await capabilities.checker.fileExists(
-            path.join(uploadDir, "requests", reqId1, "first.jpg"),
-        );
-        expect(firstFile).not.toBeNull();
+
+        const { fromRequest } = require("../src/request_identifier");
+        const reqIdObj1 = fromRequest({ query: { request_identifier: reqId1 } });
+        const buf1 = await capabilities.temporary.getBlob(reqIdObj1, "first.jpg");
+        expect(buf1).not.toBeNull();
+        expect(buf1.toString()).toBe("first");
 
         // Upload second file with another unique request_identifier
         const reqId2 = "testreq2";
@@ -64,10 +71,11 @@ describe("POST /api/upload", () => {
 
         expect(res2.statusCode).toBe(200);
         expect(res2.body).toEqual({ success: true, files: ["second.jpg"] });
-        const secondFile = await capabilities.checker.fileExists(
-            path.join(uploadDir, "requests", reqId2, "second.jpg"),
-        );
-        expect(secondFile).not.toBeNull();
+
+        const reqIdObj2 = fromRequest({ query: { request_identifier: reqId2 } });
+        const buf2 = await capabilities.temporary.getBlob(reqIdObj2, "second.jpg");
+        expect(buf2).not.toBeNull();
+        expect(buf2.toString()).toBe("second");
     });
 
     it("responds with empty files array when no files are sent", async () => {

@@ -11,6 +11,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('../temporary').Temporary} Temporary */
 
 /**
  * @typedef {object} Capabilities
@@ -24,6 +25,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
  * @property {Logger} logger - A logger instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 /**

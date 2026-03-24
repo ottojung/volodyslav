@@ -19,14 +19,8 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const os = require("os");
 const { makeEmpty } = require("./file");
-
-/** @typedef {import('../environment').Environment} Environment */
-
-/**
- * @typedef {object} Capabilities
- * @property {Environment} environment - An environment instance.
- */
 
 class FileCreatorError extends Error {
     /**
@@ -94,21 +88,18 @@ async function createDirectory(dirPath) {
 }
 
 /**
- * Creates a temporary directory in the system's temporary folder.
- * @param {Capabilities} capabilities - The capabilities instance.
- * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
+ * Creates a unique temporary directory inside the OS temp directory.
+ * The returned path is guaranteed to exist.
+ *
+ * @returns {Promise<string>} - A promise that resolves to the path of the created temporary directory.
  */
-async function createTemporaryDirectory(capabilities) {
-    const tmpDir = path.join(capabilities.environment.workingDirectory(), "temporary");
-    const uniquePrefix = path.join(tmpDir, "tmp-");
+async function createTemporaryDirectory() {
     try {
-        await fs.mkdir(tmpDir, { recursive: true });
-        const createdTmpDirPath = await fs.mkdtemp(uniquePrefix);
-        return createdTmpDirPath;
+        return await fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-tmp-"));
     } catch (err) {
         throw new FileCreatorError(
-            `Failed to create temporary directory with prefix: ${uniquePrefix}`,
-            uniquePrefix // Using uniquePrefix as filePath for the error
+            `Failed to create temporary directory`,
+            os.tmpdir()
         );
     }
 }

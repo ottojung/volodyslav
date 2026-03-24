@@ -24,6 +24,7 @@ const { handleEntryAssets } = require("./assets");
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
  * @typedef {import('../../generators').Interface} Interface
  * @typedef {import('../../filesystem/dirscanner').DirScanner} DirScanner
+ * @typedef {import('../../temporary').Temporary} Temporary
  */
 
 /**
@@ -43,6 +44,7 @@ const { handleEntryAssets } = require("./assets");
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
  * @property {Interface} interface - The incremental graph interface capability.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 /**
@@ -58,7 +60,7 @@ const { handleEntryAssets } = require("./assets");
  * @returns {express.Router} - The configured router.
  */
 function makeRouter(capabilities) {
-    const uploadMiddleware = upload.makeUpload(capabilities);
+    const uploadMiddleware = upload.makeUpload();
     const router = express.Router();
 
     /**
@@ -86,6 +88,14 @@ function makeRouter(capabilities) {
                 return next(err);
             }
             try {
+                // Store each uploaded file buffer atomically in the temporary database.
+                /** @type {Express.Multer.File[]} */
+                const files = Array.isArray(req.files)
+                    ? req.files
+                    : (req.files && req.files['files']) || [];
+                for (const file of files) {
+                    await capabilities.temporary.storeBlob(reqId, file.originalname, file.buffer);
+                }
                 await handleEntryPost(req, res, capabilities, reqId);
             } catch (error) {
                 capabilities.logger.logError(

@@ -3,6 +3,9 @@ const { serialize } = require("../../event");
 const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
+const os = require("os");
+const path = require("path");
+const fs = require("fs").promises;
 
 /**
  * @typedef {import('../../environment').Environment} Environment
@@ -18,6 +21,7 @@ const { processUserInput, isInputParseError } = fromInput;
  * @typedef {import('../../event/structure').SerializedEvent} SerializedEvent
  * @typedef {import('../../sleeper').SleepCapability} SleepCapability
  * @typedef {import('../../generators').Interface} Interface
+ * @typedef {import('../../temporary').Temporary} Temporary
  */
 
 /**
@@ -36,6 +40,7 @@ const { processUserInput, isInputParseError } = fromInput;
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  * @property {SleepCapability} sleeper - A sleeper instance for delays.
  * @property {Interface} interface - The incremental graph interface capability.
+ * @property {Temporary} temporary - The temporary storage capability.
  */
 
 /**
@@ -61,38 +66,76 @@ class FileValidationError extends Error {
  */
 
 /**
- * Prepares the file objects for entry creation if files were uploaded.
+ * Prepares ExistingFile objects from files previously stored in the temporary database.
+ * Retrieves each blob, writes it to an OS temp directory, and wraps it as an ExistingFile.
+ * The caller is responsible for deleting the written temp files after use.
  *
  * @param {Capabilities} capabilities - The capabilities.
- * @param {Express.Multer.File[]|undefined} files - The uploaded files.
- * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
+ * @param {Express.Multer.File[]|undefined} files - The uploaded files (multer memory-storage objects).
+ * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking.
+ * @param {string} workDir - Temporary OS directory to write blobs into.
  * @returns {Promise<import('../../filesystem/file').ExistingFile[]>} - The file objects.
  */
-async function prepareFileObjects(capabilities, files, reqId) {
+async function prepareFileObjects(capabilities, files, reqId, workDir) {
     if (!files || !Array.isArray(files) || files.length === 0) {
         return [];
     }
 
     const fileObjects = [];
     for (const file of files) {
+        const filename = file.originalname;
+        let buffer;
         try {
-            const existingFile = await capabilities.checker.instantiate(file.path);
+            buffer = await capabilities.temporary.getBlob(reqId, filename);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    file_name: filename,
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                },
+                "Failed to retrieve uploaded file from temporary database",
+            );
+            throw new FileValidationError(
+                `Invalid file upload: ${filename}`,
+                filename
+            );
+        }
+
+        if (buffer === null) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    file_name: filename,
+                },
+                "Uploaded file not found in temporary database",
+            );
+            throw new FileValidationError(
+                `Uploaded file not found: ${filename}`,
+                filename
+            );
+        }
+
+        const tmpPath = path.join(workDir, filename);
+        try {
+            await fs.writeFile(tmpPath, buffer);
+            const existingFile = await capabilities.checker.instantiate(tmpPath);
             fileObjects.push(existingFile);
         } catch (error) {
             capabilities.logger.logError(
                 {
                     request_identifier: reqId.identifier,
                     error: error instanceof Error ? error.message : String(error),
-                    file_path: file.path,
-                    file_name: file.originalname,
-                    error_stack: error instanceof Error ? error.stack : undefined
+                    file_name: filename,
+                    tmp_path: tmpPath,
+                    error_stack: error instanceof Error ? error.stack : undefined,
                 },
                 "Failed to prepare file object for entry creation",
             );
-            // Treat file preparation errors as user errors (invalid uploads)
             throw new FileValidationError(
-                `Invalid file upload: ${file.originalname}`,
-                file.path
+                `Invalid file upload: ${filename}`,
+                filename
             );
         }
     }
@@ -134,6 +177,9 @@ function handleEntryError(error, capabilities, reqId) {
  * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
 async function handleEntryPost(req, res, capabilities, reqId) {
+    // Create a temporary OS directory to hold blobs during entry creation.
+    // This directory is always cleaned up in the finally block.
+    const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "volodyslav-entry-"));
     try {
         /** @type {Express.Multer.File[]} */
         let files = [];
@@ -184,8 +230,13 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             input,
         };
 
-        const fileObjects = await prepareFileObjects(capabilities, files, reqId);
+        const fileObjects = await prepareFileObjects(capabilities, files, reqId, workDir);
         const event = await createEntry(capabilities, entryData, fileObjects);
+
+        // Clean up blobs from the temporary database.
+        for (const file of files) {
+            await capabilities.temporary.deleteBlob(reqId, file.originalname).catch(() => {});
+        }
 
         capabilities.logger.logDebug(
             {
@@ -199,32 +250,43 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             "Entry created successfully",
         );
 
-        return res.status(201).json({ success: true, entry: serialize(capabilities, event) });
+        return res.status(201).json({
+            success: true,
+            entry: serialize(capabilities, event),
+        });
     } catch (error) {
-        if (isEntryValidationError(error) || error instanceof FileValidationError) {
-            capabilities.logger.logInfo(
+        if (error instanceof FileValidationError) {
+            capabilities.logger.logError(
                 {
                     request_identifier: reqId.identifier,
                     error: error.message,
-                    error_name: error.name,
+                    file_path: error.filePath,
                     status_code: 400,
                     client_ip: req.ip
                 },
-                "Entry creation failed - validation error (user error)",
+                "Entry creation failed - file validation error",
+            );
+            return res.status(400).json({ error: error.message });
+        }
+
+        if (isEntryValidationError(error)) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error.message,
+                    status_code: 400,
+                    client_ip: req.ip
+                },
+                "Entry creation failed - validation error",
             );
             return res.status(400).json({ error: error.message });
         }
 
         const errorResponse = handleEntryError(error, capabilities, reqId);
-        capabilities.logger.logError(
-            {
-                request_identifier: reqId.identifier,
-                status_code: 500,
-                client_ip: req.ip
-            },
-            "Entry creation request completed with status 500",
-        );
         return res.status(500).json(errorResponse);
+    } finally {
+        // Always remove the temporary OS working directory.
+        await fs.rm(workDir, { recursive: true }).catch(() => {});
     }
 }
 
