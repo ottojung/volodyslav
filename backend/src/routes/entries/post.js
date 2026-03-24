@@ -256,7 +256,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         });
     } catch (error) {
         if (error instanceof FileValidationError) {
-            capabilities.logger.logError(
+            capabilities.logger.logInfo(
                 {
                     request_identifier: reqId.identifier,
                     error: error.message,
@@ -270,7 +270,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         }
 
         if (isEntryValidationError(error)) {
-            capabilities.logger.logError(
+            capabilities.logger.logInfo(
                 {
                     request_identifier: reqId.identifier,
                     error: error.message,
