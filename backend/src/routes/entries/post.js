@@ -288,6 +288,8 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         for (const file of files) {
             await capabilities.temporary.deleteBlob(reqId, file.originalname).catch(() => {});
         }
+        // Clean up the done marker for this request to avoid stale state in temporary storage.
+        await capabilities.temporary.deleteDone(reqId).catch(() => {});
         // Remove the temporary working directory.
         await capabilities.deleter.deleteDirectory(workDir).catch(() => {});
     }
