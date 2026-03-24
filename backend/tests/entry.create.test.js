@@ -2,6 +2,7 @@ const { createEntry } = require("../src/entry");
 const { fromISOString } = require("../src/datetime");
 const eventId = require("../src/event/id");
 const { getType, getDescription, getModifiers } = require("../src/event/computed");
+const { makeFromExistingFile } = require("../src/filesystem/file_ref");
 
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
@@ -59,7 +60,7 @@ describe("createEntry (integration, with real capabilities)", () => {
             original: "Original with file",
             input: "fileentry Description for file entry.",
         };
-        const mockFile = { path: tmpFilePath };
+        const mockFile = makeFromExistingFile({ path: tmpFilePath });
         const event = await createEntry(capabilities, entryData, [mockFile]);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
@@ -95,7 +96,7 @@ describe("createEntry (integration, with real capabilities)", () => {
             original: "Original with multiple files",
             input: "multifileentry Description for multi-file entry.",
         };
-        const mockFiles = [{ path: tmpFilePath1 }, { path: tmpFilePath2 }];
+        const mockFiles = [makeFromExistingFile({ path: tmpFilePath1 }), makeFromExistingFile({ path: tmpFilePath2 })];
         const event = await createEntry(capabilities, entryData, mockFiles);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);

@@ -44,7 +44,7 @@ function isEntryValidationError(object) {
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
+/** @typedef {import('./filesystem/file_ref').FileRef} FileRef */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
@@ -81,7 +81,7 @@ function isEntryValidationError(object) {
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {EntryData} entryData - The entry data from the HTTP request.
- * @param {ExistingFile[]} [files] - Optional file attachments.
+ * @param {FileRef[]} [files] - Optional file attachments.
  * @returns {Promise<import('./event/structure').Event>} - The created event.
  */
 async function createEntry(capabilities, entryData, files = []) {

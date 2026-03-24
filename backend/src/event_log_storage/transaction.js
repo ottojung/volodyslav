@@ -49,7 +49,9 @@ async function copyAssets(capabilities, assets) {
     for (const asset of assets) {
         const destination = targetPath(capabilities, asset);
         await capabilities.creator.createDirectory(path.dirname(destination));
-        await capabilities.copier.copyFile(asset.file, destination);
+        const buffer = await asset.file.data();
+        const destFile = await capabilities.creator.createFile(destination);
+        await capabilities.writer.writeBuffer(destFile, buffer);
     }
 }
 

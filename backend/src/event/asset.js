@@ -1,7 +1,7 @@
 const path = require("path");
 
 /** @typedef {import('./structure').Event} Event */
-/** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
+/** @typedef {import('../filesystem/file_ref').FileRef} FileRef */
 
 /** @typedef {import('../environment').Environment} Environment */
 
@@ -15,7 +15,7 @@ class AssetClass {
     /** @type {Event} */
     event;
 
-    /** @type {ExistingFile} */
+    /** @type {FileRef} */
     file;
 
     /**
@@ -28,7 +28,7 @@ class AssetClass {
 
     /**
      * @param {import('./structure').Event} event
-     * @param {ExistingFile} file
+     * @param {FileRef} file
      */
     constructor(event, file) {
         this.event = event;
@@ -44,7 +44,7 @@ class AssetClass {
 /**
  * Primary constructor for Asset.
  * @param {Event} event
- * @param {ExistingFile} file
+ * @param {FileRef} file
  * @returns {Asset}
  */
 function make(event, file) {
@@ -80,8 +80,7 @@ function targetDir(capabilities, event) {
  */
 function targetPath(capabilities, asset) {
     const dir = targetDir(capabilities, asset.event);
-    const filename = path.basename(asset.file.path);
-    return path.join(dir, filename);
+    return path.join(dir, asset.file.filename);
 }
 
 module.exports = {

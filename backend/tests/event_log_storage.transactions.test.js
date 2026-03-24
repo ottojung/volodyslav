@@ -46,7 +46,13 @@ describe("event_log_storage transaction", () => {
         const capabilities = getTestCapabilities();
         const failingAsset = {
             event: makeEvent("event-1", "with asset"),
-            file: { path: "/missing/file.mp3", __brand: "ExistingFile" },
+            file: {
+                path: undefined,
+                filename: "file.mp3",
+                mimeType: undefined,
+                data: () => Promise.reject(new Error("simulated read failure")),
+                __brand: undefined,
+            },
         };
 
         await expect(
