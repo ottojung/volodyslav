@@ -135,6 +135,8 @@ function App() {
 
         <SyncSection />
 
+        <Separator />
+
         <Box pt={4}>
           <Separator mb={4} />
           <Box
