@@ -54,8 +54,8 @@ codebase and avoids a separate binary encoding scheme.
 backend/src/temporary/
   database/
     types.js   – branded types and conversion helpers (TempKey, TempEntry)
-    index.js   – TemporaryDatabase class and factory (makeTemporaryDatabase,
-                 getTemporaryDatabase)
+    index.js   – helpers for opening/working with the LevelDB instance
+                 (getTemporaryDatabase and related guards/helpers)
   index.js     – high-level Temporary class (storeBlob, getBlob, deleteBlob,
                  markDone, isDone) and its make() factory
 ```

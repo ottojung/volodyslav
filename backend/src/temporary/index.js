@@ -29,8 +29,10 @@ const { getTemporaryDatabase, stringToTempKey } = require("./database");
 
 /**
  * Thrown when a filename is invalid for use as a temporary storage key or
- * filesystem path (e.g. empty, dot-only, or contains path separators that
- * would allow path traversal).
+ * filesystem path. Specifically, thrown when the sanitized basename is empty
+ * or consists only of "." or "..", making it unsafe or unusable.
+ * (Path separator characters are stripped via `path.basename` before this
+ * check, so the error reflects the result after stripping.)
  */
 class FilenameValidationError extends Error {
     /**

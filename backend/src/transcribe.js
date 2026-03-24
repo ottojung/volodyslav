@@ -159,23 +159,23 @@ async function transcribeFile(capabilities, inputFile, outputPath) {
 async function transcribeRequest(capabilities, inputPath, reqId) {
     const outputFilename = "transcription.json";
 
-    try {
-        const inputFile = await capabilities.checker
-            .instantiate(inputPath)
-            .catch(() => {
-                throw new InputNotFound(
-                    `Input file ${inputPath} not found.`,
-                    inputPath
-                );
-            });
+    const inputFile = await capabilities.checker
+        .instantiate(inputPath)
+        .catch(() => {
+            throw new InputNotFound(
+                `Input file ${inputPath} not found.`,
+                inputPath
+            );
+        });
 
-        const file_stream = capabilities.reader.createReadStream(inputFile);
-        const transcription = await transcribeStream(capabilities, file_stream);
-        const data = Buffer.from(JSON.stringify(transcription, null, 2), "utf8");
-        await capabilities.temporary.storeBlob(reqId, outputFilename, data);
-    } finally {
-        await capabilities.temporary.markDone(reqId);
-    }
+    const file_stream = capabilities.reader.createReadStream(inputFile);
+    const transcription = await transcribeStream(capabilities, file_stream);
+    const data = Buffer.from(JSON.stringify(transcription, null, 2), "utf8");
+    // Write the blob and the done marker atomically so `isDone` is only true
+    // when the transcription result is also guaranteed to be stored.
+    await capabilities.temporary.storeBlobsAndMarkDone(reqId, [
+        { filename: outputFilename, data },
+    ]);
 }
 
 module.exports = {
