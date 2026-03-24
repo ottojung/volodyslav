@@ -135,10 +135,10 @@ function App() {
 
         <SyncSection />
 
-        <Box pt={4}>
+        <VStack pt={4}>
           <Separator mb={4} />
           <Box
-            alignSelf="center"
+            w="200px"
             bg="gray.50"
             border="1px solid"
             borderColor="gray.200"
@@ -154,7 +154,7 @@ function App() {
                   : 'Loading Volodyslav version…'}
             </Text>
           </Box>
-        </Box>
+        </VStack>
       </VStack>
     </Box>
   );
