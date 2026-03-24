@@ -97,55 +97,56 @@ function makeMockInterface({
 
 /**
  * Sets up a test app with optional mock graph.
- * @param {object|null} mockGraph - if null, graph is uninitialized (503 scenario)
- * @returns {object} Express app
+ * @param {object|null} mockGraph - graph mock; may be null when testing the
+ *   "not yet initialized" path (ensureInitialized is called before proceeding)
+ * @returns {{ app: object, iface: object }} Express app and the mock interface
  */
 function makeTestApp(mockGraph) {
-    const capabilities = {
-        interface: {
-            isInitialized: jest.fn(() => mockGraph !== null),
-            debugGetSchemas: jest.fn(() => mockGraph === null ? [] : mockGraph.debugGetSchemas()),
-            debugGetSchemaByHead: jest.fn((head) => mockGraph === null ? null : mockGraph.debugGetSchemaByHead(head)),
-            debugListMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.debugListMaterializedNodes()),
-            debugGetFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.debugGetFreshness(head, args)),
-            debugGetValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.debugGetValue(head, args)),
-            pullGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.pull(head, args)),
-            invalidateGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.invalidate(head, args)),
-            getCreationTime: jest.fn(async (head, args) => {
-                if (mockGraph === null) {
-                    throw makeMissingTimestampError(JSON.stringify({ head, args }));
-                }
-                return await mockGraph.getCreationTime(head, args);
-            }),
-            getModificationTime: jest.fn(async (head, args) => {
-                if (mockGraph === null) {
-                    throw makeMissingTimestampError(JSON.stringify({ head, args }));
-                }
-                return await mockGraph.getModificationTime(head, args);
-            }),
-        },
+    const iface = {
+        isInitialized: jest.fn(() => mockGraph !== null),
+        ensureInitialized: jest.fn().mockResolvedValue(undefined),
+        debugGetSchemas: jest.fn(() => mockGraph === null ? [] : mockGraph.debugGetSchemas()),
+        debugGetSchemaByHead: jest.fn((head) => mockGraph === null ? null : mockGraph.debugGetSchemaByHead(head)),
+        debugListMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.debugListMaterializedNodes()),
+        debugGetFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.debugGetFreshness(head, args)),
+        debugGetValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.debugGetValue(head, args)),
+        pullGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.pull(head, args)),
+        invalidateGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.invalidate(head, args)),
+        getCreationTime: jest.fn(async (head, args) => {
+            if (mockGraph === null) {
+                throw makeMissingTimestampError(JSON.stringify({ head, args }));
+            }
+            return await mockGraph.getCreationTime(head, args);
+        }),
+        getModificationTime: jest.fn(async (head, args) => {
+            if (mockGraph === null) {
+                throw makeMissingTimestampError(JSON.stringify({ head, args }));
+            }
+            return await mockGraph.getModificationTime(head, args);
+        }),
     };
+    const capabilities = { interface: iface };
 
     const app = express();
     app.use(express.json());
     app.use("/api", makeRouter(capabilities));
-    return app;
+    return { app, iface };
 }
 
 // ---------------------------------------------------------------------------
 // GET /api/graph/schemas
 // ---------------------------------------------------------------------------
 describe("GET /api/graph/schemas", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).get("/api/graph/schemas");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns empty array when no schemas are defined", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).get("/api/graph/schemas");
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
@@ -163,7 +164,7 @@ describe("GET /api/graph/schemas", () => {
             })],
         ]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/schemas");
         expect(res.status).toBe(200);
@@ -195,16 +196,16 @@ describe("GET /api/graph/schemas", () => {
 // GET /api/graph/schemas/:head
 // ---------------------------------------------------------------------------
 describe("GET /api/graph/schemas/:head", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).get("/api/graph/schemas/all_events");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).get("/api/graph/schemas/unknown_head");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -217,7 +218,7 @@ describe("GET /api/graph/schemas/:head", () => {
             })],
         ]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/schemas/all_events");
         expect(res.status).toBe(200);
@@ -236,16 +237,16 @@ describe("GET /api/graph/schemas/:head", () => {
 // GET /api/graph/nodes
 // ---------------------------------------------------------------------------
 describe("GET /api/graph/nodes", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).get("/api/graph/nodes");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns empty array when no nodes are materialized", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).get("/api/graph/nodes");
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
@@ -265,7 +266,7 @@ describe("GET /api/graph/nodes", () => {
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ materialized, freshness, timestamps });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
         expect(res.status).toBe(200);
@@ -287,7 +288,7 @@ describe("GET /api/graph/nodes", () => {
         ]);
         // no timestamps entry → debugGetTimestamps returns null
         const graph = makeMockInterface({ materialized, freshness });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
         expect(res.status).toBe(200);
@@ -299,7 +300,7 @@ describe("GET /api/graph/nodes", () => {
         const materialized = [["all_events", []]];
         // freshness map has no entry for all_events → "missing"
         const graph = makeMockInterface({ materialized });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes");
         expect(res.status).toBe(200);
@@ -311,16 +312,16 @@ describe("GET /api/graph/nodes", () => {
 // GET /api/graph/nodes/:head
 // ---------------------------------------------------------------------------
 describe("GET /api/graph/nodes/:head", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).get("/api/graph/nodes/all_events");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).get("/api/graph/nodes/unknown_head");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -330,7 +331,7 @@ describe("GET /api/graph/nodes/:head", () => {
         it("returns 404 when node is not yet materialized", async () => {
             const headIndex = new Map([["all_events", makeMockCompiledNode("all_events", 0)]]);
             const graph = makeMockInterface({ headIndex });
-            const app = makeTestApp(graph);
+            const { app } = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/all_events");
             expect(res.status).toBe(404);
@@ -349,7 +350,7 @@ describe("GET /api/graph/nodes/:head", () => {
                 [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
             ]);
             const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
-            const app = makeTestApp(graph);
+            const { app } = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/all_events");
             expect(res.status).toBe(200);
@@ -368,7 +369,7 @@ describe("GET /api/graph/nodes/:head", () => {
         it("returns empty list when no instances are materialized", async () => {
             const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
             const graph = makeMockInterface({ headIndex });
-            const app = makeTestApp(graph);
+            const { app } = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/event");
             expect(res.status).toBe(200);
@@ -390,7 +391,7 @@ describe("GET /api/graph/nodes/:head", () => {
                 [JSON.stringify({ head: "event", args: ["evt-def456"] }), { createdAt: "2024-01-03T00:00:00.000Z", modifiedAt: "2024-01-04T00:00:00.000Z" }],
             ]);
             const graph = makeMockInterface({ headIndex, materialized, freshness, timestamps });
-            const app = makeTestApp(graph);
+            const { app } = makeTestApp(graph);
 
             const res = await request(app).get("/api/graph/nodes/event");
             expect(res.status).toBe(200);
@@ -408,16 +409,16 @@ describe("GET /api/graph/nodes/:head", () => {
 // POST /api/graph/nodes/:head
 // ---------------------------------------------------------------------------
 describe("POST /api/graph/nodes/:head", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).post("/api/graph/nodes/all_events");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).post("/api/graph/nodes/unknown_head");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -426,7 +427,7 @@ describe("POST /api/graph/nodes/:head", () => {
     it("returns 400 when args are missing for a parameterized node", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).post("/api/graph/nodes/event");
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Arity mismatch: "event" expects 1 argument, got 0' });
@@ -444,7 +445,7 @@ describe("POST /api/graph/nodes/:head", () => {
             [JSON.stringify({ head: "all_events", args: [] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).post("/api/graph/nodes/all_events");
         expect(res.status).toBe(200);
@@ -464,16 +465,16 @@ describe("POST /api/graph/nodes/:head", () => {
 // POST /api/graph/nodes/:head/:arg0[/:arg1...]
 // ---------------------------------------------------------------------------
 describe("POST /api/graph/nodes/:head/*", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).post("/api/graph/nodes/event/evt-abc123");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).post("/api/graph/nodes/unknown_head/arg1");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -484,7 +485,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
         ]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).post("/api/graph/nodes/pair/arg1");
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Arity mismatch: "pair" expects 2 arguments, got 1' });
@@ -504,7 +505,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).post("/api/graph/nodes/pair/arg1/arg2");
         expect(res.status).toBe(200);
@@ -531,7 +532,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).post("/api/graph/nodes/event/foo%2Fbar");
         expect(res.status).toBe(200);
@@ -558,7 +559,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "last_entries", args: [100] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).post("/api/graph/nodes/last_entries/~100");
         expect(res.status).toBe(200);
@@ -585,7 +586,7 @@ describe("POST /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["~tilde-id"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, timestamps, pulledValues });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).post("/api/graph/nodes/event/~~tilde-id");
         expect(res.status).toBe(200);
@@ -597,16 +598,16 @@ describe("POST /api/graph/nodes/:head/*", () => {
 // GET /api/graph/nodes/:head/:arg0[/:arg1...]
 // ---------------------------------------------------------------------------
 describe("GET /api/graph/nodes/:head/*", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).get("/api/graph/nodes/event/evt-abc123");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).get("/api/graph/nodes/unknown_head/arg1");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -615,7 +616,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
     it("returns 400 for arity mismatch (too many args)", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/arg1/arg2");
         expect(res.status).toBe(400);
@@ -627,7 +628,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
         ]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/pair/arg1");
         expect(res.status).toBe(400);
@@ -637,7 +638,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
     it("returns 404 when parameterized node is not materialized", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/evt-abc123");
         expect(res.status).toBe(404);
@@ -656,7 +657,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["evt-abc123"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/evt-abc123");
         expect(res.status).toBe(200);
@@ -684,7 +685,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "pair", args: ["arg1", "arg2"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/pair/arg1/arg2");
         expect(res.status).toBe(200);
@@ -710,7 +711,7 @@ describe("GET /api/graph/nodes/:head/*", () => {
             [JSON.stringify({ head: "event", args: ["foo/bar"] }), { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-02T00:00:00.000Z" }],
         ]);
         const graph = makeMockInterface({ headIndex, freshness, values, timestamps });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
 
         const res = await request(app).get("/api/graph/nodes/event/foo%2Fbar");
         expect(res.status).toBe(200);
@@ -729,16 +730,16 @@ describe("GET /api/graph/nodes/:head/*", () => {
 // DELETE /api/graph/nodes/:head
 // ---------------------------------------------------------------------------
 describe("DELETE /api/graph/nodes/:head", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).delete("/api/graph/nodes/all_events");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/unknown_head");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -747,7 +748,7 @@ describe("DELETE /api/graph/nodes/:head", () => {
     it("returns 400 when args are missing for a parameterized node", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/event");
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Arity mismatch: "event" expects 1 argument, got 0' });
@@ -756,7 +757,7 @@ describe("DELETE /api/graph/nodes/:head", () => {
     it("invalidates an arity-0 node and returns success", async () => {
         const headIndex = new Map([["all_events", makeMockCompiledNode("all_events", 0)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/all_events");
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ success: true });
@@ -768,16 +769,16 @@ describe("DELETE /api/graph/nodes/:head", () => {
 // DELETE /api/graph/nodes/:head/*
 // ---------------------------------------------------------------------------
 describe("DELETE /api/graph/nodes/:head/*", () => {
-    it("returns 503 when graph is not initialized", async () => {
-        const app = makeTestApp(null);
+    it("calls ensureInitialized when graph is not yet initialized", async () => {
+        const { app, iface } = makeTestApp(null);
         const res = await request(app).delete("/api/graph/nodes/event/evt-abc123");
-        expect(res.status).toBe(503);
-        expect(res.body).toEqual({ error: "Graph not yet initialized" });
+        expect(iface.ensureInitialized).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toBe(503);
     });
 
     it("returns 404 for unknown head", async () => {
         const graph = makeMockInterface();
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/unknown_head/arg1");
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Unknown node: "unknown_head"' });
@@ -788,7 +789,7 @@ describe("DELETE /api/graph/nodes/:head/*", () => {
             ["pair", makeMockCompiledNode("pair", 2, { canonicalOutput: "pair(x,y)" })],
         ]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/pair/arg1");
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Arity mismatch: "pair" expects 2 arguments, got 1' });
@@ -797,7 +798,7 @@ describe("DELETE /api/graph/nodes/:head/*", () => {
     it("invalidates a parameterized node and returns success", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/event/evt-abc123");
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ success: true });
@@ -807,7 +808,7 @@ describe("DELETE /api/graph/nodes/:head/*", () => {
     it("preserves encoded slashes inside a single invalidated arg", async () => {
         const headIndex = new Map([["event", makeMockCompiledNode("event", 1)]]);
         const graph = makeMockInterface({ headIndex });
-        const app = makeTestApp(graph);
+        const { app } = makeTestApp(graph);
         const res = await request(app).delete("/api/graph/nodes/event/foo%2Fbar");
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ success: true });

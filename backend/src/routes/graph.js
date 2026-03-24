@@ -13,6 +13,7 @@ const {
 /**
  * @typedef {object} GraphRouteInterface
  * @property {() => boolean} isInitialized
+ * @property {() => Promise<void>} ensureInitialized
  * @property {() => Array<CompiledNode>} debugGetSchemas
  * @property {(head: string) => CompiledNode | null} debugGetSchemaByHead
  * @property {() => Promise<Array<[string, Array<ConstValue>]>>} debugListMaterializedNodes
@@ -52,10 +53,7 @@ function formatSchema(compiledNode) {
  * @param {import('express').Response} res
  */
 async function handleGetSchemas(capabilities, _req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
 
     const schemas = capabilities.interface.debugGetSchemas().map(formatSchema);
     res.json(schemas);
@@ -68,10 +66,7 @@ async function handleGetSchemas(capabilities, _req, res) {
  * @param {import('express').Response} res
  */
 async function handleGetSchemaByHead(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
 
     const { head } = req.params;
     if (head === undefined) {
@@ -95,10 +90,7 @@ async function handleGetSchemaByHead(capabilities, req, res) {
  * @param {import('express').Response} res
  */
 async function handleGetNodes(capabilities, _req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
 
     const materialized = await capabilities.interface.debugListMaterializedNodes();
     const result = [];
@@ -120,10 +112,7 @@ async function handleGetNodes(capabilities, _req, res) {
  * @param {import('express').Response} res
  */
 async function handleGetNodesByHead(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
 
     const { head } = req.params;
     if (head === undefined) {
@@ -171,10 +160,7 @@ async function handleGetNodesByHead(capabilities, req, res) {
  * @param {import('express').Response} res
  */
 async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
 
     const { head } = req.params;
     if (head === undefined) {
@@ -219,10 +205,7 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
  * @param {import('express').Response} res
  */
 async function handlePullNodeByHead(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
     const { head } = req.params;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
@@ -246,10 +229,7 @@ async function handlePullNodeByHead(capabilities, req, res) {
  * @param {import('express').Response} res
  */
 async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
     const { head } = req.params;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
@@ -278,10 +258,7 @@ async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
  * @param {import('express').Response} res
  */
 async function handleInvalidateNodeByHead(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
     const { head } = req.params;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
@@ -306,10 +283,7 @@ async function handleInvalidateNodeByHead(capabilities, req, res) {
  * @param {import('express').Response} res
  */
 async function handleInvalidateNodeByHeadAndArgs(capabilities, req, res) {
-    if (!capabilities.interface.isInitialized()) {
-        res.status(503).json({ error: "Graph not yet initialized" });
-        return;
-    }
+    await capabilities.interface.ensureInitialized();
     const { head } = req.params;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
