@@ -138,7 +138,6 @@ function App() {
         <Separator />
 
         <Box pt={4}>
-          <Separator mb={4} />
           <Box
             alignSelf="center"
             bg="gray.50"
