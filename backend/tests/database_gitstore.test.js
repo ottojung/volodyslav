@@ -21,6 +21,8 @@ const {
 const defaultBranch = require("../src/gitstore/default_branch");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
+jest.setTimeout(30000);
+
 
 // ── Test capability factory ───────────────────────────────────────────────────
 

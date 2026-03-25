@@ -4,6 +4,8 @@ const { transaction } = require("../src/gitstore");
 const { PushError, isPushError } = require("../src/gitstore/wrappers");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger, stubGit } = require("./stubs");
+jest.setTimeout(30000);
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

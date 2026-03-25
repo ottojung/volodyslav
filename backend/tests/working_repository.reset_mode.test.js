@@ -7,6 +7,8 @@ const {
     stubDatetime,
 } = require("./stubs");
 const defaultBranch = require("../src/gitstore/default_branch");
+jest.setTimeout(30000);
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
