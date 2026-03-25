@@ -97,6 +97,12 @@ function doneKey(reqId) {
     return stringToTempKey(`done/${reqId.identifier}`);
 }
 
+/**
+ * Singleton key for the current runtime state.
+ * @type {import('./database/types').TempKey}
+ */
+const RUNTIME_STATE_KEY = stringToTempKey("runtime_state/current");
+
 // ---------------------------------------------------------------------------
 // Low-level interface (takes an explicit TemporaryDatabase)
 // ---------------------------------------------------------------------------
@@ -206,6 +212,32 @@ async function storeBlobsAndMarkDone(database, reqId, blobs) {
         value: { type: "done" },
     });
     await database.batch(operations);
+}
+
+/**
+ * Retrieve the current runtime state from the temporary database.
+ * Returns `null` if no runtime state has been stored yet.
+ *
+ * @param {TemporaryDatabase} database
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
+async function getRuntimeState(database) {
+    const entry = await database.get(RUNTIME_STATE_KEY);
+    if (entry === undefined || entry.type !== "runtime_state") {
+        return null;
+    }
+    return entry.data;
+}
+
+/**
+ * Persist the current runtime state to the temporary database.
+ *
+ * @param {TemporaryDatabase} database
+ * @param {Record<string, unknown>} data - Serialized runtime state object
+ * @returns {Promise<void>}
+ */
+async function setRuntimeState(database, data) {
+    await database.put(RUNTIME_STATE_KEY, { type: "runtime_state", data });
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +360,26 @@ class TemporaryClass {
         const db = await this._getDatabase();
         return isDone(db, reqId);
     }
+
+    /**
+     * Retrieve the current runtime state.
+     * Returns `null` if no runtime state has been stored yet.
+     * @returns {Promise<Record<string, unknown> | null>}
+     */
+    async getRuntimeState() {
+        const db = await this._getDatabase();
+        return getRuntimeState(db);
+    }
+
+    /**
+     * Persist the current runtime state.
+     * @param {Record<string, unknown>} data - Serialized runtime state object
+     * @returns {Promise<void>}
+     */
+    async setRuntimeState(data) {
+        const db = await this._getDatabase();
+        await setRuntimeState(db, data);
+    }
 }
 
 /** @typedef {TemporaryClass} Temporary */
@@ -362,6 +414,8 @@ module.exports = {
     markDone,
     isDone,
     storeBlobsAndMarkDone,
+    getRuntimeState,
+    setRuntimeState,
     sanitizeFilename,
     FilenameValidationError,
     isFilenameValidationError,

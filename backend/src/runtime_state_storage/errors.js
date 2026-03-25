@@ -161,12 +161,12 @@ class RuntimeStateFileParseError extends Error {
 class RuntimeStateCorruptedError extends Error {
     /**
      * @param {TryDeserializeError} deserializeError
-     * @param {string} filepath
+     * @param {string} location
      */
-    constructor(deserializeError, filepath) {
-        super(`Runtime state file is corrupted: ${deserializeError.message}`);
+    constructor(deserializeError, location) {
+        super(`Runtime state is corrupted: ${deserializeError.message}`);
         this.name = "RuntimeStateCorruptedError";
-        this.filepath = filepath;
+        this.location = location;
         this.deserializeError = deserializeError;
     }
 }

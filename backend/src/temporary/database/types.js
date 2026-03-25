@@ -93,8 +93,15 @@ function tempKeyToString(key) {
  */
 
 /**
+ * A stored runtime state entry.
+ * @typedef {object} RuntimeStateEntry
+ * @property {'runtime_state'} type
+ * @property {Record<string, unknown>} data - Serialized runtime state object
+ */
+
+/**
  * The union of all value types stored in the temporary database.
- * @typedef {BlobEntry | DoneEntry} TempEntry
+ * @typedef {BlobEntry | DoneEntry | RuntimeStateEntry} TempEntry
  */
 
 module.exports = {
