@@ -187,7 +187,7 @@ function tryDeserialize(obj) {
 /**
  * Serializes a RuntimeState object.
  * @param {RuntimeState} state
- * @returns {object}
+ * @returns {Record<string, unknown>}
  */
 function serialize(state) {
     const tasks = (state.tasks || [])

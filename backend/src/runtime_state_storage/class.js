@@ -2,7 +2,6 @@ const structure = require("./structure");
 
 /** @typedef {import('./types').RuntimeStateStorageCapabilities} RuntimeStateStorageCapabilities */
 /** @typedef {import('./types').RuntimeState} RuntimeState */
-/** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
 
 /**
  * A class to manage runtime state storage.
@@ -16,35 +15,28 @@ class RuntimeStateStorageClass {
     newState = null;
 
     /**
-     * Path to the state.json file, set during transaction
-     * @private
-     * @type {ExistingFile}
-     */
-    stateFile;
-
-    /**
-     * Cache for existing state loaded from state.json
+     * Cache for existing state loaded from the DB at the start of the transaction.
      * @private
      * @type {RuntimeState|null}
      */
     existingStateCache = null;
 
     /**
-     * Whether we've attempted to load the existing state cache
+     * Whether we've attempted to deserialize the existing state.
      * @private
      * @type {boolean}
      */
     existingStateCacheLoaded = false;
 
     /**
-     * Cache for the raw contents of the state.json file as text
+     * Raw object read from the DB at the start of the transaction, or null if absent.
      * @private
-     * @type {string|null}
+     * @type {Record<string, unknown>|null}
      */
-    existingFileContent = null;
+    existingStateData;
 
     /**
-     * Capabilities object for file operations.
+     * Capabilities object.
      * @private
      * @type {RuntimeStateStorageCapabilities}
      */
@@ -53,16 +45,16 @@ class RuntimeStateStorageClass {
     /**
      * @constructor
      * Initializes runtime state storage.
-     * @param {RuntimeStateStorageCapabilities} capabilities - The capabilities object for file operations.
-     * @param {ExistingFile} stateFile - The state file object for the transaction.
+     * @param {RuntimeStateStorageCapabilities} capabilities - The capabilities object.
+     * @param {Record<string, unknown>|null} existingStateData - The raw state object from the DB, or null if absent.
      */
-    constructor(capabilities, stateFile) {
+    constructor(capabilities, existingStateData) {
         this.capabilities = capabilities;
-        this.stateFile = stateFile;
+        this.existingStateData = existingStateData;
     }
 
     /**
-     * Sets a new runtime state to be written to state.json
+     * Sets a new runtime state to be written to the DB.
      * @param {RuntimeState} state - The runtime state object to write
      */
     setState(state) {
@@ -70,7 +62,7 @@ class RuntimeStateStorageClass {
     }
 
     /**
-     * Gets the new runtime state to be written
+     * Gets the new runtime state to be written.
      * @returns {RuntimeState|null} - The runtime state object or null if none set
      */
     getNewState() {
@@ -78,95 +70,61 @@ class RuntimeStateStorageClass {
     }
 
     /**
-     * Lazily reads and returns the runtime state that existed in state.json
-     * at the start of the current transaction. The file is only read
-     * on the first call, subsequent calls return cached results.
+     * Lazily deserializes and returns the runtime state that existed in the DB
+     * at the start of the current transaction. The deserialization is only done
+     * on the first call; subsequent calls return cached results.
      *
-     * Uses capabilities: reader, logger
-     *
-     * @returns {Promise<RuntimeState|null>} - The existing runtime state or null if file not found
-     * @throws {structure.RuntimeStateFileParseError} - If the state file cannot be parsed as JSON
-     * @throws {structure.RuntimeStateCorruptedError} - If the state file structure is invalid
-     * @throws {Error} - If called outside of a transaction.
+     * @returns {Promise<RuntimeState|null>} - The existing runtime state or null if not found
+     * @throws {structure.RuntimeStateCorruptedError} - If the stored state structure is invalid
      */
     async getExistingState() {
-        // Return cached results if available
         if (this.existingStateCacheLoaded) {
             return this.existingStateCache;
         }
 
-        try {
-            const fileContent = await this.getFileContent();
-            
-            // Handle empty file as if it doesn't exist
-            if (!fileContent.trim()) {
-                this.existingStateCache = null;
-                this.existingStateCacheLoaded = true;
-                return null;
-            }
-            
-            let obj;
-            try {
-                obj = JSON.parse(fileContent);
-            } catch (parseError) {
-                // File exists but contains invalid JSON - this is corruption
-                const error = parseError instanceof Error ? parseError : new Error(String(parseError));
-                throw new structure.RuntimeStateFileParseError(
-                    `Failed to parse runtime state file as JSON: ${error.message}`,
-                    this.stateFile.path,
-                    error
-                );
-            }
-
-            const result = structure.tryDeserialize(obj);
-
-            if (structure.isTryDeserializeError(result)) {
-                // File exists but structure is invalid - this is corruption
-                throw new structure.RuntimeStateCorruptedError(result, this.stateFile.path);
-            }
-
-            for (const err of result.taskErrors) {
-                this.capabilities.logger.logWarning(
-                    {
-                        index: err.taskIndex,
-                        error: err.message,
-                        field: err.field,
-                        value: err.value,
-                        expectedType: err.expectedType,
-                        errorType: err.name,
-                    },
-                    "SkippedInvalidTask",
-                );
-            }
-            if (result.migrated) {
-                this.capabilities.logger.logInfo(
-                    { fromVersion: 1, toVersion: structure.RUNTIME_STATE_VERSION },
-                    "RuntimeStateMigrated",
-                );
-            }
-
-            this.existingStateCache = result.state;
+        if (this.existingStateData === null) {
+            this.existingStateCache = null;
             this.existingStateCacheLoaded = true;
-            return this.existingStateCache;
-        } catch (error) {
-            if (structure.isRuntimeStateCorruptedError(error) || structure.isRuntimeStateFileParseError(error)) {
-                // Re-throw corruption/parsing errors as-is
-                throw error;
-            }
-
-            // Any other error (including I/O errors) should be re-thrown as exceptional
-            // Since we have an ExistingFile, the file should exist and be readable
-            throw error;
+            return null;
         }
+
+        const result = structure.tryDeserialize(this.existingStateData);
+
+        if (structure.isTryDeserializeError(result)) {
+            throw new structure.RuntimeStateCorruptedError(result, "db:runtime_state/current");
+        }
+
+        for (const err of result.taskErrors) {
+            this.capabilities.logger.logWarning(
+                {
+                    index: err.taskIndex,
+                    error: err.message,
+                    field: err.field,
+                    value: err.value,
+                    expectedType: err.expectedType,
+                    errorType: err.name,
+                },
+                "SkippedInvalidTask",
+            );
+        }
+        if (result.migrated) {
+            this.capabilities.logger.logInfo(
+                { fromVersion: 1, toVersion: structure.RUNTIME_STATE_VERSION },
+                "RuntimeStateMigrated",
+            );
+        }
+
+        this.existingStateCache = result.state;
+        this.existingStateCacheLoaded = true;
+        return this.existingStateCache;
     }
 
     /**
      * Gets the current runtime state, either from what's been set in this transaction
-     * or from the existing state file. If neither exists, creates a default state.
+     * or from the existing DB state. If neither exists, creates a default state.
      *
      * @returns {Promise<RuntimeState>} - The current runtime state
-     * @throws {structure.RuntimeStateFileParseError} - If the state file cannot be parsed as JSON
-     * @throws {structure.RuntimeStateCorruptedError} - If the state file structure is invalid
+     * @throws {structure.RuntimeStateCorruptedError} - If the stored state structure is invalid
      */
     async getCurrentState() {
         if (this.newState !== null) {
@@ -178,21 +136,7 @@ class RuntimeStateStorageClass {
             return existing;
         }
 
-        // Create default state if none exists
         return structure.makeDefault(this.capabilities.datetime);
-    }
-
-    /**
-     * @returns {Promise<string>}
-     */
-    async getFileContent() {
-        if (this.existingFileContent) {
-            return this.existingFileContent;
-        }
-
-        const fileContent = await this.capabilities.reader.readFileAsText(this.stateFile.path);
-        this.existingFileContent = fileContent;
-        return fileContent;
     }
 }
 
@@ -201,11 +145,11 @@ class RuntimeStateStorageClass {
 /**
  * Creates a new RuntimeStateStorage instance.
  * @param {RuntimeStateStorageCapabilities} capabilities
- * @param {ExistingFile} stateFile - The state file object for the transaction.
+ * @param {Record<string, unknown>|null} existingStateData - The raw state object from the DB, or null if absent.
  * @returns {RuntimeStateStorage}
  */
-function make(capabilities, stateFile) {
-    return new RuntimeStateStorageClass(capabilities, stateFile);
+function make(capabilities, existingStateData) {
+    return new RuntimeStateStorageClass(capabilities, existingStateData);
 }
 
 /**

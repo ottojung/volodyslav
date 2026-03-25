@@ -23,11 +23,15 @@ const memconst = require("../memconst");
 
 /**
  * Creates a runtime state storage capability with transaction and ensureAccessible functions.
+ * Transactions are serialized so that concurrent callers do not interleave.
  * @param {() => RuntimeStateStorageCapabilities} getCapabilities - Function to get the capabilities object
  * @returns {RuntimeStateCapability}
  */
 function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
+
+    /** Mutex: a promise chain that serializes transactions. */
+    let mutex = Promise.resolve();
 
     /**
      * @template T
@@ -35,7 +39,14 @@ function make(getCapabilities) {
      * @returns {Promise<T>}
      */
     function transactionWrapper(transformation) {
-        return transaction(getCapabilitiesMemo(), transformation);
+        /** @type {(value?: unknown) => void} */
+        let release;
+        const acquired = new Promise((resolve) => { release = resolve; });
+        const prev = mutex;
+        mutex = acquired;
+        return prev.then(() =>
+            transaction(getCapabilitiesMemo(), transformation).finally(() => release())
+        );
     }
 
     return {

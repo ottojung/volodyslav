@@ -1,10 +1,10 @@
 /**
- * Tests for runtime state storage transactions.
+ * Tests for runtime state storage transactions (DB-backed).
  */
 
 const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubGit } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 const { fromISOString, toISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
@@ -39,20 +39,21 @@ describe("runtime_state_storage/transaction", () => {
         });
     });
 
-    test("transaction fails if git operations fail", async () => {
+    test("transaction fails if DB operations fail", async () => {
         const capabilities = getTestCapabilities();
-        
-        // Mock git.call to fail for this specific test
-        stubGit(capabilities, (..._args) => {
-            throw new Error("Git operation failed");
-        });
+
+        // Stub the temporary capability to fail
+        capabilities.temporary = {
+            getRuntimeState: jest.fn().mockRejectedValue(new Error("DB read failed")),
+            setRuntimeState: jest.fn().mockRejectedValue(new Error("DB write failed")),
+        };
 
         const startTime = capabilities.datetime.now();
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         await expect(capabilities.state.transaction(async (runtimeStateStorage) => {
             runtimeStateStorage.setState(testState);
-        })).rejects.toThrow(/Failed to initialize empty repository/);
+        })).rejects.toThrow("DB read failed");
     });
 
     test("transaction with no state changes succeeds without committing", async () => {
@@ -104,7 +105,7 @@ describe("runtime_state_storage/transaction", () => {
         expect(toISOString(result.startTime)).toBe("2025-01-01T10:00:00.000Z");
     });
 
-    test("transaction handles missing state file gracefully", async () => {
+    test("transaction handles missing state gracefully", async () => {
         const capabilities = getTestCapabilities();
 
         const result = await capabilities.state.transaction(async (runtimeStateStorage) => {

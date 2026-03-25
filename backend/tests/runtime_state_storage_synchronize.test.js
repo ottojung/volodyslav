@@ -2,7 +2,7 @@
  * Tests for runtime state storage synchronize module.
  */
 
-const { ensureAccessible } = require("../src/runtime_state_storage/synchronize");
+const { ensureAccessible, isRuntimeStateStorageAccessError } = require("../src/runtime_state_storage/synchronize");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -15,44 +15,41 @@ function getTestCapabilities() {
 }
 
 describe("runtime_state_storage/synchronize", () => {
-    test("ensureAccessible returns void", async () => {
+    test("ensureAccessible returns void when DB is accessible", async () => {
         const capabilities = getTestCapabilities();
-        
-        // Mock git.call to succeed for repository operations
-        capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
-        
-        const gitDir = await ensureAccessible(capabilities);
-        
-        expect(gitDir).toBeUndefined();
+
+        // Stub the temporary capability to succeed
+        capabilities.temporary = {
+            getRuntimeState: jest.fn().mockResolvedValue(null),
+        };
+
+        const result = await ensureAccessible(capabilities);
+        expect(result).toBeUndefined();
+        expect(capabilities.temporary.getRuntimeState).toHaveBeenCalledTimes(1);
     });
 
-    test("ensureAccessible throws RuntimeStateRepositoryError on failure", async () => {
+    test("ensureAccessible throws RuntimeStateStorageAccessError on DB failure", async () => {
         const capabilities = getTestCapabilities();
-        
-        // Mock git init failure
-        capabilities.git.call = jest.fn().mockRejectedValue(new Error("Git init failed"));
-        
+
+        // Stub the temporary capability to fail
+        capabilities.temporary = {
+            getRuntimeState: jest.fn().mockRejectedValue(new Error("DB open failed")),
+        };
+
         await expect(ensureAccessible(capabilities)).rejects.toThrow(
-            "Failed to ensure runtime state repository is accessible"
+            "Failed to ensure runtime state storage is accessible"
         );
     });
 
-    test("ensureAccessible logs empty repository initialization", async () => {
+    test("ensureAccessible error is a RuntimeStateStorageAccessError", async () => {
         const capabilities = getTestCapabilities();
-        
-        // Mock that the repository doesn't exist initially
-        capabilities.checker.fileExists = jest.fn().mockResolvedValue(false);
-        
-        // Mock git.call to succeed
-        capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
-        
-        await ensureAccessible(capabilities);
-        
-        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({
-                repository: expect.stringContaining("runtime-state-repository")
-            }),
-            "Initializing empty repository"
-        );
+
+        capabilities.temporary = {
+            getRuntimeState: jest.fn().mockRejectedValue(new Error("DB open failed")),
+        };
+
+        const error = await ensureAccessible(capabilities).catch(e => e);
+        expect(isRuntimeStateStorageAccessError(error)).toBe(true);
+        expect(error.name).toBe("RuntimeStateStorageAccessError");
     });
 });

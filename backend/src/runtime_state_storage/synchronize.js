@@ -1,51 +1,46 @@
 
-const gitstore = require("../gitstore");
-const workingRepository = gitstore.workingRepository;
-
-/** @typedef {import('./types').Capabilities} Capabilities */
+/** @typedef {import('./types').RuntimeStateStorageCapabilities} RuntimeStateStorageCapabilities */
 
 /**
- * Custom error for runtime state repository operations.
+ * Custom error for runtime state storage accessibility failures.
  */
-class RuntimeStateRepositoryError extends Error {
+class RuntimeStateStorageAccessError extends Error {
     /**
      * @param {string} message
-     * @param {string} repositoryPath
+     * @param {Error} [cause]
      */
-    constructor(message, repositoryPath) {
+    constructor(message, cause) {
         super(message);
-        this.name = "RuntimeStateRepositoryError";
-        this.repositoryPath = repositoryPath;
+        this.name = "RuntimeStateStorageAccessError";
+        this.cause = cause;
     }
 }
 
 /**
- * Type guard for RuntimeStateRepositoryError.
+ * Type guard for RuntimeStateStorageAccessError.
  * @param {unknown} object
- * @returns {object is RuntimeStateRepositoryError}
+ * @returns {object is RuntimeStateStorageAccessError}
  */
-function isRuntimeStateRepositoryError(object) {
-    return object instanceof RuntimeStateRepositoryError;
+function isRuntimeStateStorageAccessError(object) {
+    return object instanceof RuntimeStateStorageAccessError;
 }
 
 
 /**
- * Ensures the runtime state repository is accessible locally.
- * @param {Capabilities} capabilities
- * @returns {Promise<void>} The path to the .git directory
+ * Ensures the runtime state storage (temporary DB) is accessible.
+ * @param {RuntimeStateStorageCapabilities} capabilities
+ * @returns {Promise<void>}
  */
 async function ensureAccessible(capabilities) {
     try {
-        await workingRepository.getRepository(capabilities, "runtime-state-repository", "empty");
+        await capabilities.temporary.getRuntimeState();
     } catch (error) {
-        if (workingRepository.isWorkingRepositoryError(error)) {
-            throw new RuntimeStateRepositoryError(
-                `Failed to ensure runtime state repository is accessible: ${error.message}`,
-                error.repositoryPath
-            );
-        }
-        throw error;
+        const err = error instanceof Error ? error : new Error(String(error));
+        throw new RuntimeStateStorageAccessError(
+            `Failed to ensure runtime state storage is accessible: ${err.message}`,
+            err
+        );
     }
 }
 
-module.exports = { ensureAccessible, isRuntimeStateRepositoryError };
+module.exports = { ensureAccessible, isRuntimeStateStorageAccessError };
