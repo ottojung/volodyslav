@@ -1,0 +1,459 @@
+/**
+ * Audio recording session service.
+ *
+ * Manages audio recording sessions in the temporary LevelDB store.
+ * Key layout:
+ *   audio_session/<sessionId>/meta         → session metadata (JSON)
+ *   audio_session/<sessionId>/chunk/<seq>  → binary audio chunk (base64)
+ *   audio_session/<sessionId>/final        → final combined audio (base64)
+ *   audio_session/index/current_session_id → current session id
+ *
+ * @module audio_recording_session/service
+ */
+
+const { stringToTempKey, tempKeyToString } = require("../temporary/database");
+const {
+    AudioSessionNotFoundError,
+    AudioSessionChunkValidationError,
+    AudioSessionConflictError,
+    AudioSessionFinalizeError,
+} = require("./errors");
+
+/** @typedef {import('../temporary').Temporary} Temporary */
+/** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../temporary/database/types').TempKey} TempKey */
+/** @typedef {import('../temporary/database/types').AudioSessionMeta} AudioSessionMeta */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Temporary} temporary
+ * @property {Logger} logger
+ */
+
+// ---------------------------------------------------------------------------
+// Session ID validation
+// ---------------------------------------------------------------------------
+
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
+
+/**
+ * Validate a session ID.
+ * @param {string} sessionId
+ * @returns {boolean}
+ */
+function isValidSessionId(sessionId) {
+    return SESSION_ID_PATTERN.test(sessionId);
+}
+
+// ---------------------------------------------------------------------------
+// Key builders (all keys scoped under "audio_session/")
+// ---------------------------------------------------------------------------
+
+const SESSION_NAMESPACE = "audio_session";
+const CURRENT_SESSION_KEY = stringToTempKey(`${SESSION_NAMESPACE}/index/current_session_id`);
+
+/**
+ * @param {string} sessionId
+ * @returns {TempKey}
+ */
+function metaKey(sessionId) {
+    return stringToTempKey(`${SESSION_NAMESPACE}/${sessionId}/meta`);
+}
+
+/**
+ * @param {string} sessionId
+ * @param {number} sequence
+ * @returns {TempKey}
+ */
+function chunkKey(sessionId, sequence) {
+    const seqPadded = String(sequence).padStart(6, "0");
+    return stringToTempKey(`${SESSION_NAMESPACE}/${sessionId}/chunk/${seqPadded}`);
+}
+
+/**
+ * @param {string} sessionId
+ * @returns {TempKey}
+ */
+function finalKey(sessionId) {
+    return stringToTempKey(`${SESSION_NAMESPACE}/${sessionId}/final`);
+}
+
+/**
+ * Prefix for all keys belonging to a session (for bulk delete).
+ * @param {string} sessionId
+ * @returns {string}
+ */
+function sessionPrefix(sessionId) {
+    return `${SESSION_NAMESPACE}/${sessionId}/`;
+}
+
+// ---------------------------------------------------------------------------
+// Low-level DB helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Read session metadata from the database.
+ * Returns null if not found.
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {Promise<AudioSessionMeta | null>}
+ */
+async function readMeta(temporary, sessionId) {
+    const db = await temporary._getDatabase();
+    const entry = await db.get(metaKey(sessionId));
+    if (entry === undefined) {
+        return null;
+    }
+    if (entry.type !== "audio_session_meta") {
+        return null;
+    }
+    return entry.data;
+}
+
+/**
+ * Write session metadata to the database.
+ * @param {Temporary} temporary
+ * @param {AudioSessionMeta} meta
+ * @returns {Promise<void>}
+ */
+async function writeMeta(temporary, meta) {
+    const db = await temporary._getDatabase();
+    await db.put(metaKey(meta.sessionId), { type: "audio_session_meta", data: meta });
+}
+
+/**
+ * Read the current session id from the index.
+ * Returns null if not set.
+ * @param {Temporary} temporary
+ * @returns {Promise<string | null>}
+ */
+async function readCurrentSessionId(temporary) {
+    const db = await temporary._getDatabase();
+    const entry = await db.get(CURRENT_SESSION_KEY);
+    if (entry === undefined) {
+        return null;
+    }
+    if (entry.type !== "audio_session_index") {
+        return null;
+    }
+    return entry.sessionId;
+}
+
+/**
+ * Write the current session id to the index.
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+async function writeCurrentSessionId(temporary, sessionId) {
+    const db = await temporary._getDatabase();
+    await db.put(CURRENT_SESSION_KEY, { type: "audio_session_index", sessionId });
+}
+
+/**
+ * Delete all data for a session (all keys with the session prefix).
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+async function deleteSessionData(temporary, sessionId) {
+    await temporary.deleteKeysByPrefix(sessionPrefix(sessionId));
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup: delete old session when a new one starts
+// ---------------------------------------------------------------------------
+
+/**
+ * If the incoming sessionId differs from the currently-stored one,
+ * delete the old session's data and update the index.
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+async function cleanupOldSessionIfNeeded(temporary, sessionId) {
+    const currentId = await readCurrentSessionId(temporary);
+    if (currentId === null || currentId === sessionId) {
+        return;
+    }
+    await deleteSessionData(temporary, currentId);
+    await writeCurrentSessionId(temporary, sessionId);
+}
+
+// ---------------------------------------------------------------------------
+// Public service functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize or touch a session. Triggers cleanup of the previous session
+ * if this is a new session ID.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @param {string} mimeType
+ * @returns {Promise<AudioSessionMeta>}
+ */
+async function startSession(capabilities, sessionId, mimeType) {
+    if (!isValidSessionId(sessionId)) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid session ID: "${sessionId}"`
+        );
+    }
+
+    const { temporary } = capabilities;
+
+    await cleanupOldSessionIfNeeded(temporary, sessionId);
+
+    const existing = await readMeta(temporary, sessionId);
+    if (existing !== null) {
+        return existing;
+    }
+
+    const now = new Date().toISOString();
+    /** @type {AudioSessionMeta} */
+    const meta = {
+        sessionId,
+        createdAt: now,
+        updatedAt: now,
+        status: "recording",
+        mimeType,
+        fragmentCount: 0,
+        lastSequence: -1,
+        lastEndMs: 0,
+    };
+    await writeMeta(temporary, meta);
+    await writeCurrentSessionId(temporary, sessionId);
+
+    return meta;
+}
+
+/**
+ * Upload a single audio chunk for a session.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @param {{ chunk: Buffer, startMs: number, endMs: number, sequence: number, mimeType: string }} params
+ * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number } }>}
+ */
+async function uploadChunk(capabilities, sessionId, params) {
+    const { chunk, startMs, endMs, sequence, mimeType } = params;
+    const { temporary } = capabilities;
+
+    if (!isValidSessionId(sessionId)) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid session ID: "${sessionId}"`
+        );
+    }
+    if (!Number.isInteger(sequence) || sequence < 0) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid sequence: must be a non-negative integer, got ${sequence}`
+        );
+    }
+    if (typeof startMs !== "number" || startMs < 0) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid startMs: must be a non-negative number, got ${startMs}`
+        );
+    }
+    if (typeof endMs !== "number" || endMs < startMs) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid endMs: must be >= startMs (${startMs}), got ${endMs}`
+        );
+    }
+
+    const meta = await readMeta(temporary, sessionId);
+    if (meta === null) {
+        throw new AudioSessionNotFoundError(sessionId);
+    }
+    if (meta.status === "stopped") {
+        throw new AudioSessionConflictError(
+            `Cannot upload chunk to finalized session: ${sessionId}`,
+            sessionId
+        );
+    }
+
+    const db = await temporary._getDatabase();
+    const seqPadded = String(sequence).padStart(6, "0");
+    await db.put(chunkKey(sessionId, sequence), {
+        type: "blob",
+        data: chunk.toString("base64"),
+    });
+
+    const isNewChunk = sequence > meta.lastSequence;
+    const updatedMeta = {
+        ...meta,
+        mimeType: mimeType || meta.mimeType,
+        updatedAt: new Date().toISOString(),
+        fragmentCount: isNewChunk ? meta.fragmentCount + 1 : meta.fragmentCount,
+        lastSequence: isNewChunk ? sequence : meta.lastSequence,
+        lastEndMs: isNewChunk ? endMs : meta.lastEndMs,
+    };
+    await writeMeta(temporary, updatedMeta);
+
+    const filename = `${seqPadded}.webm`;
+    return {
+        stored: { sequence, filename },
+        session: {
+            fragmentCount: updatedMeta.fragmentCount,
+            lastEndMs: updatedMeta.lastEndMs,
+        },
+    };
+}
+
+/**
+ * Get current session state.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @returns {Promise<AudioSessionMeta>}
+ */
+async function getSession(capabilities, sessionId) {
+    if (!isValidSessionId(sessionId)) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid session ID: "${sessionId}"`
+        );
+    }
+
+    const meta = await readMeta(capabilities.temporary, sessionId);
+    if (meta === null) {
+        throw new AudioSessionNotFoundError(sessionId);
+    }
+    return meta;
+}
+
+/**
+ * Stop and finalize a session: concatenate all chunks into a final audio file.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @param {number} elapsedSeconds
+ * @returns {Promise<{ status: 'stopped', finalAudioKey: string, size: number }>}
+ */
+async function stopSession(capabilities, sessionId, elapsedSeconds) {
+    if (!isValidSessionId(sessionId)) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid session ID: "${sessionId}"`
+        );
+    }
+
+    const { temporary } = capabilities;
+    const meta = await readMeta(temporary, sessionId);
+    if (meta === null) {
+        throw new AudioSessionNotFoundError(sessionId);
+    }
+
+    if (meta.status === "stopped") {
+        const db = await temporary._getDatabase();
+        const finalEntry = await db.get(finalKey(sessionId));
+        const size =
+            finalEntry !== undefined && finalEntry.type === "blob"
+                ? Buffer.from(finalEntry.data, "base64").length
+                : 0;
+        return { status: "stopped", finalAudioKey: "final", size };
+    }
+
+    const chunkPrefix = `${SESSION_NAMESPACE}/${sessionId}/chunk/`;
+    const chunkKeys = await temporary.listKeysByPrefix(chunkPrefix);
+    chunkKeys.sort((a, b) => tempKeyToString(a).localeCompare(tempKeyToString(b)));
+
+    const db = await temporary._getDatabase();
+    /** @type {Buffer[]} */
+    const buffers = [];
+    for (const key of chunkKeys) {
+        const entry = await db.get(key);
+        if (entry !== undefined && entry.type === "blob") {
+            buffers.push(Buffer.from(entry.data, "base64"));
+        }
+    }
+
+    const finalBuffer = Buffer.concat(buffers);
+
+    try {
+        await db.put(finalKey(sessionId), {
+            type: "blob",
+            data: finalBuffer.toString("base64"),
+        });
+    } catch (error) {
+        throw new AudioSessionFinalizeError(
+            `Failed to store final audio for session ${sessionId}: ${error}`,
+            sessionId,
+            error
+        );
+    }
+
+    const updatedMeta = {
+        ...meta,
+        status: "stopped",
+        updatedAt: new Date().toISOString(),
+    };
+    await writeMeta(temporary, updatedMeta);
+
+    return { status: "stopped", finalAudioKey: "final", size: finalBuffer.length };
+}
+
+/**
+ * Fetch the final combined audio for a stopped session.
+ * Returns the audio buffer and mime type.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @returns {Promise<{ buffer: Buffer, mimeType: string }>}
+ */
+async function fetchFinalAudio(capabilities, sessionId) {
+    if (!isValidSessionId(sessionId)) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid session ID: "${sessionId}"`
+        );
+    }
+
+    const { temporary } = capabilities;
+    const meta = await readMeta(temporary, sessionId);
+    if (meta === null) {
+        throw new AudioSessionNotFoundError(sessionId);
+    }
+    if (meta.status !== "stopped") {
+        throw new AudioSessionConflictError(
+            `Session ${sessionId} has not been finalized yet`,
+            sessionId
+        );
+    }
+
+    const db = await temporary._getDatabase();
+    const finalEntry = await db.get(finalKey(sessionId));
+    if (finalEntry === undefined || finalEntry.type !== "blob") {
+        throw new AudioSessionFinalizeError(
+            `Final audio not found for session ${sessionId}`,
+            sessionId
+        );
+    }
+
+    return {
+        buffer: Buffer.from(finalEntry.data, "base64"),
+        mimeType: meta.mimeType,
+    };
+}
+
+/**
+ * Delete all data for a session.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+async function discardSession(capabilities, sessionId) {
+    if (!isValidSessionId(sessionId)) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid session ID: "${sessionId}"`
+        );
+    }
+    await deleteSessionData(capabilities.temporary, sessionId);
+}
+
+module.exports = {
+    isValidSessionId,
+    startSession,
+    uploadChunk,
+    getSession,
+    stopSession,
+    fetchFinalAudio,
+    discardSession,
+};

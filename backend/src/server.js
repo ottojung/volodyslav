@@ -12,6 +12,7 @@ const syncRouter = routes.sync;
 const graphRouter = routes.graph;
 const versionRouter = routes.version;
 const assetsRouter = routes.assets;
+const audioRecordingSessionRouter = routes.audioRecordingSession;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const { getBasePath } = require("./base_path");
@@ -52,6 +53,7 @@ async function addRoutes(capabilities, app) {
     app.use(`${basePath}/api`, graphRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, versionRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, assetsRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, audioRecordingSessionRouter.makeRouter(capabilities));
     app.use(`${basePath}/`, staticRouter.makeRouter(capabilities));
 }
 

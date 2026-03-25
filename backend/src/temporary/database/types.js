@@ -100,8 +100,35 @@ function tempKeyToString(key) {
  */
 
 /**
+ * Audio session metadata shape.
+ * @typedef {object} AudioSessionMeta
+ * @property {string} sessionId
+ * @property {string} createdAt - ISO timestamp
+ * @property {string} updatedAt - ISO timestamp
+ * @property {'recording'|'stopped'} status
+ * @property {string} mimeType
+ * @property {number} fragmentCount
+ * @property {number} lastSequence
+ * @property {number} lastEndMs
+ */
+
+/**
+ * Audio session metadata entry.
+ * @typedef {object} AudioSessionMetaEntry
+ * @property {'audio_session_meta'} type
+ * @property {AudioSessionMeta} data - Serialized session metadata object
+ */
+
+/**
+ * Audio session index entry (tracks current session id).
+ * @typedef {object} AudioSessionIndexEntry
+ * @property {'audio_session_index'} type
+ * @property {string} sessionId
+ */
+
+/**
  * The union of all value types stored in the temporary database.
- * @typedef {BlobEntry | DoneEntry | RuntimeStateEntry} TempEntry
+ * @typedef {BlobEntry | DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry} TempEntry
  */
 
 module.exports = {

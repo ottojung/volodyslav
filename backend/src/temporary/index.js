@@ -380,6 +380,26 @@ class TemporaryClass {
         const db = await this._getDatabase();
         await setRuntimeState(db, data);
     }
+
+    /**
+     * List all database keys with the given string prefix.
+     * @param {string} prefix
+     * @returns {Promise<import('./database/types').TempKey[]>}
+     */
+    async listKeysByPrefix(prefix) {
+        const db = await this._getDatabase();
+        return db.listKeysByPrefix(prefix);
+    }
+
+    /**
+     * Delete all database keys with the given string prefix atomically.
+     * @param {string} prefix
+     * @returns {Promise<void>}
+     */
+    async deleteKeysByPrefix(prefix) {
+        const db = await this._getDatabase();
+        await db.deleteKeysByPrefix(prefix);
+    }
 }
 
 /** @typedef {TemporaryClass} Temporary */

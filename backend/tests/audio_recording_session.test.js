@@ -1,0 +1,268 @@
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger } = require("./stubs");
+const {
+    startSession,
+    uploadChunk,
+    getSession,
+    stopSession,
+    fetchFinalAudio,
+    discardSession,
+    isAudioSessionNotFoundError,
+    isAudioSessionChunkValidationError,
+    isAudioSessionConflictError,
+} = require("../src/audio_recording_session");
+
+function getCapabilities() {
+    const caps = getMockedRootCapabilities();
+    stubEnvironment(caps);
+    stubLogger(caps);
+    return caps;
+}
+
+const TEST_SESSION_ID = "test-session-abc123";
+const TEST_MIME_TYPE = "audio/webm";
+
+describe("audio_recording_session", () => {
+    describe("startSession", () => {
+        it("creates session metadata in temporary storage", async () => {
+            const caps = getCapabilities();
+            const session = await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            expect(session.sessionId).toBe(TEST_SESSION_ID);
+            expect(session.status).toBe("recording");
+            expect(session.mimeType).toBe(TEST_MIME_TYPE);
+            expect(session.fragmentCount).toBe(0);
+        });
+
+        it("returns existing session if called twice with same id", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const session2 = await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            expect(session2.sessionId).toBe(TEST_SESSION_ID);
+            expect(session2.fragmentCount).toBe(0);
+        });
+
+        it("throws on invalid session id", async () => {
+            const caps = getCapabilities();
+            let err = null;
+            try {
+                await startSession(caps, "invalid/session", TEST_MIME_TYPE);
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
+        it("deletes prior session when new session id is used", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, "old-session-id", TEST_MIME_TYPE);
+            await uploadChunk(caps, "old-session-id", {
+                chunk: Buffer.from("audio-data"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            // Verify old session exists
+            const oldSession = await getSession(caps, "old-session-id");
+            expect(oldSession.fragmentCount).toBe(1);
+
+            // Start new session - should delete old one
+            await startSession(caps, "new-session-id", TEST_MIME_TYPE);
+
+            // Old session should be gone
+            let err = null;
+            try {
+                await getSession(caps, "old-session-id");
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionNotFoundError(err)).toBe(true);
+        });
+    });
+
+    describe("uploadChunk", () => {
+        it("stores chunk and updates session metadata", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const result = await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("audio-chunk-data"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            expect(result.stored.sequence).toBe(0);
+            expect(result.stored.filename).toBe("000000.webm");
+            expect(result.session.fragmentCount).toBe(1);
+            expect(result.session.lastEndMs).toBe(10000);
+        });
+
+        it("accepts duplicate sequence by overwriting", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("original-chunk"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            // Upload again with same sequence
+            const result = await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("replacement-chunk"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            expect(result.stored.sequence).toBe(0);
+            // fragmentCount should still be 1 (not 2)
+            expect(result.session.fragmentCount).toBe(1);
+        });
+
+        it("throws for missing session", async () => {
+            const caps = getCapabilities();
+            let err = null;
+            try {
+                await uploadChunk(caps, "nonexistent-session", {
+                    chunk: Buffer.from("data"),
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: 0,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionNotFoundError(err)).toBe(true);
+        });
+
+        it("throws on upload to stopped session", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await stopSession(caps, TEST_SESSION_ID, 0);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    chunk: Buffer.from("data"),
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: 1,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionConflictError(err)).toBe(true);
+        });
+
+        it("rejects invalid sequence", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    chunk: Buffer.from("data"),
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: -1,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+    });
+
+    describe("stopSession", () => {
+        it("concatenates chunks and stores final audio", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const chunk1 = Buffer.from("chunk-one-data");
+            const chunk2 = Buffer.from("chunk-two-data");
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: chunk1,
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: chunk2,
+                startMs: 10000,
+                endMs: 20000,
+                sequence: 1,
+                mimeType: TEST_MIME_TYPE,
+            });
+
+            const result = await stopSession(caps, TEST_SESSION_ID, 20);
+            expect(result.status).toBe("stopped");
+            expect(result.size).toBe(chunk1.length + chunk2.length);
+        });
+    });
+
+    describe("fetchFinalAudio", () => {
+        it("returns final audio after stop", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const audioData = Buffer.from("audio-bytes-here");
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: audioData,
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            await stopSession(caps, TEST_SESSION_ID, 10);
+            const { buffer, mimeType } = await fetchFinalAudio(caps, TEST_SESSION_ID);
+            expect(buffer).toEqual(audioData);
+            expect(mimeType).toBe(TEST_MIME_TYPE);
+        });
+
+        it("throws on not-yet-finalized session", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            let err = null;
+            try {
+                await fetchFinalAudio(caps, TEST_SESSION_ID);
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionConflictError(err)).toBe(true);
+        });
+
+        it("throws for missing session", async () => {
+            const caps = getCapabilities();
+            let err = null;
+            try {
+                await fetchFinalAudio(caps, "nonexistent");
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionNotFoundError(err) || isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+    });
+
+    describe("discardSession", () => {
+        it("deletes session data", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("data"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            await discardSession(caps, TEST_SESSION_ID);
+            let err = null;
+            try {
+                await getSession(caps, TEST_SESSION_ID);
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionNotFoundError(err)).toBe(true);
+        });
+    });
+});
