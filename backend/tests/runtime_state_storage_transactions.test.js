@@ -56,6 +56,35 @@ describe("runtime_state_storage/transaction", () => {
         })).rejects.toThrow("DB read failed");
     });
 
+    test("transaction propagates write failure and releases mutex", async () => {
+        const capabilities = getTestCapabilities();
+        const state = { version: RUNTIME_STATE_VERSION, startTime: capabilities.datetime.now(), tasks: [] };
+
+        let shouldFailWrite = true;
+        capabilities.temporary = {
+            getRuntimeState: jest.fn().mockResolvedValue(null),
+            setRuntimeState: jest.fn().mockImplementation(async () => {
+                if (shouldFailWrite) {
+                    shouldFailWrite = false;
+                    throw new Error("DB write failed");
+                }
+            }),
+        };
+
+        await expect(
+            capabilities.state.transaction(async (runtimeStateStorage) => {
+                runtimeStateStorage.setState(state);
+            })
+        ).rejects.toThrow("DB write failed");
+
+        await expect(
+            capabilities.state.transaction(async (runtimeStateStorage) => {
+                runtimeStateStorage.setState(state);
+                return "ok";
+            })
+        ).resolves.toBe("ok");
+    });
+
     test("transaction with no state changes succeeds without committing", async () => {
         const capabilities = getTestCapabilities();
 
@@ -164,5 +193,44 @@ describe("runtime_state_storage/transaction", () => {
         });
 
         expect(toISOString(result.startTime)).toBe("2025-01-01T11:00:00.000Z");
+    });
+
+    test("transactions are serialized for concurrent callers", async () => {
+        const capabilities = getTestCapabilities();
+        const order = [];
+
+        const first = capabilities.state.transaction(async (runtimeStateStorage) => {
+            order.push("first-start");
+            const state = await runtimeStateStorage.getCurrentState();
+            state.tasks.push({
+                name: "first",
+                cronExpression: "* * * * *",
+                retryDelayMs: 1000,
+            });
+            runtimeStateStorage.setState(state);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            order.push("first-end");
+        });
+
+        const second = capabilities.state.transaction(async (runtimeStateStorage) => {
+            order.push("second-start");
+            const state = await runtimeStateStorage.getCurrentState();
+            state.tasks.push({
+                name: "second",
+                cronExpression: "* * * * *",
+                retryDelayMs: 1000,
+            });
+            runtimeStateStorage.setState(state);
+            order.push("second-end");
+        });
+
+        await Promise.all([first, second]);
+
+        expect(order).toEqual(["first-start", "first-end", "second-start", "second-end"]);
+
+        await capabilities.state.transaction(async (runtimeStateStorage) => {
+            const state = await runtimeStateStorage.getCurrentState();
+            expect(state.tasks.map((task) => task.name).sort()).toEqual(["first", "second"]);
+        });
     });
 });

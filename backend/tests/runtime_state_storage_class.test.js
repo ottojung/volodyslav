@@ -64,9 +64,10 @@ describe("runtime_state_storage/class", () => {
         const invalidData = { invalid: "structure" };
         const storage = makeRuntimeStateStorage(capabilities, invalidData);
 
-        await expect(storage.getExistingState()).rejects.toThrow("Runtime state file is corrupted");
+        await expect(storage.getExistingState()).rejects.toThrow("Runtime state is corrupted");
         const error = await storage.getExistingState().catch(e => e);
         expect(error.name).toBe("RuntimeStateCorruptedError");
+        expect(error.location).toBe("db:runtime_state/current");
         expect(error.deserializeError.message).toContain("Missing required field: startTime");
     });
 
@@ -146,7 +147,7 @@ describe("runtime_state_storage/class", () => {
         const capabilities = getTestCapabilities();
         const storage = makeRuntimeStateStorage(capabilities, { invalid: "structure" });
 
-        await expect(storage.getCurrentState()).rejects.toThrow("Runtime state file is corrupted");
+        await expect(storage.getCurrentState()).rejects.toThrow("Runtime state is corrupted");
     });
 
     test("getExistingState logs migration when migrating from v1", async () => {

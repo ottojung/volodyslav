@@ -150,8 +150,8 @@ describe("runtime_state_storage/structure", () => {
             const error = new structure.RuntimeStateCorruptedError(deserializeError, "/path/file.json");
             expect(structure.isRuntimeStateCorruptedError(error)).toBe(true);
             expect(error.name).toBe("RuntimeStateCorruptedError");
-            expect(error.message).toContain("Runtime state file is corrupted");
-            expect(error.filepath).toBe("/path/file.json");
+            expect(error.message).toContain("Runtime state is corrupted");
+            expect(error.location).toBe("/path/file.json");
             expect(error.deserializeError).toBe(deserializeError);
             expect(structure.isRuntimeStateCorruptedError(new Error("regular error"))).toBe(false);
         });
