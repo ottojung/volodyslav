@@ -87,7 +87,7 @@ export default function Search() {
     useEffect(() => {
         if (inputRef.current) {
             // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
-            inputRef.current.focus();
+            inputRef.current.focus({ preventScroll: true });
         }
     }, []);
 

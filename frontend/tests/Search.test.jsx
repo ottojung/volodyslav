@@ -57,6 +57,19 @@ describe("Search page", () => {
         ).toBeInTheDocument();
     });
 
+    it("focuses the search input without scrolling the page", () => {
+        const focusSpy = jest.spyOn(HTMLElement.prototype, "focus").mockImplementation(() => {});
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+        focusSpy.mockRestore();
+    });
+
     it("shows recent entries on initial load", async () => {
         searchEntries.mockResolvedValue({ results: [mockEntry({ input: "food - Recent entry" })] });
 
