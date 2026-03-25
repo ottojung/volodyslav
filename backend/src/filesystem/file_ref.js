@@ -19,18 +19,68 @@ const path = require("path");
  */
 
 /**
- * Validate and return a safe basename for use as a FileRef filename.
- * Strips any leading directory components and rejects empty / dot names
- * to prevent path-traversal when `filename` is later joined to an assets
- * directory path.
+ * Thrown when a filename is not valid for use as a FileRef basename.
+ * A valid basename must not be empty, must not be "." or "..", and must not
+ * contain any path separator characters (i.e. `path.basename(name) === name`
+ * must hold).
+ */
+class InvalidFilenameError extends Error {
+    /**
+     * @param {string} filename
+     * @param {string | undefined} reason
+     */
+    constructor(filename, reason) {
+        const suffix = reason ? `: ${reason}` : "";
+        super(`Invalid filename for FileRef "${filename}"${suffix}`);
+        this.name = "InvalidFilenameError";
+        /** @type {string} */
+        this.filename = filename;
+        /** @type {string | undefined} */
+        this.reason = reason;
+    }
+}
+
+/**
+ * Type guard for InvalidFilenameError.
+ * @param {unknown} object
+ * @returns {object is InvalidFilenameError}
+ */
+function isInvalidFilenameError(object) {
+    return object instanceof InvalidFilenameError;
+}
+
+/**
+ * Validate that `filename` is a safe basename for use as a FileRef filename.
+ * Explicitly rejects any filename that contains directory components or path
+ * separators (i.e. `path.basename(filename) !== filename`), as well as empty
+ * and dot-only names, to prevent path-traversal when `filename` is later
+ * joined to an assets directory path.
+ *
+ * Unlike sanitizeFilename in the temporary module, this function NEVER
+ * silently normalizes the input — callers must supply a clean basename.
  *
  * @param {string} filename
  * @returns {string}
+ * @throws {InvalidFilenameError}
  */
 function validateFilename(filename) {
     const base = path.basename(filename);
+    // Explicitly reject filenames that contain directory components. We
+    // compare the original input to its basename rather than silently
+    // normalizing it so that callers receive a clear error for inputs like
+    // "a/b.txt" or "../secret" instead of silently collapsing them to
+    // "b.txt" / "secret" and allowing accidental collisions or confusion.
+    if (base !== filename) {
+        throw new InvalidFilenameError(
+            filename,
+            "filenames must not contain directory components or path separators"
+        );
+    }
     if (base === "" || base === "." || base === "..") {
-        throw new Error(`Invalid filename for FileRef: "${filename}"`);
+        throw new InvalidFilenameError(
+            filename,
+            'filenames must not be empty or "." / ".."'
+        );
     }
     return base;
 }
@@ -159,6 +209,8 @@ function makeFromExistingFile(file, readFileFn) {
 
 module.exports = {
     isFileRef,
+    InvalidFilenameError,
+    isInvalidFilenameError,
     makeFromBuffer,
     makeFromData,
     makeFromExistingFile,

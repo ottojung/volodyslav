@@ -3,7 +3,7 @@ const { serialize } = require("../../event");
 const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
-const { sanitizeFilename } = require("../../temporary");
+const { sanitizeFilename, isFilenameValidationError } = require("../../temporary");
 const { makeFromData } = require("../../filesystem").file_ref;
 
 /**
@@ -66,10 +66,12 @@ class FileValidationError extends Error {
 
 /**
  * Prepares FileRef objects from files previously stored in the temporary database.
- * Existence of each blob is validated upfront for an early 400 response, but the
- * buffer is not pre-loaded – `data()` reads from the temporary DB lazily when
- * copyAssets() needs it, keeping peak memory lower for multi-file uploads.
+ * Returns lazy `FileRef` instances whose `data()` reads the blob from the
+ * temporary DB only when copyAssets() needs it — no buffer is loaded during
+ * this function itself.
  * Filenames are sanitized via sanitizeFilename to prevent path traversal attacks.
+ * An invalid filename (empty, ".", "..", or containing path separators) is
+ * converted to a 400 FileValidationError.
  *
  * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files (multer memory-storage objects).
@@ -84,52 +86,45 @@ async function prepareFileObjects(capabilities, files, reqId) {
     const fileRefs = [];
     for (const file of files) {
         // Sanitize the filename before any use in key lookups.
-        const filename = sanitizeFilename(file.originalname);
-
-        // Validate that the blob exists now for an early 400 response.
-        // The buffer returned by getBlob is consumed as a boolean and not stored,
-        // so it is immediately eligible for GC without holding a second copy.
-        let blobFound;
+        // A FilenameValidationError means the client sent an unusable filename
+        // (empty, dot-only, or containing path separators) — convert to 400.
+        let filename;
         try {
-            blobFound = (await capabilities.temporary.getBlob(reqId, filename)) !== null;
+            filename = sanitizeFilename(file.originalname);
         } catch (error) {
-            capabilities.logger.logError(
-                {
-                    request_identifier: reqId.identifier,
-                    error: error instanceof Error ? error.message : String(error),
-                    file_name: filename,
-                    error_stack: error instanceof Error ? error.stack : undefined,
-                },
-                "Failed to retrieve uploaded file from temporary database",
-            );
-            throw new FileValidationError(
-                `Invalid file upload: ${filename}`,
-                filename
-            );
-        }
-
-        if (!blobFound) {
-            capabilities.logger.logError(
-                {
-                    request_identifier: reqId.identifier,
-                    file_name: filename,
-                },
-                "Uploaded file not found in temporary database",
-            );
-            throw new FileValidationError(
-                `Uploaded file not found: ${filename}`,
-                filename
-            );
+            if (isFilenameValidationError(error)) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        original_name: file.originalname,
+                        error: error.message,
+                    },
+                    "Entry creation failed - invalid uploaded filename",
+                );
+                throw new FileValidationError(
+                    `Invalid filename: ${file.originalname}`,
+                    file.originalname
+                );
+            }
+            throw error;
         }
 
         // Lazy FileRef: bytes are loaded from temporary storage only when
-        // copyAssets() calls data(), avoiding a second buffer copy alongside
-        // multer's req.files buffers during entry creation.
+        // copyAssets() calls data(). No upfront DB read is performed here,
+        // avoiding a double load (and double base64 decode) alongside the
+        // lazy read that follows.
         fileRefs.push(makeFromData(filename, async () => {
             const buf = await capabilities.temporary.getBlob(reqId, filename);
             if (buf === null) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        file_name: filename,
+                    },
+                    "Uploaded file missing from temporary database at copy time (may have expired or been cleaned up)",
+                );
                 throw new FileValidationError(
-                    `Uploaded file not found: ${filename}`,
+                    `Uploaded file not found in temporary storage: ${filename}`,
                     filename
                 );
             }
