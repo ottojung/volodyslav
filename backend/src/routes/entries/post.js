@@ -70,8 +70,10 @@ class FileValidationError extends Error {
  * temporary DB only when copyAssets() needs it — no buffer is loaded during
  * this function itself.
  * Filenames are sanitized via sanitizeFilename to prevent path traversal attacks.
- * An invalid filename (empty, ".", "..", or containing path separators) is
- * converted to a 400 FileValidationError.
+ * An invalid filename (empty, ".", "..") is converted to a 400 FileValidationError via
+ * FilenameValidationError.  Additionally, any filename whose sanitized form differs from
+ * the original (i.e. it contained path separators such as "a/b.txt") is also rejected
+ * with a 400, matching the strict behavior of validateFilename() in file_ref.js.
  *
  * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files (multer memory-storage objects).
@@ -87,7 +89,7 @@ async function prepareFileObjects(capabilities, files, reqId) {
     for (const file of files) {
         // Sanitize the filename before any use in key lookups.
         // A FilenameValidationError means the client sent an unusable filename
-        // (empty, dot-only, or containing path separators) — convert to 400.
+        // (empty, dot-only) — convert to 400.
         let filename;
         try {
             filename = sanitizeFilename(file.originalname);
@@ -107,6 +109,25 @@ async function prepareFileObjects(capabilities, files, reqId) {
                 );
             }
             throw error;
+        }
+
+        // Reject filenames that contain path separators.
+        // sanitizeFilename() strips directory components via path.basename()
+        // without throwing, so we must explicitly reject any input that was
+        // normalized (e.g. "a/b.txt" → "b.txt").  This matches the stricter
+        // behavior of validateFilename() in file_ref.js.
+        if (filename !== file.originalname) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    original_name: file.originalname,
+                },
+                "Entry creation failed - uploaded filename contains path separators",
+            );
+            throw new FileValidationError(
+                `Invalid filename: ${file.originalname}`,
+                file.originalname
+            );
         }
 
         // Lazy FileRef: bytes are loaded from temporary storage only when
