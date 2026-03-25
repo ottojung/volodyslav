@@ -33,11 +33,12 @@ describe("audio_recording_session", () => {
             expect(session.fragmentCount).toBe(0);
         });
 
-        it("returns existing session if called twice with same id", async () => {
+        it("updates mimeType when called twice with same id", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            const session2 = await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const session2 = await startSession(caps, TEST_SESSION_ID, "audio/ogg");
             expect(session2.sessionId).toBe(TEST_SESSION_ID);
+            expect(session2.mimeType).toBe("audio/ogg");
             expect(session2.fragmentCount).toBe(0);
         });
 

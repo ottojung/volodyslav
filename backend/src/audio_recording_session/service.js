@@ -12,6 +12,7 @@
  */
 
 const { stringToTempKey, tempKeyToString } = require("../temporary/database");
+const { toISOString } = require("../datetime");
 const {
     AudioSessionNotFoundError,
     AudioSessionChunkValidationError,
@@ -21,6 +22,7 @@ const {
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../temporary/database/types').TempKey} TempKey */
 /** @typedef {import('../temporary/database/types').AudioSessionMeta} AudioSessionMeta */
 
@@ -28,6 +30,7 @@ const {
  * @typedef {object} Capabilities
  * @property {Temporary} temporary
  * @property {Logger} logger
+ * @property {Datetime} datetime
  */
 
 // ---------------------------------------------------------------------------
@@ -99,8 +102,7 @@ function sessionPrefix(sessionId) {
  * @returns {Promise<AudioSessionMeta | null>}
  */
 async function readMeta(temporary, sessionId) {
-    const db = await temporary._getDatabase();
-    const entry = await db.get(metaKey(sessionId));
+    const entry = await temporary.getEntry(metaKey(sessionId));
     if (entry === undefined) {
         return null;
     }
@@ -117,8 +119,7 @@ async function readMeta(temporary, sessionId) {
  * @returns {Promise<void>}
  */
 async function writeMeta(temporary, meta) {
-    const db = await temporary._getDatabase();
-    await db.put(metaKey(meta.sessionId), { type: "audio_session_meta", data: meta });
+    await temporary.putEntry(metaKey(meta.sessionId), { type: "audio_session_meta", data: meta });
 }
 
 /**
@@ -128,8 +129,7 @@ async function writeMeta(temporary, meta) {
  * @returns {Promise<string | null>}
  */
 async function readCurrentSessionId(temporary) {
-    const db = await temporary._getDatabase();
-    const entry = await db.get(CURRENT_SESSION_KEY);
+    const entry = await temporary.getEntry(CURRENT_SESSION_KEY);
     if (entry === undefined) {
         return null;
     }
@@ -146,8 +146,7 @@ async function readCurrentSessionId(temporary) {
  * @returns {Promise<void>}
  */
 async function writeCurrentSessionId(temporary, sessionId) {
-    const db = await temporary._getDatabase();
-    await db.put(CURRENT_SESSION_KEY, { type: "audio_session_index", sessionId });
+    await temporary.putEntry(CURRENT_SESSION_KEY, { type: "audio_session_index", sessionId });
 }
 
 /**
@@ -206,10 +205,19 @@ async function startSession(capabilities, sessionId, mimeType) {
 
     const existing = await readMeta(temporary, sessionId);
     if (existing !== null) {
-        return existing;
+        // Touch existing session: ensure index is current and update mimeType/updatedAt
+        const now = toISOString(capabilities.datetime.now());
+        const updatedMeta = {
+            ...existing,
+            mimeType,
+            updatedAt: now,
+        };
+        await writeMeta(temporary, updatedMeta);
+        await writeCurrentSessionId(temporary, sessionId);
+        return updatedMeta;
     }
 
-    const now = new Date().toISOString();
+    const now = toISOString(capabilities.datetime.now());
     /** @type {AudioSessionMeta} */
     const meta = {
         sessionId,
@@ -271,9 +279,8 @@ async function uploadChunk(capabilities, sessionId, params) {
         );
     }
 
-    const db = await temporary._getDatabase();
     const seqPadded = String(sequence).padStart(6, "0");
-    await db.put(chunkKey(sessionId, sequence), {
+    await temporary.putEntry(chunkKey(sessionId, sequence), {
         type: "blob",
         data: chunk.toString("base64"),
     });
@@ -282,7 +289,7 @@ async function uploadChunk(capabilities, sessionId, params) {
     const updatedMeta = {
         ...meta,
         mimeType: mimeType || meta.mimeType,
-        updatedAt: new Date().toISOString(),
+        updatedAt: toISOString(capabilities.datetime.now()),
         fragmentCount: isNewChunk ? meta.fragmentCount + 1 : meta.fragmentCount,
         lastSequence: isNewChunk ? sequence : meta.lastSequence,
         lastEndMs: isNewChunk ? endMs : meta.lastEndMs,
@@ -342,8 +349,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     }
 
     if (meta.status === "stopped") {
-        const db = await temporary._getDatabase();
-        const finalEntry = await db.get(finalKey(sessionId));
+        const finalEntry = await temporary.getEntry(finalKey(sessionId));
         const size =
             finalEntry !== undefined && finalEntry.type === "blob"
                 ? Buffer.from(finalEntry.data, "base64").length
@@ -356,11 +362,10 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     const chunkKeyStrings = chunkKeys.map(tempKeyToString);
     chunkKeyStrings.sort((a, b) => a.localeCompare(b));
 
-    const db = await temporary._getDatabase();
     /** @type {Buffer[]} */
     const buffers = [];
     for (const keyStr of chunkKeyStrings) {
-        const entry = await db.get(stringToTempKey(keyStr));
+        const entry = await temporary.getEntry(stringToTempKey(keyStr));
         if (entry !== undefined && entry.type === "blob") {
             buffers.push(Buffer.from(entry.data, "base64"));
         }
@@ -369,7 +374,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     const finalBuffer = Buffer.concat(buffers);
 
     try {
-        await db.put(finalKey(sessionId), {
+        await temporary.putEntry(finalKey(sessionId), {
             type: "blob",
             data: finalBuffer.toString("base64"),
         });
@@ -384,7 +389,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     const updatedMeta = {
         ...meta,
         status: "stopped",
-        updatedAt: new Date().toISOString(),
+        updatedAt: toISOString(capabilities.datetime.now()),
     };
     await writeMeta(temporary, updatedMeta);
 
@@ -418,8 +423,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
         );
     }
 
-    const db = await temporary._getDatabase();
-    const finalEntry = await db.get(finalKey(sessionId));
+    const finalEntry = await temporary.getEntry(finalKey(sessionId));
     if (finalEntry === undefined || finalEntry.type !== "blob") {
         throw new AudioSessionFinalizeError(
             `Final audio not found for session ${sessionId}`,

@@ -30,12 +30,14 @@ const {
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../temporary').Temporary} Temporary */
+/** @typedef {import('../datetime').Datetime} Datetime */
 
 /**
  * @typedef {object} Capabilities
  * @property {Environment} environment
  * @property {Logger} logger
  * @property {Temporary} temporary
+ * @property {Datetime} datetime
  */
 
 /**
@@ -169,7 +171,19 @@ function makeRouter(capabilities) {
         const { sessionId } = req.params;
         const { elapsedSeconds } = req.body || {};
 
-        const elapsedSecondsNum = typeof elapsedSeconds === "number" ? elapsedSeconds : Number(elapsedSeconds);
+        const elapsedSecondsNum =
+            elapsedSeconds === undefined
+                ? 0
+                : typeof elapsedSeconds === "number"
+                ? elapsedSeconds
+                : Number(elapsedSeconds);
+
+        if (!Number.isFinite(elapsedSecondsNum) || elapsedSecondsNum < 0) {
+            return res.status(400).json({
+                success: false,
+                error: "Invalid elapsedSeconds: must be a finite, non-negative number",
+            });
+        }
 
         try {
             const result = await stopSession(capabilities, sessionId, elapsedSecondsNum);

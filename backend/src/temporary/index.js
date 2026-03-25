@@ -400,6 +400,28 @@ class TemporaryClass {
         const db = await this._getDatabase();
         await db.deleteKeysByPrefix(prefix);
     }
+
+    /**
+     * Retrieve a raw entry by key.
+     * Returns `undefined` when the key does not exist.
+     * @param {import('./database/types').TempKey} key
+     * @returns {Promise<import('./database/types').TempEntry | undefined>}
+     */
+    async getEntry(key) {
+        const db = await this._getDatabase();
+        return db.get(key);
+    }
+
+    /**
+     * Store a raw entry atomically.
+     * @param {import('./database/types').TempKey} key
+     * @param {import('./database/types').TempEntry} value
+     * @returns {Promise<void>}
+     */
+    async putEntry(key, value) {
+        const db = await this._getDatabase();
+        await db.put(key, value);
+    }
 }
 
 /** @typedef {TemporaryClass} Temporary */

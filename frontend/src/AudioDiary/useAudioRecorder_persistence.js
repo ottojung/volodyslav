@@ -7,8 +7,8 @@
  * @module useAudioRecorder_persistence
  */
 
-import { useCallback, useEffect } from "react";
-import { loadSessionId } from "./recording_storage.js";
+import { useEffect } from "react";
+import { loadSessionId, clearSessionId } from "./recording_storage.js";
 import { getSession, fetchFinalAudio } from "./session_api.js";
 
 /**
@@ -19,12 +19,12 @@ import { getSession, fetchFinalAudio } from "./session_api.js";
  * @typedef {object} PersistenceRefs
  * @property {import("react").MutableRefObject<RecorderState>} recorderStateRef
  * @property {import("react").MutableRefObject<number>} elapsedSecondsRef
- * @property {import("react").MutableRefObject<string>} noteRef
  * @property {import("react").MutableRefObject<string>} mimeTypeRef
  * @property {import("react").MutableRefObject<boolean>} isMountedRef
  * @property {import("react").MutableRefObject<string>} sessionIdRef
  * @property {import("react").MutableRefObject<boolean>} isRestoredPauseRef
  * @property {import("react").MutableRefObject<Blob | null>} audioBlobRef
+ * @property {import("react").MutableRefObject<number>} sequenceRef
  */
 
 /**
@@ -40,8 +40,8 @@ import { getSession, fetchFinalAudio } from "./session_api.js";
  * Persistence hook for useAudioRecorder.
  * Restores session state from backend on mount using the stored sessionId.
  *
- * @param {PersistenceRefs & PersistenceSetters & Record<string, unknown>} args
- * @returns {{ persistSnapshot: () => Promise<void>, queuePersistSnapshot: () => void }}
+ * @param {PersistenceRefs & PersistenceSetters} args
+ * @returns {void}
  */
 export function useAudioRecorderPersistence(args) {
     const {
@@ -52,16 +52,13 @@ export function useAudioRecorderPersistence(args) {
         sessionIdRef,
         isRestoredPauseRef,
         audioBlobRef,
+        sequenceRef,
         setRecorderState,
         setElapsedSeconds,
         setHasRestoredSession,
         setAudioBlob,
         setAudioUrl,
     } = args;
-
-    // No-op: persistence is backend-driven
-    const persistSnapshot = useCallback(async () => {}, []);
-    const queuePersistSnapshot = useCallback(() => {}, []);
 
     useEffect(() => {
         async function tryRestore() {
@@ -78,13 +75,21 @@ export function useAudioRecorderPersistence(args) {
                 return;
             }
 
-            if (!session || !isMountedRef.current) {
+            if (!isMountedRef.current) {
+                return;
+            }
+
+            if (!session) {
+                // Session not found on backend: clear stale local id
+                clearSessionId();
                 return;
             }
 
             // Restore state from backend session
             sessionIdRef.current = sessionId;
             mimeTypeRef.current = session.mimeType || "";
+            // Seed the sequence counter so resumed uploads continue from the right position
+            sequenceRef.current = session.lastSequence;
 
             if (session.status === "stopped") {
                 recorderStateRef.current = "stopped";
@@ -124,12 +129,11 @@ export function useAudioRecorderPersistence(args) {
         elapsedSecondsRef,
         isRestoredPauseRef,
         audioBlobRef,
+        sequenceRef,
         setRecorderState,
         setElapsedSeconds,
         setHasRestoredSession,
         setAudioBlob,
         setAudioUrl,
     ]);
-
-    return { persistSnapshot, queuePersistSnapshot };
 }
