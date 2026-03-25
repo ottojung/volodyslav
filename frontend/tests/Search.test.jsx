@@ -1,8 +1,16 @@
 import React from "react";
 import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigationType } from "react-router-dom";
 import { renderWithProviders } from "./renderWithProviders.jsx";
+
+jest.mock("react-router-dom", () => {
+    const actual = jest.requireActual("react-router-dom");
+    return {
+        ...actual,
+        useNavigationType: jest.fn(() => "POP"),
+    };
+});
 
 // Mock the Search API module
 jest.mock("../src/Search/api", () => ({
@@ -38,6 +46,7 @@ describe("Search page", () => {
         searchEntries.mockResolvedValue({ results: [] });
         jest.useFakeTimers();
         sessionStorage.clear();
+        useNavigationType.mockReturnValue("POP");
     });
 
     afterEach(() => {
@@ -777,5 +786,43 @@ describe("Search page", () => {
             expect(screen.getByText("- Restored entry")).toBeInTheDocument();
         });
         expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("does not focus the search input on restored POP navigation", async () => {
+        const restoredEntry = mockEntry({ id: "restored-1", input: "food - Restored entry" });
+        sessionStorage.setItem("volodyslav_search_state", JSON.stringify({
+            pattern: "food",
+            results: [restoredEntry],
+            page: 1,
+            hasMore: false,
+            error: null,
+        }));
+        const focusSpy = jest.spyOn(HTMLElement.prototype, "focus");
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("- Restored entry")).toBeInTheDocument();
+        });
+        expect(focusSpy).not.toHaveBeenCalled();
+        focusSpy.mockRestore();
+    });
+
+    it("focuses the search input when opening search with a PUSH navigation", async () => {
+        useNavigationType.mockReturnValue("PUSH");
+        const focusSpy = jest.spyOn(HTMLElement.prototype, "focus");
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        expect(focusSpy).toHaveBeenCalled();
+        focusSpy.mockRestore();
     });
 });
