@@ -52,14 +52,19 @@ import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 
 /**
  * Generate a unique session ID using crypto.randomUUID() if available,
- * or a Math.random-based fallback.
+ * or a crypto.getRandomValues()-based fallback.
  * @returns {string}
  */
 function generateSessionId() {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
         return crypto.randomUUID();
     }
-    return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    throw new Error("No secure random source available");
 }
 
 /** @returns {UseAudioRecorderResult} */

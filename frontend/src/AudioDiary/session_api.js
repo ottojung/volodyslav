@@ -38,6 +38,9 @@ export async function startSession(sessionId, mimeType) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, mimeType }),
     });
+    if (!response.ok) {
+        throw new Error(`Failed to start session: ${response.status}`);
+    }
     const data = await response.json();
     if (!data.success) {
         throw new Error(data.error || "Failed to start session");
@@ -63,6 +66,9 @@ export async function uploadChunk(sessionId, { chunk, startMs, endMs, sequence, 
         method: "POST",
         body: formData,
     });
+    if (!response.ok) {
+        throw new Error(`Failed to upload chunk: ${response.status}`);
+    }
     const data = await response.json();
     if (!data.success) {
         throw new Error(data.error || "Failed to upload chunk");
@@ -80,6 +86,9 @@ export async function getSession(sessionId) {
     const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}`);
     if (response.status === 404) {
         return null;
+    }
+    if (!response.ok) {
+        throw new Error(`Failed to get session: ${response.status}`);
     }
     const data = await response.json();
     if (!data.success) {
@@ -100,6 +109,9 @@ export async function stopSession(sessionId, elapsedSeconds) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ elapsedSeconds }),
     });
+    if (!response.ok) {
+        throw new Error(`Failed to stop session: ${response.status}`);
+    }
     const data = await response.json();
     if (!data.success) {
         throw new Error(data.error || "Failed to stop session");
