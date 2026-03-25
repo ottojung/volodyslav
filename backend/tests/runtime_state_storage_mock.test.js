@@ -182,4 +182,97 @@ describe("runtime_state_storage mock", () => {
             expect(toISOString(retrievedState.tasks[0].lastSuccessTime)).toBe("2025-01-01T09:00:00.000Z");
         });
     });
+
+    test("mockRuntimeStateTransaction works without capabilities.state being set up", async () => {
+        // Use a minimal capabilities object — no capabilities.state property at all.
+        const capabilities = getMockedRootCapabilities();
+        stubLogger(capabilities);
+        stubDatetime(capabilities);
+
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
+
+        // Should work without stubRuntimeStateStorage having been called.
+        await mockRuntimeStateTransaction(capabilities, async (storage) => {
+            storage.setState(testState);
+        });
+
+        await mockRuntimeStateTransaction(capabilities, async (storage) => {
+            const existingState = await storage.getExistingState();
+            expect(existingState).not.toBeNull();
+            expect(toISOString(existingState.startTime)).toBe("2025-01-01T10:00:00.000Z");
+        });
+    });
+
+    test("mockRuntimeStateTransaction serializes concurrent callers", async () => {
+        const capabilities = getTestCapabilities();
+        const order = [];
+
+        const first = mockRuntimeStateTransaction(capabilities, async (storage) => {
+            order.push("first-start");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            const state = await storage.getCurrentState();
+            state.tasks.push({ name: "first", cronExpression: "* * * * *", retryDelayMs: 0 });
+            storage.setState(state);
+            order.push("first-end");
+        });
+
+        const second = mockRuntimeStateTransaction(capabilities, async (storage) => {
+            order.push("second-start");
+            const state = await storage.getCurrentState();
+            state.tasks.push({ name: "second", cronExpression: "* * * * *", retryDelayMs: 0 });
+            storage.setState(state);
+            order.push("second-end");
+        });
+
+        await Promise.all([first, second]);
+
+        expect(order).toEqual(["first-start", "first-end", "second-start", "second-end"]);
+
+        await mockRuntimeStateTransaction(capabilities, async (storage) => {
+            const state = await storage.getCurrentState();
+            expect(state.tasks.map((t) => t.name).sort()).toEqual(["first", "second"]);
+        });
+    });
+
+    test("mockRuntimeStateTransaction does not write state when transformation throws", async () => {
+        const capabilities = getTestCapabilities();
+
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const initialState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
+
+        await mockRuntimeStateTransaction(capabilities, async (storage) => {
+            storage.setState(initialState);
+        });
+
+        const updatedTime = fromISOString("2025-06-01T00:00:00.000Z");
+        await expect(
+            mockRuntimeStateTransaction(capabilities, async (storage) => {
+                storage.setState({ version: RUNTIME_STATE_VERSION, startTime: updatedTime, tasks: [] });
+                throw new Error("transformation failed");
+            })
+        ).rejects.toThrow("transformation failed");
+
+        // State should still be the original
+        await mockRuntimeStateTransaction(capabilities, async (storage) => {
+            const existing = await storage.getExistingState();
+            expect(toISOString(existing.startTime)).toBe("2025-01-01T10:00:00.000Z");
+        });
+    });
+
+    test("mockRuntimeStateTransaction releases mutex after transformation throws", async () => {
+        const capabilities = getTestCapabilities();
+
+        await expect(
+            mockRuntimeStateTransaction(capabilities, async () => {
+                throw new Error("failed");
+            })
+        ).rejects.toThrow("failed");
+
+        // Subsequent transaction should succeed
+        const result = await mockRuntimeStateTransaction(capabilities, async () => {
+            return "ok";
+        });
+        expect(result).toBe("ok");
+    });
 });

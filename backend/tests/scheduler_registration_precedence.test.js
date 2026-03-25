@@ -43,7 +43,6 @@ describe("scheduler registration precedence stories", () => {
         datetimeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(10));
 
-        const stateStorage = capabilities.state._testStorage;
         const existingState = makeDefault(capabilities.datetime);
         const taskName = "cron-override-task";
         const lastSuccess = startTime.subtract(fromMinutes(45));
@@ -56,7 +55,9 @@ describe("scheduler registration precedence stories", () => {
             lastAttemptTime: lastAttempt,
         });
 
-        stateStorage.set("mock-runtime-state", existingState);
+        await capabilities.state.transaction(async (storage) => {
+            storage.setState(existingState);
+        });
 
         const newRetryDelay = fromMinutes(5);
         const registrations = [
@@ -94,7 +95,6 @@ describe("scheduler registration precedence stories", () => {
         datetimeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(10));
 
-        const stateStorage = capabilities.state._testStorage;
         const existingState = makeDefault(capabilities.datetime);
         const taskName = "retry-override-task";
         const lastFailure = startTime.subtract(fromMinutes(10));
@@ -107,7 +107,9 @@ describe("scheduler registration precedence stories", () => {
             pendingRetryUntil,
         });
 
-        stateStorage.set("mock-runtime-state", existingState);
+        await capabilities.state.transaction(async (storage) => {
+            storage.setState(existingState);
+        });
 
         const newRetryDelay = fromMinutes(2);
         const registrations = [

@@ -233,4 +233,50 @@ describe("runtime_state_storage/transaction", () => {
             expect(state.tasks.map((task) => task.name).sort()).toEqual(["first", "second"]);
         });
     });
+
+    test("transaction does not write state when transformation throws", async () => {
+        const capabilities = getTestCapabilities();
+
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const initialState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
+
+        // Set initial state
+        await capabilities.state.transaction(async (runtimeStateStorage) => {
+            runtimeStateStorage.setState(initialState);
+        });
+
+        // Transformation that throws after calling setState should not persist the new state
+        await expect(
+            capabilities.state.transaction(async (runtimeStateStorage) => {
+                const updatedTime = fromISOString("2025-06-01T00:00:00.000Z");
+                runtimeStateStorage.setState({ version: RUNTIME_STATE_VERSION, startTime: updatedTime, tasks: [] });
+                throw new Error("transformation failed");
+            })
+        ).rejects.toThrow("transformation failed");
+
+        // State should still be the original (no write on failure)
+        const result = await capabilities.state.transaction(async (runtimeStateStorage) => {
+            return await runtimeStateStorage.getExistingState();
+        });
+
+        expect(toISOString(result.startTime)).toBe("2025-01-01T10:00:00.000Z");
+    });
+
+    test("mutex is released after transformation throws, allowing subsequent transactions", async () => {
+        const capabilities = getTestCapabilities();
+
+        // First transaction throws
+        await expect(
+            capabilities.state.transaction(async () => {
+                throw new Error("first failed");
+            })
+        ).rejects.toThrow("first failed");
+
+        // Second transaction should still succeed (mutex was released)
+        const result = await capabilities.state.transaction(async () => {
+            return "second succeeded";
+        });
+
+        expect(result).toBe("second succeeded");
+    });
 });
