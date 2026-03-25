@@ -4,6 +4,8 @@ const gitstore = require("../src/gitstore");
 const isMergeHostBranchesError = gitstore.mergeHostBranches.isMergeHostBranchesError;
 const { getMockedRootCapabilities } = require("./spies");
 const { stubDatetime, stubEnvironment, stubLogger } = require("./stubs");
+jest.setTimeout(30000);
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

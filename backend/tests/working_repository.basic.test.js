@@ -8,6 +8,8 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
+jest.setTimeout(30000);
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

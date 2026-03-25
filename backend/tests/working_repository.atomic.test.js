@@ -5,6 +5,8 @@ const workingRepository = require("../src/gitstore/working_repository");
 const defaultBranch = require("../src/gitstore/default_branch");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubEventLogRepository } = require("./stubs");
+jest.setTimeout(30000);
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

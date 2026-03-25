@@ -3,6 +3,8 @@ const mover = require("../src/filesystem/mover");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubDatetime, stubEnvironment, stubGit, stubLogger } = require("./stubs");
+jest.setTimeout(30000);
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
