@@ -1,11 +1,5 @@
 /**
- * Custom React hook for managing audio recorder state and lifecycle.
- *
- * Handles the MediaRecorder state machine, live timer, audio analyser, and
- * recorder controls (start, pause/resume, stop, discard).
- *
- * Recording state is automatically persisted to IndexedDB on every pause and
- * on page-visibility changes so that interrupted sessions can be restored.
+ * Main hook for the AudioDiary recording feature.
  *
  * @module useAudioRecorder
  */
@@ -17,12 +11,20 @@ import {
     initialAudioBlob,
     initialAnalyser,
 } from "./audio_helpers.js";
-import { clearRecordingSnapshot } from "./recording_storage.js";
+import { saveSessionId, clearSessionId } from "./recording_storage.js";
+import {
+    startSession as startBackendSession,
+    uploadChunk as uploadBackendChunk,
+    stopSession as stopBackendSession,
+    fetchFinalAudio,
+    discardSession,
+} from "./session_api.js";
 import { combineChunks } from "./recorder_helpers.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
 import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
 import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
+
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
 /** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
@@ -43,10 +45,22 @@ import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setErrorMessage
  * @property {() => Promise<void>} handleStart
  * @property {() => Promise<void>} handlePauseResume
- * @property {() => void} handleStop
+ * @property {() => Promise<void>} handleStop
  * @property {() => void} handleDiscard
  * @property {() => void} clearPersistedSession
  */
+
+/**
+ * Generate a unique session ID using crypto.randomUUID() if available,
+ * or a Math.random-based fallback.
+ * @returns {string}
+ */
+function generateSessionId() {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+    }
+    return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 /** @returns {UseAudioRecorderResult} */
 export function useAudioRecorder() {
@@ -63,6 +77,7 @@ export function useAudioRecorder() {
     /** @type {[AnalyserNode | null, import("react").Dispatch<import("react").SetStateAction<AnalyserNode | null>>]} */
     const [analyser, setAnalyser] = useState(initialAnalyser());
     const [hasRestoredSession, setHasRestoredSession] = useState(false);
+
     /** @type {import("react").MutableRefObject<ReturnType<typeof makeRecorder> | null>} */
     const recorderRef = useRef(null);
     /** @type {import("react").MutableRefObject<number | null>} */
@@ -71,6 +86,12 @@ export function useAudioRecorder() {
     const isMountedRef = useRef(false);
     /** @type {import("react").MutableRefObject<number>} */
     const restoredOffsetMsRef = useRef(0);
+    /** @type {import("react").MutableRefObject<string>} */
+    const sessionIdRef = useRef("");
+    /** @type {import("react").MutableRefObject<number>} */
+    const sequenceRef = useRef(-1);
+    /** @type {import("react").MutableRefObject<Promise<void>>} */
+    const uploadQueueRef = useRef(Promise.resolve());
 
     const { audioChunks, pushChunk, resetAudioChunks } =
         useAudioChunkCollector(isMountedRef);
@@ -96,6 +117,7 @@ export function useAudioRecorder() {
         isRestoredPauseRef,
         recorderRef,
         isMountedRef,
+        sessionIdRef,
         setRecorderState,
         setAudioBlob,
         setAudioUrl,
@@ -125,9 +147,30 @@ export function useAudioRecorder() {
                     restoredAudioRef.current = null;
                 }
                 mimeTypeRef.current = finalBlob.type;
+                // Set local blob first as a fallback
                 audioBlobRef.current = finalBlob;
                 setAudioBlob(finalBlob);
                 setAudioUrl(URL.createObjectURL(finalBlob));
+
+                // Async: drain upload queue, then finalize + fetch from backend
+                const sessionId = sessionIdRef.current;
+                if (sessionId) {
+                    void (async () => {
+                        try {
+                            await uploadQueueRef.current;
+                            await stopBackendSession(sessionId, elapsedSecondsRef.current);
+                            const backendBlob = await fetchFinalAudio(sessionId);
+                            if (!isMountedRef.current) return;
+                            mimeTypeRef.current = backendBlob.type;
+                            audioBlobRef.current = backendBlob;
+                            setAudioBlob(backendBlob);
+                            setAudioUrl(URL.createObjectURL(backendBlob));
+                        } catch {
+                            // Keep the local fallback blob
+                        }
+                    })();
+                }
+
                 void persistSnapshot();
             },
             onError: (message) => {
@@ -143,20 +186,29 @@ export function useAudioRecorder() {
                 if (chunk.type) {
                     mimeTypeRef.current = chunk.type;
                 }
-                // When resuming a restored paused session the underlying MediaRecorder
-                // restarts its timestamps at 0. Apply the stable offset captured at
-                // resume time so all fragments stay on a continuous timeline.
                 const offsetMs = restoredOffsetMsRef.current;
                 chunksRef.current.push(chunk);
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
-                // Call queuePersistSnapshot() on every 10 s fragment. This is
-                // fine performance-wise because queuePersistSnapshot() is
-                // debounced (250 ms) and IndexedDB writes are async (off the
-                // main thread), so the UI is never blocked. The Blob
-                // combination that precedes the write is the only real cost,
-                // and it is proportional to recording length, but runs at most
-                // once per 10 s — well within acceptable limits for a typical
-                // diary recording session.
+
+                // Enqueue chunk upload to backend (serialized)
+                const seq = sequenceRef.current + 1;
+                sequenceRef.current = seq;
+                const sessionId = sessionIdRef.current;
+                const mimeType = chunk.type || mimeTypeRef.current;
+                if (sessionId) {
+                    uploadQueueRef.current = uploadQueueRef.current.then(() =>
+                        uploadBackendChunk(sessionId, {
+                            chunk,
+                            startMs: startMs + offsetMs,
+                            endMs: endMs + offsetMs,
+                            sequence: seq,
+                            mimeType,
+                        }).catch(() => {
+                            // Chunk upload failed; recording continues locally
+                        })
+                    );
+                }
+
                 queuePersistSnapshot();
             },
         });
@@ -173,7 +225,11 @@ export function useAudioRecorder() {
     }, []); // runs once – recorder instance is stable
 
     useEffect(() => {
-        return () => { if (audioUrl) { URL.revokeObjectURL(audioUrl); } };
+        return () => {
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+            }
+        };
     }, [audioUrl]);
 
     useEffect(() => {
@@ -197,7 +253,7 @@ export function useAudioRecorder() {
     }, [recorderState]);
 
     const handleStart = useCallback(async () => {
-        await clearRecordingSnapshot();
+        clearSessionId();
         setHasRestoredSession(false);
         setErrorMessage("");
         setElapsedSeconds(0);
@@ -207,12 +263,27 @@ export function useAudioRecorder() {
         restoredAudioRef.current = null;
         isRestoredPauseRef.current = false;
         restoredOffsetMsRef.current = 0;
+        sequenceRef.current = -1;
+        uploadQueueRef.current = Promise.resolve();
         resetAudioChunks();
         if (audioUrl) {
             setAudioUrl("");
         }
+
+        // Generate and store session ID before starting recorder
+        const newSessionId = generateSessionId();
+        sessionIdRef.current = newSessionId;
+        saveSessionId(newSessionId);
+
         if (isRecorder(recorderRef.current)) {
             await recorderRef.current.start();
+        }
+
+        // Start backend session (best-effort; recording continues even if this fails)
+        try {
+            await startBackendSession(newSessionId, mimeTypeRef.current || "audio/webm");
+        } catch {
+            // Non-fatal
         }
     }, [audioUrl, resetAudioChunks]);
 
@@ -224,9 +295,6 @@ export function useAudioRecorder() {
             recorderRef.current.pause();
         } else if (recorderState === "paused") {
             if (isRestoredPauseRef.current) {
-                // Restored session: resume by starting a fresh MediaRecorder.
-                // New chunks will be combined with the restored audio in onStop.
-                // Capture the stable offset here so all fragments use the same base.
                 restoredOffsetMsRef.current = elapsedSecondsRef.current * 1000;
                 isRestoredPauseRef.current = false;
                 await recorderRef.current.start();
@@ -236,13 +304,57 @@ export function useAudioRecorder() {
         }
     }, [recorderState]);
 
-    const handleStop = useCallback(() => {
-        if (stopRestoredPausedSession({
-            isRestoredPauseRef, restoredAudioRef, mimeTypeRef, audioBlobRef,
-            recorderStateRef, setAudioBlob, setAudioUrl, setRecorderState, persistSnapshot,
-        })) { return; }
-        if (isRecorder(recorderRef.current)) { recorderRef.current.stop(); }
-    }, [audioBlobRef, isRestoredPauseRef, mimeTypeRef, persistSnapshot, recorderStateRef, restoredAudioRef]);
+    const handleStop = useCallback(async () => {
+        if (
+            stopRestoredPausedSession({
+                isRestoredPauseRef,
+                restoredAudioRef,
+                mimeTypeRef,
+                audioBlobRef,
+                recorderStateRef,
+                setAudioBlob,
+                setAudioUrl,
+                setRecorderState,
+                persistSnapshot,
+            })
+        ) {
+            // Session was in restored-paused state; finalize on backend
+            const sessionId = sessionIdRef.current;
+            if (sessionId) {
+                try {
+                    await stopBackendSession(sessionId, elapsedSecondsRef.current);
+                    const blob = await fetchFinalAudio(sessionId);
+                    if (isMountedRef.current) {
+                        mimeTypeRef.current = blob.type;
+                        audioBlobRef.current = blob;
+                        setAudioBlob(blob);
+                        setAudioUrl(URL.createObjectURL(blob));
+                        recorderStateRef.current = "stopped";
+                        setRecorderState("stopped");
+                    }
+                } catch {
+                    // Backend finalize failed; keep local fallback if any
+                }
+            }
+            return;
+        }
+        if (isRecorder(recorderRef.current)) {
+            recorderRef.current.stop();
+            // Backend finalization happens in the onStop callback after upload queue drains
+        }
+    }, [
+        audioBlobRef,
+        elapsedSecondsRef,
+        isMountedRef,
+        isRestoredPauseRef,
+        mimeTypeRef,
+        persistSnapshot,
+        recorderStateRef,
+        restoredAudioRef,
+        setAudioBlob,
+        setAudioUrl,
+        setRecorderState,
+    ]);
 
     const handleDiscard = useCallback(() => {
         isRestoredPauseRef.current = false;
@@ -250,6 +362,7 @@ export function useAudioRecorder() {
         audioBlobRef.current = null;
         chunksRef.current = [];
         restoredOffsetMsRef.current = 0;
+        sequenceRef.current = -1;
         resetAudioChunks();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
@@ -263,12 +376,23 @@ export function useAudioRecorder() {
         setErrorMessage("");
         setAnalyser(null);
         setHasRestoredSession(false);
-        void clearRecordingSnapshot();
+
+        const sessionId = sessionIdRef.current;
+        clearSessionId();
+        sessionIdRef.current = "";
+        if (sessionId) {
+            void discardSession(sessionId);
+        }
     }, [audioUrl, resetAudioChunks]);
 
     const clearPersistedSession = useCallback(() => {
         setHasRestoredSession(false);
-        void clearRecordingSnapshot();
+        const sessionId = sessionIdRef.current;
+        clearSessionId();
+        sessionIdRef.current = "";
+        if (sessionId) {
+            void discardSession(sessionId);
+        }
     }, []);
 
     return {

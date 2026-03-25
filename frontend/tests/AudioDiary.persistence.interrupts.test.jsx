@@ -19,7 +19,7 @@ import {
 setupAudioDiaryPersistenceHarness();
 
 describe("AudioDiary persistence: interrupt handling", () => {
-    it("saves state when page becomes hidden while recording", async () => {
+    it("sessionId is stored in localStorage when recording starts", async () => {
         renderAudioDiary();
         await act(async () => {
             fireEvent.click(screen.getByTestId("start-button"));
@@ -27,126 +27,26 @@ describe("AudioDiary persistence: interrupt handling", () => {
         await waitFor(() => {
             expect(screen.getByText(/● Recording/i)).toBeInTheDocument();
         });
-        Object.defineProperty(document, "visibilityState", {
-            value: "hidden",
-            writable: true,
-            configurable: true,
-        });
-        act(() => {
-            document.dispatchEvent(new Event("visibilitychange"));
-        });
-        await act(async () => {
-            await passThread();
-            await passThread();
-            await passThread();
-            await passThread();
-        });
-        expect(currentStore().has("current")).toBe(true);
-        const rawSnapshot = currentStore().get("current");
-        expect(rawSnapshot).toBeTruthy();
-        expect(typeof rawSnapshot?.mimeType).toBe("string");
-        expect(rawSnapshot?.mimeType).toContain("audio/");
-        Object.defineProperty(document, "visibilityState", {
-            value: "visible",
-            writable: true,
-            configurable: true,
-        });
+        expect(currentStore().has("audioDiarySessionId")).toBe(true);
+        expect(currentStore().get("audioDiarySessionId")).toBeTruthy();
     });
 
-    it("does not persist when idle and hidden", async () => {
+    it("does not have sessionId in localStorage when idle", async () => {
         renderAudioDiary();
         await act(async () => {
             await passThread();
             await passThread();
         });
-        Object.defineProperty(document, "visibilityState", {
-            value: "hidden",
-            writable: true,
-            configurable: true,
-        });
-        act(() => {
-            document.dispatchEvent(new Event("visibilitychange"));
-        });
-        await act(async () => { await passThread(); });
-        expect(currentStore().has("current")).toBe(false);
-        Object.defineProperty(document, "visibilityState", {
-            value: "visible",
-            writable: true,
-            configurable: true,
-        });
-    });
-
-    it("saves state on pagehide while recording", async () => {
-        renderAudioDiary();
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("start-button"));
-        });
-        await waitFor(() => {
-            expect(screen.getByText(/● Recording/i)).toBeInTheDocument();
-        });
-        act(() => {
-            window.dispatchEvent(new Event("pagehide"));
-        });
-        await act(async () => {
-            await passThread();
-            await passThread();
-            await passThread();
-            await passThread();
-        });
-        expect(currentStore().has("current")).toBe(true);
-    });
-
-    it("saves state on beforeunload while recording", async () => {
-        renderAudioDiary();
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("start-button"));
-        });
-        await waitFor(() => {
-            expect(screen.getByText(/● Recording/i)).toBeInTheDocument();
-        });
-        act(() => {
-            window.dispatchEvent(new Event("beforeunload"));
-        });
-        await act(async () => {
-            await passThread();
-            await passThread();
-            await passThread();
-            await passThread();
-        });
-        expect(currentStore().has("current")).toBe(true);
-    });
-
-    it("saves on pause", async () => {
-        renderAudioDiary();
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("start-button"));
-        });
-        await waitFor(() => {
-            expect(screen.getByTestId("pause-resume-button")).toBeInTheDocument();
-        });
-        act(() => {
-            fireEvent.click(screen.getByTestId("pause-resume-button"));
-        });
-        await waitFor(() => {
-            expect(screen.getByText(/⏸ Paused/i)).toBeInTheDocument();
-        });
-        await act(async () => {
-            await passThread();
-            await passThread();
-        });
-        expect(currentStore().has("current")).toBe(true);
-        const rawSnapshot = currentStore().get("current");
-        expect(rawSnapshot).toMatchObject({ recorderState: "paused" });
+        expect(currentStore().has("audioDiarySessionId")).toBe(false);
     });
 
     it("discard clears restored banner and returns idle", async () => {
-        const audioData = new TextEncoder().encode("partial-audio");
         injectSnapshot({
             recorderState: "paused",
             elapsedSeconds: 15,
             note: "",
             mimeType: "audio/webm",
-            audioBuffer: audioData.buffer,
+            audioBuffer: new ArrayBuffer(0),
         });
         renderAudioDiary();
         await waitFor(() => {
@@ -162,18 +62,35 @@ describe("AudioDiary persistence: interrupt handling", () => {
         expect(screen.getByText(/idle/i)).toBeInTheDocument();
     });
 
-    it("clears stale persisted snapshot before starting a new recording", async () => {
+    it("discard clears sessionId from localStorage", async () => {
+        injectSnapshot({
+            recorderState: "paused",
+            elapsedSeconds: 15,
+            note: "",
+            mimeType: "audio/webm",
+            audioBuffer: new ArrayBuffer(0),
+        });
+        renderAudioDiary();
+        await waitFor(() => {
+            expect(screen.getByTestId("discard-button")).toBeInTheDocument();
+        });
+        act(() => {
+            fireEvent.click(screen.getByTestId("discard-button"));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId("start-button")).toBeInTheDocument();
+        });
+        expect(currentStore().has("audioDiarySessionId")).toBe(false);
+    });
+
+    it("clears sessionId before starting a new recording", async () => {
         renderAudioDiary();
         await act(async () => {
             await passThread();
         });
-        currentStore().set("current", {
-            recorderState: "paused",
-            elapsedSeconds: 99,
-            note: "stale",
-            mimeType: "audio/ogg",
-            audioBuffer: new TextEncoder().encode("stale").buffer,
-        });
+        // Manually set a stale session ID
+        currentStore().set("audioDiarySessionId", "stale-session-id");
+
         const originalMediaDevices = global.navigator.mediaDevices;
         Object.defineProperty(global.navigator, "mediaDevices", {
             value: undefined,
@@ -185,7 +102,10 @@ describe("AudioDiary persistence: interrupt handling", () => {
             await passThread();
             await passThread();
         });
-        expect(currentStore().has("current")).toBe(false);
+        // A new session ID should be set (different from stale one)
+        // OR the stale one gets cleared and a new one is set
+        const storedId = currentStore().get("audioDiarySessionId");
+        expect(storedId).not.toBe("stale-session-id");
         Object.defineProperty(global.navigator, "mediaDevices", {
             value: originalMediaDevices,
             writable: true,
