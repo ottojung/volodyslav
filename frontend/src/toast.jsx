@@ -48,6 +48,12 @@ function statusBorderColor(status) {
     return "blue.400";
 }
 
+/** @param {ActiveToast["status"]} status @returns {"polite"|"assertive"} */
+function statusLiveMode(status) {
+    if (status === "error" || status === "warning") return "assertive";
+    return "polite";
+}
+
 /**
  * @param {{ children?: React.ReactNode }} props
  * @returns {React.JSX.Element}
@@ -138,6 +144,9 @@ export function ToastProvider({ children }) {
  * @returns {React.JSX.Element}
  */
 function ToastCard({ item, onClose }) {
+    const liveMode = statusLiveMode(item.status);
+    const role = liveMode === "assertive" ? "alert" : "status";
+
     return (
         <Box
             pointerEvents="auto"
@@ -152,6 +161,9 @@ function ToastCard({ item, onClose }) {
             py={3}
             maxW="min(90vw, 28rem)"
             w="full"
+            role={role}
+            aria-live={liveMode}
+            aria-atomic="true"
         >
             <HStack align="start" justify="space-between" gap={3}>
                 <VStack align="start" gap={0} flex="1">
