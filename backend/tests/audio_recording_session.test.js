@@ -240,7 +240,7 @@ describe("audio_recording_session", () => {
             } catch (e) {
                 err = e;
             }
-            expect(isAudioSessionNotFoundError(err) || isAudioSessionChunkValidationError(err)).toBe(true);
+            expect(isAudioSessionNotFoundError(err)).toBe(true);
         });
     });
 

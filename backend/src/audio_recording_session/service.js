@@ -353,13 +353,14 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
 
     const chunkPrefix = `${SESSION_NAMESPACE}/${sessionId}/chunk/`;
     const chunkKeys = await temporary.listKeysByPrefix(chunkPrefix);
-    chunkKeys.sort((a, b) => tempKeyToString(a).localeCompare(tempKeyToString(b)));
+    const chunkKeyStrings = chunkKeys.map(tempKeyToString);
+    chunkKeyStrings.sort((a, b) => a.localeCompare(b));
 
     const db = await temporary._getDatabase();
     /** @type {Buffer[]} */
     const buffers = [];
-    for (const key of chunkKeys) {
-        const entry = await db.get(key);
+    for (const keyStr of chunkKeyStrings) {
+        const entry = await db.get(stringToTempKey(keyStr));
         if (entry !== undefined && entry.type === "blob") {
             buffers.push(Buffer.from(entry.data, "base64"));
         }

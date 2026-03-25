@@ -110,7 +110,7 @@ class TemporaryDatabaseClass {
      */
     async listKeysByPrefix(prefix) {
         const keys = [];
-        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\xff' })) {
+        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\uffff' })) {
             keys.push(stringToTempKey(key));
         }
         return keys;
@@ -124,7 +124,7 @@ class TemporaryDatabaseClass {
      */
     async deleteKeysByPrefix(prefix) {
         const keys = [];
-        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\xff' })) {
+        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\uffff' })) {
             keys.push(key);
         }
         if (keys.length === 0) {

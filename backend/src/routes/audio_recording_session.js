@@ -209,10 +209,10 @@ function makeRouter(capabilities) {
                 return res.status(404).json({ success: false, error: error.message });
             }
             if (isAudioSessionConflictError(error)) {
-                return res.status(404).json({ success: false, error: "Session not yet finalized" });
+                return res.status(409).json({ success: false, error: "Session not yet finalized" });
             }
             if (isAudioSessionFinalizeError(error)) {
-                return res.status(404).json({ success: false, error: error.message });
+                return res.status(500).json({ success: false, error: error.message });
             }
             capabilities.logger.logError(
                 { error: error instanceof Error ? error.message : String(error) },
