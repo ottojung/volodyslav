@@ -85,11 +85,14 @@ export default function Search() {
     const isStateRestoredRef = useRef(restoredState !== null);
 
     useEffect(() => {
+        if (restoredState !== null) {
+            return;
+        }
         if (inputRef.current) {
             // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
             inputRef.current.focus();
         }
-    }, []);
+    }, [restoredState]);
 
     useEffect(() => {
         setError(null);
