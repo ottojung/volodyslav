@@ -51,15 +51,16 @@ export const FormInputSection = ({
                     )}
 
                     <HStack justify="flex-end" gap={2}>
-                        <Button
-                            variant="ghost"
-                            color="gray.600"
-                            onClick={onTakePhotos}
-                            size="sm"
-                            disabled={isSubmitting}
-                        >
-                            📸 Take Photos
-                        </Button>
+                        {!isSubmitting && (
+                            <Button
+                                variant="ghost"
+                                color="gray.600"
+                                onClick={onTakePhotos}
+                                size="sm"
+                            >
+                                📸 Take Photos
+                            </Button>
+                        )}
                         <Button
                             colorPalette="blue"
                             px={8}
