@@ -159,7 +159,7 @@ describe("DescriptionEntry", () => {
         expect(input.value).toBe("test input");
     });
 
-    it("renders Take Photos button correctly", async () => {
+    it("renders Take Photos button correctly when idle", async () => {
         renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
@@ -180,6 +180,38 @@ describe("DescriptionEntry", () => {
 
         // Take Photos button should still be enabled
         expect(takePhotosButton).toBeEnabled();
+    });
+
+    it("hides Take Photos button while submitting", async () => {
+        let resolveSubmission;
+        submitEntry.mockImplementation(() => new Promise((resolve) => {
+            resolveSubmission = resolve;
+        }));
+
+        renderWithChakra(<DescriptionEntry />);
+
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        fireEvent.change(input, { target: { value: "test event" } });
+        fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole("button", { name: /take photos/i })).not.toBeInTheDocument();
+        });
+
+        resolveSubmission({
+            success: true,
+            entry: { input: "test event" },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /take photos/i })).toBeInTheDocument();
+        });
     });
 
     it("does not render config section when no config is available", async () => {
