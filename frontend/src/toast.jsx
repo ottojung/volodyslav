@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Box, CloseButton, HStack, Text, VStack } from "@chakra-ui/react";
 
 /**
  * @typedef {object} ToastOptions
@@ -11,21 +12,40 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
  */
 
 /**
- * Legacy-compatible toast API for the existing frontend call sites.
- * @returns {(options: ToastOptions) => void}
+ * @typedef {object} ActiveToast
+ * @property {number} id
+ * @property {string | undefined} title
+ * @property {string | undefined} description
+ * @property {"success"|"error"|"warning"|"info" | undefined} status
+ * @property {"top"|"bottom"} position
+ * @property {boolean} isClosable
  */
+
 const ToastContext = createContext(
-    /**
-     * @param {ToastOptions} _options
-     */
+    /** @param {ToastOptions} _options */
     (_options) => {},
 );
 
-/**
- * @returns {(options: ToastOptions) => void}
- */
 export function useToast() {
     return useContext(ToastContext);
+}
+
+/** @returns {ActiveToast[]} */
+function makeEmptyToasts() {
+    return [];
+}
+
+/** @param {ToastOptions} options @returns {"top"|"bottom"} */
+function normalizePosition(options) {
+    return options.position === "top" ? "top" : "bottom";
+}
+
+/** @param {ActiveToast["status"]} status @returns {string} */
+function statusBorderColor(status) {
+    if (status === "success") return "green.400";
+    if (status === "warning") return "orange.400";
+    if (status === "error") return "red.400";
+    return "blue.400";
 }
 
 /**
@@ -36,7 +56,7 @@ export function ToastProvider({ children }) {
     const nextToastIdRef = useRef(0);
     /** @type {React.MutableRefObject<Map<number, ReturnType<typeof setTimeout>>>} */
     const timeoutMapRef = useRef(new Map());
-    /** @type {[Array<{ id: number, title?: string, description?: string }>, React.Dispatch<React.SetStateAction<Array<{ id: number, title?: string, description?: string }>>>]} */
+    /** @type {[ActiveToast[], React.Dispatch<React.SetStateAction<ActiveToast[]>>]} */
     const [toasts, setToasts] = useState(makeEmptyToasts());
 
     useEffect(() => {
@@ -49,62 +69,99 @@ export function ToastProvider({ children }) {
     }, []);
 
     const removeToast = useCallback(
-        /**
-         * @param {number} id
-         */
+        /** @param {number} id */
         (id) => {
-        const timeoutId = timeoutMapRef.current.get(id);
-        if (timeoutId !== undefined) {
-            clearTimeout(timeoutId);
-            timeoutMapRef.current.delete(id);
-        }
-        setToasts((current) => current.filter((item) => item.id !== id));
-    },
+            const timeoutId = timeoutMapRef.current.get(id);
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+                timeoutMapRef.current.delete(id);
+            }
+            setToasts((current) => current.filter((item) => item.id !== id));
+        },
         [],
     );
 
     const toast = useCallback(
-        /**
-         * @param {ToastOptions} options
-         */
+        /** @param {ToastOptions} options */
         (options) => {
-        nextToastIdRef.current += 1;
-        const id = nextToastIdRef.current;
-        setToasts((current) => [...current, { id, title: options.title, description: options.description }]);
-        if (options.duration !== null) {
-            const duration = options.duration ?? 3000;
-            const timeoutId = setTimeout(() => {
-                removeToast(id);
-            }, duration);
-            timeoutMapRef.current.set(id, timeoutId);
-        }
-    },
+            nextToastIdRef.current += 1;
+            const id = nextToastIdRef.current;
+
+            setToasts((current) => [
+                ...current,
+                {
+                    id,
+                    title: options.title,
+                    description: options.description,
+                    status: options.status,
+                    position: normalizePosition(options),
+                    isClosable: options.isClosable !== false,
+                },
+            ]);
+
+            if (options.duration !== null) {
+                const duration = options.duration ?? 3000;
+                const timeoutId = setTimeout(() => {
+                    removeToast(id);
+                }, duration);
+                timeoutMapRef.current.set(id, timeoutId);
+            }
+        },
         [removeToast],
     );
 
     const contextValue = useMemo(() => toast, [toast]);
+    const topToasts = toasts.filter((item) => item.position === "top");
+    const bottomToasts = toasts.filter((item) => item.position === "bottom");
 
     return (
         <ToastContext.Provider value={contextValue}>
             {children}
-            <div aria-live="polite">
-                {toasts.map((item) => (
-                    <div key={item.id}>
-                        {item.title && <div>{item.title}</div>}
-                        {item.description && <div>{item.description}</div>}
-                        <button type="button" onClick={() => removeToast(item.id)} aria-label="Dismiss toast">
-                            ×
-                        </button>
-                    </div>
+
+            <VStack position="fixed" top={4} left={0} right={0} zIndex={2000} pointerEvents="none" gap={3}>
+                {topToasts.map((item) => (
+                    <ToastCard key={item.id} item={item} onClose={removeToast} />
                 ))}
-            </div>
+            </VStack>
+
+            <VStack position="fixed" bottom={4} left={0} right={0} zIndex={2000} pointerEvents="none" gap={3}>
+                {bottomToasts.map((item) => (
+                    <ToastCard key={item.id} item={item} onClose={removeToast} />
+                ))}
+            </VStack>
         </ToastContext.Provider>
     );
 }
 
 /**
- * @returns {Array<{ id: number, title?: string, description?: string }>}
+ * @param {{ item: ActiveToast, onClose: (id: number) => void }} props
+ * @returns {React.JSX.Element}
  */
-function makeEmptyToasts() {
-    return [];
+function ToastCard({ item, onClose }) {
+    return (
+        <Box
+            pointerEvents="auto"
+            bg="bg.panel"
+            borderWidth="1px"
+            borderLeftWidth="4px"
+            borderLeftColor={statusBorderColor(item.status)}
+            borderColor="border"
+            borderRadius="md"
+            boxShadow="lg"
+            px={4}
+            py={3}
+            maxW="min(90vw, 28rem)"
+            w="full"
+        >
+            <HStack align="start" justify="space-between" gap={3}>
+                <VStack align="start" gap={0} flex="1">
+                    {item.title ? <Text fontWeight="semibold">{item.title}</Text> : null}
+                    {item.description ? <Text fontSize="sm">{item.description}</Text> : null}
+                </VStack>
+                {item.isClosable ? (
+                    <CloseButton size="sm" onClick={() => onClose(item.id)} aria-label="Dismiss toast" />
+                ) : null}
+            </HStack>
+        </Box>
+    );
 }
