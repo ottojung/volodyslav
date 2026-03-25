@@ -1,5 +1,6 @@
 const { transaction } = require("../src/event_log_storage");
 const { fromISOString } = require("../src/datetime");
+const { makeFromData } = require("../src/filesystem/file_ref");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -46,7 +47,9 @@ describe("event_log_storage transaction", () => {
         const capabilities = getTestCapabilities();
         const failingAsset = {
             event: makeEvent("event-1", "with asset"),
-            file: { path: "/missing/file.mp3", __brand: "ExistingFile" },
+            file: makeFromData("file.mp3", () =>
+                Promise.reject(new Error("simulated read failure"))
+            ),
         };
 
         await expect(

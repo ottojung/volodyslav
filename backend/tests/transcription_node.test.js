@@ -2,6 +2,7 @@ const path = require("path");
 const event = require("../src/event");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
+const { makeFromExistingFile } = require("../src/filesystem/file_ref");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubLogger,
@@ -58,7 +59,10 @@ async function writeDiaryEventWithAssets(capabilities, eventId, filenames) {
         const sourcePath = path.join(tmpDir, filename);
         const sourceFile = await capabilities.creator.createFile(sourcePath);
         await capabilities.writer.writeFile(sourceFile, "fake file");
-        assets.push(event.asset.make(diaryEvent, sourceFile));
+        assets.push(event.asset.make(diaryEvent, makeFromExistingFile(
+            sourceFile,
+            (p) => capabilities.reader.readFileAsBuffer(p)
+        )));
     }
 
     await transaction(capabilities, async (storage) => {

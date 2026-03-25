@@ -3,8 +3,8 @@ const { serialize } = require("../../event");
 const event = require("../../event");
 const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
-const path = require("path");
-const { sanitizeFilename } = require("../../temporary");
+const { sanitizeFilename, isFilenameValidationError } = require("../../temporary");
+const { makeFromData } = require("../../filesystem").file_ref;
 
 /**
  * @typedef {import('../../environment').Environment} Environment
@@ -65,85 +65,95 @@ class FileValidationError extends Error {
  */
 
 /**
- * Prepares ExistingFile objects from files previously stored in the temporary database.
- * Retrieves each blob, writes it to a directory under workDir, and wraps it as an ExistingFile.
- * Filenames are sanitized via path.basename to prevent path traversal attacks.
+ * Prepares FileRef objects from files previously stored in the temporary database.
+ * Returns lazy `FileRef` instances whose `data()` reads the blob from the
+ * temporary DB only when copyAssets() needs it — no buffer is loaded during
+ * this function itself.
+ * Filenames are sanitized via sanitizeFilename to prevent path traversal attacks.
+ * An invalid filename (empty, ".", "..") is converted to a 400 FileValidationError via
+ * FilenameValidationError.  Additionally, any filename whose sanitized form differs from
+ * the original (i.e. it contained path separators such as "a/b.txt") is also rejected
+ * with a 400, matching the strict behavior of validateFilename() in file_ref.js.
  *
  * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files (multer memory-storage objects).
  * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking.
- * @param {string} workDir - Temporary directory to write blobs into.
- * @returns {Promise<import('../../filesystem/file').ExistingFile[]>} - The file objects.
+ * @returns {Promise<import('../../filesystem/file_ref').FileRef[]>} - The FileRef objects.
  */
-async function prepareFileObjects(capabilities, files, reqId, workDir) {
+async function prepareFileObjects(capabilities, files, reqId) {
     if (!files || !Array.isArray(files) || files.length === 0) {
         return [];
     }
 
-    const fileObjects = [];
+    const fileRefs = [];
     for (const file of files) {
-        // Sanitize the filename before any use in key lookups or filesystem paths.
-        const filename = sanitizeFilename(file.originalname);
-        let buffer;
+        // Sanitize the filename before any use in key lookups.
+        // A FilenameValidationError means the client sent an unusable filename
+        // (empty, dot-only) — convert to 400.
+        let filename;
         try {
-            buffer = await capabilities.temporary.getBlob(reqId, filename);
+            filename = sanitizeFilename(file.originalname);
         } catch (error) {
+            if (isFilenameValidationError(error)) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        original_name: file.originalname,
+                        error: error.message,
+                    },
+                    "Entry creation failed - invalid uploaded filename",
+                );
+                throw new FileValidationError(
+                    `Invalid filename: ${file.originalname}`,
+                    file.originalname
+                );
+            }
+            throw error;
+        }
+
+        // Reject filenames that contain path separators.
+        // sanitizeFilename() strips directory components via path.basename()
+        // without throwing, so we must explicitly reject any input that was
+        // normalized (e.g. "a/b.txt" → "b.txt").  This matches the stricter
+        // behavior of validateFilename() in file_ref.js.
+        if (filename !== file.originalname) {
             capabilities.logger.logError(
                 {
                     request_identifier: reqId.identifier,
-                    error: error instanceof Error ? error.message : String(error),
-                    file_name: filename,
-                    error_stack: error instanceof Error ? error.stack : undefined,
+                    original_name: file.originalname,
                 },
-                "Failed to retrieve uploaded file from temporary database",
+                "Entry creation failed - uploaded filename contains path separators",
             );
             throw new FileValidationError(
-                `Invalid file upload: ${filename}`,
-                filename
+                `Invalid filename: ${file.originalname}`,
+                file.originalname
             );
         }
 
-        if (buffer === null) {
-            capabilities.logger.logError(
-                {
-                    request_identifier: reqId.identifier,
-                    file_name: filename,
-                },
-                "Uploaded file not found in temporary database",
-            );
-            throw new FileValidationError(
-                `Uploaded file not found: ${filename}`,
-                filename
-            );
-        }
-
-        const tmpPath = path.join(workDir, filename);
-        try {
-            // Create the file via capabilities (returns an ExistingFile) and write the
-            // buffer into it. If writeBuffer fails, the empty file remains on disk; it
-            // will be cleaned up together with workDir in the outer finally block.
-            const fileObj = await capabilities.creator.createFile(tmpPath);
-            await capabilities.writer.writeBuffer(fileObj, buffer);
-            fileObjects.push(fileObj);
-        } catch (error) {
-            capabilities.logger.logError(
-                {
-                    request_identifier: reqId.identifier,
-                    error: error instanceof Error ? error.message : String(error),
-                    file_name: filename,
-                    tmp_path: tmpPath,
-                    error_stack: error instanceof Error ? error.stack : undefined,
-                },
-                "Failed to prepare file object for entry creation",
-            );
-            throw new FileValidationError(
-                `Invalid file upload: ${filename}`,
-                filename
-            );
-        }
+        // Lazy FileRef: bytes are loaded from temporary storage only when
+        // copyAssets() calls data(). No upfront DB read is performed here,
+        // avoiding a double load (and double base64 decode) alongside the
+        // lazy read that follows.
+        fileRefs.push(makeFromData(filename, async () => {
+            const buf = await capabilities.temporary.getBlob(reqId, filename);
+            if (buf === null) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        file_name: filename,
+                    },
+                    "Uploaded file missing from temporary database at copy time (may have expired or been cleaned up)",
+                );
+                throw new FileValidationError(
+                    `Uploaded file not found in temporary storage: ${filename}`,
+                    filename
+                );
+            }
+            return buf;
+        }));
     }
 
-    return fileObjects;
+    return fileRefs;
 }
 
 /**
@@ -180,10 +190,6 @@ function handleEntryError(error, capabilities, reqId) {
  * @param {import('../../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
 async function handleEntryPost(req, res, capabilities, reqId) {
-    // Create a temporary directory via capabilities for holding blobs during entry
-    // creation. Cleaned up (along with blobs in the temporary database) in the
-    // finally block regardless of outcome.
-    const workDir = await capabilities.creator.createTemporaryDirectory();
     /** @type {Express.Multer.File[]} */
     let files = [];
     try {
@@ -234,14 +240,14 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             input,
         };
 
-        const fileObjects = await prepareFileObjects(capabilities, files, reqId, workDir);
-        const event = await createEntry(capabilities, entryData, fileObjects);
+        const fileRefs = await prepareFileObjects(capabilities, files, reqId);
+        const event = await createEntry(capabilities, entryData, fileRefs);
 
         capabilities.logger.logDebug(
             {
                 request_identifier: reqId.identifier,
                 entry_type: parsed.type,
-                file_count: fileObjects.length,
+                file_count: fileRefs.length,
                 has_modifiers: Object.keys(parsed.modifiers).length > 0,
                 status_code: 201,
                 client_ip: req.ip
@@ -290,8 +296,6 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         }
         // Clean up the done marker for this request to avoid stale state in temporary storage.
         await capabilities.temporary.deleteDone(reqId).catch(() => {});
-        // Remove the temporary working directory.
-        await capabilities.deleter.deleteDirectory(workDir).catch(() => {});
     }
 }
 

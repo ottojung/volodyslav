@@ -117,7 +117,7 @@ describe("processDiaryAudios", () => {
     it("continues processing when event log transaction fails for an asset", async () => {
         const capabilities = getTestCapabilities();
 
-        // Override copier to throw for specific file
+        // Override writer to throw for the bad file's destination
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
         const goodPath = path.join(diaryDir, "20250511T000001Z.good.mp3");
         const badPath = path.join(diaryDir, "20250511T000000Z.bad.mp3");
@@ -125,12 +125,12 @@ describe("processDiaryAudios", () => {
         await fs.writeFile(goodPath, "content");
         await fs.writeFile(badPath, "content");
 
-        const originalCopy = capabilities.copier.copyFile;
-        capabilities.copier.copyFile = jest.fn(async (file, dest) => {
+        const originalWriteBuffer = capabilities.writer.writeBuffer;
+        capabilities.writer.writeBuffer = jest.fn(async (file, buffer) => {
             if (file.path.endsWith("bad.mp3")) {
-                throw new Error("copy failed");
+                throw new Error("write failed");
             }
-            return originalCopy(file, dest);
+            return originalWriteBuffer(file, buffer);
         });
 
         // Empty log before execution.

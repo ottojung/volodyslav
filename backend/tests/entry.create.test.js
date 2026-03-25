@@ -2,6 +2,7 @@ const { createEntry } = require("../src/entry");
 const { fromISOString } = require("../src/datetime");
 const eventId = require("../src/event/id");
 const { getType, getDescription, getModifiers } = require("../src/event/computed");
+const { makeFromExistingFile } = require("../src/filesystem/file_ref");
 
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
@@ -48,18 +49,20 @@ describe("createEntry (integration, with real capabilities)", () => {
     });
 
     it("creates an event log entry with an asset when a file is provided", async () => {
-        const fs = require("fs");
         const path = require("path");
-        const os = require("os");
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "entry-test-"));
-        const tmpFilePath = path.join(tmpDir, "testfile.txt");
-        fs.writeFileSync(tmpFilePath, "test content");
         const capabilities = await getTestCapabilities();
+        const tmpDir = await capabilities.creator.createTemporaryDirectory();
+        const tmpFilePath = path.join(tmpDir, "testfile.txt");
+        const sourceFile = await capabilities.creator.createFile(tmpFilePath);
+        await capabilities.writer.writeFile(sourceFile, "test content");
         const entryData = {
             original: "Original with file",
             input: "fileentry Description for file entry.",
         };
-        const mockFile = { path: tmpFilePath };
+        const mockFile = makeFromExistingFile(
+            sourceFile,
+            (p) => capabilities.reader.readFileAsBuffer(p)
+        );
         const event = await createEntry(capabilities, entryData, [mockFile]);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
@@ -75,27 +78,27 @@ describe("createEntry (integration, with real capabilities)", () => {
             }),
             expect.stringContaining("Entry created")
         );
-        fs.unlinkSync(tmpFilePath);
-        fs.rmdirSync(tmpDir);
+        await capabilities.deleter.deleteDirectory(tmpDir);
     });
 
     it("creates an event log entry with multiple assets when multiple files are provided", async () => {
-        const fs = require("fs");
         const path = require("path");
-        const os = require("os");
-        const tmpDir = fs.mkdtempSync(
-            path.join(os.tmpdir(), "entry-multi-test-")
-        );
+        const capabilities = await getTestCapabilities();
+        const tmpDir = await capabilities.creator.createTemporaryDirectory();
         const tmpFilePath1 = path.join(tmpDir, "testfile1.txt");
         const tmpFilePath2 = path.join(tmpDir, "testfile2.txt");
-        fs.writeFileSync(tmpFilePath1, "test content 1");
-        fs.writeFileSync(tmpFilePath2, "test content 2");
-        const capabilities = await getTestCapabilities();
+        const sourceFile1 = await capabilities.creator.createFile(tmpFilePath1);
+        const sourceFile2 = await capabilities.creator.createFile(tmpFilePath2);
+        await capabilities.writer.writeFile(sourceFile1, "test content 1");
+        await capabilities.writer.writeFile(sourceFile2, "test content 2");
         const entryData = {
             original: "Original with multiple files",
             input: "multifileentry Description for multi-file entry.",
         };
-        const mockFiles = [{ path: tmpFilePath1 }, { path: tmpFilePath2 }];
+        const mockFiles = [
+            makeFromExistingFile(sourceFile1, (p) => capabilities.reader.readFileAsBuffer(p)),
+            makeFromExistingFile(sourceFile2, (p) => capabilities.reader.readFileAsBuffer(p)),
+        ];
         const event = await createEntry(capabilities, entryData, mockFiles);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
@@ -111,9 +114,7 @@ describe("createEntry (integration, with real capabilities)", () => {
             }),
             expect.stringContaining("Entry created")
         );
-        fs.unlinkSync(tmpFilePath1);
-        fs.unlinkSync(tmpFilePath2);
-        fs.rmdirSync(tmpDir);
+        await capabilities.deleter.deleteDirectory(tmpDir);
     });
 
     it("uses current date if date is not provided in entryData", async () => {

@@ -1,10 +1,11 @@
 const path = require("path");
-const fsp = require("fs/promises");
 const { transaction } = require("../src/event_log_storage");
 const { targetPath } = require("../src/event/asset");
+const { makeFromBuffer, makeFromData } = require("../src/filesystem/file_ref");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const fsp = require("fs/promises");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -22,14 +23,19 @@ function makeEvent(id) {
     };
 }
 
-async function makeAsset(capabilities, event, filename, content = "test content") {
-    const inputDir = await capabilities.creator.createTemporaryDirectory();
-    const sourcePath = path.join(inputDir, filename);
-    await fsp.mkdir(inputDir, { recursive: true });
-    await fsp.writeFile(sourcePath, content);
+function makeAsset(event, filename, content = "test content") {
     return {
         event,
-        file: { path: sourcePath, __brand: "ExistingFile" },
+        file: makeFromBuffer(filename, Buffer.from(content)),
+    };
+}
+
+function makeBadAsset(event, filename) {
+    return {
+        event,
+        file: makeFromData(filename, () =>
+            Promise.reject(new Error(`file not found: ${filename}`))
+        ),
     };
 }
 
@@ -37,7 +43,7 @@ describe("event_log_storage assets", () => {
     test("copies asset files into the assets directory", async () => {
         const capabilities = getTestCapabilities();
         const testEvent = makeEvent("asset-event");
-        const asset = await makeAsset(capabilities, testEvent, "asset.txt");
+        const asset = makeAsset(testEvent, "asset.txt");
 
         await transaction(capabilities, async (storage) => {
             storage.addEntry(testEvent, [asset]);
@@ -52,11 +58,8 @@ describe("event_log_storage assets", () => {
     test("cleans up copied assets and leaves graph entries unchanged on failure", async () => {
         const capabilities = getTestCapabilities();
         const testEvent = makeEvent("cleanup-event");
-        const goodAsset = await makeAsset(capabilities, testEvent, "good.txt");
-        const badAsset = {
-            event: testEvent,
-            file: { path: "/missing/file.txt", __brand: "ExistingFile" },
-        };
+        const goodAsset = makeAsset(testEvent, "good.txt");
+        const badAsset = makeBadAsset(testEvent, "bad.txt");
 
         await expect(
             transaction(capabilities, async (storage) => {

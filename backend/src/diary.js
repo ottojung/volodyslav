@@ -6,6 +6,7 @@ const event = require("./event");
 const eventId = event.id;
 const asset = event.asset;
 const creatorMake = require("./creator");
+const { makeFromExistingFile } = require("./filesystem").file_ref;
 
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -125,30 +126,38 @@ async function processDiaryAudios(capabilities) {
             creator,
         };
 
-        const ass = asset.make(event, file);
+        const fileRef = makeFromExistingFile(file, (p) => capabilities.reader.readFileAsBuffer(p));
+        const ass = asset.make(event, fileRef);
         return ass;
     }
 
+    /**
+     * @typedef {{ ass: Asset, originalFile: ExistingFile }} DiarySuccess
+     * @typedef {{ originalFile: ExistingFile, message: string }} DiaryFailure
+     */
+
+    /** @type {DiarySuccess[]} */
     const successes = [];
+    /** @type {DiaryFailure[]} */
     const failures = [];
 
     // now update the event-log storage.
-    for (const filename of inputFiles) {
+    for (const file of inputFiles) {
         try {
-            const ass = makeAsset(filename);
+            const ass = makeAsset(file);
             await writeAsset(capabilities, ass);
-            successes.push(ass);
+            successes.push({ ass, originalFile: file });
         } catch (err) {
             const message =
                 err instanceof Object && err !== null && "message" in err
-                    ? err.message
+                    ? String(err.message)
                     : String(err);
-            failures.push({ file: filename, message });
+            failures.push({ originalFile: file, message });
         }
     }
 
-    successes.forEach((ass) => {
-        const filename = path.basename(ass.file.path);
+    successes.forEach(({ ass }) => {
+        const filename = ass.file.filename;
         capabilities.logger.logInfo(
             { filename },
             `Diary audio ${JSON.stringify(filename)} processed`
@@ -158,7 +167,7 @@ async function processDiaryAudios(capabilities) {
     failures.forEach((failure) => {
         capabilities.logger.logError(
             {
-                file: failure.file.path,
+                file: failure.originalFile.path,
                 error: failure.message,
                 directory: diaryAudiosDir,
             },
@@ -187,19 +196,21 @@ async function writeAsset(capabilities, ass) {
  * Deletes original diary audio files and logs outcomes.
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {Asset[]} successes - An array of successfully processed assets.
+ * @param {Array<{ass: Asset, originalFile: ExistingFile}>} successes - An array of successfully processed assets with their original files.
  * @param {string} diaryAudiosDir - The directory containing the diary audio files.
  */
 async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
-    for (const ass of successes) {
+    for (const { originalFile } of successes) {
+        const filePath = originalFile.path;
+        const filename = path.basename(filePath);
         try {
-            await capabilities.deleter.deleteFile(ass.file.path);
+            await capabilities.deleter.deleteFile(filePath);
             capabilities.logger.logInfo(
                 {
-                    file: path.basename(ass.file.path),
+                    file: filename,
                     directory: diaryAudiosDir,
                 },
-                `Deleted diary audio file: ${path.basename(ass.file.path)}`
+                `Deleted diary audio file: ${filename}`
             );
         } catch (error) {
             const msg =
@@ -208,7 +219,7 @@ async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
                     : String(error);
             capabilities.logger.logWarning(
                 {
-                    file: path.basename(ass.file.path),
+                    file: filename,
                     error: msg,
                     directory: diaryAudiosDir,
                 },
