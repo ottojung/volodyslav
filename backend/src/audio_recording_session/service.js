@@ -166,11 +166,17 @@ async function deleteSessionData(temporary, sessionId) {
 /**
  * Delete all audio session data that does not belong to the given sessionId.
  * This handles orphaned sessions that are not tracked in the index.
+ * Short-circuits (no key scan) when the session is already current.
  * @param {Temporary} temporary
  * @param {string} sessionId - the new session to keep
  * @returns {Promise<void>}
  */
 async function cleanupOldSessionIfNeeded(temporary, sessionId) {
+    const currentId = await readCurrentSessionId(temporary);
+    if (currentId === sessionId) {
+        return; // Already current; nothing to clean up or index to update
+    }
+
     const allSessionKeys = await temporary.listKeysByPrefix(`${SESSION_NAMESPACE}/`);
     const sessionIds = new Set();
 
@@ -273,12 +279,12 @@ async function uploadChunk(capabilities, sessionId, params) {
             `Invalid sequence: must be a non-negative integer, got ${sequence}`
         );
     }
-    if (typeof startMs !== "number" || startMs < 0) {
+    if (!Number.isFinite(startMs) || startMs < 0) {
         throw new AudioSessionChunkValidationError(
-            `Invalid startMs: must be a non-negative number, got ${startMs}`
+            `Invalid startMs: must be a non-negative finite number, got ${startMs}`
         );
     }
-    if (typeof endMs !== "number" || endMs < startMs) {
+    if (!Number.isFinite(endMs) || endMs < startMs) {
         throw new AudioSessionChunkValidationError(
             `Invalid endMs: must be >= startMs (${startMs}), got ${endMs}`
         );
@@ -296,19 +302,22 @@ async function uploadChunk(capabilities, sessionId, params) {
     }
 
     const seqPadded = String(sequence).padStart(6, "0");
-    await temporary.putEntry(chunkKey(sessionId, sequence), {
+    const chunkTempKey = chunkKey(sessionId, sequence);
+    const existingChunk = await temporary.getEntry(chunkTempKey);
+    await temporary.putEntry(chunkTempKey, {
         type: "blob",
         data: chunk.toString("base64"),
     });
 
-    const isNewChunk = sequence > meta.lastSequence;
+    const isNewChunk = existingChunk === undefined;
+    const shouldUpdateLastSequence = isNewChunk && sequence > meta.lastSequence;
     const updatedMeta = {
         ...meta,
         mimeType: mimeType || meta.mimeType,
         updatedAt: toISOString(capabilities.datetime.now()),
         fragmentCount: isNewChunk ? meta.fragmentCount + 1 : meta.fragmentCount,
-        lastSequence: isNewChunk ? sequence : meta.lastSequence,
-        lastEndMs: isNewChunk ? endMs : meta.lastEndMs,
+        lastSequence: shouldUpdateLastSequence ? sequence : meta.lastSequence,
+        lastEndMs: shouldUpdateLastSequence ? endMs : meta.lastEndMs,
     };
     await writeMeta(temporary, updatedMeta);
 
@@ -467,7 +476,14 @@ async function discardSession(capabilities, sessionId) {
             `Invalid session ID: "${sessionId}"`
         );
     }
-    await deleteSessionData(capabilities.temporary, sessionId);
+    const { temporary } = capabilities;
+    // Clear the index if it pointed to this session, so the next startSession
+    // does not see a stale current-session reference.
+    const currentId = await readCurrentSessionId(temporary);
+    if (currentId === sessionId) {
+        await temporary.deleteKeysByPrefix(tempKeyToString(CURRENT_SESSION_KEY));
+    }
+    await deleteSessionData(temporary, sessionId);
 }
 
 module.exports = {

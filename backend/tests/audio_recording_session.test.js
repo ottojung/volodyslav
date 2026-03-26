@@ -194,6 +194,65 @@ describe("audio_recording_session", () => {
             expect(isAudioSessionConflictError(err)).toBe(true);
         });
 
+        it("rejects Infinity startMs", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    chunk: Buffer.from("data"),
+                    startMs: Infinity,
+                    endMs: 10000,
+                    sequence: 0,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
+        it("rejects -Infinity endMs", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    chunk: Buffer.from("data"),
+                    startMs: 0,
+                    endMs: -Infinity,
+                    sequence: 0,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
+        it("counts fragmentCount correctly for out-of-order uploads", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            // Upload sequence 1 first (out of order)
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("chunk-1"),
+                startMs: 10000,
+                endMs: 20000,
+                sequence: 1,
+                mimeType: TEST_MIME_TYPE,
+            });
+            // Upload sequence 0 second
+            const result = await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("chunk-0"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            // fragmentCount should be 2, not 1
+            expect(result.session.fragmentCount).toBe(2);
+        });
+
         it("rejects invalid sequence", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
@@ -310,6 +369,25 @@ describe("audio_recording_session", () => {
                 err = e;
             }
             expect(isAudioSessionNotFoundError(err)).toBe(true);
+        });
+
+        it("clears the index when discarding the current session", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await discardSession(caps, TEST_SESSION_ID);
+            // After discard, starting a new session with same id should behave like a fresh start
+            const session = await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            expect(session.fragmentCount).toBe(0);
+            expect(session.status).toBe("recording");
+        });
+
+        it("allows starting a different session after discarding current session", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await discardSession(caps, TEST_SESSION_ID);
+            // Start a completely different session; should not find any residue
+            const newSession = await startSession(caps, "brand-new-session", TEST_MIME_TYPE);
+            expect(newSession.fragmentCount).toBe(0);
         });
     });
 });

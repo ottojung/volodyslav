@@ -98,13 +98,26 @@ function makeRouter(capabilities) {
                 return res.status(400).json({ success: false, error: "Missing chunk file" });
             }
 
+            // Accept only plain base-10 non-negative integer strings for sequence
+            // and plain non-negative numeric strings for startMs/endMs.
+            // This rejects scientific notation ("1e3"), empty strings, and floats for sequence.
+            const UINT_RE = /^\d+$/;
+            const UFLOAT_RE = /^\d+(\.\d+)?$/;
+
+            if (
+                typeof startMs !== "string" ||
+                typeof endMs !== "string" ||
+                typeof sequence !== "string" ||
+                !UFLOAT_RE.test(startMs) ||
+                !UFLOAT_RE.test(endMs) ||
+                !UINT_RE.test(sequence)
+            ) {
+                return res.status(400).json({ success: false, error: "Invalid startMs, endMs, or sequence" });
+            }
+
             const startMsNum = Number(startMs);
             const endMsNum = Number(endMs);
             const sequenceNum = Number(sequence);
-
-            if (isNaN(startMsNum) || isNaN(endMsNum) || !Number.isInteger(sequenceNum)) {
-                return res.status(400).json({ success: false, error: "Invalid startMs, endMs, or sequence" });
-            }
 
             try {
                 const result = await uploadChunk(capabilities, sessionId, {
