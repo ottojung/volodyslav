@@ -31,6 +31,7 @@ describe("audio_recording_session", () => {
             expect(session.status).toBe("recording");
             expect(session.mimeType).toBe(TEST_MIME_TYPE);
             expect(session.fragmentCount).toBe(0);
+            expect(session.elapsedSeconds).toBe(0);
         });
 
         it("updates mimeType when called twice with same id", async () => {
@@ -78,6 +79,42 @@ describe("audio_recording_session", () => {
                 err = e;
             }
             expect(isAudioSessionNotFoundError(err)).toBe(true);
+        });
+
+        it("deletes orphaned sessions not tracked in index", async () => {
+            const caps = getCapabilities();
+            // Create first session normally (gets indexed)
+            await startSession(caps, "orphan-session-1", TEST_MIME_TYPE);
+            await uploadChunk(caps, "orphan-session-1", {
+                chunk: Buffer.from("data"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+
+            // Manually create a second session to simulate orphan (not indexed)
+            await startSession(caps, "orphan-session-2", TEST_MIME_TYPE);
+
+            // Start a third new session - should clean up both orphans
+            await startSession(caps, "fresh-session", TEST_MIME_TYPE);
+
+            // Both orphans should be gone
+            let err1 = null;
+            try {
+                await getSession(caps, "orphan-session-1");
+            } catch (e) {
+                err1 = e;
+            }
+            expect(isAudioSessionNotFoundError(err1)).toBe(true);
+
+            let err2 = null;
+            try {
+                await getSession(caps, "orphan-session-2");
+            } catch (e) {
+                err2 = e;
+            }
+            expect(isAudioSessionNotFoundError(err2)).toBe(true);
         });
     });
 
@@ -200,6 +237,15 @@ describe("audio_recording_session", () => {
             const result = await stopSession(caps, TEST_SESSION_ID, 20);
             expect(result.status).toBe("stopped");
             expect(result.size).toBe(chunk1.length + chunk2.length);
+        });
+
+        it("persists elapsedSeconds in session metadata", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await stopSession(caps, TEST_SESSION_ID, 42);
+            const meta = await getSession(caps, TEST_SESSION_ID);
+            expect(meta.elapsedSeconds).toBe(42);
+            expect(meta.status).toBe("stopped");
         });
     });
 

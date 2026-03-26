@@ -110,6 +110,7 @@ function tempKeyToString(key) {
  * @property {number} fragmentCount
  * @property {number} lastSequence
  * @property {number} lastEndMs
+ * @property {number} elapsedSeconds - elapsed recording time in seconds (set on stop)
  */
 
 /**

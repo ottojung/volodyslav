@@ -100,9 +100,9 @@ function makeRouter(capabilities) {
 
             const startMsNum = Number(startMs);
             const endMsNum = Number(endMs);
-            const sequenceNum = parseInt(String(sequence), 10);
+            const sequenceNum = Number(sequence);
 
-            if (isNaN(startMsNum) || isNaN(endMsNum) || isNaN(sequenceNum)) {
+            if (isNaN(startMsNum) || isNaN(endMsNum) || !Number.isInteger(sequenceNum)) {
                 return res.status(400).json({ success: false, error: "Invalid startMs, endMs, or sequence" });
             }
 
@@ -146,7 +146,8 @@ function makeRouter(capabilities) {
                     sessionId: meta.sessionId,
                     status: meta.status,
                     mimeType: meta.mimeType,
-                    elapsedSeconds: Math.round(meta.lastEndMs / 1000),
+                    elapsedSeconds: meta.status === "stopped" ? meta.elapsedSeconds : meta.lastEndMs / 1000,
+                    lastEndMs: meta.lastEndMs,
                     fragmentCount: meta.fragmentCount,
                     lastSequence: meta.lastSequence,
                 },

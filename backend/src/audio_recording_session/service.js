@@ -164,18 +164,33 @@ async function deleteSessionData(temporary, sessionId) {
 // ---------------------------------------------------------------------------
 
 /**
- * If the incoming sessionId differs from the currently-stored one,
- * delete the old session's data and update the index.
+ * Delete all audio session data that does not belong to the given sessionId.
+ * This handles orphaned sessions that are not tracked in the index.
  * @param {Temporary} temporary
- * @param {string} sessionId
+ * @param {string} sessionId - the new session to keep
  * @returns {Promise<void>}
  */
 async function cleanupOldSessionIfNeeded(temporary, sessionId) {
-    const currentId = await readCurrentSessionId(temporary);
-    if (currentId === null || currentId === sessionId) {
-        return;
+    const allSessionKeys = await temporary.listKeysByPrefix(`${SESSION_NAMESPACE}/`);
+    const sessionIds = new Set();
+
+    for (const key of allSessionKeys) {
+        const keyStr = tempKeyToString(key);
+        // Keys look like: audio_session/<sessionId>/...
+        // Also: audio_session/index/...  (skip those)
+        const afterNamespace = keyStr.slice(`${SESSION_NAMESPACE}/`.length);
+        const slashIdx = afterNamespace.indexOf("/");
+        if (slashIdx === -1) continue;
+        const candidate = afterNamespace.slice(0, slashIdx);
+        if (candidate === "index") continue;
+        sessionIds.add(candidate);
     }
-    await deleteSessionData(temporary, currentId);
+
+    for (const id of sessionIds) {
+        if (id !== sessionId) {
+            await deleteSessionData(temporary, id);
+        }
+    }
     await writeCurrentSessionId(temporary, sessionId);
 }
 
@@ -228,6 +243,7 @@ async function startSession(capabilities, sessionId, mimeType) {
         fragmentCount: 0,
         lastSequence: -1,
         lastEndMs: 0,
+        elapsedSeconds: 0,
     };
     await writeMeta(temporary, meta);
     await writeCurrentSessionId(temporary, sessionId);
@@ -389,6 +405,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     const updatedMeta = {
         ...meta,
         status: "stopped",
+        elapsedSeconds,
         updatedAt: toISOString(capabilities.datetime.now()),
     };
     await writeMeta(temporary, updatedMeta);

@@ -199,18 +199,27 @@ export function useAudioRecorder() {
         recorderRef.current = recorder;
 
         // Flush pending recorder data when page goes into background/is about to unload
+        function handleVisibilityChange() {
+            if (document.visibilityState !== "hidden") {
+                return;
+            }
+            if (isRecorder(recorderRef.current) && recorderStateRef.current === "recording") {
+                recorderRef.current.requestData();
+            }
+        }
+
         function handlePageHide() {
             if (isRecorder(recorderRef.current) && recorderStateRef.current === "recording") {
                 recorderRef.current.requestData();
             }
         }
 
-        document.addEventListener("visibilitychange", handlePageHide);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
         window.addEventListener("pagehide", handlePageHide);
 
         return () => {
             isMountedRef.current = false;
-            document.removeEventListener("visibilitychange", handlePageHide);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("pagehide", handlePageHide);
             if (isRecorder(recorderRef.current)) {
                 recorderRef.current.discard();

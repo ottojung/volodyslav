@@ -227,6 +227,9 @@ export function setupAudioDiaryPersistenceHarness() {
         window.localStorage.clear();
         if (originalFetch !== undefined) {
             global.fetch = originalFetch;
+        } else {
+            // @ts-expect-error tests intentionally remove fetch for cleanup parity
+            delete global.fetch;
         }
     });
 
@@ -244,6 +247,9 @@ export function setupAudioDiaryPersistenceHarness() {
         HTMLCanvasElement.prototype.getContext = originalCanvasGetContext;
         if (originalFetch !== undefined) {
             global.fetch = originalFetch;
+        } else {
+            // @ts-expect-error tests intentionally remove fetch for cleanup parity
+            delete global.fetch;
         }
     });
 }
