@@ -20,7 +20,6 @@ const {
     AudioSessionFinalizeError,
 } = require("./errors");
 const {
-    MAX_FRAGMENT_COUNT,
     isValidSessionId,
     extensionFromMimeType,
 } = require("./helpers");
@@ -251,12 +250,6 @@ async function uploadChunk(capabilities, sessionId, params) {
     const existingChunk = await temporary.getEntry(chunkTempKey);
 
     const isNewChunk = existingChunk === undefined;
-    if (isNewChunk && meta.fragmentCount >= MAX_FRAGMENT_COUNT) {
-        throw new AudioSessionConflictError(
-            `Session ${sessionId} has reached the maximum fragment count of ${MAX_FRAGMENT_COUNT}`,
-            sessionId
-        );
-    }
 
     await temporary.putEntry(chunkTempKey, {
         type: "blob",
@@ -448,14 +441,13 @@ async function discardSession(capabilities, sessionId) {
     // does not see a stale current-session reference.
     const currentId = await readCurrentSessionId(temporary);
     if (currentId === sessionId) {
-        await temporary.deleteKeysByPrefix(tempKeyToString(CURRENT_SESSION_KEY));
+        await temporary.deleteEntry(CURRENT_SESSION_KEY);
     }
     await deleteSessionData(temporary, sessionId);
 }
 
 module.exports = {
     isValidSessionId,
-    MAX_FRAGMENT_COUNT,
     startSession,
     uploadChunk,
     getSession,

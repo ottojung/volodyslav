@@ -41,6 +41,26 @@ const {
  */
 
 /**
+ * Validate and normalize a MIME type.
+ * Accepts only audio/* types; strips parameter suffixes (e.g., "; codecs=vp9").
+ * Returns the normalized type string, or null if invalid.
+ * Shape-only check: ensures client and server agree on the expected format.
+ * @param {unknown} mimeType
+ * @returns {string | null}
+ */
+function parseAudioMimeType(mimeType) {
+    if (typeof mimeType !== "string" || !mimeType) {
+        return null;
+    }
+    // Strip parameters (everything after the first semicolon)
+    const base = (mimeType.split(";")[0] || "").trim();
+    if (!base.startsWith("audio/")) {
+        return null;
+    }
+    return base;
+}
+
+/**
  * @param {Capabilities} capabilities
  * @returns {import('express').Router}
  */
@@ -48,7 +68,6 @@ function makeRouter(capabilities) {
     const router = express.Router();
     const upload = multer({
         storage: multer.memoryStorage(),
-        limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per chunk
     });
 
     // POST /audio-recording-session/start
@@ -58,12 +77,13 @@ function makeRouter(capabilities) {
         if (typeof sessionId !== "string" || !sessionId) {
             return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
         }
-        if (typeof mimeType !== "string" || !mimeType) {
-            return res.status(400).json({ success: false, error: "Missing or invalid mimeType" });
+        const normalizedMimeType = parseAudioMimeType(mimeType);
+        if (normalizedMimeType === null) {
+            return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be an audio/* type" });
         }
 
         try {
-            const session = await startSession(capabilities, sessionId, mimeType);
+            const session = await startSession(capabilities, sessionId, normalizedMimeType);
             return res.json({
                 success: true,
                 session: {
@@ -124,13 +144,18 @@ function makeRouter(capabilities) {
             const endMsNum = Number(endMs);
             const sequenceNum = Number(sequence);
 
+            // Normalize mimeType: accept only audio/* types; fall back to audio/webm
+            // if the client didn't provide one (e.g., older clients).
+            const rawMimeType = typeof mimeType === "string" ? mimeType : String(chunkFile.mimetype || "");
+            const normalizedChunkMimeType = parseAudioMimeType(rawMimeType) || "audio/webm";
+
             try {
                 const result = await uploadChunk(capabilities, sessionId, {
                     chunk: chunkFile.buffer,
                     startMs: startMsNum,
                     endMs: endMsNum,
                     sequence: sequenceNum,
-                    mimeType: typeof mimeType === "string" ? mimeType : String(chunkFile.mimetype || "audio/webm"),
+                    mimeType: normalizedChunkMimeType,
                 });
                 return res.json({ success: true, ...result });
             } catch (error) {

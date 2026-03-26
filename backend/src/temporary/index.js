@@ -422,6 +422,16 @@ class TemporaryClass {
         const db = await this._getDatabase();
         await db.put(key, value);
     }
+
+    /**
+     * Delete a single entry by key. No-op if the key does not exist.
+     * @param {import('./database/types').TempKey} key
+     * @returns {Promise<void>}
+     */
+    async deleteEntry(key) {
+        const db = await this._getDatabase();
+        await db.del(key);
+    }
 }
 
 /** @typedef {TemporaryClass} Temporary */

@@ -3,12 +3,6 @@
  * @module audio_recording_session/helpers
  */
 
-/**
- * Maximum number of fragments (chunks) allowed per session.
- * At 10-second chunks this allows ~2.8 hours of audio.
- */
-const MAX_FRAGMENT_COUNT = 1000;
-
 /** @type {RegExp} */
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
 
@@ -34,7 +28,6 @@ function extensionFromMimeType(mimeType) {
 }
 
 module.exports = {
-    MAX_FRAGMENT_COUNT,
     isValidSessionId,
     extensionFromMimeType,
 };
