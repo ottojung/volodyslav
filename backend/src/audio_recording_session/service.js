@@ -11,7 +11,6 @@
  * @module audio_recording_session/service
  */
 
-const { stringToTempKey, tempKeyToString } = require("../temporary");
 const { toISOString } = require("../datetime");
 const {
     AudioSessionNotFoundError,
@@ -24,11 +23,16 @@ const {
     extensionFromMimeType,
 } = require("./helpers");
 const {
-    SESSION_NAMESPACE,
     CURRENT_SESSION_KEY,
+    indexSublevel,
+    sessionSublevel,
+    chunksSublevel,
     metaKey,
     chunkKey,
     finalKey,
+    markSessionExists,
+    unmarkSessionExists,
+    listKnownSessionIds,
     deleteSessionData,
 } = require("./keys");
 
@@ -56,7 +60,7 @@ const {
  * @returns {Promise<AudioSessionMeta | null>}
  */
 async function readMeta(temporary, sessionId) {
-    const entry = await temporary.getEntry(metaKey(sessionId));
+    const entry = await sessionSublevel(temporary, sessionId).get(metaKey());
     if (entry === undefined) {
         return null;
     }
@@ -73,7 +77,7 @@ async function readMeta(temporary, sessionId) {
  * @returns {Promise<void>}
  */
 async function writeMeta(temporary, meta) {
-    await temporary.putEntry(metaKey(meta.sessionId), { type: "audio_session_meta", data: meta });
+    await sessionSublevel(temporary, meta.sessionId).put(metaKey(), { type: "audio_session_meta", data: meta });
 }
 
 /**
@@ -83,7 +87,7 @@ async function writeMeta(temporary, meta) {
  * @returns {Promise<string | null>}
  */
 async function readCurrentSessionId(temporary) {
-    const entry = await temporary.getEntry(CURRENT_SESSION_KEY);
+    const entry = await indexSublevel(temporary).get(CURRENT_SESSION_KEY);
     if (entry === undefined) {
         return null;
     }
@@ -100,7 +104,7 @@ async function readCurrentSessionId(temporary) {
  * @returns {Promise<void>}
  */
 async function writeCurrentSessionId(temporary, sessionId) {
-    await temporary.putEntry(CURRENT_SESSION_KEY, { type: "audio_session_index", sessionId });
+    await indexSublevel(temporary).put(CURRENT_SESSION_KEY, { type: "audio_session_index", sessionId });
 }
 
 // ---------------------------------------------------------------------------
@@ -121,27 +125,15 @@ async function cleanupOldSessionIfNeeded(temporary, sessionId) {
         return; // Already current; nothing to clean up or index to update
     }
 
-    const allSessionKeys = await temporary.listKeysByPrefix(`${SESSION_NAMESPACE}/`);
-    const sessionIds = new Set();
-
-    for (const key of allSessionKeys) {
-        const keyStr = tempKeyToString(key);
-        // Keys look like: audio_session/<sessionId>/...
-        // Also: audio_session/index/...  (skip those)
-        const afterNamespace = keyStr.slice(`${SESSION_NAMESPACE}/`.length);
-        const slashIdx = afterNamespace.indexOf("/");
-        if (slashIdx === -1) continue;
-        const candidate = afterNamespace.slice(0, slashIdx);
-        if (candidate === "index") continue;
-        sessionIds.add(candidate);
-    }
-
+    const sessionIds = await listKnownSessionIds(temporary);
     for (const id of sessionIds) {
         if (id !== sessionId) {
             await deleteSessionData(temporary, id);
+            await unmarkSessionExists(temporary, id);
         }
     }
     await writeCurrentSessionId(temporary, sessionId);
+    await markSessionExists(temporary, sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +171,7 @@ async function startSession(capabilities, sessionId, mimeType) {
         };
         await writeMeta(temporary, updatedMeta);
         await writeCurrentSessionId(temporary, sessionId);
+        await markSessionExists(temporary, sessionId);
         return updatedMeta;
     }
 
@@ -197,6 +190,7 @@ async function startSession(capabilities, sessionId, mimeType) {
     };
     await writeMeta(temporary, meta);
     await writeCurrentSessionId(temporary, sessionId);
+    await markSessionExists(temporary, sessionId);
 
     return meta;
 }
@@ -246,12 +240,13 @@ async function uploadChunk(capabilities, sessionId, params) {
     }
 
     const seqPadded = String(sequence).padStart(6, "0");
-    const chunkTempKey = chunkKey(sessionId, sequence);
-    const existingChunk = await temporary.getEntry(chunkTempKey);
+    const sessionChunks = chunksSublevel(temporary, sessionId);
+    const chunkTempKey = chunkKey(sequence);
+    const existingChunk = await sessionChunks.get(chunkTempKey);
 
     const isNewChunk = existingChunk === undefined;
 
-    await temporary.putEntry(chunkTempKey, {
+    await sessionChunks.put(chunkTempKey, {
         type: "blob",
         data: chunk.toString("base64"),
     });
@@ -333,7 +328,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     }
 
     if (meta.status === "stopped") {
-        const finalEntry = await temporary.getEntry(finalKey(sessionId));
+        const finalEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
         const size =
             finalEntry !== undefined && finalEntry.type === "blob"
                 ? Buffer.from(finalEntry.data, "base64").length
@@ -341,15 +336,14 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
         return { status: "stopped", finalAudioKey: "final", size };
     }
 
-    const chunkPrefix = `${SESSION_NAMESPACE}/${sessionId}/chunk/`;
-    const chunkKeys = await temporary.listKeysByPrefix(chunkPrefix);
-    const chunkKeyStrings = chunkKeys.map(tempKeyToString);
-    chunkKeyStrings.sort((a, b) => a.localeCompare(b));
+    const sessionChunks = chunksSublevel(temporary, sessionId);
+    const chunkKeys = await sessionChunks.listKeys();
+    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
 
     /** @type {Buffer[]} */
     const buffers = [];
-    for (const keyStr of chunkKeyStrings) {
-        const entry = await temporary.getEntry(stringToTempKey(keyStr));
+    for (const key of chunkKeys) {
+        const entry = await sessionChunks.get(key);
         if (entry !== undefined && entry.type === "blob") {
             buffers.push(Buffer.from(entry.data, "base64"));
         }
@@ -358,7 +352,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     const finalBuffer = Buffer.concat(buffers);
 
     try {
-        await temporary.putEntry(finalKey(sessionId), {
+        await sessionSublevel(temporary, sessionId).put(finalKey(), {
             type: "blob",
             data: finalBuffer.toString("base64"),
         });
@@ -409,7 +403,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
         );
     }
 
-    const finalEntry = await temporary.getEntry(finalKey(sessionId));
+    const finalEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
     if (finalEntry === undefined || finalEntry.type !== "blob") {
         throw new AudioSessionFinalizeError(
             `Final audio not found for session ${sessionId}`,
@@ -441,9 +435,10 @@ async function discardSession(capabilities, sessionId) {
     // does not see a stale current-session reference.
     const currentId = await readCurrentSessionId(temporary);
     if (currentId === sessionId) {
-        await temporary.deleteEntry(CURRENT_SESSION_KEY);
+        await indexSublevel(temporary).del(CURRENT_SESSION_KEY);
     }
     await deleteSessionData(temporary, sessionId);
+    await unmarkSessionExists(temporary, sessionId);
 }
 
 module.exports = {
