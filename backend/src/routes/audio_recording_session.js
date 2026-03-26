@@ -52,12 +52,13 @@ function parseAudioMimeType(mimeType) {
     if (typeof mimeType !== "string" || !mimeType) {
         return null;
     }
-    // Strip parameters (everything after the first semicolon)
-    const base = (mimeType.split(";")[0] || "").trim();
-    if (!base.startsWith("audio/")) {
+    // Strip parameters (everything after the first semicolon) and normalize case.
+    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
+    const match = /^audio\/([^\s;]+)$/.exec(base);
+    if (!match) {
         return null;
     }
-    return base;
+    return `audio/${match[1]}`;
 }
 
 /**
@@ -189,7 +190,10 @@ function makeRouter(capabilities) {
                     sessionId: meta.sessionId,
                     status: meta.status,
                     mimeType: meta.mimeType,
-                    elapsedSeconds: meta.status === "stopped" ? meta.elapsedSeconds : meta.lastEndMs / 1000,
+                    elapsedSeconds:
+                        meta.status === "stopped"
+                            ? meta.elapsedSeconds
+                            : Math.floor(meta.lastEndMs / 1000),
                     lastEndMs: meta.lastEndMs,
                     fragmentCount: meta.fragmentCount,
                     lastSequence: meta.lastSequence,

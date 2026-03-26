@@ -167,6 +167,7 @@ export function useAudioRecorder() {
                 const mimeType = chunk.type || mimeTypeRef.current;
                 if (sessionId) {
                     uploadQueueRef.current = uploadQueueRef.current.then(async () => {
+                        if (sessionId !== sessionIdRef.current) return;
                         try {
                             await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
                                 chunk,
