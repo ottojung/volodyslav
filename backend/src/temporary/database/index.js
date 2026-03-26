@@ -103,40 +103,118 @@ class TemporaryDatabaseClass {
     }
 
     /**
-     * List all keys that start with the given string prefix.
-     * Returns an empty array if no keys match.
-     * @param {string} prefix
+     * Open a typed sublevel under the root temporary database.
+     * @param {string} name
+     * @returns {TemporarySublevel}
+     */
+    getSublevel(name) {
+        return makeTemporarySublevel(this._db.sublevel(name, { valueEncoding: "json" }));
+    }
+}
+
+class TemporarySublevelClass {
+    /**
+     * @private
+     * @type {*}
+     */
+    _sublevel;
+
+    /**
+     * @param {*} sublevel
+     */
+    constructor(sublevel) {
+        this._sublevel = sublevel;
+    }
+
+    /**
+     * Retrieve a value by key.
+     * Returns `undefined` when the key does not exist.
+     * @param {TempKey} key
+     * @returns {Promise<TempEntry | undefined>}
+     */
+    async get(key) {
+        return this._sublevel.get(tempKeyToString(key));
+    }
+
+    /**
+     * Store a value atomically.
+     * @param {TempKey} key
+     * @param {TempEntry} value
+     * @returns {Promise<void>}
+     */
+    async put(key, value) {
+        await this._sublevel.put(tempKeyToString(key), value);
+    }
+
+    /**
+     * Delete a key.  No-op if the key does not exist.
+     * @param {TempKey} key
+     * @returns {Promise<void>}
+     */
+    async del(key) {
+        await this._sublevel.del(tempKeyToString(key));
+    }
+
+    /**
+     * Apply a batch of put/del operations atomically.
+     * @param {Array<{type: 'put', key: TempKey, value: TempEntry} | {type: 'del', key: TempKey}>} operations
+     * @returns {Promise<void>}
+     */
+    async batch(operations) {
+        if (operations.length === 0) {
+            return;
+        }
+        const raw = operations.map((op) => {
+            if (op.type === "put") {
+                return { type: op.type, key: tempKeyToString(op.key), value: op.value };
+            }
+            return { type: op.type, key: tempKeyToString(op.key) };
+        });
+        await this._sublevel.batch(raw);
+    }
+
+    /**
+     * Iterate over keys in this sublevel.
      * @returns {Promise<TempKey[]>}
      */
-    async listKeysByPrefix(prefix) {
+    async listKeys() {
+        /** @type {TempKey[]} */
         const keys = [];
-        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\uffff' })) {
+        for await (const key of this._sublevel.keys()) {
             keys.push(stringToTempKey(key));
         }
         return keys;
     }
 
     /**
-     * Delete all keys that start with the given string prefix atomically.
-     * No-op if no keys match.
-     * @param {string} prefix
+     * Delete all data under this sublevel.
      * @returns {Promise<void>}
      */
-    async deleteKeysByPrefix(prefix) {
-        const keys = [];
-        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\uffff' })) {
-            keys.push(key);
-        }
-        if (keys.length === 0) {
-            return;
-        }
-        /** @type {Array<{type: 'del', key: string}>} */
-        const ops = keys.map((key) => ({ type: 'del', key }));
-        await this._db.batch(ops);
+    async clear() {
+        await this._sublevel.clear();
+    }
+
+    /**
+     * Open a nested sublevel.
+     * @param {string} name
+     * @returns {TemporarySublevel}
+     */
+    getSublevel(name) {
+        return makeTemporarySublevel(this._sublevel.sublevel(name, { valueEncoding: "json" }));
     }
 }
 
 /** @typedef {TemporaryDatabaseClass} TemporaryDatabase */
+/**
+ * @typedef {object} TemporarySublevel
+ * @property {(key: TempKey) => Promise<TempEntry | undefined>} get
+ * @property {(key: TempKey, value: TempEntry) => Promise<void>} put
+ * @property {(key: TempKey) => Promise<void>} del
+ * @property {(operations: Array<{type: 'put', key: TempKey, value: TempEntry} | {type: 'del', key: TempKey}>) => Promise<void>} batch
+ * @property {() => Promise<TempKey[]>} listKeys
+ * @property {() => Promise<void>} clear
+ * @property {(name: string) => TemporarySublevel} getSublevel
+ */
 
 /**
  * Type guard for TemporaryDatabase.
@@ -145,6 +223,23 @@ class TemporaryDatabaseClass {
  */
 function isTemporaryDatabase(object) {
     return object instanceof TemporaryDatabaseClass;
+}
+
+/**
+ * Type guard for TemporarySublevel.
+ * @param {unknown} object
+ * @returns {object is TemporarySublevel}
+ */
+function isTemporarySublevel(object) {
+    return object instanceof TemporarySublevelClass;
+}
+
+/**
+ * @param {*} sublevel
+ * @returns {TemporarySublevel}
+ */
+function makeTemporarySublevel(sublevel) {
+    return new TemporarySublevelClass(sublevel);
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +315,7 @@ async function getTemporaryDatabase(capabilities) {
 module.exports = {
     getTemporaryDatabase,
     isTemporaryDatabase,
+    isTemporarySublevel,
     isTemporaryDatabaseInitializationError,
     TEMPORARY_DB_SUBPATH,
     pathToTemporaryDatabase,

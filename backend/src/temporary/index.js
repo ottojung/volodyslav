@@ -240,6 +240,106 @@ async function setRuntimeState(database, data) {
     await database.put(RUNTIME_STATE_KEY, { type: "runtime_state", data });
 }
 
+class TemporarySublevelFacadeClass {
+    /**
+     * @private
+     * @type {() => Promise<TemporaryDatabase>}
+     */
+    _getDatabase;
+
+    /**
+     * @private
+     * @type {string[]}
+     */
+    _path;
+
+    /**
+     * @param {() => Promise<TemporaryDatabase>} getDatabase
+     * @param {string[]} pathSegments
+     */
+    constructor(getDatabase, pathSegments) {
+        this._getDatabase = getDatabase;
+        this._path = pathSegments;
+    }
+
+    /**
+     * @returns {Promise<import('./database').TemporarySublevel>}
+     */
+    async _resolveSublevel() {
+        const db = await this._getDatabase();
+        const first = this._path[0];
+        if (first === undefined) {
+            throw new Error("Temporary sublevel path must not be empty");
+        }
+        let sublevel = db.getSublevel(first);
+        for (const segment of this._path.slice(1)) {
+            sublevel = sublevel.getSublevel(segment);
+        }
+        return sublevel;
+    }
+
+    /**
+     * @param {string} name
+     * @returns {import('./database').TemporarySublevel}
+     */
+    getSublevel(name) {
+        return new TemporarySublevelFacadeClass(this._getDatabase, [...this._path, name]);
+    }
+
+    /**
+     * @param {import('./database/types').TempKey} key
+     * @returns {Promise<import('./database/types').TempEntry | undefined>}
+     */
+    async get(key) {
+        const sublevel = await this._resolveSublevel();
+        return sublevel.get(key);
+    }
+
+    /**
+     * @param {import('./database/types').TempKey} key
+     * @param {import('./database/types').TempEntry} value
+     * @returns {Promise<void>}
+     */
+    async put(key, value) {
+        const sublevel = await this._resolveSublevel();
+        await sublevel.put(key, value);
+    }
+
+    /**
+     * @param {import('./database/types').TempKey} key
+     * @returns {Promise<void>}
+     */
+    async del(key) {
+        const sublevel = await this._resolveSublevel();
+        await sublevel.del(key);
+    }
+
+    /**
+     * @param {Array<{type: 'put', key: import('./database/types').TempKey, value: import('./database/types').TempEntry} | {type: 'del', key: import('./database/types').TempKey}>} operations
+     * @returns {Promise<void>}
+     */
+    async batch(operations) {
+        const sublevel = await this._resolveSublevel();
+        await sublevel.batch(operations);
+    }
+
+    /**
+     * @returns {Promise<import('./database/types').TempKey[]>}
+     */
+    async listKeys() {
+        const sublevel = await this._resolveSublevel();
+        return sublevel.listKeys();
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    async clear() {
+        const sublevel = await this._resolveSublevel();
+        await sublevel.clear();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Temporary capability class (lazy database initialisation)
 // ---------------------------------------------------------------------------
@@ -382,23 +482,12 @@ class TemporaryClass {
     }
 
     /**
-     * List all database keys with the given string prefix.
-     * @param {string} prefix
-     * @returns {Promise<import('./database/types').TempKey[]>}
+     * Open a typed sublevel under temporary storage.
+     * @param {string} name
+     * @returns {import('./database').TemporarySublevel}
      */
-    async listKeysByPrefix(prefix) {
-        const db = await this._getDatabase();
-        return db.listKeysByPrefix(prefix);
-    }
-
-    /**
-     * Delete all database keys with the given string prefix atomically.
-     * @param {string} prefix
-     * @returns {Promise<void>}
-     */
-    async deleteKeysByPrefix(prefix) {
-        const db = await this._getDatabase();
-        await db.deleteKeysByPrefix(prefix);
+    getSublevel(name) {
+        return new TemporarySublevelFacadeClass(() => this._getDatabase(), [name]);
     }
 
     /**
