@@ -270,6 +270,51 @@ describe("audio_recording_session", () => {
             }
             expect(isAudioSessionChunkValidationError(err)).toBe(true);
         });
+
+        it("rejects when max fragment count is reached", async () => {
+            const {
+                MAX_FRAGMENT_COUNT: MAX,
+            } = require("../src/audio_recording_session");
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            // Upload MAX chunks (sequence 0..MAX-1)
+            for (let i = 0; i < MAX; i++) {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    chunk: Buffer.from("data"),
+                    startMs: i * 1000,
+                    endMs: (i + 1) * 1000,
+                    sequence: i,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            }
+            // The (MAX+1)-th distinct chunk should be rejected
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    chunk: Buffer.from("extra"),
+                    startMs: MAX * 1000,
+                    endMs: (MAX + 1) * 1000,
+                    sequence: MAX,
+                    mimeType: TEST_MIME_TYPE,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionConflictError(err)).toBe(true);
+        });
+
+        it("derives filename extension from mimeType", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, "audio/ogg");
+            const result = await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("ogg-data"),
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+                mimeType: "audio/ogg",
+            });
+            expect(result.stored.filename).toBe("000000.ogg");
+        });
     });
 
     describe("stopSession", () => {
@@ -305,6 +350,20 @@ describe("audio_recording_session", () => {
             const meta = await getSession(caps, TEST_SESSION_ID);
             expect(meta.elapsedSeconds).toBe(42);
             expect(meta.status).toBe("stopped");
+        });
+
+        it("rejects invalid elapsedSeconds", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            for (const bad of [NaN, Infinity, -1, -Infinity, "30", null]) {
+                let err = null;
+                try {
+                    await stopSession(caps, TEST_SESSION_ID, /** @type {any} */ (bad));
+                } catch (e) {
+                    err = e;
+                }
+                expect(isAudioSessionChunkValidationError(err)).toBe(true);
+            }
         });
     });
 

@@ -27,6 +27,19 @@ const SESSION_BASE = `${API_BASE_URL}/audio-recording-session`;
  */
 
 /**
+ * Thrown by uploadChunk when the backend returns 404 (session not found).
+ * Callers can detect this to lazily (re-)create the session.
+ */
+export class ChunkUploadSessionNotFoundError extends Error {
+    /** @param {string} sessionId */
+    constructor(sessionId) {
+        super(`Session not found during chunk upload: ${sessionId}`);
+        this.name = "ChunkUploadSessionNotFoundError";
+        this.sessionId = sessionId;
+    }
+}
+
+/**
  * Initialize or touch a recording session.
  * @param {string} sessionId
  * @param {string} mimeType
@@ -66,6 +79,9 @@ export async function uploadChunk(sessionId, { chunk, startMs, endMs, sequence, 
         method: "POST",
         body: formData,
     });
+    if (response.status === 404) {
+        throw new ChunkUploadSessionNotFoundError(sessionId);
+    }
     if (!response.ok) {
         throw new Error(`Failed to upload chunk: ${response.status}`);
     }
@@ -130,6 +146,30 @@ export async function fetchFinalAudio(sessionId) {
         throw new Error(`Failed to fetch final audio: ${response.status}`);
     }
     return response.blob();
+}
+
+/**
+ * Upload a chunk, recreating the session on 404 and retrying once.
+ * This ensures the backend workflow recovers when the initial `startSession`
+ * call failed transiently.
+ *
+ * @param {string} sessionId
+ * @param {string} fallbackMimeType - used to recreate the session on 404
+ * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
+ * @returns {Promise<void>}
+ */
+export async function uploadChunkWithSessionRetry(sessionId, fallbackMimeType, params) {
+    try {
+        await uploadChunk(sessionId, params);
+    } catch (err) {
+        if (err instanceof ChunkUploadSessionNotFoundError) {
+            // Session missing (startSession failed earlier) — recreate then retry once.
+            await startSession(sessionId, fallbackMimeType || "audio/webm");
+            await uploadChunk(sessionId, params);
+        } else {
+            throw err;
+        }
+    }
 }
 
 /**

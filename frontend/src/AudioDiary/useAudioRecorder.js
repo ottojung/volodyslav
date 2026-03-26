@@ -15,7 +15,7 @@ import {
 import { saveSessionId, clearSessionId } from "./recording_storage.js";
 import {
     startSession as startBackendSession,
-    uploadChunk as uploadBackendChunk,
+    uploadChunkWithSessionRetry as uploadBackendChunk,
     stopSession as stopBackendSession,
     fetchFinalAudio,
     discardSession,
@@ -166,16 +166,18 @@ export function useAudioRecorder() {
                 const sessionId = sessionIdRef.current;
                 const mimeType = chunk.type || mimeTypeRef.current;
                 if (sessionId) {
-                    uploadQueueRef.current = uploadQueueRef.current.then(() => {
-                        uploadBackendChunk(sessionId, {
-                            chunk,
-                            startMs: startMs + offsetMs,
-                            endMs: endMs + offsetMs,
-                            sequence: seq,
-                            mimeType,
-                        }).catch(() => {
+                    uploadQueueRef.current = uploadQueueRef.current.then(async () => {
+                        try {
+                            await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
+                                chunk,
+                                startMs: startMs + offsetMs,
+                                endMs: endMs + offsetMs,
+                                sequence: seq,
+                                mimeType,
+                            });
+                        } catch {
                             // Chunk upload failed; recording continues locally
-                        });
+                        }
                     });
                 }
             },

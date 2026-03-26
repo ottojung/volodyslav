@@ -19,11 +19,23 @@ const {
     AudioSessionConflictError,
     AudioSessionFinalizeError,
 } = require("./errors");
+const {
+    MAX_FRAGMENT_COUNT,
+    isValidSessionId,
+    extensionFromMimeType,
+} = require("./helpers");
+const {
+    SESSION_NAMESPACE,
+    CURRENT_SESSION_KEY,
+    metaKey,
+    chunkKey,
+    finalKey,
+    deleteSessionData,
+} = require("./keys");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../datetime').Datetime} Datetime */
-/** @typedef {import('../temporary/database/types').TempKey} TempKey */
 /** @typedef {import('../temporary/database/types').AudioSessionMeta} AudioSessionMeta */
 
 /**
@@ -32,63 +44,6 @@ const {
  * @property {Logger} logger
  * @property {Datetime} datetime
  */
-
-// ---------------------------------------------------------------------------
-// Session ID validation
-// ---------------------------------------------------------------------------
-
-const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
-
-/**
- * Validate a session ID.
- * @param {string} sessionId
- * @returns {boolean}
- */
-function isValidSessionId(sessionId) {
-    return SESSION_ID_PATTERN.test(sessionId);
-}
-
-// ---------------------------------------------------------------------------
-// Key builders (all keys scoped under "audio_session/")
-// ---------------------------------------------------------------------------
-
-const SESSION_NAMESPACE = "audio_session";
-const CURRENT_SESSION_KEY = stringToTempKey(`${SESSION_NAMESPACE}/index/current_session_id`);
-
-/**
- * @param {string} sessionId
- * @returns {TempKey}
- */
-function metaKey(sessionId) {
-    return stringToTempKey(`${SESSION_NAMESPACE}/${sessionId}/meta`);
-}
-
-/**
- * @param {string} sessionId
- * @param {number} sequence
- * @returns {TempKey}
- */
-function chunkKey(sessionId, sequence) {
-    const seqPadded = String(sequence).padStart(6, "0");
-    return stringToTempKey(`${SESSION_NAMESPACE}/${sessionId}/chunk/${seqPadded}`);
-}
-
-/**
- * @param {string} sessionId
- * @returns {TempKey}
- */
-function finalKey(sessionId) {
-    return stringToTempKey(`${SESSION_NAMESPACE}/${sessionId}/final`);
-}
-
-/**
- * Prefix for all keys belonging to a session (for bulk delete).
- * @param {string} sessionId
- * @returns {string}
- */
-function sessionPrefix(sessionId) {
-    return `${SESSION_NAMESPACE}/${sessionId}/`;
-}
 
 // ---------------------------------------------------------------------------
 // Low-level DB helpers
@@ -147,16 +102,6 @@ async function readCurrentSessionId(temporary) {
  */
 async function writeCurrentSessionId(temporary, sessionId) {
     await temporary.putEntry(CURRENT_SESSION_KEY, { type: "audio_session_index", sessionId });
-}
-
-/**
- * Delete all data for a session (all keys with the session prefix).
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<void>}
- */
-async function deleteSessionData(temporary, sessionId) {
-    await temporary.deleteKeysByPrefix(sessionPrefix(sessionId));
 }
 
 // ---------------------------------------------------------------------------
@@ -304,12 +249,20 @@ async function uploadChunk(capabilities, sessionId, params) {
     const seqPadded = String(sequence).padStart(6, "0");
     const chunkTempKey = chunkKey(sessionId, sequence);
     const existingChunk = await temporary.getEntry(chunkTempKey);
+
+    const isNewChunk = existingChunk === undefined;
+    if (isNewChunk && meta.fragmentCount >= MAX_FRAGMENT_COUNT) {
+        throw new AudioSessionConflictError(
+            `Session ${sessionId} has reached the maximum fragment count of ${MAX_FRAGMENT_COUNT}`,
+            sessionId
+        );
+    }
+
     await temporary.putEntry(chunkTempKey, {
         type: "blob",
         data: chunk.toString("base64"),
     });
 
-    const isNewChunk = existingChunk === undefined;
     const shouldUpdateLastSequence = isNewChunk && sequence > meta.lastSequence;
     // Also update lastEndMs when overwriting the current latest chunk,
     // so session metadata stays accurate if the client retries with a different endMs.
@@ -324,7 +277,8 @@ async function uploadChunk(capabilities, sessionId, params) {
     };
     await writeMeta(temporary, updatedMeta);
 
-    const filename = `${seqPadded}.webm`;
+    const chunkMimeType = mimeType || meta.mimeType;
+    const filename = `${seqPadded}.${extensionFromMimeType(chunkMimeType)}`;
     return {
         stored: { sequence, filename },
         session: {
@@ -367,6 +321,15 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
     if (!isValidSessionId(sessionId)) {
         throw new AudioSessionChunkValidationError(
             `Invalid session ID: "${sessionId}"`
+        );
+    }
+    if (
+        typeof elapsedSeconds !== "number" ||
+        !Number.isFinite(elapsedSeconds) ||
+        elapsedSeconds < 0
+    ) {
+        throw new AudioSessionChunkValidationError(
+            `Invalid elapsedSeconds: must be a finite, non-negative number, got ${elapsedSeconds}`
         );
     }
 
@@ -492,6 +455,7 @@ async function discardSession(capabilities, sessionId) {
 
 module.exports = {
     isValidSessionId,
+    MAX_FRAGMENT_COUNT,
     startSession,
     uploadChunk,
     getSession,
