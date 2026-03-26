@@ -429,6 +429,8 @@ describe("EntryDetail page", () => {
 
         expect(screen.getByText("Loading calories...")).toBeInTheDocument();
         expect(screen.getByText("Loading transcription...")).toBeInTheDocument();
+        expect(screen.getByTestId("computed-property-spinner-calories")).toBeInTheDocument();
+        expect(screen.getByTestId("computed-property-spinner-transcription")).toBeInTheDocument();
         expect(screen.queryByText("None")).not.toBeInTheDocument();
     });
 

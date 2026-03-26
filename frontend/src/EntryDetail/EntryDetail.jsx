@@ -234,16 +234,21 @@ export default function EntryDetail() {
                         )}
                         {loadingComputedProperties.length > 0 ? (
                             <Box py={SPACING.md}>
-                                <HStack align="flex-start" gap={SPACING.sm}>
-                                    <Spinner size="sm" color="blue.400" mt="2px" />
-                                    <VStack align="flex-start" gap={1}>
-                                        {loadingComputedProperties.map((propertyName) => (
-                                            <Text key={propertyName} {...TEXT_STYLES.helper}>
+                                <VStack align="stretch" gap={SPACING.xs}>
+                                    {loadingComputedProperties.map((propertyName) => (
+                                        <HStack key={propertyName} align="flex-start" gap={SPACING.sm}>
+                                            <Spinner
+                                                size="sm"
+                                                color="blue.400"
+                                                mt="2px"
+                                                data-testid={`computed-property-spinner-${propertyName}`}
+                                            />
+                                            <Text {...TEXT_STYLES.helper}>
                                                 Loading {propertyName}...
                                             </Text>
-                                        ))}
-                                    </VStack>
-                                </HStack>
+                                        </HStack>
+                                    ))}
+                                </VStack>
                             </Box>
                         ) : additionalFields.length === 0 && Object.keys(additionalPropertyErrors).length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>
