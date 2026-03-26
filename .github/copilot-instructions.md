@@ -256,6 +256,16 @@ function isPathLike(object) {
 - When an AI agent finds issues with legacy code or has a clearly better suggestion for any programming interface, it SHOULD prioritize correctness and improvement and SHOULD disregard backwards compatibility.
 - Exception: If a change affects data or formats that live outside this repository (for example database schemas, on-disk file formats, or other persisted storage), backwards compatibility SHOULD be preserved. Changes that would break external storage or require coordinated migrations need explicit consideration and coordination.
 
+## Non-Adversarial Client Policy
+
+This application is a personal tool. The client (frontend) is assumed to be **non-adversarial** — it is the same developer who runs the server. This has important implications:
+
+- **No DoS protection**: Rate limits, upload-size caps, fragment-count caps, concurrency limits, and any other latency or resource-consumption limits are **banned**. They introduce large complexity for zero benefit in this context.
+- **No authorization**: Session IDs will not be forged. Authentication and authorization checks on API endpoints are unnecessary.
+- **Shape validation is still required**: Even with a trusted client, client and server may drift (e.g., during development or after a schema change). All incoming data **must** be validated against the expected shape (correct types, expected field names, valid enum values) and rejected with a clear error if it does not match. This is about correctness, not security.
+
+Summary: validate shapes, skip everything else.
+
 ## Additional Guidelines
 
 - Follow existing naming conventions (snake_case for files, camelCase for functions)

@@ -1,6 +1,9 @@
 // Setup file for Jest tests
 require('@testing-library/jest-dom/extend-expect');
 
+// Define __BASE_PATH__ global used by api_base_url.js
+global.__BASE_PATH__ = "/";
+
 // Add polyfills for jsdom
 const { TextEncoder, TextDecoder, structuredClone: utilStructuredClone } = require('util');
 global.TextEncoder = TextEncoder;

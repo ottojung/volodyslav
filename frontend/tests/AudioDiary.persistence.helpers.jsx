@@ -52,66 +52,12 @@ class MockMediaRecorder {
 MockMediaRecorder.isTypeSupported = jest.fn(() => true);
 MockMediaRecorder._instance = null;
 
-function makeIndexedDBMock() {
-    /** @type {Map<string, unknown>} */
-    const store = new Map();
-    const mockDB = {
-        transaction: jest.fn().mockImplementation(() => {
-            const tx = {
-                oncomplete: null,
-                onerror: null,
-                objectStore: jest.fn().mockImplementation(() => ({
-                    put: jest.fn().mockImplementation((value, key) => {
-                        store.set(String(key), value);
-                        passThread().then(() => {
-                            if (typeof tx.oncomplete === "function") tx.oncomplete();
-                        });
-                    }),
-                    get: jest.fn().mockImplementation((key) => {
-                        const req = { result: store.get(String(key)) };
-                        passThread().then(() => {
-                            if (typeof req.onsuccess === "function") {
-                                // @ts-expect-error mock request object does not implement full IDBRequest typing
-                                req.onsuccess();
-                            }
-                        });
-                        return req;
-                    }),
-                    delete: jest.fn().mockImplementation((key) => {
-                        store.delete(String(key));
-                        passThread().then(() => {
-                            if (typeof tx.oncomplete === "function") tx.oncomplete();
-                        });
-                    }),
-                })),
-            };
-            return tx;
-        }),
-        objectStoreNames: { contains: jest.fn().mockReturnValue(false) },
-        createObjectStore: jest.fn(),
-    };
-    return {
-        open: jest.fn().mockImplementation(() => {
-            const req = {
-                onupgradeneeded: null,
-                onsuccess: null,
-                onerror: null,
-                result: mockDB,
-            };
-            passThread().then(() => {
-                if (typeof req.onupgradeneeded === "function") {
-                    req.onupgradeneeded({ target: req });
-                }
-                if (typeof req.onsuccess === "function") req.onsuccess();
-            });
-            return req;
-        }),
-        store,
-    };
-}
+/**
+ * The session data that fetch will return for getSession calls.
+ * @type {import('../src/AudioDiary/session_api.js').SessionState | null}
+ */
+let mockSessionData;
 
-/** @type {ReturnType<typeof makeIndexedDBMock>} */
-let mockIDB;
 /** @type {jest.Mock} */
 let mockGetUserMedia;
 /** @type {typeof global.MediaRecorder | undefined} */
@@ -124,8 +70,8 @@ let originalCreateObjectURL;
 let originalRevokeObjectURL;
 /** @type {typeof HTMLCanvasElement.prototype.getContext} */
 let originalCanvasGetContext;
-/** @type {typeof globalThis.indexedDB | undefined} */
-let originalIndexedDB;
+/** @type {typeof global.fetch | undefined} */
+let originalFetch;
 /** @type {boolean} */
 let hadMediaDevices;
 
@@ -135,6 +81,100 @@ jest.mock("react-router-dom", () => ({
     useNavigate: () => mockNavigate,
 }));
 
+/**
+ * Build a fetch mock that handles session API calls.
+ * @returns {jest.Mock}
+ */
+function makeFetchMock() {
+    return jest.fn().mockImplementation((url, options) => {
+        const urlStr = String(url);
+
+        // DELETE /audio-recording-session/:id
+        if (options && options.method === "DELETE") {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ success: true }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
+        // POST /audio-recording-session/start
+        if (options && options.method === "POST" && urlStr.includes("/start")) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({
+                    success: true,
+                    session: {
+                        sessionId: "mock-session",
+                        status: "recording",
+                        createdAt: "2026-01-01T00:00:00.000Z",
+                        fragmentCount: 0,
+                    },
+                }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
+        // POST /audio-recording-session/:id/chunks
+        if (options && options.method === "POST" && urlStr.includes("/chunks")) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({
+                    success: true,
+                    stored: { sequence: 0, filename: "chunk-0.webm" },
+                    session: { fragmentCount: 1, lastEndMs: 1000 },
+                }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
+        // POST /audio-recording-session/:id/stop
+        if (options && options.method === "POST" && urlStr.includes("/stop")) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({
+                    success: true,
+                    session: { status: "stopped", size: 100 },
+                }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
+        // GET /audio-recording-session/:id/final-audio
+        if (urlStr.includes("/final-audio")) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({}),
+                blob: () => Promise.resolve(new Blob(["backend-audio"], { type: "audio/webm" })),
+            });
+        }
+
+        // GET /audio-recording-session/:id  (session state lookup)
+        if (mockSessionData) {
+            const session = mockSessionData;
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ success: true, session }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
+        // No session found (404)
+        return Promise.resolve({
+            ok: false,
+            status: 404,
+            json: () => Promise.resolve({ success: false, error: "Not found" }),
+            blob: () => Promise.resolve(new Blob()),
+        });
+    });
+}
+
 export function setupAudioDiaryPersistenceHarness() {
     beforeAll(() => {
         originalMediaRecorder = global.MediaRecorder;
@@ -143,7 +183,8 @@ export function setupAudioDiaryPersistenceHarness() {
         originalCreateObjectURL = global.URL.createObjectURL;
         originalRevokeObjectURL = global.URL.revokeObjectURL;
         originalCanvasGetContext = HTMLCanvasElement.prototype.getContext;
-        originalIndexedDB = global.indexedDB;
+        originalFetch = global.fetch;
+
         global.MediaRecorder = MockMediaRecorder;
         mockGetUserMedia = jest.fn().mockResolvedValue({
             getTracks: () => [{ stop: jest.fn() }],
@@ -170,15 +211,26 @@ export function setupAudioDiaryPersistenceHarness() {
         submitEntry.mockResolvedValue({ success: true, entry: { id: "entry-123" } });
         mockGetUserMedia.mockClear();
         MockMediaRecorder._instance = null;
-        mockIDB = makeIndexedDBMock();
-        // @ts-expect-error assigning map-backed mock instead of full IDBFactory
-        global.indexedDB = mockIDB;
+
+        // Reset session data
+        mockSessionData = null;
+
+        // Clear real localStorage
+        window.localStorage.clear();
+
+        // Set fresh fetch mock
+        global.fetch = makeFetchMock();
     });
 
     afterEach(() => {
         cleanup();
-        // @ts-expect-error assigning map-backed mock instead of full IDBFactory
-        global.indexedDB = mockIDB;
+        window.localStorage.clear();
+        if (originalFetch !== undefined) {
+            global.fetch = originalFetch;
+        } else {
+            // @ts-expect-error tests intentionally remove fetch for cleanup parity
+            delete global.fetch;
+        }
     });
 
     afterAll(() => {
@@ -193,8 +245,11 @@ export function setupAudioDiaryPersistenceHarness() {
         global.URL.createObjectURL = originalCreateObjectURL;
         global.URL.revokeObjectURL = originalRevokeObjectURL;
         HTMLCanvasElement.prototype.getContext = originalCanvasGetContext;
-        if (originalIndexedDB !== undefined) {
-            global.indexedDB = originalIndexedDB;
+        if (originalFetch !== undefined) {
+            global.fetch = originalFetch;
+        } else {
+            // @ts-expect-error tests intentionally remove fetch for cleanup parity
+            delete global.fetch;
         }
     });
 }
@@ -217,12 +272,36 @@ export function renderAudioDiary(initialPath = "/record-diary") {
 }
 
 /**
- * @param {import('../src/AudioDiary/recording_storage.js').RecordingSnapshot} snapshot
+ * Inject a session into the test environment.
+ * Sets a sessionId in localStorage and configures the fetch mock
+ * to return the given session state.
+ *
+ * @param {{ recorderState: string, elapsedSeconds: number, note: string, mimeType: string, audioBuffer?: ArrayBuffer }} snapshot
  */
 export function injectSnapshot(snapshot) {
-    mockIDB.store.set("current", snapshot);
+    const sessionId = "restored-session-id";
+    window.localStorage.setItem("audioDiarySessionId", sessionId);
+
+    const status = snapshot.recorderState === "stopped" ? "stopped" : "recording";
+    mockSessionData = {
+        sessionId,
+        status,
+        mimeType: snapshot.mimeType || "audio/webm",
+        elapsedSeconds: snapshot.elapsedSeconds || 0,
+        fragmentCount: 1,
+        lastSequence: 0,
+    };
 }
 
+/**
+ * Returns the current localStorage keys/values as a Map-like interface.
+ * Tests use this to check session ID presence.
+ * @returns {{ has: (key: string) => boolean, get: (key: string) => string | null, set: (key: string, value: string) => void }}
+ */
 export function currentStore() {
-    return mockIDB.store;
+    return {
+        has: (key) => window.localStorage.getItem(key) !== null,
+        get: (key) => window.localStorage.getItem(key),
+        set: (key, value) => window.localStorage.setItem(key, value),
+    };
 }

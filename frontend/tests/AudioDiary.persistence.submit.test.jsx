@@ -21,14 +21,13 @@ import {
 setupAudioDiaryPersistenceHarness();
 
 describe("AudioDiary persistence: submit lifecycle", () => {
-    it("clears stored snapshot after successful submit", async () => {
-        const audioData = new TextEncoder().encode("saved-audio");
+    it("clears stored session ID after successful submit", async () => {
         injectSnapshot({
             recorderState: "stopped",
             elapsedSeconds: 30,
             note: "",
             mimeType: "audio/webm",
-            audioBuffer: audioData.buffer,
+            audioBuffer: new ArrayBuffer(0),
         });
         renderAudioDiary();
         await waitFor(() => {
@@ -41,18 +40,17 @@ describe("AudioDiary persistence: submit lifecycle", () => {
             expect(mockNavigate).toHaveBeenCalledWith("/entry/entry-123");
         });
         await act(async () => { await passThread(); });
-        expect(currentStore().has("current")).toBe(false);
+        expect(currentStore().has("audioDiarySessionId")).toBe(false);
     });
 
-    it("keeps snapshot when submit fails", async () => {
+    it("keeps session ID when submit fails", async () => {
         submitEntry.mockRejectedValueOnce(new Error("network fail"));
-        const audioData = new TextEncoder().encode("saved-audio");
         injectSnapshot({
             recorderState: "stopped",
             elapsedSeconds: 30,
             note: "",
             mimeType: "audio/webm",
-            audioBuffer: audioData.buffer,
+            audioBuffer: new ArrayBuffer(0),
         });
         renderAudioDiary();
         await waitFor(() => {
@@ -64,6 +62,6 @@ describe("AudioDiary persistence: submit lifecycle", () => {
         await waitFor(() => {
             expect(screen.getByText(/Submission failed/i)).toBeInTheDocument();
         });
-        expect(currentStore().has("current")).toBe(true);
+        expect(currentStore().has("audioDiarySessionId")).toBe(true);
     });
 });

@@ -101,6 +101,39 @@ class TemporaryDatabaseClass {
     async close() {
         await this._db.close();
     }
+
+    /**
+     * List all keys that start with the given string prefix.
+     * Returns an empty array if no keys match.
+     * @param {string} prefix
+     * @returns {Promise<TempKey[]>}
+     */
+    async listKeysByPrefix(prefix) {
+        const keys = [];
+        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\uffff' })) {
+            keys.push(stringToTempKey(key));
+        }
+        return keys;
+    }
+
+    /**
+     * Delete all keys that start with the given string prefix atomically.
+     * No-op if no keys match.
+     * @param {string} prefix
+     * @returns {Promise<void>}
+     */
+    async deleteKeysByPrefix(prefix) {
+        const keys = [];
+        for await (const key of this._db.keys({ gte: prefix, lte: prefix + '\uffff' })) {
+            keys.push(key);
+        }
+        if (keys.length === 0) {
+            return;
+        }
+        /** @type {Array<{type: 'del', key: string}>} */
+        const ops = keys.map((key) => ({ type: 'del', key }));
+        await this._db.batch(ops);
+    }
 }
 
 /** @typedef {TemporaryDatabaseClass} TemporaryDatabase */

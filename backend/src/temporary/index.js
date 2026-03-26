@@ -17,7 +17,7 @@
  */
 
 const path = require("path");
-const { getTemporaryDatabase, stringToTempKey } = require("./database");
+const { getTemporaryDatabase, stringToTempKey, tempKeyToString } = require("./database");
 
 /** @typedef {import('./database').TemporaryDatabase} TemporaryDatabase */
 /** @typedef {import('../request_identifier').RequestIdentifier} RequestIdentifier */
@@ -380,6 +380,58 @@ class TemporaryClass {
         const db = await this._getDatabase();
         await setRuntimeState(db, data);
     }
+
+    /**
+     * List all database keys with the given string prefix.
+     * @param {string} prefix
+     * @returns {Promise<import('./database/types').TempKey[]>}
+     */
+    async listKeysByPrefix(prefix) {
+        const db = await this._getDatabase();
+        return db.listKeysByPrefix(prefix);
+    }
+
+    /**
+     * Delete all database keys with the given string prefix atomically.
+     * @param {string} prefix
+     * @returns {Promise<void>}
+     */
+    async deleteKeysByPrefix(prefix) {
+        const db = await this._getDatabase();
+        await db.deleteKeysByPrefix(prefix);
+    }
+
+    /**
+     * Retrieve a raw entry by key.
+     * Returns `undefined` when the key does not exist.
+     * @param {import('./database/types').TempKey} key
+     * @returns {Promise<import('./database/types').TempEntry | undefined>}
+     */
+    async getEntry(key) {
+        const db = await this._getDatabase();
+        return db.get(key);
+    }
+
+    /**
+     * Store a raw entry atomically.
+     * @param {import('./database/types').TempKey} key
+     * @param {import('./database/types').TempEntry} value
+     * @returns {Promise<void>}
+     */
+    async putEntry(key, value) {
+        const db = await this._getDatabase();
+        await db.put(key, value);
+    }
+
+    /**
+     * Delete a single entry by key. No-op if the key does not exist.
+     * @param {import('./database/types').TempKey} key
+     * @returns {Promise<void>}
+     */
+    async deleteEntry(key) {
+        const db = await this._getDatabase();
+        await db.del(key);
+    }
 }
 
 /** @typedef {TemporaryClass} Temporary */
@@ -419,4 +471,6 @@ module.exports = {
     sanitizeFilename,
     FilenameValidationError,
     isFilenameValidationError,
+    stringToTempKey,
+    tempKeyToString,
 };

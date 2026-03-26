@@ -11,6 +11,7 @@ const sync = require("./sync");
 const graph = require("./graph");
 const version = require("./version");
 const assets = require("./assets");
+const audioRecordingSession = require("./audio_recording_session");
 
 module.exports = {
     root,
@@ -26,4 +27,5 @@ module.exports = {
     graph,
     version,
     assets,
+    audioRecordingSession,
 };
