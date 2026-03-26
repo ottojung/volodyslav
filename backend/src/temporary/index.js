@@ -17,7 +17,7 @@
  */
 
 const path = require("path");
-const { getTemporaryDatabase, stringToTempKey } = require("./database");
+const { getTemporaryDatabase, stringToTempKey, tempKeyToString } = require("./database");
 
 /** @typedef {import('./database').TemporaryDatabase} TemporaryDatabase */
 /** @typedef {import('../request_identifier').RequestIdentifier} RequestIdentifier */
@@ -461,4 +461,6 @@ module.exports = {
     sanitizeFilename,
     FilenameValidationError,
     isFilenameValidationError,
+    stringToTempKey,
+    tempKeyToString,
 };

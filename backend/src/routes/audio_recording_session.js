@@ -91,6 +91,9 @@ function makeRouter(capabilities) {
         upload.single("chunk"),
         async (req, res) => {
             const { sessionId } = req.params;
+            if (!sessionId) {
+                return res.status(400).json({ success: false, error: "Missing session ID" });
+            }
             const { startMs, endMs, sequence, mimeType } = req.body || {};
             const chunkFile = req.file;
 
@@ -101,7 +104,9 @@ function makeRouter(capabilities) {
             // Accept only plain base-10 non-negative integer strings for sequence
             // and plain non-negative numeric strings for startMs/endMs.
             // This rejects scientific notation ("1e3"), empty strings, and floats for sequence.
-            const UINT_RE = /^\d+$/;
+            // Sequence is limited to 6 digits to stay compatible with 6-digit zero-padding
+            // and lexicographic sort order used when concatenating chunks.
+            const UINT_RE = /^\d{1,6}$/;
             const UFLOAT_RE = /^\d+(\.\d+)?$/;
 
             if (
@@ -125,7 +130,7 @@ function makeRouter(capabilities) {
                     startMs: startMsNum,
                     endMs: endMsNum,
                     sequence: sequenceNum,
-                    mimeType: typeof mimeType === "string" ? mimeType : chunkFile.mimetype || "audio/webm",
+                    mimeType: typeof mimeType === "string" ? mimeType : String(chunkFile.mimetype || "audio/webm"),
                 });
                 return res.json({ success: true, ...result });
             } catch (error) {

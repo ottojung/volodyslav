@@ -10,6 +10,7 @@ import {
     initialRecorderState,
     initialAudioBlob,
     initialAnalyser,
+    generateSessionId,
 } from "./audio_helpers.js";
 import { saveSessionId, clearSessionId } from "./recording_storage.js";
 import {
@@ -23,6 +24,7 @@ import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
 import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
 import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
+import { useRecordingTimer } from "./useRecordingTimer.js";
 
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
 /** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
@@ -48,23 +50,6 @@ import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
  * @property {() => void} handleDiscard
  * @property {() => void} clearPersistedSession
  */
-
-/**
- * Generate a unique session ID using crypto.randomUUID() if available,
- * or a crypto.getRandomValues()-based fallback.
- * @returns {string}
- */
-function generateSessionId() {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-        return crypto.randomUUID();
-    }
-    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-        const bytes = new Uint8Array(16);
-        crypto.getRandomValues(bytes);
-        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    }
-    throw new Error("No secure random source available");
-}
 
 /** @returns {UseAudioRecorderResult} */
 export function useAudioRecorder() {
@@ -181,7 +166,7 @@ export function useAudioRecorder() {
                 const sessionId = sessionIdRef.current;
                 const mimeType = chunk.type || mimeTypeRef.current;
                 if (sessionId) {
-                    uploadQueueRef.current = uploadQueueRef.current.then(() =>
+                    uploadQueueRef.current = uploadQueueRef.current.then(() => {
                         uploadBackendChunk(sessionId, {
                             chunk,
                             startMs: startMs + offsetMs,
@@ -190,8 +175,8 @@ export function useAudioRecorder() {
                             mimeType,
                         }).catch(() => {
                             // Chunk upload failed; recording continues locally
-                        })
-                    );
+                        });
+                    });
                 }
             },
         });
@@ -236,25 +221,7 @@ export function useAudioRecorder() {
         };
     }, [audioUrl]);
 
-    useEffect(() => {
-        if (recorderState === "recording") {
-            timerRef.current = window.setInterval(() => {
-                setElapsedSeconds((s) => s + 1);
-            }, 1000);
-        } else {
-            if (timerRef.current !== null) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-        }
-
-        return () => {
-            if (timerRef.current !== null) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-        };
-    }, [recorderState]);
+    useRecordingTimer(recorderState, timerRef, setElapsedSeconds);
 
     const handleStart = useCallback(async () => {
         clearSessionId();

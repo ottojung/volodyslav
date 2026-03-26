@@ -11,7 +11,7 @@
  * @module audio_recording_session/service
  */
 
-const { stringToTempKey, tempKeyToString } = require("../temporary/database");
+const { stringToTempKey, tempKeyToString } = require("../temporary");
 const { toISOString } = require("../datetime");
 const {
     AudioSessionNotFoundError,
@@ -274,9 +274,9 @@ async function uploadChunk(capabilities, sessionId, params) {
             `Invalid session ID: "${sessionId}"`
         );
     }
-    if (!Number.isInteger(sequence) || sequence < 0) {
+    if (!Number.isInteger(sequence) || sequence < 0 || sequence > 999999) {
         throw new AudioSessionChunkValidationError(
-            `Invalid sequence: must be a non-negative integer, got ${sequence}`
+            `Invalid sequence: must be a non-negative integer not exceeding 999999, got ${sequence}`
         );
     }
     if (!Number.isFinite(startMs) || startMs < 0) {
@@ -311,13 +311,16 @@ async function uploadChunk(capabilities, sessionId, params) {
 
     const isNewChunk = existingChunk === undefined;
     const shouldUpdateLastSequence = isNewChunk && sequence > meta.lastSequence;
+    // Also update lastEndMs when overwriting the current latest chunk,
+    // so session metadata stays accurate if the client retries with a different endMs.
+    const isOverwriteOfLatestChunk = !isNewChunk && sequence === meta.lastSequence;
     const updatedMeta = {
         ...meta,
         mimeType: mimeType || meta.mimeType,
         updatedAt: toISOString(capabilities.datetime.now()),
         fragmentCount: isNewChunk ? meta.fragmentCount + 1 : meta.fragmentCount,
         lastSequence: shouldUpdateLastSequence ? sequence : meta.lastSequence,
-        lastEndMs: shouldUpdateLastSequence ? endMs : meta.lastEndMs,
+        lastEndMs: shouldUpdateLastSequence || isOverwriteOfLatestChunk ? endMs : meta.lastEndMs,
     };
     await writeMeta(temporary, updatedMeta);
 
@@ -411,6 +414,7 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
         );
     }
 
+    /** @type {AudioSessionMeta} */
     const updatedMeta = {
         ...meta,
         status: "stopped",
