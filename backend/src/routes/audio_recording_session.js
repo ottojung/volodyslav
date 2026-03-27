@@ -3,7 +3,7 @@
  *
  * Endpoints:
  *   POST   /audio-recording-session/start
- *   POST   /audio-recording-session/:sessionId/chunks
+ *   POST   /audio-recording-session/:sessionId/push-audio
  *   GET    /audio-recording-session/:sessionId
  *   POST   /audio-recording-session/:sessionId/stop
  *   GET    /audio-recording-session/:sessionId/final-audio
@@ -16,7 +16,7 @@ const express = require("express");
 const multer = require("multer");
 const {
     startSession,
-    uploadChunk,
+    uploadChunk: pushAudioFragment,
     getSession,
     stopSession,
     fetchFinalAudio,
@@ -113,10 +113,10 @@ function makeRouter(capabilities) {
         }
     });
 
-    // POST /audio-recording-session/:sessionId/chunks
+    // POST /audio-recording-session/:sessionId/push-audio
     router.post(
-        "/audio-recording-session/:sessionId/chunks",
-        upload.single("chunk"),
+        "/audio-recording-session/:sessionId/push-audio",
+        upload.single("audio"),
         async (req, res) => {
             const { sessionId } = req.params;
             if (!sessionId) {
@@ -126,14 +126,14 @@ function makeRouter(capabilities) {
             const chunkFile = req.file;
 
             if (!chunkFile) {
-                return res.status(400).json({ success: false, error: "Missing chunk file" });
+                return res.status(400).json({ success: false, error: "Missing audio file" });
             }
 
             // Accept only plain base-10 non-negative integer strings for sequence
             // and plain non-negative numeric strings for startMs/endMs.
             // This rejects scientific notation ("1e3"), empty strings, and floats for sequence.
             // Sequence is limited to 6 digits to stay compatible with 6-digit zero-padding
-            // and lexicographic sort order used when concatenating chunks.
+            // and lexicographic sort order used when concatenating persisted fragments.
             const UINT_RE = /^\d{1,6}$/;
             const UFLOAT_RE = /^\d+(\.\d+)?$/;
 
@@ -160,7 +160,7 @@ function makeRouter(capabilities) {
             }
 
             try {
-                const result = await uploadChunk(capabilities, sessionId, {
+                const result = await pushAudioFragment(capabilities, sessionId, {
                     chunk: chunkFile.buffer,
                     startMs: startMsNum,
                     endMs: endMsNum,
@@ -168,10 +168,12 @@ function makeRouter(capabilities) {
                     mimeType: normalizedChunkMimeType,
                 });
 
-                // Best-effort: invoke live diary questioning pipeline.
+                // Invoke live diary questioning pipeline.
                 // Fragment number is 1-based (sequence is 0-based).
                 /** @type {Array<{text: string, intent: string}>} */
                 let liveQuestions = [];
+                /** @type {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} */
+                let liveStatus = "ok";
                 try {
                     const liveResult = await pushLiveDiaryAudio(
                         capabilities,
@@ -181,11 +183,13 @@ function makeRouter(capabilities) {
                         sequenceNum + 1
                     );
                     liveQuestions = liveResult.questions;
+                    liveStatus = liveResult.status;
                 } catch {
-                    // Live questioning failure is non-fatal; chunk is stored successfully.
+                    // Live questioning failure is non-fatal; fragment persistence succeeded.
+                    liveStatus = "degraded_question_generation";
                 }
 
-                return res.json({ success: true, ...result, questions: liveQuestions });
+                return res.json({ success: true, ...result, questions: liveQuestions, status: liveStatus });
             } catch (error) {
                 if (isAudioSessionChunkValidationError(error)) {
                     return res.status(400).json({ success: false, error: error.message });
@@ -198,7 +202,7 @@ function makeRouter(capabilities) {
                 }
                 capabilities.logger.logError(
                     { error: error instanceof Error ? error.message : String(error) },
-                    "Failed to upload audio chunk"
+                    "Failed to push audio fragment"
                 );
                 return res.status(500).json({ success: false, error: "Internal error" });
             }

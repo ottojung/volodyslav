@@ -27,14 +27,14 @@ const SESSION_BASE = `${API_BASE_URL}/audio-recording-session`;
  */
 
 /**
- * Thrown by uploadChunk when the backend returns 404 (session not found).
+ * Thrown by pushAudio when the backend returns 404 (session not found).
  * Callers can detect this to lazily (re-)create the session.
  */
-export class ChunkUploadSessionNotFoundError extends Error {
+export class PushAudioSessionNotFoundError extends Error {
     /** @param {string} sessionId */
     constructor(sessionId) {
-        super(`Session not found during chunk upload: ${sessionId}`);
-        this.name = "ChunkUploadSessionNotFoundError";
+        super(`Session not found during push audio: ${sessionId}`);
+        this.name = "PushAudioSessionNotFoundError";
         this.sessionId = sessionId;
     }
 }
@@ -68,34 +68,43 @@ export async function startSession(sessionId, mimeType) {
  */
 
 /**
- * Upload a single audio fragment to the session.
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} PushAudioStatus
+ */
+
+/**
+ * Push a single audio fragment to the session.
  * @param {string} sessionId
  * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
- * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[] }>}
+ * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[], status: PushAudioStatus }>}
  */
-export async function uploadChunk(sessionId, { chunk, startMs, endMs, sequence, mimeType }) {
+export async function pushAudio(sessionId, { chunk, startMs, endMs, sequence, mimeType }) {
     const formData = new FormData();
-    formData.append("chunk", chunk, "chunk.webm");
+    formData.append("audio", chunk, "fragment.webm");
     formData.append("startMs", String(startMs));
     formData.append("endMs", String(endMs));
     formData.append("sequence", String(sequence));
     formData.append("mimeType", mimeType);
 
-    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/chunks`, {
+    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/push-audio`, {
         method: "POST",
         body: formData,
     });
     if (response.status === 404) {
-        throw new ChunkUploadSessionNotFoundError(sessionId);
+        throw new PushAudioSessionNotFoundError(sessionId);
     }
     if (!response.ok) {
-        throw new Error(`Failed to upload chunk: ${response.status}`);
+        throw new Error(`Failed to push audio: ${response.status}`);
     }
     const data = await response.json();
     if (!data.success) {
-        throw new Error(data.error || "Failed to upload chunk");
+        throw new Error(data.error || "Failed to push audio");
     }
-    return { stored: data.stored, session: data.session, questions: data.questions || [] };
+    return {
+        stored: data.stored,
+        session: data.session,
+        questions: data.questions || [],
+        status: data.status || "ok",
+    };
 }
 
 /**
@@ -183,29 +192,29 @@ export async function fetchFinalAudio(sessionId) {
 }
 
 /**
- * Upload a chunk, recreating the session on 404 and retrying once.
+ * Push audio, recreating the session on 404 and retrying once.
  * This ensures the backend workflow recovers when the initial `startSession`
  * call failed transiently.
  *
  * @param {string} sessionId
  * @param {string} fallbackMimeType - used to recreate the session on 404
  * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
- * @returns {Promise<DiaryQuestion[]>}
+ * @returns {Promise<{ questions: DiaryQuestion[], status: PushAudioStatus }>}
  */
-export async function uploadChunkWithSessionRetry(sessionId, fallbackMimeType, params) {
+export async function pushAudioWithSessionRetry(sessionId, fallbackMimeType, params) {
     let result;
     try {
-        result = await uploadChunk(sessionId, params);
+        result = await pushAudio(sessionId, params);
     } catch (err) {
-        if (err instanceof ChunkUploadSessionNotFoundError) {
+        if (err instanceof PushAudioSessionNotFoundError) {
             // Session missing (startSession failed earlier) — recreate then retry once.
             await startSession(sessionId, fallbackMimeType || "audio/webm");
-            result = await uploadChunk(sessionId, params);
+            result = await pushAudio(sessionId, params);
         } else {
             throw err;
         }
     }
-    return result.questions;
+    return { questions: result.questions, status: result.status };
 }
 
 /**

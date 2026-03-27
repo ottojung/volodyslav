@@ -2,7 +2,7 @@
  * Controller hook for live diary questioning display state.
  *
  * Manages the display of live diary questions that arrive from the backend
- * as a side-effect of audio chunk uploads.  All transcription, recombination,
+ * as a side-effect of push-audio calls.  All transcription, recombination,
  * and question generation are handled server-side; this hook only owns the
  * client-side presentation state.
  *
@@ -23,7 +23,7 @@ import { useState, useRef, useCallback } from "react";
 /**
  * @typedef {object} UseDiaryLiveQuestioningControllerResult
  * @property {QuestionGeneration[]} displayedGenerations - Question generations, newest first.
- * @property {(questions: DiaryQuestion[], milestoneNumber: number) => void} onQuestions - Call with questions from each chunk upload and its chunk sequence number.
+ * @property {(questions: DiaryQuestion[], milestoneNumber: number) => void} onQuestions - Call with questions from each push-audio response and its fragment sequence number.
  * @property {() => void} startLive - Reset display state for a new recording session.
  * @property {() => void} stopLive - Stop accepting new questions.
  */
@@ -56,7 +56,7 @@ export function useDiaryLiveQuestioningController() {
     const isRunningRef = useRef(false);
 
     /**
-     * Called with questions returned from a chunk upload.
+     * Called with questions returned from push-audio.
      * Adds a new generation to the display (newest first, max 4).
      */
     const onQuestions = useCallback(

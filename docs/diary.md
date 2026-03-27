@@ -8,7 +8,7 @@ It covers all major diary-related paths currently implemented:
 
 1. **Manual text diary entry** (`POST /api/entries`).
 2. **Interactive audio diary recording** (frontend recorder + chunk/session backend).
-3. **Live diary questioning** during recording (`POST /api/diary/live/push-audio`).
+3. **Live diary questioning** during recording (`POST /api/audio-recording-session/:sessionId/push-audio`).
 4. **Background diary-audio ingestion** from a watched filesystem directory (`processDiaryAudios`).
 5. **Diary enrichment** through computed additional properties (transcription, calories, context).
 
@@ -33,7 +33,7 @@ Volodyslav uses a capability-injected backend and a React frontend. Diary proces
 
 - **Entry ingestion and storage** (`entry`, `event_log_storage`, routes).
 - **Audio session persistence** (`audio_recording_session`) in temporary LevelDB.
-- **Live prompting pipeline** (`live_diary`) in temporary LevelDB.
+- **Live prompting pipeline** (`live_diary`) persisted under the same temporary session keyspace.
 - **Graph-backed durable event persistence** (`generators/interface` + incremental graph).
 - **Asset filesystem convention** for durable attachments.
 - **Background scheduler hooks** for unattended diary-audio ingestion.
@@ -76,26 +76,22 @@ Attached audio/image files are written to deterministic paths:
 
 This path format is central to diary processing because later transcription/property pipelines infer ownership from this layout.
 
-### 3) Temporary recording state
+### 3) Temporary recording + live-questioning state
 
-Audio recording session state is stored in temporary LevelDB keyspaces under `audio_session/*`:
+Audio recording session state is stored in temporary LevelDB keyspace `audio_session/*`:
 
 - metadata,
-- chunk blobs,
+- pushed audio fragment blobs,
 - final combined audio,
 - current-session index.
-
-### 4) Temporary live-questioning state
-
-Live prompting state is stored separately under `live_diary/*`:
+Live prompting state is stored per session under `audio_session/sessions/<sessionId>/live_diary/*`:
 
 - last fragment,
-- last window transcript,
+- last overlap-window transcript,
 - running transcript,
-- asked questions,
-- current-session index.
+- asked questions.
 
-A notable design decision: **single-current-session semantics** are enforced independently for both subsystems by deleting old sessions when a new session becomes current.
+A notable design decision: **single-current-session semantics** are enforced through the shared `audio_session/index/current_session_id`.
 
 ---
 
@@ -140,7 +136,7 @@ On start:
 1. Generate session ID.
 2. Persist session ID in localStorage.
 3. Start backend session (`POST /audio-recording-session/start`).
-4. Stream chunks periodically via `POST /audio-recording-session/:sessionId/chunks`.
+4. Push audio fragments periodically via `POST /audio-recording-session/:sessionId/push-audio`.
 
 On stop:
 
@@ -160,7 +156,7 @@ with an attached file named `diary-audio.<ext>`.
 `audio_recording_session/service.js` is a persistent state machine:
 
 - `startSession`: create/touch session metadata.
-- `uploadChunk`: validate sequence/times, store chunk blob, update counters.
+- `uploadChunk` (called by the push-audio route): validate sequence/times, store fragment blob, update counters.
 - `stopSession`: lexical-order concatenate chunk blobs into final audio.
 - `fetchFinalAudio`: return finalized blob + mime type.
 - `discardSession`: cleanup.
@@ -168,8 +164,8 @@ with an attached file named `diary-audio.<ext>`.
 ### Important implementation choices
 
 1. **No per-session fanout complexity**: only one current session is kept; old sessions are cleaned.
-2. **Duplicate chunk sequence accepted as overwrite**: supports retry/idempotence patterns.
-3. **Out-of-order chunks tolerated** while preserving fragment count and latest metadata.
+2. **Duplicate fragment sequence accepted as overwrite**: supports retry/idempotence patterns.
+3. **Out-of-order fragments tolerated** while preserving fragment count and latest metadata.
 4. **Fail-soft on client side**: recording can continue locally even when some uploads fail.
 5. **Backend as source of truth for restore**: client stores only session ID locally.
 6. **Audio format constraint — audio/webm only**: chunk assembly uses raw `Buffer.concat`, which
@@ -186,11 +182,11 @@ This is a parallel assistant pipeline, not the durable entry write path itself.
 
 ### Frontend behavior
 
-`useDiaryLiveQuestioningController` sends each 10-second fragment to:
+`useAudioRecorder` pushes each nominal 10s fragment to:
 
-`POST /api/diary/live/push-audio`
+`POST /api/audio-recording-session/:sessionId/push-audio`
 
-and displays returned question generations. If calls fail, UI shows a transient “catching up” message and continues.
+and `useDiaryLiveQuestioningController` displays returned question generations. If calls fail, UI continues and can show transient “catching up” state.
 
 ### Backend behavior
 
@@ -199,7 +195,7 @@ and displays returned question generations. If calls fail, UI shows a transient 
 1. Enforces single-current-session cleanup.
 2. For first fragment: stores and returns no questions.
 3. For subsequent fragments:
-   - combine previous+current fragment into ~20s window,
+   - combine previous+current fragment into an overlap window,
    - transcribe window,
    - recombine overlap with previous window transcript (LLM with fallback),
    - merge into running transcript (programmatic dedup),
@@ -212,7 +208,7 @@ and displays returned question generations. If calls fail, UI shows a transient 
 - **Two-stage overlap control**:
   - window-level recombination (AI, fallback to raw),
   - running-level programmatic recombination.
-- **Persistent live state** in temporary DB so backend restarts do not erase progress.
+- **Persistent live state** in temporary DB (shared `audio_session` namespace) so backend restarts do not erase progress.
 - **Graceful degradation with explicit status**: transcription/question-generation failures
   return an empty questions array with a structured `status` field so callers can
   distinguish genuine emptiness from a degraded pipeline (see Failure Semantics below).
@@ -310,13 +306,13 @@ Common patterns across diary modules:
 
 1. **Shape validation at route boundaries** (session IDs, mime types, sequence numbers, fragment numbers).
 2. **Specific error classes** in deeper services (e.g., audio session not found/conflict/finalize errors).
-3. **Fail-soft UX for live features with explicit status**: `pushAudio` returns a `{ questions, status }`
+3. **Fail-soft UX for live features with explicit status**: push-audio returns a `{ questions, status }`
    object rather than a bare array.  The `status` field distinguishes:
    - `ok` — pipeline succeeded (questions may still be empty if the AI found nothing new or audio was silent),
-   - `empty_result` — first fragment, no 20-second window available yet,
+   - `empty_result` — first fragment, no overlap window available yet,
    - `degraded_transcription` — transcription failed; questions array is empty,
    - `degraded_question_generation` — question generation failed; questions array is empty.
-   The HTTP response (`POST /api/diary/live/push-audio`) includes this `status` field so clients
+   The HTTP response (`POST /api/audio-recording-session/:sessionId/push-audio`) includes this `status` field so clients
    can observe degraded pipeline states without guessing from empty results.
 4. **Fail-safe persistence semantics**: cleanup on transaction failure and deletion only after durable write.
 
@@ -334,7 +330,7 @@ This combination gives robust day-to-day operation for a personal tool without o
 
 ### Live questioning
 
-- Fragment number is validated as integer >= 1.
+- Sequence is validated as non-negative integer (0-based).
 - Service computes windows from “last fragment + new fragment,” so the effective sequence dependency is local, not global reassembly.
 
 ### Entry listing and diary search

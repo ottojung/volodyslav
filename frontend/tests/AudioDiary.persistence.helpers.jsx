@@ -126,8 +126,8 @@ function makeFetchMock() {
             });
         }
 
-        // POST /audio-recording-session/:id/chunks
-        if (options && options.method === "POST" && urlStr.includes("/chunks")) {
+        // POST /audio-recording-session/:id/push-audio
+        if (options && options.method === "POST" && urlStr.includes("/push-audio")) {
             return Promise.resolve({
                 ok: true,
                 status: 200,
@@ -135,6 +135,7 @@ function makeFetchMock() {
                     success: true,
                     stored: { sequence: 0, filename: "chunk-0.webm" },
                     session: { fragmentCount: 1, lastEndMs: 1000 },
+                    status: "ok",
                 }),
                 blob: () => Promise.resolve(new Blob()),
             });

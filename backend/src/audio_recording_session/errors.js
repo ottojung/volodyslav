@@ -26,7 +26,7 @@ function isAudioSessionNotFoundError(object) {
 }
 
 /**
- * Thrown when a chunk upload or session operation receives invalid input.
+ * Thrown when a push-audio or session operation receives invalid input.
  */
 class AudioSessionChunkValidationError extends Error {
     /**

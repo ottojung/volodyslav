@@ -5,9 +5,9 @@
  * LevelDB store.  All state is persisted — the backend is stateless and
  * can be rebooted without losing session progress.
  *
- * State is keyed under:
- *   live_diary/index/current_session_id → tracks the active session
- *   live_diary/sessions/<sessionId>/    → per-session state fields
+ * State is keyed under the shared audio session tree:
+ *   audio_session/index/current_session_id → tracks the active session
+ *   audio_session/sessions/<sessionId>/live_diary/ → per-session live state fields
  *
  * Session lifecycle:
  *   - The first pushAudio call for a new sessionId triggers cleanup of any
@@ -23,20 +23,16 @@ const path = require("path");
 const fsp = require("fs/promises");
 const fs = require("fs");
 const crypto = require("crypto");
+const { stringToTempKey } = require("../temporary");
 const {
     CURRENT_SESSION_KEY,
-    LAST_FRAGMENT_KEY,
-    LAST_FRAGMENT_MIME_KEY,
-    LAST_WINDOW_TRANSCRIPT_KEY,
-    RUNNING_TRANSCRIPT_KEY,
-    ASKED_QUESTIONS_KEY,
     indexSublevel,
     sessionSublevel,
     markSessionExists,
     unmarkSessionExists,
     listKnownSessionIds,
     deleteSessionData,
-} = require("./keys");
+} = require("../audio_recording_session/keys");
 const { programmaticRecombination } = require("../ai");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
@@ -87,6 +83,22 @@ function normalizeMimeType(mimeType) {
     return (mimeType.split(";")[0] || "").trim().toLowerCase();
 }
 
+const LIVE_DIARY_SUBLEVEL = "live_diary";
+const LAST_FRAGMENT_KEY = stringToTempKey("last_fragment");
+const LAST_FRAGMENT_MIME_KEY = stringToTempKey("last_fragment_mime");
+const LAST_WINDOW_TRANSCRIPT_KEY = stringToTempKey("last_window_transcript");
+const RUNNING_TRANSCRIPT_KEY = stringToTempKey("running_transcript");
+const ASKED_QUESTIONS_KEY = stringToTempKey("asked_questions");
+
+/**
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {import('../temporary/database').TemporarySublevel}
+ */
+function liveDiarySessionSublevel(temporary, sessionId) {
+    return sessionSublevel(temporary, sessionId).getSublevel(LIVE_DIARY_SUBLEVEL);
+}
+
 // ---------------------------------------------------------------------------
 // Low-level DB accessors
 // ---------------------------------------------------------------------------
@@ -99,7 +111,7 @@ function normalizeMimeType(mimeType) {
  */
 async function readCurrentSessionId(temporary) {
     const entry = await indexSublevel(temporary).get(CURRENT_SESSION_KEY);
-    if (entry === undefined || entry.type !== "live_diary_index") {
+    if (entry === undefined || entry.type !== "audio_session_index") {
         return null;
     }
     return entry.sessionId;
@@ -113,7 +125,7 @@ async function readCurrentSessionId(temporary) {
  */
 async function writeCurrentSessionId(temporary, sessionId) {
     await indexSublevel(temporary).put(CURRENT_SESSION_KEY, {
-        type: "live_diary_index",
+        type: "audio_session_index",
         sessionId,
     });
 }
@@ -126,7 +138,7 @@ async function writeCurrentSessionId(temporary, sessionId) {
  * @returns {Promise<Buffer | null>}
  */
 async function readLastFragment(temporary, sessionId) {
-    const entry = await sessionSublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
+    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
     if (entry === undefined || entry.type !== "blob") {
         return null;
     }
@@ -141,7 +153,7 @@ async function readLastFragment(temporary, sessionId) {
  * @returns {Promise<void>}
  */
 async function writeLastFragment(temporary, sessionId, fragment) {
-    await sessionSublevel(temporary, sessionId).put(LAST_FRAGMENT_KEY, {
+    await liveDiarySessionSublevel(temporary, sessionId).put(LAST_FRAGMENT_KEY, {
         type: "blob",
         data: fragment.toString("base64"),
     });
@@ -156,7 +168,7 @@ async function writeLastFragment(temporary, sessionId, fragment) {
  * @returns {Promise<string>}
  */
 async function readStringField(temporary, sessionId, key) {
-    const entry = await sessionSublevel(temporary, sessionId).get(key);
+    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(key);
     if (entry === undefined || entry.type !== "live_diary_string") {
         return "";
     }
@@ -172,7 +184,7 @@ async function readStringField(temporary, sessionId, key) {
  * @returns {Promise<void>}
  */
 async function writeStringField(temporary, sessionId, key, value) {
-    await sessionSublevel(temporary, sessionId).put(key, {
+    await liveDiarySessionSublevel(temporary, sessionId).put(key, {
         type: "live_diary_string",
         value,
     });
@@ -186,7 +198,7 @@ async function writeStringField(temporary, sessionId, key, value) {
  * @returns {Promise<string[]>}
  */
 async function readAskedQuestions(temporary, sessionId) {
-    const entry = await sessionSublevel(temporary, sessionId).get(ASKED_QUESTIONS_KEY);
+    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(ASKED_QUESTIONS_KEY);
     if (entry === undefined || entry.type !== "live_diary_questions") {
         return [];
     }
@@ -201,7 +213,7 @@ async function readAskedQuestions(temporary, sessionId) {
  * @returns {Promise<void>}
  */
 async function writeAskedQuestions(temporary, sessionId, questions) {
-    await sessionSublevel(temporary, sessionId).put(ASKED_QUESTIONS_KEY, {
+    await liveDiarySessionSublevel(temporary, sessionId).put(ASKED_QUESTIONS_KEY, {
         type: "live_diary_questions",
         questions: questions.map((text) => ({ text, intent: "" })),
     });
@@ -334,15 +346,15 @@ function deduplicateQuestions(questions, askedTexts) {
  */
 
 /**
- * Push a new 10-second audio fragment for a session.
+ * Push a new nominal-10s audio fragment for a session.
  *
  * On the first fragment the audio is stored and an empty questions array is
- * returned (status `empty_result`) — there is not yet enough audio to form a
- * 20-second window.
+ * returned (status `empty_result`) — there is not yet enough audio to form the
+ * first 2-fragment overlap window.
  *
  * On every subsequent fragment:
- *  1. Binary-concatenates the stored fragment with the new one to form a 20s window.
- *  2. Transcribes the 20s window.
+ *  1. Binary-concatenates the stored fragment with the new one to form a 2-fragment window.
+ *  2. Transcribes that overlap window.
  *  3. LLM-recombines with the previous window transcript (with programmatic fallback).
  *  4. Accumulates the merged result into the running transcript.
  *  5. Generates diary questions from the running transcript.
@@ -352,9 +364,9 @@ function deduplicateQuestions(questions, askedTexts) {
  * failures do not throw to the caller.  Instead, the status field of the
  * returned object distinguishes a genuine empty result from a degraded one.
  *
- * All state (last fragment, transcripts, asked questions) is persisted to the
- * temporary LevelDB database so the backend can be rebooted without losing
- * session progress.
+ * All state (last fragment, transcripts, asked questions) is persisted under
+ * the shared audio_session keyspace so the backend can be rebooted without
+ * losing session progress.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
@@ -387,7 +399,7 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
         return { questions: [], status: "unsupported_mime" };
     }
 
-    // We have the previous fragment plus the current one: form a ~20s window.
+    // We have the previous fragment plus the current one: form an overlap window.
     // See the note in audio_recording_session/service.js: this concatenation is safe
     // only for audio/webm (streaming Matroska).  The frontend is required to record
     // in audio/webm for this invariant to hold.
@@ -397,7 +409,7 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     await writeLastFragment(temporary, sessionId, fragmentBuffer);
     await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
 
-    // Transcribe the 20-second window.
+    // Transcribe the overlap window.
     let newWindowTranscript;
     try {
         newWindowTranscript = await transcribeBuffer(window20s, normalizedMimeType, capabilities);

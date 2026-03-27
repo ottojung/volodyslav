@@ -23,37 +23,40 @@ async function makeApp(capabilities) {
     return app;
 }
 
-// ─── POST /api/diary/live/push-audio ─────────────────────────────────────────
+// ─── POST /api/audio-recording-session/:sessionId/push-audio ─────────────────
 
-describe("POST /api/diary/live/push-audio", () => {
+describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
     it("returns 400 when audio file is missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
-            .field("sessionId", "test-session")
+            .post("/api/audio-recording-session/test-session/push-audio")
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "1000");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
         expect(res.body.error).toMatch(/Missing audio file/i);
     });
 
-    it("returns 400 when sessionId is missing", async () => {
+    it("returns 404 when session does not exist", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/test-session/push-audio")
             .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "1000");
 
-        expect(res.statusCode).toBe(400);
+        expect(res.statusCode).toBe(404);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/sessionId/i);
+        expect(res.body.error).toMatch(/Session not found/i);
     });
 
     it("returns 400 when mimeType is missing", async () => {
@@ -61,57 +64,64 @@ describe("POST /api/diary/live/push-audio", () => {
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/test-session/push-audio")
             .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("sessionId", "test-session")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "1000");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
         expect(res.body.error).toMatch(/mimeType/i);
     });
 
-    it("returns 400 when fragmentNumber is missing", async () => {
+    it("returns 400 when sequence is missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/test-session/push-audio")
             .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("sessionId", "test-session")
-            .field("mimeType", "audio/webm");
+            .field("mimeType", "audio/webm")
+            .field("startMs", "0")
+            .field("endMs", "1000");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/fragmentNumber/i);
+        expect(res.body.error).toMatch(/startMs, endMs, or sequence/i);
     });
 
-    it("returns 400 when fragmentNumber is 0", async () => {
+    it("returns 404 when sequence is valid but session has not been started", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/test-session/push-audio")
             .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("sessionId", "test-session")
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "0");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "1000");
 
-        expect(res.statusCode).toBe(400);
+        expect(res.statusCode).toBe(404);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/fragmentNumber/i);
+        expect(res.body.error).toMatch(/Session not found/i);
     });
 
     it("returns empty questions on the first fragment (not enough context yet)", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "session-first", mimeType: "audio/webm" });
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/session-first/push-audio")
             .attach("audio", Buffer.from("fake audio 1"), { filename: "f1.webm", contentType: "audio/webm" })
-            .field("sessionId", "session-first")
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "10000");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -121,32 +131,37 @@ describe("POST /api/diary/live/push-audio", () => {
         expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 
-    it("transcribes the 20s window and returns questions on the second fragment", async () => {
+    it("transcribes the overlap window and returns questions on the second fragment", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
         const sessionId = "session-two-frags";
 
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
         // First fragment — stores but returns no questions.
         await request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("audio-fragment-1"), { filename: "f1.webm", contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "10000");
 
         // Second fragment — triggers transcription + question generation.
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("audio-fragment-2"), { filename: "f2.webm", contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "2");
+            .field("sequence", "1")
+            .field("startMs", "10000")
+            .field("endMs", "20000");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.status).toBe("ok");
         expect(Array.isArray(res.body.questions)).toBe(true);
-        // Transcription was called once (for the 20s window formed by fragments 1+2).
+        // Transcription was called once (for the overlap window formed by fragments 1+2).
         expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
         // Question generation was called once.
         expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
@@ -157,13 +172,17 @@ describe("POST /api/diary/live/push-audio", () => {
         const app = await makeApp(capabilities);
         const sessionId = "session-three-frags";
 
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
         for (let i = 1; i <= 3; i++) {
             await request(app)
-                .post("/api/diary/live/push-audio")
+                .post(`/api/audio-recording-session/${sessionId}/push-audio`)
                 .attach("audio", Buffer.from(`audio-fragment-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-                .field("sessionId", sessionId)
                 .field("mimeType", "audio/webm")
-                .field("fragmentNumber", String(i));
+                .field("sequence", String(i - 1))
+                .field("startMs", String((i - 1) * 10000))
+                .field("endMs", String(i * 10000));
         }
 
         // Fragments 2: transcription(1+2) → first window. No recombination (no previous window).
@@ -190,22 +209,27 @@ describe("POST /api/diary/live/push-audio", () => {
         });
         const app = await makeApp(capabilities);
         const sessionId = "session-silent";
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
 
         // First fragment.
         await request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("silence"), { filename: "s1.webm", contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "10000");
 
         // Second fragment — transcription returns empty string.
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("silence"), { filename: "s2.webm", contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "2");
+            .field("sequence", "1")
+            .field("startMs", "10000")
+            .field("endMs", "20000");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -220,20 +244,25 @@ describe("POST /api/diary/live/push-audio", () => {
             .mockRejectedValue(new Error("Transcription API error"));
         const app = await makeApp(capabilities);
         const sessionId = "session-trans-fail";
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
 
         await request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("audio1"), { filename: "f1.webm", contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "10000");
 
         const res = await request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("audio2"), { filename: "f2.webm", contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "2");
+            .field("sequence", "1")
+            .field("startMs", "10000")
+            .field("endMs", "20000");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -249,14 +278,18 @@ describe("POST /api/diary/live/push-audio", () => {
             .mockRejectedValue(new Error("LLM unavailable"));
         const app = await makeApp(capabilities);
         const sessionId = "session-recomb-fail";
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
 
         for (let i = 1; i <= 3; i++) {
             await request(app)
-                .post("/api/diary/live/push-audio")
+                .post(`/api/audio-recording-session/${sessionId}/push-audio`)
                 .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-                .field("sessionId", sessionId)
                 .field("mimeType", "audio/webm")
-                .field("fragmentNumber", String(i));
+                .field("sequence", String(i - 1))
+                .field("startMs", String((i - 1) * 10000))
+                .field("endMs", String(i * 10000));
         }
 
         // No assertion failure — the route should have returned 200 for each call.
@@ -272,18 +305,22 @@ describe("POST /api/diary/live/push-audio", () => {
             .mockResolvedValue([{ text: "How are you?", intent: "warm_reflective" }]);
         const app = await makeApp(capabilities);
         const sessionId = "session-dedup";
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
 
         const sendFragment = (i) => request(app)
-            .post("/api/diary/live/push-audio")
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", String(i));
+            .field("sequence", String(i - 1))
+            .field("startMs", String((i - 1) * 10000))
+            .field("endMs", String(i * 10000));
 
         // Fragment 1: only stores the audio, no questions yet.
         await sendFragment(1);
 
-        // Fragment 2: first 20s window available — question is new, should be returned.
+        // Fragment 2: first overlap window available — question is new, should be returned.
         const res2 = await sendFragment(2);
         expect(res2.body.questions).toHaveLength(1);
         expect(res2.body.questions[0].text).toBe("How are you?");
@@ -297,26 +334,33 @@ describe("POST /api/diary/live/push-audio", () => {
         expect(res4.body.questions).toHaveLength(0);
     });
 
-    it("sessions are independent — different sessionIds do not share state", async () => {
+    it("new session cleanup resets previous live state", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
-        // Send one fragment to session A and one to session B.
         await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "session-a", mimeType: "audio/webm" });
+        await request(app)
+            .post("/api/audio-recording-session/session-a/push-audio")
             .attach("audio", Buffer.from("audio-a"), { filename: "fa.webm", contentType: "audio/webm" })
-            .field("sessionId", "session-a")
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "10000");
 
         await request(app)
-            .post("/api/diary/live/push-audio")
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "session-b", mimeType: "audio/webm" });
+        await request(app)
+            .post("/api/audio-recording-session/session-b/push-audio")
             .attach("audio", Buffer.from("audio-b"), { filename: "fb.webm", contentType: "audio/webm" })
-            .field("sessionId", "session-b")
             .field("mimeType", "audio/webm")
-            .field("fragmentNumber", "1");
+            .field("sequence", "0")
+            .field("startMs", "0")
+            .field("endMs", "10000");
 
-        // Both sessions have only one fragment each — no transcription should have happened.
+        // Each new session starts fresh with no previous fragment to combine.
         expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 });
