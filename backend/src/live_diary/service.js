@@ -32,7 +32,7 @@ const {
     unmarkSessionExists,
     listKnownSessionIds,
     deleteSessionData,
-} = require("../audio_recording_session/keys");
+} = require("../audio_recording_session");
 const { programmaticRecombination } = require("../ai");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
