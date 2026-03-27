@@ -1,22 +1,17 @@
 /**
- * Controller hook for live diary questioning.
+ * Controller hook for live diary questioning display state.
  *
- * Manages:
- *  - Milestone scheduling (every audio fragment from the recorder)
- *  - In-flight push-audio requests
- *  - Question generation feed
- *
- * All transcription, recombination, and question generation are handled
- * server-side.  The client only sends raw 10-second audio blobs and receives
- * diary questions in response.
+ * Manages the display of live diary questions that arrive from the backend
+ * as a side-effect of audio chunk uploads.  All transcription, recombination,
+ * and question generation are handled server-side; this hook only owns the
+ * client-side presentation state.
  *
  * @module useDiaryLiveQuestioningController
  */
 
 import { useState, useRef, useCallback } from "react";
-import { pushAudio } from "./diary_live_api.js";
 
-/** @typedef {import('./diary_live_api.js').DiaryQuestion} DiaryQuestion */
+/** @typedef {import('./session_api.js').DiaryQuestion} DiaryQuestion */
 
 /**
  * @typedef {object} QuestionGeneration
@@ -29,9 +24,9 @@ import { pushAudio } from "./diary_live_api.js";
  * @typedef {object} UseDiaryLiveQuestioningControllerResult
  * @property {QuestionGeneration[]} displayedGenerations - Question generations, newest first.
  * @property {string | null} liveErrorMessage - Error message from live processing.
- * @property {(data: Blob, startMs: number, endMs: number) => void} onFragment - Call with each audio fragment.
- * @property {(sessionId: string, mimeType: string) => void} startLive - Start live questioning.
- * @property {() => void} stopLive - Stop live questioning and cancel pending work.
+ * @property {(questions: DiaryQuestion[]) => void} onQuestions - Call with questions from each chunk upload.
+ * @property {() => void} startLive - Reset display state for a new recording session.
+ * @property {() => void} stopLive - Stop accepting new questions.
  */
 
 const MAX_VISIBLE_GENERATIONS = 4;
@@ -52,31 +47,15 @@ function makeGenerationId(milestoneNumber) {
     return `gen-${milestoneNumber}-${_generationCounter}`;
 }
 
-/** @returns {QuestionGeneration[]} */
-function initialDisplayedGenerations() {
-    return [];
-}
-
-/** @returns {string | null} */
-function initialLiveErrorMessage() {
-    return null;
-}
-
 /** @returns {UseDiaryLiveQuestioningControllerResult} */
 export function useDiaryLiveQuestioningController() {
     const [displayedGenerations, setDisplayedGenerations] = useState(
-        initialDisplayedGenerations()
+        /** @returns {QuestionGeneration[]} */ () => []
     );
 
     const [liveErrorMessage, setLiveErrorMessage] = useState(
-        initialLiveErrorMessage()
+        /** @returns {string | null} */ () => null
     );
-
-    /** @type {React.MutableRefObject<string>} */
-    const sessionIdRef = useRef("");
-
-    /** @type {React.MutableRefObject<string>} */
-    const mimeTypeRef = useRef("");
 
     /** @type {React.MutableRefObject<boolean>} */
     const isRunningRef = useRef(false);
@@ -85,57 +64,26 @@ export function useDiaryLiveQuestioningController() {
     const milestoneRef = useRef(0);
 
     /**
-     * Called for each new 10-second audio fragment from the recorder.
-     * Sends the raw audio blob to the server and displays any returned questions.
+     * Called with questions returned from a chunk upload.
+     * Adds a new generation to the display (newest first, max 4).
      */
-    const onFragment = useCallback(
-        /**
-         * @param {Blob} data
-         * @param {number} _startMs
-         * @param {number} _endMs
-         */
-        async (data, _startMs, _endMs) => {
-            if (!isRunningRef.current) {
+    const onQuestions = useCallback(
+        /** @param {DiaryQuestion[]} questions */
+        (questions) => {
+            if (!isRunningRef.current || !questions || questions.length === 0) {
                 return;
-            }
-
-            if (data.type) {
-                mimeTypeRef.current = data.type;
             }
 
             milestoneRef.current += 1;
             const milestoneNumber = milestoneRef.current;
-            const mimeType = mimeTypeRef.current || "audio/webm";
-
-            let result;
-            try {
-                result = await pushAudio({
-                    audioBlob: data,
-                    mimeType,
-                    sessionId: sessionIdRef.current,
-                    fragmentNumber: milestoneNumber,
-                });
-            } catch {
-                setLiveErrorMessage("Live prompts are catching up\u2026");
-                return;
-            }
-
-            if (!isRunningRef.current) {
-                return;
-            }
-
-            setLiveErrorMessage(null);
-
-            if (result.questions.length === 0) {
-                return;
-            }
 
             const generation = {
                 generationId: makeGenerationId(milestoneNumber),
                 milestoneNumber,
-                questions: result.questions,
+                questions,
             };
 
+            setLiveErrorMessage(null);
             setDisplayedGenerations((prev) => {
                 const updated = [generation, ...prev];
                 return updated.slice(0, MAX_VISIBLE_GENERATIONS);
@@ -146,28 +94,17 @@ export function useDiaryLiveQuestioningController() {
 
     /**
      * Start live questioning for a new recording session.
-     * @param {string} sessionId
-     * @param {string} mimeType
+     * Resets display state.
      */
-    const startLive = useCallback(
-        /**
-         * @param {string} sessionId
-         * @param {string} mimeType
-         */
-        (sessionId, mimeType) => {
-            sessionIdRef.current = sessionId;
-            mimeTypeRef.current = mimeType;
-            isRunningRef.current = true;
-            milestoneRef.current = 0;
-            setDisplayedGenerations([]);
-            setLiveErrorMessage(null);
-        },
-        []
-    );
+    const startLive = useCallback(() => {
+        isRunningRef.current = true;
+        milestoneRef.current = 0;
+        setDisplayedGenerations([]);
+        setLiveErrorMessage(null);
+    }, []);
 
     /**
-     * Stop live questioning. Cancels processing of future milestones.
-     * In-flight requests will complete but their results will be ignored.
+     * Stop live questioning. New questions will be ignored.
      */
     const stopLive = useCallback(() => {
         isRunningRef.current = false;
@@ -176,7 +113,7 @@ export function useDiaryLiveQuestioningController() {
     return {
         displayedGenerations,
         liveErrorMessage,
-        onFragment,
+        onQuestions,
         startLive,
         stopLive,
     };

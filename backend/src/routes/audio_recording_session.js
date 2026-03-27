@@ -26,11 +26,15 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
+const { pushAudio: pushLiveDiaryAudio } = require("../live_diary");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
+/** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 
 /**
  * @typedef {object} Capabilities
@@ -38,6 +42,9 @@ const {
  * @property {Logger} logger
  * @property {Temporary} temporary
  * @property {Datetime} datetime
+ * @property {AITranscription} aiTranscription
+ * @property {AIDiaryQuestions} aiDiaryQuestions
+ * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
 
 /**
@@ -160,7 +167,24 @@ function makeRouter(capabilities) {
                     sequence: sequenceNum,
                     mimeType: normalizedChunkMimeType,
                 });
-                return res.json({ success: true, ...result });
+
+                // Best-effort: invoke live diary questioning pipeline.
+                // Fragment number is 1-based (sequence is 0-based).
+                let liveQuestions = [];
+                try {
+                    const liveResult = await pushLiveDiaryAudio(
+                        capabilities,
+                        sessionId,
+                        chunkFile.buffer,
+                        normalizedChunkMimeType,
+                        sequenceNum + 1
+                    );
+                    liveQuestions = liveResult.questions;
+                } catch {
+                    // Live questioning failure is non-fatal; chunk is stored successfully.
+                }
+
+                return res.json({ success: true, ...result, questions: liveQuestions });
             } catch (error) {
                 if (isAudioSessionChunkValidationError(error)) {
                     return res.status(400).json({ success: false, error: error.message });

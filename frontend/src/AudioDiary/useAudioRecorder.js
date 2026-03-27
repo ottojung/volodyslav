@@ -50,12 +50,16 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
  */
 
 /**
+ * @typedef {import('./session_api.js').DiaryQuestion} DiaryQuestion
+ */
+
+/**
  * @typedef {object} UseAudioRecorderOptions
- * @property {((data: Blob, startMs: number, endMs: number) => void) | null} [extraOnChunk] - Optional extra fragment listener.
+ * @property {((questions: DiaryQuestion[]) => void) | null} [onQuestions] - Called when chunk upload returns live diary questions.
  */
 
 /** @param {UseAudioRecorderOptions} [options] @returns {UseAudioRecorderResult} */
-export function useAudioRecorder({ extraOnChunk = null } = {}) {
+export function useAudioRecorder({ onQuestions = null } = {}) {
     /** @type {[RecorderState, import("react").Dispatch<import("react").SetStateAction<RecorderState>>]} */
     const [recorderState, setRecorderState] = useState(initialRecorderState());
 
@@ -163,10 +167,8 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
                 const offsetMs = restoredOffsetMsRef.current;
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
-                // Notify the extra fragment listener if provided (e.g., live questioning controller).
-                extraOnChunk?.(chunk, startMs + offsetMs, endMs + offsetMs);
-
-                // Enqueue chunk upload to backend (serialized)
+                // Enqueue chunk upload to backend (serialized).
+                // Live diary questioning runs server-side and questions are returned in the response.
                 const seq = sequenceRef.current + 1;
                 sequenceRef.current = seq;
                 const sessionId = sessionIdRef.current;
@@ -175,13 +177,16 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
                     uploadQueueRef.current = uploadQueueRef.current.then(async () => {
                         if (sessionId !== sessionIdRef.current) return;
                         try {
-                            await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
+                            const questions = await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
                                 chunk,
                                 startMs: startMs + offsetMs,
                                 endMs: endMs + offsetMs,
                                 sequence: seq,
                                 mimeType,
                             });
+                            if (questions.length > 0 && isMountedRef.current) {
+                                onQuestions?.(questions);
+                            }
                         } catch {
                             // Chunk upload failed; recording continues locally
                         }

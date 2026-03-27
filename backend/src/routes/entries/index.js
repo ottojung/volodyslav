@@ -1,4 +1,5 @@
 const express = require("express");
+const multer = require("multer");
 const upload = require("../../storage");
 const { random: randomRequestId } = require("../../request_identifier");
 const { handleEntryPost } = require("./post");
@@ -7,6 +8,7 @@ const { handleEntryDelete } = require("./delete");
 const { handleEntryGetById } = require("./get_by_id");
 const { handleAdditionalProperties } = require("./additional_properties");
 const { handleEntryAssets } = require("./assets");
+const { handleDiaryAudioPost } = require("./diary_audio");
 const { isFilenameValidationError } = require("../../temporary");
 
 /**
@@ -62,7 +64,35 @@ const { isFilenameValidationError } = require("../../temporary");
  */
 function makeRouter(capabilities) {
     const uploadMiddleware = upload.makeUpload();
+    const diaryAudioUpload = multer({ storage: multer.memoryStorage() });
     const router = express.Router();
+
+    /**
+     * POST /entries/diary-audio - Create a diary audio entry.
+     * Accepts audio file + optional note; constructs DSL rawInput on the backend.
+     * Must be registered before /entries to avoid route shadowing.
+     */
+    router.post("/entries/diary-audio", diaryAudioUpload.single("audio"), async (req, res) => {
+        const reqId = randomRequestId(capabilities);
+        req.query["request_identifier"] = reqId.identifier;
+        try {
+            await handleDiaryAudioPost(req, res, capabilities, reqId);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    client_ip: req.ip,
+                },
+                "Unhandled error during diary audio entry creation"
+            );
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Internal server error" });
+            }
+        }
+    });
 
     /**
      * POST /entries - Create a new entry

@@ -62,10 +62,16 @@ export async function startSession(sessionId, mimeType) {
 }
 
 /**
+ * @typedef {object} DiaryQuestion
+ * @property {string} text
+ * @property {"warm_reflective" | "clarifying" | "forward"} intent
+ */
+
+/**
  * Upload a single audio fragment to the session.
  * @param {string} sessionId
  * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
- * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number } }>}
+ * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[] }>}
  */
 export async function uploadChunk(sessionId, { chunk, startMs, endMs, sequence, mimeType }) {
     const formData = new FormData();
@@ -89,7 +95,7 @@ export async function uploadChunk(sessionId, { chunk, startMs, endMs, sequence, 
     if (!data.success) {
         throw new Error(data.error || "Failed to upload chunk");
     }
-    return { stored: data.stored, session: data.session };
+    return { stored: data.stored, session: data.session, questions: data.questions || [] };
 }
 
 /**
@@ -156,20 +162,22 @@ export async function fetchFinalAudio(sessionId) {
  * @param {string} sessionId
  * @param {string} fallbackMimeType - used to recreate the session on 404
  * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
- * @returns {Promise<void>}
+ * @returns {Promise<DiaryQuestion[]>}
  */
 export async function uploadChunkWithSessionRetry(sessionId, fallbackMimeType, params) {
+    let result;
     try {
-        await uploadChunk(sessionId, params);
+        result = await uploadChunk(sessionId, params);
     } catch (err) {
         if (err instanceof ChunkUploadSessionNotFoundError) {
             // Session missing (startSession failed earlier) — recreate then retry once.
             await startSession(sessionId, fallbackMimeType || "audio/webm");
-            await uploadChunk(sessionId, params);
+            result = await uploadChunk(sessionId, params);
         } else {
             throw err;
         }
     }
+    return result.questions;
 }
 
 /**

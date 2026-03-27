@@ -2,7 +2,7 @@ import React from "react";
 import { render, cleanup } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { submitEntry } from "../src/DescriptionEntry/api.js";
+import { submitDiaryAudio } from "../src/AudioDiary/diary_audio_api.js";
 import AudioDiary from "../src/AudioDiary/AudioDiary.jsx";
 
 /** @returns {Promise<void>} */
@@ -95,6 +95,16 @@ function makeFetchMock() {
                 ok: true,
                 status: 200,
                 json: () => Promise.resolve({ success: true }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
+        // POST /entries/diary-audio
+        if (options && options.method === "POST" && urlStr.includes("/entries/diary-audio")) {
+            return Promise.resolve({
+                ok: true,
+                status: 201,
+                json: () => Promise.resolve({ success: true, entry: { id: "entry-123" } }),
                 blob: () => Promise.resolve(new Blob()),
             });
         }
@@ -207,8 +217,6 @@ export function setupAudioDiaryPersistenceHarness() {
 
     beforeEach(() => {
         mockNavigate.mockClear();
-        submitEntry.mockReset();
-        submitEntry.mockResolvedValue({ success: true, entry: { id: "entry-123" } });
         mockGetUserMedia.mockClear();
         MockMediaRecorder._instance = null;
 
