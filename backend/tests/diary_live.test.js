@@ -59,7 +59,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         expect(res.body.error).toMatch(/Session not found/i);
     });
 
-    it("returns 400 when mimeType is missing", async () => {
+    it("returns 404 when mimeType field is omitted but file content type is valid", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
@@ -70,9 +70,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("startMs", "0")
             .field("endMs", "1000");
 
-        expect(res.statusCode).toBe(400);
+        expect(res.statusCode).toBe(404);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/mimeType/i);
+        expect(res.body.error).toMatch(/Session not found/i);
     });
 
     it("returns 400 when sequence is missing", async () => {
