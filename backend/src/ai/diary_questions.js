@@ -44,7 +44,7 @@ function isAIDiaryQuestionsError(object) {
     return object instanceof AIDiaryQuestionsError;
 }
 
-const DIARY_QUESTIONS_MODEL = "gpt-5.2";
+const DIARY_QUESTIONS_MODEL = "gpt-5.4-mini";
 const TARGET_QUESTION_COUNT = 5;
 
 const SYSTEM_PROMPT = `You are a warm, kind diary companion.
