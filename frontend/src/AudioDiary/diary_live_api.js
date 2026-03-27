@@ -124,6 +124,45 @@ export async function generateQuestions(params) {
     };
 }
 
+/**
+ * @typedef {object} RecombineOverlapParams
+ * @property {string} sessionId - Recording session identifier.
+ * @property {string} existingOverlapText - Existing transcript text covering the overlap zone.
+ * @property {string} newWindowText - New window transcript text.
+ */
+
+/**
+ * @typedef {object} RecombineOverlapResult
+ * @property {string} recombinedText - The LLM-merged transcript text.
+ */
+
+/**
+ * Ask the backend to recombine two overlapping transcript segments using an LLM.
+ * @param {RecombineOverlapParams} params
+ * @returns {Promise<RecombineOverlapResult>}
+ */
+export async function recombineOverlap(params) {
+    const { sessionId, existingOverlapText, newWindowText } = params;
+
+    const response = await fetch(`${DIARY_LIVE_BASE}/recombine-overlap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, existingOverlapText, newWindowText }),
+    });
+
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Recombination request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.error || "Recombination request failed");
+    }
+
+    return { recombinedText: data.recombinedText };
+}
+
 /** @type {Record<string, string>} */
 const MIME_EXTENSION_MAP = {
     "audio/webm": "webm",

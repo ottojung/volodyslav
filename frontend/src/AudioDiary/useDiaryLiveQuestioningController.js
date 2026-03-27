@@ -12,7 +12,7 @@
  */
 
 import { useState, useRef, useCallback } from "react";
-import { transcribeWindow, generateQuestions } from "./diary_live_api.js";
+import { transcribeWindow, generateQuestions, recombineOverlap } from "./diary_live_api.js";
 
 /** @typedef {import('./diary_live_api.js').DiaryQuestion} DiaryQuestion */
 /** @typedef {import('./diary_live_api.js').TranscriptToken} TranscriptToken */
@@ -85,6 +85,41 @@ export function mergeTranscriptionWindow(existing, incoming, windowStartMs, wind
  */
 export function tokensToText(tokens) {
     return tokens.map((t) => t.text.trim()).filter(Boolean).join(" ");
+}
+
+/**
+ * Distribute a text string into evenly-spaced tokens across a time window.
+ * @param {string} text
+ * @param {number} windowStartMs
+ * @param {number} windowEndMs
+ * @returns {TranscriptToken[]}
+ */
+function textToTokens(text, windowStartMs, windowEndMs) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return [];
+    }
+    const words = trimmed.split(/\s+/);
+    const wordCount = words.length;
+    const windowDuration = Math.max(0, windowEndMs - windowStartMs);
+    const durationPerWord = wordCount > 0 ? windowDuration / wordCount : 0;
+
+    /** @type {TranscriptToken[]} */
+    const tokens = [];
+    let currentStart = windowStartMs;
+    for (let i = 0; i < wordCount; i += 1) {
+        const isLast = i === wordCount - 1;
+        const currentEnd = isLast
+            ? windowEndMs
+            : windowStartMs + Math.round(durationPerWord * (i + 1));
+        tokens.push({
+            text: words[i] ?? "",
+            startMs: currentStart,
+            endMs: currentEnd,
+        });
+        currentStart = currentEnd;
+    }
+    return tokens;
 }
 
 /**
@@ -251,10 +286,37 @@ export function useDiaryLiveQuestioningController() {
             }
             lastAppliedMilestoneRef.current = milestoneNumber;
 
+            // Determine which existing tokens fall inside the new window (overlap zone).
+            const existingOverlapTokens = canonicalTokensRef.current.filter(
+                (t) => t.endMs > windowResult.windowStartMs && t.startMs < windowResult.windowEndMs
+            );
+            const existingOverlapText = tokensToText(existingOverlapTokens);
+            const newWindowText = windowResult.rawText.trim();
+
+            // Choose tokens to merge: try LLM recombination when there is an overlap,
+            // fall back to the raw new-window tokens on any failure.
+            let tokensToMerge = windowResult.tokens;
+            if (existingOverlapText && newWindowText) {
+                try {
+                    const recombineResult = await recombineOverlap({
+                        sessionId: sessionIdRef.current,
+                        existingOverlapText,
+                        newWindowText,
+                    });
+                    tokensToMerge = textToTokens(
+                        recombineResult.recombinedText,
+                        windowResult.windowStartMs,
+                        windowResult.windowEndMs
+                    );
+                } catch {
+                    // Fall back to raw new-window tokens — error is non-fatal.
+                }
+            }
+
             // Merge the new window into canonical tokens.
             const updatedTokens = mergeTranscriptionWindow(
                 canonicalTokensRef.current,
-                windowResult.tokens,
+                tokensToMerge,
                 windowResult.windowStartMs,
                 windowResult.windowEndMs
             );

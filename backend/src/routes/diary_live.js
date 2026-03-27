@@ -20,6 +20,7 @@ const crypto = require("crypto");
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
+/** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 
 /**
  * @typedef {object} Capabilities
@@ -27,6 +28,7 @@ const crypto = require("crypto");
  * @property {Logger} logger
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
+ * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
 
 /** Supported audio MIME types and their extensions. */
@@ -283,6 +285,60 @@ function makeRouter(capabilities) {
                 "Live diary question generation failed"
             );
             return res.status(500).json({ success: false, error: "Question generation failed" });
+        }
+    });
+
+    /**
+     * POST /diary/live/recombine-overlap
+     *
+     * JSON body:
+     *   sessionId           - string (required)
+     *   existingOverlapText - string of existing transcript in the overlap zone (required)
+     *   newWindowText       - string of the new window transcript (required)
+     *
+     * Response:
+     *   { success: true, recombinedText: string }
+     *
+     * The LLM is asked to merge the two overlapping strings into a single coherent
+     * transcript.  The result is validated: every word must appear in the union of
+     * words from the two inputs.  On validation failure the endpoint returns 500 so
+     * the caller can fall back to the new-window text.
+     */
+    router.post("/diary/live/recombine-overlap", express.json(), async (req, res) => {
+        const { sessionId, existingOverlapText, newWindowText } = req.body || {};
+
+        if (typeof sessionId !== "string" || !sessionId) {
+            return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
+        }
+
+        if (typeof existingOverlapText !== "string") {
+            return res.status(400).json({ success: false, error: "Missing or invalid existingOverlapText" });
+        }
+
+        if (typeof newWindowText !== "string") {
+            return res.status(400).json({ success: false, error: "Missing or invalid newWindowText" });
+        }
+
+        capabilities.logger.logInfo(
+            { sessionId, existingOverlapLength: existingOverlapText.length, newWindowLength: newWindowText.length },
+            "Live diary transcript recombination requested"
+        );
+
+        try {
+            const recombinedText = await capabilities.aiTranscriptRecombination.recombineOverlap(
+                existingOverlapText,
+                newWindowText
+            );
+            return res.json({ success: true, recombinedText });
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    sessionId,
+                    error: error instanceof Error ? error.message : String(error),
+                },
+                "Live diary transcript recombination failed"
+            );
+            return res.status(500).json({ success: false, error: "Transcript recombination failed" });
         }
     });
 
