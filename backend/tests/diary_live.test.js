@@ -116,6 +116,7 @@ describe("POST /api/diary/live/push-audio", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.questions).toEqual([]);
+        expect(res.body.status).toBe("empty_result");
         // Transcription should NOT have been called — we don't have two fragments yet.
         expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
@@ -143,6 +144,7 @@ describe("POST /api/diary/live/push-audio", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
+        expect(res.body.status).toBe("ok");
         expect(Array.isArray(res.body.questions)).toBe(true);
         // Transcription was called once (for the 20s window formed by fragments 1+2).
         expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
@@ -208,6 +210,7 @@ describe("POST /api/diary/live/push-audio", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.questions).toEqual([]);
+        expect(res.body.status).toBe("ok");
     });
 
     it("returns 200 with empty questions when transcription fails (non-fatal)", async () => {
@@ -235,6 +238,7 @@ describe("POST /api/diary/live/push-audio", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.questions).toEqual([]);
+        expect(res.body.status).toBe("degraded_transcription");
     });
 
     it("returns 200 with questions even when recombination fails (fallback)", async () => {

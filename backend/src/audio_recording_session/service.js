@@ -349,6 +349,14 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
         }
     }
 
+    // Assembly assumption: chunk buffers are concatenated with Buffer.concat.
+    // This is safe only for container formats that support streaming concatenation.
+    // The recording pipeline is constrained to audio/webm (Matroska/WebM), which is
+    // a cluster-based streaming format: successive MediaRecorder chunks are valid
+    // individually and can be byte-concatenated into a single decodable stream.
+    // Other formats (MP4, WAV, FLAC, …) are NOT safely byte-concatenable.
+    // If support for additional formats is added in the future, this assembly step
+    // MUST be replaced with a format-aware remux/re-encode step.
     const finalBuffer = Buffer.concat(buffers);
 
     try {

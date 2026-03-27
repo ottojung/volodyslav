@@ -172,6 +172,11 @@ with an attached file named `diary-audio.<ext>`.
 3. **Out-of-order chunks tolerated** while preserving fragment count and latest metadata.
 4. **Fail-soft on client side**: recording can continue locally even when some uploads fail.
 5. **Backend as source of truth for restore**: client stores only session ID locally.
+6. **Audio format constraint — audio/webm only**: chunk assembly uses raw `Buffer.concat`, which
+   is safe only for the WebM (Matroska streaming) container format.  WebM chunks produced by
+   `MediaRecorder` are individually valid and byte-concatenable into a single decodable stream.
+   Other formats such as MP4, WAV, FLAC, and OGG are NOT safely byte-concatenable and MUST NOT
+   be used.  This invariant is documented in `audio_recording_session/service.js`.
 
 ---
 
@@ -208,8 +213,13 @@ and displays returned question generations. If calls fail, UI shows a transient 
   - window-level recombination (AI, fallback to raw),
   - running-level programmatic recombination.
 - **Persistent live state** in temporary DB so backend restarts do not erase progress.
-- **Graceful degradation**: transcription/question-generation failures return empty questions instead of failing the request.
-- **Question deduplication by normalized text** prevents repeated prompts from near-duplicate transcripts.
+- **Graceful degradation with explicit status**: transcription/question-generation failures
+  return an empty questions array with a structured `status` field so callers can
+  distinguish genuine emptiness from a degraded pipeline (see Failure Semantics below).
+- **Unicode-aware question deduplication** prevents repeated prompts from near-duplicate
+  transcripts across all languages, including non-Latin scripts such as Ukrainian Cyrillic.
+  Normalization uses NFKD decomposition, Unicode-aware lowercasing, and Unicode-category
+  punctuation/symbol removal — not an ASCII-only character allowlist.
 
 ---
 
@@ -229,11 +239,28 @@ It can also be triggered via `GET /api/periodic?period=hour`.
 3. For each stable file:
    - parse UTC timestamp from filename (`YYYYMMDDThhmmssZ...`),
    - convert timestamp to configured local timezone,
-   - construct synthetic diary event input `diary [when 0 hours ago] [audiorecording]`,
+   - set `original` to the source filename (honest provenance),
+   - set `input` to `diary [audiorecording] [source filesystem_ingest]` (explicit ingestion marker),
    - create asset from existing file,
    - write event+asset transactionally.
 4. Delete only successfully processed original files.
 5. Keep failed files for future retry and log failures.
+
+### Provenance semantics
+
+Filesystem-ingested entries carry explicit provenance metadata through the `original` and
+`input` fields:
+
+- `original` stores the source filename (e.g., `20240615T143000Z-diary.opus`) — the raw
+  "input" from the filesystem perspective.
+- `input` is `diary [audiorecording] [source filesystem_ingest]` — a canonical tag that
+  distinguishes these entries from user-authored live diary input.
+
+This replaces the former synthetic string `diary [when 0 hours ago] [audiorecording]`
+which was semantically misleading because:
+- `[when 0 hours ago]` implied a live recording rather than a filesystem import;
+- the recording time is derived from the filename timestamp and is already stored correctly
+  in the `date` field — repeating it in the text as "0 hours ago" was inaccurate.
 
 ### Why these choices are good
 
@@ -283,7 +310,14 @@ Common patterns across diary modules:
 
 1. **Shape validation at route boundaries** (session IDs, mime types, sequence numbers, fragment numbers).
 2. **Specific error classes** in deeper services (e.g., audio session not found/conflict/finalize errors).
-3. **Fail-soft UX for live features**: return empty results on transient AI failures.
+3. **Fail-soft UX for live features with explicit status**: `pushAudio` returns a `{ questions, status }`
+   object rather than a bare array.  The `status` field distinguishes:
+   - `ok` — pipeline succeeded (questions may still be empty if the AI found nothing new or audio was silent),
+   - `empty_result` — first fragment, no 20-second window available yet,
+   - `degraded_transcription` — transcription failed; questions array is empty,
+   - `degraded_question_generation` — question generation failed; questions array is empty.
+   The HTTP response (`POST /api/diary/live/push-audio`) includes this `status` field so clients
+   can observe degraded pipeline states without guessing from empty results.
 4. **Fail-safe persistence semantics**: cleanup on transaction failure and deletion only after durable write.
 
 This combination gives robust day-to-day operation for a personal tool without over-engineering adversarial protections.

@@ -93,7 +93,7 @@ function makeRouter(capabilities) {
             "Live diary push-audio received"
         );
 
-        const questions = await pushAudio(
+        const result = await pushAudio(
             capabilities,
             sessionId,
             audioFile.buffer,
@@ -101,7 +101,7 @@ function makeRouter(capabilities) {
             fragmentNumber
         );
 
-        return res.json({ success: true, questions });
+        return res.json({ success: true, questions: result.questions, status: result.status });
     });
 
     return router;
