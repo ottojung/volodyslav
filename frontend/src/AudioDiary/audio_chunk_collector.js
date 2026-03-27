@@ -153,11 +153,3 @@ export function makeAudioChunkCollector(onChunk) {
 export function isAudioChunkCollector(object) {
     return object instanceof AudioChunkCollectorClass;
 }
-
-/**
- * Return the initial (empty) audio chunks array.
- * @returns {AudioChunk[]}
- */
-export function initialAudioChunks() {
-    return [];
-}

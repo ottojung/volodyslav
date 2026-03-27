@@ -22,16 +22,13 @@ import {
 } from "./session_api.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
-import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
 import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 import { useRecordingTimer } from "./useRecordingTimer.js";
 
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
-/** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
 /**
  * @typedef {object} UseAudioRecorderResult
- * @property {AudioChunk[]} audioChunks
  * @property {RecorderState} recorderState
  * @property {Blob | null} audioBlob
  * @property {string} audioUrl
@@ -41,6 +38,7 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
  * @property {AnalyserNode | null} analyser
  * @property {import("react").MutableRefObject<string>} mimeTypeRef
  * @property {import("react").MutableRefObject<boolean>} isMountedRef
+ * @property {import("react").MutableRefObject<string>} sessionIdRef
  * @property {boolean} hasRestoredSession
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setNote
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setErrorMessage
@@ -87,15 +85,15 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
 
-    const { audioChunks, pushChunk, resetAudioChunks } =
-        useAudioChunkCollector(isMountedRef);
+    const { pushChunk, resetAudioChunks } =
+        useAudioChunkCollector();
 
     const {
         audioBlobRef,
         isRestoredPauseRef,
         recorderStateRef,
         elapsedSecondsRef,
-    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds, note);
+    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds);
 
     useAudioRecorderPersistence({
         recorderStateRef,
@@ -285,14 +283,11 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
     }, [recorderState]);
 
     const handleStop = useCallback(async () => {
-        if (
-            stopRestoredPausedSession({
-                isRestoredPauseRef,
-                recorderStateRef,
-                setRecorderState,
-            })
-        ) {
+        if (isRestoredPauseRef.current) {
             // Session was in restored-paused state; finalize on backend
+            isRestoredPauseRef.current = false;
+            recorderStateRef.current = "stopped";
+            setRecorderState("stopped");
             const sessionId = sessionIdRef.current;
             if (sessionId) {
                 try {
@@ -366,7 +361,6 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
     }, []);
 
     return {
-        audioChunks,
         recorderState,
         audioBlob,
         audioUrl,
@@ -376,6 +370,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         analyser,
         mimeTypeRef,
         isMountedRef,
+        sessionIdRef,
         hasRestoredSession,
         setNote,
         setErrorMessage,

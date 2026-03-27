@@ -17,16 +17,25 @@ export function formatTime(totalSeconds) {
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** @type {Record<string, string>} */
+const MIME_EXTENSION_MAP = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/wav": "wav",
+    "audio/wave": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/flac": "flac",
+};
+
 /**
  * Derive a file extension from a MIME type string.
  * @param {string} mimeType
  * @returns {string}
  */
 export function extensionForMime(mimeType) {
-    if (mimeType.includes("ogg")) return "ogg";
-    if (mimeType.includes("mp4")) return "mp4";
-    if (mimeType.includes("weba")) return "weba";
-    return "webm";
+    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
+    return MIME_EXTENSION_MAP[base] || "webm";
 }
 
 /** @returns {RecorderState} */

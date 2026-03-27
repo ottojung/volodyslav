@@ -11,15 +11,6 @@
 const SESSION_ID_KEY = "audioDiarySessionId";
 
 /**
- * @deprecated No longer throws storage errors. Always returns false.
- * @param {unknown} _object
- * @returns {boolean}
- */
-export function isRecordingStorageError(_object) {
-    return false;
-}
-
-/**
  * Save the current session ID to localStorage.
  * @param {string} sessionId
  * @returns {void}
@@ -55,13 +46,4 @@ export function clearSessionId() {
     } catch {
         // Silently ignore storage failures
     }
-}
-
-/**
- * @deprecated Use saveSessionId/loadSessionId/clearSessionId instead.
- * Kept for backwards compatibility with old tests only.
- * @returns {Promise<void>}
- */
-export async function clearRecordingSnapshot() {
-    clearSessionId();
 }

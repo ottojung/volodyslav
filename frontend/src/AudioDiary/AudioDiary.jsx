@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Alert,
@@ -15,7 +15,7 @@ import {
 import { keyframes } from "@emotion/react";
 import { submitEntry } from "../DescriptionEntry/api.js";
 import { useAudioRecorder } from "./useAudioRecorder.js";
-import { formatTime, extensionForMime, generateSessionId } from "./audio_helpers.js";
+import { formatTime, extensionForMime } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
 import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
 import RestoredSessionBanner from "./RestoredSessionBanner.jsx";
@@ -48,9 +48,6 @@ export default function AudioDiary() {
         stopLive,
     } = useDiaryLiveQuestioningController();
 
-    /** @type {import("react").MutableRefObject<string>} */
-    const liveSessionIdRef = useRef("");
-
     const {
         recorderState,
         audioBlob,
@@ -61,6 +58,7 @@ export default function AudioDiary() {
         analyser,
         mimeTypeRef,
         isMountedRef,
+        sessionIdRef,
         hasRestoredSession,
         setNote,
         setErrorMessage,
@@ -73,15 +71,14 @@ export default function AudioDiary() {
 
     // Wrap handleStart to also start live questioning.
     const handleStart = useCallback(async () => {
-        liveSessionIdRef.current = generateSessionId();
         try {
             await handleStartBase();
-            startLive(liveSessionIdRef.current, mimeTypeRef.current || "audio/webm");
+            startLive(sessionIdRef.current, mimeTypeRef.current || "audio/webm");
         } catch (error) {
             // Ensure live questioning is not left running if recorder start fails.
             stopLive();
         }
-    }, [handleStartBase, startLive, stopLive, mimeTypeRef]);
+    }, [handleStartBase, startLive, stopLive, mimeTypeRef, sessionIdRef]);
 
     // Wrap handleStop to also stop live questioning.
     const handleStop = useCallback(async () => {
