@@ -57,7 +57,7 @@ function isAITranscriptRecombinationError(object) {
     return object instanceof AITranscriptRecombinationError;
 }
 
-const RECOMBINATION_MODEL = "gpt-4o-mini";
+const RECOMBINATION_MODEL = "gpt-5.4-mini";
 
 /** Number of LLM call attempts before falling back to programmatic recombination. */
 const MAX_RETRY_ATTEMPTS = 5;
