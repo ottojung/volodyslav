@@ -163,6 +163,16 @@ describe("pushAudio", () => {
         const r3 = await pushAudio(caps, "sess-unicode", Buffer.from("a3"), "audio/webm", 3);
         expect(r3.questions).toHaveLength(0);
     });
+
+    it("returns unsupported_mime when a non-webm fragment is pushed after session bootstrap", async () => {
+        const caps = makeCapabilities();
+        await pushAudio(caps, "sess-mime", Buffer.from("a1"), "audio/webm", 1);
+
+        const result = await pushAudio(caps, "sess-mime", Buffer.from("a2"), "audio/ogg", 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("unsupported_mime");
+        expect(caps.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
+    });
 });
 
 // ─── Session cleanup ─────────────────────────────────────────────────────────

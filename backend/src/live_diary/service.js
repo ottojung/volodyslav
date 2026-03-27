@@ -78,6 +78,15 @@ function extensionForMime(mimeType) {
     return EXTENSION_BY_MIME[base] || "webm";
 }
 
+/**
+ * Normalize a MIME type to its lowercased base form (without parameters).
+ * @param {string} mimeType
+ * @returns {string}
+ */
+function normalizeMimeType(mimeType) {
+    return (mimeType.split(";")[0] || "").trim().toLowerCase();
+}
+
 // ---------------------------------------------------------------------------
 // Low-level DB accessors
 // ---------------------------------------------------------------------------
@@ -310,7 +319,7 @@ function deduplicateQuestions(questions, askedTexts) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation'} PushAudioStatus
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} PushAudioStatus
  */
 
 /**
@@ -320,7 +329,8 @@ function deduplicateQuestions(questions, askedTexts) {
  *   - `ok`: everything succeeded (questions may still be empty if the session is new or the AI found nothing new),
  *   - `empty_result`: first fragment — no window available yet,
  *   - `degraded_transcription`: transcription failed; questions array is empty,
- *   - `degraded_question_generation`: question generation failed; questions array is empty.
+ *   - `degraded_question_generation`: question generation failed; questions array is empty,
+ *   - `unsupported_mime`: mime type is not supported for safe window assembly.
  */
 
 /**
@@ -355,6 +365,7 @@ function deduplicateQuestions(questions, askedTexts) {
  */
 async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, fragmentNumber) {
     const { temporary } = capabilities;
+    const normalizedMimeType = normalizeMimeType(mimeType);
 
     // Ensure session is registered and clean up any old sessions.
     await cleanupOldSessionsIfNeeded(temporary, sessionId);
@@ -364,8 +375,16 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     if (lastFragment === null) {
         // First fragment: store it and return no questions yet.
         await writeLastFragment(temporary, sessionId, fragmentBuffer);
-        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, mimeType);
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
         return { questions: [], status: "empty_result" };
+    }
+
+    if (normalizedMimeType !== "audio/webm") {
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber, mimeType: normalizedMimeType },
+            "Live diary push-audio rejected unsupported mime type for safe window assembly"
+        );
+        return { questions: [], status: "unsupported_mime" };
     }
 
     // We have the previous fragment plus the current one: form a ~20s window.
@@ -376,12 +395,12 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
 
     // Advance the stored fragment to the current one for the next call.
     await writeLastFragment(temporary, sessionId, fragmentBuffer);
-    await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, mimeType);
+    await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
 
     // Transcribe the 20-second window.
     let newWindowTranscript;
     try {
-        newWindowTranscript = await transcribeBuffer(window20s, mimeType, capabilities);
+        newWindowTranscript = await transcribeBuffer(window20s, normalizedMimeType, capabilities);
     } catch (error) {
         capabilities.logger.logError(
             { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
