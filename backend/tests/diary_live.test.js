@@ -23,18 +23,18 @@ async function makeApp(capabilities) {
     return app;
 }
 
-describe("POST /api/diary/live/transcribe-window", () => {
+// ─── POST /api/diary/live/push-audio ─────────────────────────────────────────
+
+describe("POST /api/diary/live/push-audio", () => {
     it("returns 400 when audio file is missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/transcribe-window")
+            .post("/api/diary/live/push-audio")
             .field("sessionId", "test-session")
             .field("mimeType", "audio/webm")
-            .field("milestoneNumber", "1")
-            .field("windowStartMs", "0")
-            .field("windowEndMs", "10000");
+            .field("fragmentNumber", "1");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
@@ -46,360 +46,273 @@ describe("POST /api/diary/live/transcribe-window", () => {
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/transcribe-window")
-            .attach("audio", Buffer.from("fake audio data"), { filename: "window.webm", contentType: "audio/webm" })
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
             .field("mimeType", "audio/webm")
-            .field("milestoneNumber", "1")
-            .field("windowStartMs", "0")
-            .field("windowEndMs", "10000");
+            .field("fragmentNumber", "1");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
         expect(res.body.error).toMatch(/sessionId/i);
     });
 
-    it("returns 400 when milestoneNumber is invalid", async () => {
+    it("returns 400 when mimeType is missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/transcribe-window")
-            .attach("audio", Buffer.from("fake audio data"), { filename: "window.webm", contentType: "audio/webm" })
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
             .field("sessionId", "test-session")
-            .field("mimeType", "audio/webm")
-            .field("milestoneNumber", "0")
-            .field("windowStartMs", "0")
-            .field("windowEndMs", "10000");
+            .field("fragmentNumber", "1");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/milestoneNumber/i);
+        expect(res.body.error).toMatch(/mimeType/i);
     });
 
-    it("returns 400 when windowEndMs is not greater than windowStartMs", async () => {
+    it("returns 400 when fragmentNumber is missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/transcribe-window")
-            .attach("audio", Buffer.from("fake audio data"), { filename: "window.webm", contentType: "audio/webm" })
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
             .field("sessionId", "test-session")
-            .field("mimeType", "audio/webm")
-            .field("milestoneNumber", "1")
-            .field("windowStartMs", "5000")
-            .field("windowEndMs", "5000");
+            .field("mimeType", "audio/webm");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/windowEndMs/i);
+        expect(res.body.error).toMatch(/fragmentNumber/i);
     });
 
-    it("returns transcription result on valid request", async () => {
+    it("returns 400 when fragmentNumber is 0", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/diary/live/transcribe-window")
-            .attach("audio", Buffer.from("fake audio data"), { filename: "window.webm", contentType: "audio/webm" })
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
             .field("sessionId", "test-session")
             .field("mimeType", "audio/webm")
-            .field("milestoneNumber", "1")
-            .field("windowStartMs", "0")
-            .field("windowEndMs", "10000");
+            .field("fragmentNumber", "0");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/fragmentNumber/i);
+    });
+
+    it("returns empty questions on the first fragment (not enough context yet)", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("fake audio 1"), { filename: "f1.webm", contentType: "audio/webm" })
+            .field("sessionId", "session-first")
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "1");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.milestoneNumber).toBe(1);
-        expect(res.body.windowStartMs).toBe(0);
-        expect(res.body.windowEndMs).toBe(10000);
-        expect(typeof res.body.rawText).toBe("string");
-        expect(Array.isArray(res.body.tokens)).toBe(true);
-        expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
+        expect(res.body.questions).toEqual([]);
+        // Transcription should NOT have been called — we don't have two fragments yet.
+        expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 
-    it("returns empty tokens array when transcript is empty", async () => {
+    it("transcribes the 20s window and returns questions on the second fragment", async () => {
         const capabilities = getTestCapabilities();
-        // Override to return empty transcript
+        const app = await makeApp(capabilities);
+        const sessionId = "session-two-frags";
+
+        // First fragment — stores but returns no questions.
+        await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("audio-fragment-1"), { filename: "f1.webm", contentType: "audio/webm" })
+            .field("sessionId", sessionId)
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "1");
+
+        // Second fragment — triggers transcription + question generation.
+        const res = await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("audio-fragment-2"), { filename: "f2.webm", contentType: "audio/webm" })
+            .field("sessionId", sessionId)
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "2");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Array.isArray(res.body.questions)).toBe(true);
+        // Transcription was called once (for the 20s window formed by fragments 1+2).
+        expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
+        // Question generation was called once.
+        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls recombination when a second window is available (third fragment)", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+        const sessionId = "session-three-frags";
+
+        for (let i = 1; i <= 3; i++) {
+            await request(app)
+                .post("/api/diary/live/push-audio")
+                .attach("audio", Buffer.from(`audio-fragment-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
+                .field("sessionId", sessionId)
+                .field("mimeType", "audio/webm")
+                .field("fragmentNumber", String(i));
+        }
+
+        // Fragments 2: transcription(1+2) → first window. No recombination (no previous window).
+        // Fragments 3: transcription(2+3) → second window. Recombination(window1, window2) called.
+        expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(2);
+        expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns empty questions when the transcript is silent (empty transcription)", async () => {
+        const capabilities = getTestCapabilities();
+        // Override transcription to return empty.
         capabilities.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
             text: "",
             provider: "Google",
-            model: "mocked-transcriber",
+            model: "mocked",
             finishReason: "STOP",
             finishMessage: null,
             candidateTokenCount: 0,
             usageMetadata: null,
             modelVersion: null,
             responseId: null,
-            structured: {
-                transcript: "",
-                coverage: "full",
-                warnings: [],
-                unclearAudio: false,
-            },
+            structured: { transcript: "", coverage: "full", warnings: [], unclearAudio: false },
             rawResponse: null,
         });
         const app = await makeApp(capabilities);
+        const sessionId = "session-silent";
 
-        const res = await request(app)
-            .post("/api/diary/live/transcribe-window")
-            .attach("audio", Buffer.from("silence"), { filename: "window.webm", contentType: "audio/webm" })
-            .field("sessionId", "test-session")
+        // First fragment.
+        await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("silence"), { filename: "s1.webm", contentType: "audio/webm" })
+            .field("sessionId", sessionId)
             .field("mimeType", "audio/webm")
-            .field("milestoneNumber", "2")
-            .field("windowStartMs", "10000")
-            .field("windowEndMs", "20000");
+            .field("fragmentNumber", "1");
+
+        // Second fragment — transcription returns empty string.
+        const res = await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("silence"), { filename: "s2.webm", contentType: "audio/webm" })
+            .field("sessionId", sessionId)
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "2");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.rawText).toBe("");
-        expect(res.body.tokens).toEqual([]);
-    });
-});
-
-describe("POST /api/diary/live/generate-questions", () => {
-    it("returns 400 when sessionId is missing", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                milestoneNumber: 1,
-                transcriptSoFar: "I had a good day.",
-                askedQuestions: [],
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/sessionId/i);
+        expect(res.body.questions).toEqual([]);
     });
 
-    it("returns 400 when milestoneNumber is missing", async () => {
+    it("returns 200 with empty questions when transcription fails (non-fatal)", async () => {
         const capabilities = getTestCapabilities();
+        capabilities.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockRejectedValue(new Error("Transcription API error"));
         const app = await makeApp(capabilities);
+        const sessionId = "session-trans-fail";
+
+        await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("audio1"), { filename: "f1.webm", contentType: "audio/webm" })
+            .field("sessionId", sessionId)
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "1");
 
         const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                sessionId: "test-session",
-                transcriptSoFar: "I had a good day.",
-                askedQuestions: [],
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/milestoneNumber/i);
-    });
-
-    it("returns 400 when transcriptSoFar is missing", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                sessionId: "test-session",
-                milestoneNumber: 1,
-                askedQuestions: [],
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/transcriptSoFar/i);
-    });
-
-    it("returns 400 when askedQuestions is not an array", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                sessionId: "test-session",
-                milestoneNumber: 1,
-                transcriptSoFar: "I had a good day.",
-                askedQuestions: "not an array",
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/askedQuestions/i);
-    });
-
-    it("returns 400 when askedQuestions contains non-strings", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                sessionId: "test-session",
-                milestoneNumber: 1,
-                transcriptSoFar: "I had a good day.",
-                askedQuestions: [42, "valid question"],
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/askedQuestions/i);
-    });
-
-    it("returns generated questions on valid request", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                sessionId: "test-session",
-                milestoneNumber: 1,
-                transcriptSoFar: "I had a good day. I went for a walk.",
-                askedQuestions: [],
-            });
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("audio2"), { filename: "f2.webm", contentType: "audio/webm" })
+            .field("sessionId", sessionId)
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "2");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.milestoneNumber).toBe(1);
-        expect(Array.isArray(res.body.questions)).toBe(true);
-        expect(res.body.questions.length).toBeGreaterThan(0);
-        expect(typeof res.body.questions[0].text).toBe("string");
-        expect(typeof res.body.questions[0].intent).toBe("string");
-        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledWith(
-            "I had a good day. I went for a walk.",
-            []
-        );
+        expect(res.body.questions).toEqual([]);
     });
 
-    it("passes askedQuestions to the AI service", async () => {
+    it("returns 200 with questions even when recombination fails (fallback)", async () => {
         const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const askedQuestions = ["How did that make you feel?", "What were you thinking?"];
-
-        const res = await request(app)
-            .post("/api/diary/live/generate-questions")
-            .send({
-                sessionId: "test-session",
-                milestoneNumber: 3,
-                transcriptSoFar: "Today was tough but I managed.",
-                askedQuestions,
-            });
-
-        expect(res.statusCode).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledWith(
-            "Today was tough but I managed.",
-            askedQuestions
-        );
-    });
-});
-
-describe("POST /api/diary/live/recombine-overlap", () => {
-    it("returns 400 when sessionId is missing", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/recombine-overlap")
-            .send({
-                existingOverlapText: "I walked to",
-                newWindowText: "I walked to the store",
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/sessionId/i);
-    });
-
-    it("returns 400 when existingOverlapText is missing", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/recombine-overlap")
-            .send({
-                sessionId: "test-session",
-                newWindowText: "I walked to the store",
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/existingOverlapText/i);
-    });
-
-    it("returns 400 when newWindowText is missing", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/diary/live/recombine-overlap")
-            .send({
-                sessionId: "test-session",
-                existingOverlapText: "I walked to",
-            });
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/newWindowText/i);
-    });
-
-    it("returns recombined text on valid request", async () => {
-        const capabilities = getTestCapabilities();
+        // Override recombination to throw.
         capabilities.aiTranscriptRecombination.recombineOverlap = jest
             .fn()
-            .mockResolvedValue("I walked to the store");
+            .mockRejectedValue(new Error("LLM unavailable"));
         const app = await makeApp(capabilities);
+        const sessionId = "session-recomb-fail";
 
-        const res = await request(app)
-            .post("/api/diary/live/recombine-overlap")
-            .send({
-                sessionId: "test-session",
-                existingOverlapText: "I walked to",
-                newWindowText: "walked to the store",
-            });
+        for (let i = 1; i <= 3; i++) {
+            await request(app)
+                .post("/api/diary/live/push-audio")
+                .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
+                .field("sessionId", sessionId)
+                .field("mimeType", "audio/webm")
+                .field("fragmentNumber", String(i));
+        }
 
-        expect(res.statusCode).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.recombinedText).toBe("I walked to the store");
-        expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
-            "I walked to",
-            "walked to the store"
-        );
+        // No assertion failure — the route should have returned 200 for each call.
+        // By the third call, recombination threw but we still got questions from the raw window transcript.
+        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalled();
     });
 
-    it("returns 500 when recombination fails", async () => {
+    it("deduplicates questions across successive calls within the same session", async () => {
         const capabilities = getTestCapabilities();
-        capabilities.aiTranscriptRecombination.recombineOverlap = jest
+        // generateQuestions always returns the same question.
+        capabilities.aiDiaryQuestions.generateQuestions = jest
             .fn()
-            .mockRejectedValue(new Error("LLM failure"));
+            .mockResolvedValue([{ text: "How are you?", intent: "warm_reflective" }]);
         const app = await makeApp(capabilities);
+        const sessionId = "session-dedup";
 
-        const res = await request(app)
-            .post("/api/diary/live/recombine-overlap")
-            .send({
-                sessionId: "test-session",
-                existingOverlapText: "I walked to",
-                newWindowText: "walked to the store",
-            });
+        const sendFragment = (i) => request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
+            .field("sessionId", sessionId)
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", String(i));
 
-        expect(res.statusCode).toBe(500);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/recombination failed/i);
+        // Fragment 1: only stores the audio, no questions yet.
+        await sendFragment(1);
+
+        // Fragment 2: first 20s window available — question is new, should be returned.
+        const res2 = await sendFragment(2);
+        expect(res2.body.questions).toHaveLength(1);
+        expect(res2.body.questions[0].text).toBe("How are you?");
+
+        // Fragment 3: same question returned by AI, but already asked — deduplicated out.
+        const res3 = await sendFragment(3);
+        expect(res3.body.questions).toHaveLength(0);
+
+        // Fragment 4: still deduplicated.
+        const res4 = await sendFragment(4);
+        expect(res4.body.questions).toHaveLength(0);
     });
 
-    it("accepts empty strings as valid inputs", async () => {
+    it("sessions are independent — different sessionIds do not share state", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
-        const res = await request(app)
-            .post("/api/diary/live/recombine-overlap")
-            .send({
-                sessionId: "test-session",
-                existingOverlapText: "",
-                newWindowText: "hello world",
-            });
+        // Send one fragment to session A and one to session B.
+        await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("audio-a"), { filename: "fa.webm", contentType: "audio/webm" })
+            .field("sessionId", "session-a")
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "1");
 
-        expect(res.statusCode).toBe(200);
-        expect(res.body.success).toBe(true);
+        await request(app)
+            .post("/api/diary/live/push-audio")
+            .attach("audio", Buffer.from("audio-b"), { filename: "fb.webm", contentType: "audio/webm" })
+            .field("sessionId", "session-b")
+            .field("mimeType", "audio/webm")
+            .field("fragmentNumber", "1");
+
+        // Both sessions have only one fragment each — no transcription should have happened.
+        expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 });

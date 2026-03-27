@@ -128,8 +128,36 @@ function tempKeyToString(key) {
  */
 
 /**
+ * Live diary session index entry (tracks current session id).
+ * @typedef {object} LiveDiaryIndexEntry
+ * @property {'live_diary_index'} type
+ * @property {string} sessionId
+ */
+
+/**
+ * Live diary string field entry (stores a single string value).
+ * @typedef {object} LiveDiaryStringEntry
+ * @property {'live_diary_string'} type
+ * @property {string} value
+ */
+
+/**
+ * A single diary question.
+ * @typedef {object} LiveDiaryQuestion
+ * @property {string} text
+ * @property {string} intent
+ */
+
+/**
+ * Live diary asked-questions list entry.
+ * @typedef {object} LiveDiaryQuestionsEntry
+ * @property {'live_diary_questions'} type
+ * @property {LiveDiaryQuestion[]} questions
+ */
+
+/**
  * The union of all value types stored in the temporary database.
- * @typedef {BlobEntry | DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry} TempEntry
+ * @typedef {BlobEntry | DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry} TempEntry
  */
 
 module.exports = {

@@ -2,22 +2,21 @@
  * Router for live diary questioning endpoints.
  *
  * Endpoints:
- *   POST /diary/live/transcribe-window
- *   POST /diary/live/generate-questions
+ *   POST /diary/live/push-audio
+ *
+ * This module contains only HTTP-wrapping / unwrapping logic.
+ * All business logic is handled by the live_diary service module.
  *
  * @module routes/diary_live
  */
 
 const express = require("express");
 const multer = require("multer");
-const os = require("os");
-const path = require("path");
-const fsp = require("fs/promises");
-const fs = require("fs");
-const crypto = require("crypto");
+const { pushAudio } = require("../live_diary");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
@@ -26,42 +25,11 @@ const crypto = require("crypto");
  * @typedef {object} Capabilities
  * @property {Environment} environment
  * @property {Logger} logger
+ * @property {Temporary} temporary
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
-
-/** Supported audio MIME types and their extensions. */
-/** @type {Record<string, string>} */
-const EXTENSION_BY_MIME = {
-    "audio/webm": "webm",
-    "audio/ogg": "ogg",
-    "audio/wav": "wav",
-    "audio/wave": "wav",
-    "audio/x-wav": "wav",
-    "audio/mpeg": "mp3",
-    "audio/mp4": "m4a",
-    "audio/flac": "flac",
-};
-
-/**
- * Returns the file extension for a MIME type, defaulting to "webm".
- * @param {string} mimeType
- * @returns {string}
- */
-function extensionForMime(mimeType) {
-    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
-    return EXTENSION_BY_MIME[base] || "webm";
-}
-
-/**
- * Validates that the value is a non-negative finite integer.
- * @param {unknown} value
- * @returns {value is number}
- */
-function isNonNegativeInteger(value) {
-    return typeof value === "number" && Number.isFinite(value) && value >= 0 && Math.floor(value) === value;
-}
 
 /**
  * Parses an integer from a string. Returns null on failure.
@@ -88,26 +56,24 @@ function makeRouter(capabilities) {
     const upload = multer({ storage: multer.memoryStorage() });
 
     /**
-     * POST /diary/live/transcribe-window
+     * POST /diary/live/push-audio
      *
      * Multipart form fields:
-     *   audio          - binary audio file (required)
+     *   audio          - binary 10-second audio blob (required)
      *   mimeType       - MIME type string (required)
      *   sessionId      - string session identifier (required)
-     *   milestoneNumber - integer (required)
-     *   windowStartMs  - integer ms (required)
-     *   windowEndMs    - integer ms (required)
+     *   fragmentNumber - integer sequence number, 1-based (required)
      *
      * Response:
-     *   { success: true, milestoneNumber, windowStartMs, windowEndMs, tokens, rawText }
+     *   { success: true, questions: Array<{text: string, intent: string}> }
      */
-    router.post("/diary/live/transcribe-window", upload.single("audio"), async (req, res) => {
+    router.post("/diary/live/push-audio", upload.single("audio"), async (req, res) => {
         const audioFile = req.file;
         if (!audioFile) {
             return res.status(400).json({ success: false, error: "Missing audio file" });
         }
 
-        const { mimeType, sessionId, milestoneNumber: milestoneNumberRaw, windowStartMs: windowStartMsRaw, windowEndMs: windowEndMsRaw } = req.body || {};
+        const { mimeType, sessionId, fragmentNumber: fragmentNumberRaw } = req.body || {};
 
         if (typeof sessionId !== "string" || !sessionId) {
             return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
@@ -117,229 +83,25 @@ function makeRouter(capabilities) {
             return res.status(400).json({ success: false, error: "Missing or invalid mimeType" });
         }
 
-        const milestoneNumber = parseIntegerField(milestoneNumberRaw);
-        if (milestoneNumber === null || milestoneNumber < 1) {
-            return res.status(400).json({ success: false, error: "Missing or invalid milestoneNumber" });
-        }
-
-        const windowStartMs = parseIntegerField(windowStartMsRaw);
-        if (windowStartMs === null || !isNonNegativeInteger(windowStartMs)) {
-            return res.status(400).json({ success: false, error: "Missing or invalid windowStartMs" });
-        }
-
-        const windowEndMs = parseIntegerField(windowEndMsRaw);
-        if (windowEndMs === null || !isNonNegativeInteger(windowEndMs) || windowEndMs <= windowStartMs) {
-            return res.status(400).json({ success: false, error: "Missing or invalid windowEndMs" });
+        const fragmentNumber = parseIntegerField(fragmentNumberRaw);
+        if (fragmentNumber === null || fragmentNumber < 1) {
+            return res.status(400).json({ success: false, error: "Missing or invalid fragmentNumber" });
         }
 
         capabilities.logger.logInfo(
-            { sessionId, milestoneNumber, windowStartMs, windowEndMs },
-            "Live diary transcription window requested"
+            { sessionId, fragmentNumber },
+            "Live diary push-audio received"
         );
 
-        // Write audio buffer to a temporary file with a random name (no user data in path).
-        // The transcription service requires a named file stream, so we cannot use in-memory streams.
-        const ext = extensionForMime(mimeType);
-        const randomHex = crypto.randomBytes(8).toString("hex");
-        const tmpFile = path.join(os.tmpdir(), `diary-live-${randomHex}.${ext}`);
-
-        try {
-            await fsp.writeFile(tmpFile, audioFile.buffer);
-        } catch (error) {
-            capabilities.logger.logError(
-                { error: error instanceof Error ? error.message : String(error) },
-                "Failed to write temporary audio file for live transcription"
-            );
-            return res.status(500).json({ success: false, error: "Failed to process audio file" });
-        }
-
-        try {
-            const fileStream = fs.createReadStream(tmpFile);
-
-            // Wait for the file to be opened before calling the transcription service.
-            // This prevents a race between the stream's async open and cleanup (unlink).
-            await new Promise((resolve, reject) => {
-                fileStream.once("open", resolve);
-                fileStream.once("error", reject);
-            });
-
-            let result;
-            try {
-                result = await capabilities.aiTranscription.transcribeStreamDetailed(fileStream);
-            } finally {
-                fileStream.destroy();
-            }
-
-            const rawText = result.structured.transcript;
-
-            // Approximate per-word tokens across the window.
-            // The transcription service does not provide per-word timestamps, so we
-            // distribute the window duration evenly across words.  Fine-grained tokens
-            // allow the replace-zone merge to preserve content outside the current
-            // window when milestones overlap.
-            const trimmedText = rawText.trim();
-
-            /** @type {Array<{text: string, startMs: number, endMs: number}>} */
-            const tokens = [];
-
-            if (trimmedText) {
-                const words = trimmedText.split(/\s+/);
-                const wordCount = words.length;
-                const windowDuration = Math.max(0, windowEndMs - windowStartMs);
-                const durationPerWord = wordCount > 0 ? windowDuration / wordCount : 0;
-
-                let currentStart = windowStartMs;
-                for (let i = 0; i < wordCount; i += 1) {
-                    const isLast = i === wordCount - 1;
-                    const currentEnd = isLast
-                        ? windowEndMs
-                        : windowStartMs + Math.round(durationPerWord * (i + 1));
-
-                    tokens.push({
-                        text: words[i] ?? "",
-                        startMs: currentStart,
-                        endMs: currentEnd,
-                    });
-
-                    currentStart = currentEnd;
-                }
-            }
-
-            return res.json({
-                success: true,
-                milestoneNumber,
-                windowStartMs,
-                windowEndMs,
-                tokens,
-                rawText,
-            });
-        } catch (error) {
-            capabilities.logger.logError(
-                {
-                    sessionId,
-                    milestoneNumber,
-                    error: error instanceof Error ? error.message : String(error),
-                },
-                "Live diary transcription failed"
-            );
-            return res.status(500).json({ success: false, error: "Transcription failed" });
-        } finally {
-            fsp.unlink(tmpFile).catch(() => {
-                // Best-effort cleanup
-            });
-        }
-    });
-
-    /**
-     * POST /diary/live/generate-questions
-     *
-     * JSON body:
-     *   sessionId       - string (required)
-     *   milestoneNumber - integer (required)
-     *   transcriptSoFar - string (required)
-     *   askedQuestions  - string[] (required)
-     *
-     * Response:
-     *   { success: true, milestoneNumber, questions: [{text, intent}] }
-     */
-    router.post("/diary/live/generate-questions", express.json(), async (req, res) => {
-        const { sessionId, milestoneNumber: milestoneNumberRaw, transcriptSoFar, askedQuestions } = req.body || {};
-
-        if (typeof sessionId !== "string" || !sessionId) {
-            return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
-        }
-
-        if (typeof milestoneNumberRaw !== "number" || !Number.isFinite(milestoneNumberRaw) || milestoneNumberRaw < 1) {
-            return res.status(400).json({ success: false, error: "Missing or invalid milestoneNumber" });
-        }
-
-        const milestoneNumber = milestoneNumberRaw;
-
-        if (typeof transcriptSoFar !== "string") {
-            return res.status(400).json({ success: false, error: "Missing or invalid transcriptSoFar" });
-        }
-
-        if (!Array.isArray(askedQuestions) || askedQuestions.some((q) => typeof q !== "string")) {
-            return res.status(400).json({ success: false, error: "Missing or invalid askedQuestions: must be a string array" });
-        }
-
-        capabilities.logger.logInfo(
-            { sessionId, milestoneNumber, transcriptLength: transcriptSoFar.length, askedCount: askedQuestions.length },
-            "Live diary question generation requested"
+        const questions = await pushAudio(
+            capabilities,
+            sessionId,
+            audioFile.buffer,
+            mimeType,
+            fragmentNumber
         );
 
-        try {
-            const questions = await capabilities.aiDiaryQuestions.generateQuestions(transcriptSoFar, askedQuestions);
-            return res.json({
-                success: true,
-                milestoneNumber,
-                questions,
-            });
-        } catch (error) {
-            capabilities.logger.logError(
-                {
-                    sessionId,
-                    milestoneNumber,
-                    error: error instanceof Error ? error.message : String(error),
-                },
-                "Live diary question generation failed"
-            );
-            return res.status(500).json({ success: false, error: "Question generation failed" });
-        }
-    });
-
-    /**
-     * POST /diary/live/recombine-overlap
-     *
-     * JSON body:
-     *   sessionId           - string (required)
-     *   existingOverlapText - string of existing transcript in the overlap zone (required)
-     *   newWindowText       - string of the new window transcript (required)
-     *
-     * Response:
-     *   { success: true, recombinedText: string }
-     *
-     * The LLM is asked to merge the two overlapping strings into a single coherent
-     * transcript.  The result is validated: every word must appear in the union of
-     * words from the two inputs.  On validation failure the endpoint returns 500 so
-     * the caller can fall back to the new-window text.
-     */
-    router.post("/diary/live/recombine-overlap", express.json(), async (req, res) => {
-        const { sessionId, existingOverlapText, newWindowText } = req.body || {};
-
-        if (typeof sessionId !== "string" || !sessionId) {
-            return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
-        }
-
-        if (typeof existingOverlapText !== "string") {
-            return res.status(400).json({ success: false, error: "Missing or invalid existingOverlapText" });
-        }
-
-        if (typeof newWindowText !== "string") {
-            return res.status(400).json({ success: false, error: "Missing or invalid newWindowText" });
-        }
-
-        capabilities.logger.logInfo(
-            { sessionId, existingOverlapLength: existingOverlapText.length, newWindowLength: newWindowText.length },
-            "Live diary transcript recombination requested"
-        );
-
-        try {
-            const recombinedText = await capabilities.aiTranscriptRecombination.recombineOverlap(
-                existingOverlapText,
-                newWindowText
-            );
-            return res.json({ success: true, recombinedText });
-        } catch (error) {
-            capabilities.logger.logError(
-                {
-                    sessionId,
-                    error: error instanceof Error ? error.message : String(error),
-                },
-                "Live diary transcript recombination failed"
-            );
-            return res.status(500).json({ success: false, error: "Transcript recombination failed" });
-        }
+        return res.json({ success: true, questions });
     });
 
     return router;

@@ -2,15 +2,27 @@
  * @module ai_transcript_recombination
  *
  * Purpose:
- *   This module provides LLM-based recombination of partially overlapping transcript
- *   segments, replacing the naive token-replacement approach with an LLM that selects
- *   the best words from both the existing overlap and the new window.
+ *   This module provides LLM-based recombination of two partially overlapping 20-second
+ *   transcript segments.  The expected inputs are:
+ *     - existingOverlapText: transcription of [T-30s, T-10s]
+ *     - newWindowText:       transcription of [T-20s, T]
+ *   These share a 10-second overlap region [T-20s, T-10s].
  *
  * Validation:
- *   After the LLM returns a merged transcript, every word in the result is checked
- *   against the union of words in the two input texts.  If any word in the output is
- *   not found in the inputs, the result is rejected and an error is thrown so the
- *   caller can fall back to the new-window text.
+ *   After the LLM returns a merged fragment it is validated with validateCombination,
+ *   which asserts that the result can be expressed as:
+ *     prefix_of(segment1) + suffix_of(segment2)
+ *   i.e. the result starts with a prefix of segment1 and ends with a suffix of segment2
+ *   with nothing else in between.  This ensures the LLM only removed overlap words and
+ *   did not introduce or rearrange any content.
+ *
+ * Retry and fallback:
+ *   If the LLM call fails or validation fails, the attempt is retried up to
+ *   MAX_RETRY_ATTEMPTS times.  After exhaustion, programmaticRecombination is used:
+ *   it finds the longest exact word-sequence overlap (modulo capitalisation and
+ *   punctuation) between the end of segment1 and the start of segment2 and deduplicates
+ *   it.  If no overlap sequence is found, it falls back to the "[10-second overlap]"
+ *   concatenation marker.
  */
 
 const { OpenAI } = require("openai");
@@ -45,7 +57,10 @@ function isAITranscriptRecombinationError(object) {
     return object instanceof AITranscriptRecombinationError;
 }
 
-const RECOMBINATION_MODEL = "gpt-5.2";
+const RECOMBINATION_MODEL = "gpt-4o-mini";
+
+/** Number of LLM call attempts before falling back to programmatic recombination. */
+const MAX_RETRY_ATTEMPTS = 5;
 
 const SYSTEM_PROMPT = `You are a transcript editor.
 
@@ -119,21 +134,151 @@ function validateWordSubset(output, allowedWords) {
 }
 
 /**
- * Recombine two overlapping transcript segments using an LLM.
+ * Normalise a single word for sequence comparison: lowercase, strip surrounding
+ * non-alphanumeric characters but preserve internal apostrophes and hyphens.
+ * Internal apostrophes are kept so contractions ("it's") compare equal across
+ * inputs.  Internal hyphens are kept so hyphenated words ("twenty-one") compare
+ * equal.  All other punctuation (periods, commas, etc.) is removed; this means
+ * abbreviations like "U.S.A." are normalised to "usa", which is acceptable for
+ * spoken transcript comparison.
+ * Returns an empty string for words that are entirely punctuation.
+ * @param {string} word
+ * @returns {string}
+ */
+function normalizeWordForComparison(word) {
+    return word
+        .toLowerCase()
+        .replace(/[^a-z0-9'-]/g, "")
+        .replace(/^[-']+|[-']+$/g, "");
+}
+
+/**
+ * Return the words of `text` normalised for sequence comparison.
+ * Empty-normalised tokens (pure punctuation) are removed.
+ * @param {string} text
+ * @returns {string[]}
+ */
+function normalizedWords(text) {
+    return text
+        .trim()
+        .split(/\s+/)
+        .map(normalizeWordForComparison)
+        .filter(Boolean);
+}
+
+/**
+ * Programmatic recombination of two overlapping transcript segments.
+ *
+ * Finds the longest sequence of consecutive words at the end of segment1 that
+ * exactly matches a sequence at the beginning of segment2 (comparison is modulo
+ * capitalisation and punctuation).  When found, the overlap is deduplicated: the
+ * result keeps all original words of segment1 and appends the words of segment2
+ * from just after the matched prefix.
+ *
+ * Falls back to `"segment1 [10-second overlap] segment2"` when no matching
+ * sequence is found.
+ *
+ * @param {string} segment1
+ * @param {string} segment2
+ * @returns {string}
+ */
+function programmaticRecombination(segment1, segment2) {
+    if (!segment1.trim()) {
+        return segment2;
+    }
+    if (!segment2.trim()) {
+        return segment1;
+    }
+
+    const origWords1 = segment1.trim().split(/\s+/);
+    const origWords2 = segment2.trim().split(/\s+/);
+    const normWords1 = origWords1.map(normalizeWordForComparison);
+    const normWords2 = origWords2.map(normalizeWordForComparison);
+
+    const maxLen = Math.min(normWords1.length, normWords2.length);
+    for (let len = maxLen; len >= 1; len--) {
+        const suffix = normWords1.slice(normWords1.length - len);
+        const prefix = normWords2.slice(0, len);
+
+        // Require all words to have non-empty normalised forms so purely
+        // punctuation tokens never create a spurious match.
+        if (!suffix.every(Boolean) || !prefix.every(Boolean)) {
+            continue;
+        }
+
+        if (suffix.every((w, i) => w === prefix[i])) {
+            // Overlap found: keep all of segment1, append segment2 after the overlap.
+            return [...origWords1, ...origWords2.slice(len)].join(" ");
+        }
+    }
+
+    return `${segment1} [10-second overlap] ${segment2}`;
+}
+
+/**
+ * Validate that `result` is a valid LLM combination of `segment1` and `segment2`.
+ *
+ * Asserts that the result can be expressed as:
+ *   prefix_of(segment1) + suffix_of(segment2)
+ * i.e. there exists a split point such that the words before it (normalised)
+ * match a prefix of segment1 and the words from the split onward match a suffix
+ * of segment2.  This ensures the LLM only removed overlap content and did not
+ * add, rearrange, or hallucinate any words.
+ *
+ * Comparison is modulo capitalisation and punctuation.
+ *
+ * @param {string} result
+ * @param {string} segment1 - First input segment (existing overlap).
+ * @param {string} segment2 - Second input segment (new fragment).
+ * @returns {boolean}
+ */
+function validateCombination(result, segment1, segment2) {
+    const resultNorm = normalizedWords(result);
+    const words1 = normalizedWords(segment1);
+    const words2 = normalizedWords(segment2);
+
+    for (let split = 0; split <= resultNorm.length; split++) {
+        // At split > 0, check that the word just added to the prefix still matches
+        // segment1.  If not (or if split has exceeded words1.length, in which case
+        // words1[split-1] is undefined and the inequality is always true), all larger
+        // splits will also fail, so break early.
+        if (split > 0 && resultNorm[split - 1] !== words1[split - 1]) {
+            break;
+        }
+
+        // The remaining words must match a suffix of segment2.
+        const suffix = resultNorm.slice(split);
+        if (suffix.length > words2.length) {
+            continue;
+        }
+        const offset = words2.length - suffix.length;
+        const suffixMatch = suffix.every((w, i) => w === words2[offset + i]);
+        if (suffixMatch) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Single LLM attempt to recombine two overlapping transcript segments.
+ * Throws AITranscriptRecombinationError on any failure (API error, empty
+ * response, or word-set validation failure).
  * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
- * @param {string} newWindowText - New window transcript text.
- * @returns {Promise<string>} The recombined transcript text.
+ * @param {string} newFragment - New fragment of at most FRAGMENT_MAX_WORDS words.
+ * @returns {Promise<string>} The recombined text.
  */
-async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
+async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment) {
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
     /** @type {Array<{role: "system" | "user", content: string}>} */
     const messages = [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: makeUserPrompt(existingOverlapText, newWindowText) },
+        { role: "user", content: makeUserPrompt(existingOverlapText, newFragment) },
     ];
 
     let rawText;
@@ -157,16 +302,59 @@ async function recombineOverlap(makeClient, capabilities, existingOverlapText, n
         );
     }
 
-    // Validate: every word in the result must appear in the original inputs.
-    const allowedWords = makeWordSet(`${existingOverlapText} ${newWindowText}`);
-    if (!validateWordSubset(rawText, allowedWords)) {
+    // Validate: result must be a valid combination of the two input segments.
+    // It must equal prefix_of(segment1) + suffix_of(segment2) — no hallucinations,
+    // no rearrangements, only the overlap removed.
+    if (!validateCombination(rawText, existingOverlapText, newFragment)) {
         throw new AITranscriptRecombinationError(
-            "Recombined transcript contains words not found in original inputs",
-            { existingOverlapText, newWindowText, rawText }
+            "Recombined transcript does not form a valid combination of the input segments",
+            { existingOverlapText, newFragment, rawText }
         );
     }
 
     return rawText;
+}
+
+/**
+ * Recombine a single fragment with retry logic.
+ * Tries up to MAX_RETRY_ATTEMPTS times.  Falls back to programmaticRecombination
+ * if every attempt throws.
+ * @param {function(string): OpenAI} makeClient
+ * @param {Capabilities} capabilities
+ * @param {string} existingOverlapText
+ * @param {string} newFragment
+ * @returns {Promise<string>}
+ */
+async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment) {
+    for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        try {
+            return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment);
+        } catch {
+            // Try again on next iteration; fall through to programmatic on last attempt.
+        }
+    }
+    return programmaticRecombination(existingOverlapText, newFragment);
+}
+
+/**
+ * Recombine two overlapping transcript segments using an LLM with retry logic.
+ *
+ * The expected inputs are exact transcriptions of two 20-second audio windows:
+ *   existingOverlapText: transcription of [T-30s, T-10s]
+ *   newWindowText:       transcription of [T-20s, T]
+ * which share a 10-second overlap in [T-20s, T-10s].
+ *
+ * The LLM attempts to merge both inputs into a single clean transcript (with up
+ * to MAX_RETRY_ATTEMPTS retries and a programmatic fallback on exhaustion).
+ *
+ * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
+ * @param {Capabilities} capabilities
+ * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
+ * @param {string} newWindowText - New window transcript text.
+ * @returns {Promise<string>} The recombined transcript text.
+ */
+async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
+    return recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newWindowText);
 }
 
 /**
@@ -192,8 +380,11 @@ module.exports = {
     make,
     isAITranscriptRecombinationError,
     RECOMBINATION_MODEL,
+    MAX_RETRY_ATTEMPTS,
     SYSTEM_PROMPT,
     makeUserPrompt,
     makeWordSet,
     validateWordSubset,
+    programmaticRecombination,
+    validateCombination,
 };
