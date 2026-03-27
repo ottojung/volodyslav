@@ -23,11 +23,7 @@ export function useAudioChunkCollector() {
          * @param {number} startMs
          * @param {number} endMs
          */
-        (data, startMs, endMs) => {
-            void data;
-            void startMs;
-            void endMs;
-        },
+        (_data, _startMs, _endMs) => {},
         []
     );
 
