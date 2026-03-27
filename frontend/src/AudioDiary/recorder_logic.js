@@ -5,14 +5,14 @@
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
-export const FRAGMENT_MS = 10 * 1000; // 10-second fragments for chunk collection
+export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment collection
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob, startMs: number, endMs: number) => void} [onChunk] - called with each fragment and its relative timestamps
+ * @property {(chunk: Blob, startMs: number, endMs: number) => void} [onChunk] - called with each fragment and its relative timestamps (timestamps are authoritative)
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -37,7 +37,7 @@ class RecorderClass {
     _stream = null;
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
-    // Active-recording ms counter (FRAGMENT_MS per regular timeslice).
+    // Active-recording ms counter (FRAGMENT_MS per regular timeslice event).
     /** @type {number} */
     _activeRecordedMs = 0;
     /** @type {number} */
@@ -156,7 +156,7 @@ class RecorderClass {
                     // Clamp to fragStart so that endMs is never less than startMs.
                     this._activeRecordedMs = Math.max(fragStart, wallClockMs);
                 } else {
-                    this._activeRecordedMs += FRAGMENT_MS; // regular timeslice event
+                    this._activeRecordedMs += FRAGMENT_MS; // nominal timeslice increment
                 }
                 const fragEnd = this._activeRecordedMs;
                 this._chunks.push(e.data);

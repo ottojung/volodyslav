@@ -34,7 +34,7 @@ describe("audio recording session route MIME validation", () => {
         expect(res.body.error).toMatch(/must be audio\/webm/i);
     });
 
-    it("rejects non-webm mimeType on chunk upload", async () => {
+    it("rejects non-webm mimeType on push-audio", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
@@ -43,8 +43,8 @@ describe("audio recording session route MIME validation", () => {
             .send({ sessionId: "sess-route-chunk", mimeType: "audio/webm" });
 
         const res = await request(app)
-            .post("/api/audio-recording-session/sess-route-chunk/chunks")
-            .attach("chunk", Buffer.from("fake-audio"), { filename: "c1.ogg", contentType: "audio/ogg" })
+            .post("/api/audio-recording-session/sess-route-chunk/push-audio")
+            .attach("audio", Buffer.from("fake-audio"), { filename: "c1.ogg", contentType: "audio/ogg" })
             .field("startMs", "0")
             .field("endMs", "10000")
             .field("sequence", "0")

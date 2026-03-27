@@ -15,7 +15,7 @@ import {
 import { saveSessionId, clearSessionId } from "./recording_storage.js";
 import {
     startSession as startBackendSession,
-    uploadChunkWithSessionRetry as uploadBackendChunk,
+    pushAudioWithSessionRetry as pushBackendAudio,
     stopSession as stopBackendSession,
     fetchFinalAudio,
     discardSession,
@@ -55,7 +55,7 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
 
 /**
  * @typedef {object} UseAudioRecorderOptions
- * @property {((questions: DiaryQuestion[], milestoneNumber: number) => void) | null} [onQuestions] - Called when chunk upload returns live diary questions and the chunk sequence number.
+ * @property {((questions: DiaryQuestion[], milestoneNumber: number) => void) | null} [onQuestions] - Called when push-audio returns live diary questions and the fragment sequence number.
  */
 
 /** @param {UseAudioRecorderOptions} [options] @returns {UseAudioRecorderResult} */
@@ -167,7 +167,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 const offsetMs = restoredOffsetMsRef.current;
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
-                // Enqueue chunk upload to backend (serialized).
+                // Enqueue audio fragment push to backend (serialized).
                 // Live diary questioning runs server-side and questions are returned in the response.
                 const seq = sequenceRef.current + 1;
                 sequenceRef.current = seq;
@@ -177,7 +177,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                     uploadQueueRef.current = uploadQueueRef.current.then(async () => {
                         if (sessionId !== sessionIdRef.current) return;
                         try {
-                            const questions = await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
+                            const { questions } = await pushBackendAudio(sessionId, mimeType || "audio/webm", {
                                 chunk,
                                 startMs: startMs + offsetMs,
                                 endMs: endMs + offsetMs,
@@ -188,7 +188,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                                 onQuestions?.(questions, seq + 1);
                             }
                         } catch {
-                            // Chunk upload failed; recording continues locally
+                            // Push-audio failed; recording continues locally
                         }
                     });
                 }

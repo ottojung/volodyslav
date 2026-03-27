@@ -2,7 +2,7 @@
  * Tests for useDiaryLiveQuestioningController.
  *
  * The controller now manages display state only.  Live diary questioning runs
- * server-side as part of chunk upload; questions arrive via `onQuestions()`.
+ * server-side as part of push-audio; questions arrive via `onQuestions()`.
  */
 
 import { renderHook, act } from "@testing-library/react";
