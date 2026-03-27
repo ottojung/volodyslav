@@ -42,7 +42,6 @@ export default function AudioDiary() {
 
     const {
         displayedGenerations,
-        liveErrorMessage,
         onQuestions: liveOnQuestions,
         startLive,
         stopLive,
@@ -301,7 +300,7 @@ export default function AudioDiary() {
                 {(isRecording || isPaused) && (
                     <LiveQuestionsPanel
                         displayedGenerations={displayedGenerations}
-                        errorMessage={liveErrorMessage}
+                        errorMessage={null}
                     />
                 )}
 

@@ -19,9 +19,9 @@ import { useCallback } from "react";
 export function useAudioChunkCollector() {
     const pushChunk = useCallback(
         /**
-         * @param {Blob} data
-         * @param {number} startMs
-         * @param {number} endMs
+         * @param {Blob} _data
+         * @param {number} _startMs
+         * @param {number} _endMs
          */
         (_data, _startMs, _endMs) => {},
         []

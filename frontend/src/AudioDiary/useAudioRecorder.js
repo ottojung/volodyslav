@@ -55,7 +55,7 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
 
 /**
  * @typedef {object} UseAudioRecorderOptions
- * @property {((questions: DiaryQuestion[]) => void) | null} [onQuestions] - Called when chunk upload returns live diary questions.
+ * @property {((questions: DiaryQuestion[], milestoneNumber: number) => void) | null} [onQuestions] - Called when chunk upload returns live diary questions and the chunk sequence number.
  */
 
 /** @param {UseAudioRecorderOptions} [options] @returns {UseAudioRecorderResult} */
@@ -185,7 +185,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                                 mimeType,
                             });
                             if (questions.length > 0 && isMountedRef.current) {
-                                onQuestions?.(questions);
+                                onQuestions?.(questions, seq + 1);
                             }
                         } catch {
                             // Chunk upload failed; recording continues locally

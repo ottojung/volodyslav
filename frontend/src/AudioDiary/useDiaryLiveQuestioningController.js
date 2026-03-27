@@ -16,15 +16,14 @@ import { useState, useRef, useCallback } from "react";
 /**
  * @typedef {object} QuestionGeneration
  * @property {string} generationId - Unique identifier for this generation.
- * @property {number} milestoneNumber - Milestone that triggered this generation.
+ * @property {number} milestoneNumber - Chunk sequence number that produced this generation.
  * @property {DiaryQuestion[]} questions - List of questions in this generation.
  */
 
 /**
  * @typedef {object} UseDiaryLiveQuestioningControllerResult
  * @property {QuestionGeneration[]} displayedGenerations - Question generations, newest first.
- * @property {string | null} liveErrorMessage - Error message from live processing.
- * @property {(questions: DiaryQuestion[]) => void} onQuestions - Call with questions from each chunk upload.
+ * @property {(questions: DiaryQuestion[], milestoneNumber: number) => void} onQuestions - Call with questions from each chunk upload and its chunk sequence number.
  * @property {() => void} startLive - Reset display state for a new recording session.
  * @property {() => void} stopLive - Stop accepting new questions.
  */
@@ -53,29 +52,22 @@ export function useDiaryLiveQuestioningController() {
         /** @returns {QuestionGeneration[]} */ () => []
     );
 
-    const [liveErrorMessage, setLiveErrorMessage] = useState(
-        /** @returns {string | null} */ () => null
-    );
-
     /** @type {React.MutableRefObject<boolean>} */
     const isRunningRef = useRef(false);
-
-    /** @type {React.MutableRefObject<number>} */
-    const milestoneRef = useRef(0);
 
     /**
      * Called with questions returned from a chunk upload.
      * Adds a new generation to the display (newest first, max 4).
      */
     const onQuestions = useCallback(
-        /** @param {DiaryQuestion[]} questions */
-        (questions) => {
+        /**
+         * @param {DiaryQuestion[]} questions
+         * @param {number} milestoneNumber
+         */
+        (questions, milestoneNumber) => {
             if (!isRunningRef.current || !questions || questions.length === 0) {
                 return;
             }
-
-            milestoneRef.current += 1;
-            const milestoneNumber = milestoneRef.current;
 
             const generation = {
                 generationId: makeGenerationId(milestoneNumber),
@@ -83,7 +75,6 @@ export function useDiaryLiveQuestioningController() {
                 questions,
             };
 
-            setLiveErrorMessage(null);
             setDisplayedGenerations((prev) => {
                 const updated = [generation, ...prev];
                 return updated.slice(0, MAX_VISIBLE_GENERATIONS);
@@ -98,9 +89,7 @@ export function useDiaryLiveQuestioningController() {
      */
     const startLive = useCallback(() => {
         isRunningRef.current = true;
-        milestoneRef.current = 0;
         setDisplayedGenerations([]);
-        setLiveErrorMessage(null);
     }, []);
 
     /**
@@ -112,7 +101,6 @@ export function useDiaryLiveQuestioningController() {
 
     return {
         displayedGenerations,
-        liveErrorMessage,
         onQuestions,
         startLive,
         stopLive,

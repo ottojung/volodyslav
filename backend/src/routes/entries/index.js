@@ -70,7 +70,6 @@ function makeRouter(capabilities) {
     /**
      * POST /entries/diary-audio - Create a diary audio entry.
      * Accepts audio file + optional note; constructs DSL rawInput on the backend.
-     * Must be registered before /entries to avoid route shadowing.
      */
     router.post("/entries/diary-audio", diaryAudioUpload.single("audio"), async (req, res) => {
         const reqId = randomRequestId(capabilities);

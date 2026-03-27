@@ -2,7 +2,6 @@ import React from "react";
 import { render, cleanup } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { submitDiaryAudio } from "../src/AudioDiary/diary_audio_api.js";
 import AudioDiary from "../src/AudioDiary/AudioDiary.jsx";
 
 /** @returns {Promise<void>} */

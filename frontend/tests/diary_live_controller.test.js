@@ -11,13 +11,12 @@ import { useDiaryLiveQuestioningController } from "../src/AudioDiary/useDiaryLiv
 // ─── startLive / stopLive ─────────────────────────────────────────────────────
 
 describe("startLive", () => {
-    it("resets displayedGenerations and liveErrorMessage", () => {
+    it("resets displayedGenerations", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
         act(() => result.current.startLive());
 
         expect(result.current.displayedGenerations).toEqual([]);
-        expect(result.current.liveErrorMessage).toBeNull();
     });
 });
 
@@ -31,7 +30,7 @@ describe("stopLive", () => {
         act(() => {
             result.current.onQuestions([
                 { text: "Should be ignored", intent: "clarifying" },
-            ]);
+            ], 1);
         });
 
         expect(result.current.displayedGenerations).toHaveLength(0);
@@ -48,7 +47,7 @@ describe("onQuestions", () => {
         act(() => {
             result.current.onQuestions([
                 { text: "How did that make you feel?", intent: "warm_reflective" },
-            ]);
+            ], 1);
         });
 
         expect(result.current.displayedGenerations).toHaveLength(1);
@@ -62,24 +61,24 @@ describe("onQuestions", () => {
         act(() => result.current.startLive());
 
         act(() => {
-            result.current.onQuestions([]);
+            result.current.onQuestions([], 1);
         });
 
         expect(result.current.displayedGenerations).toHaveLength(0);
     });
 
-    it("increments milestoneNumber across calls", () => {
+    it("uses provided chunk sequence as milestoneNumber", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
         act(() => result.current.startLive());
 
         act(() => {
-            result.current.onQuestions([{ text: "Q1", intent: "clarifying" }]);
+            result.current.onQuestions([{ text: "Q1", intent: "clarifying" }], 1);
         });
         act(() => {
-            result.current.onQuestions([{ text: "Q2", intent: "clarifying" }]);
+            result.current.onQuestions([{ text: "Q2", intent: "clarifying" }], 3);
         });
 
-        expect(result.current.displayedGenerations[0].milestoneNumber).toBe(2);
+        expect(result.current.displayedGenerations[0].milestoneNumber).toBe(3);
         expect(result.current.displayedGenerations[1].milestoneNumber).toBe(1);
     });
 
@@ -89,7 +88,7 @@ describe("onQuestions", () => {
 
         for (let i = 0; i < 6; i++) {
             act(() => {
-                result.current.onQuestions([{ text: `Q${i}`, intent: "clarifying" }]);
+                result.current.onQuestions([{ text: `Q${i}`, intent: "clarifying" }], i + 1);
             });
         }
 
@@ -100,21 +99,9 @@ describe("onQuestions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
         act(() => {
-            result.current.onQuestions([{ text: "Ignored", intent: "clarifying" }]);
+            result.current.onQuestions([{ text: "Ignored", intent: "clarifying" }], 1);
         });
 
         expect(result.current.displayedGenerations).toHaveLength(0);
     });
-
-    it("clears liveErrorMessage when questions are received", () => {
-        const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
-
-        act(() => {
-            result.current.onQuestions([{ text: "Q1", intent: "clarifying" }]);
-        });
-
-        expect(result.current.liveErrorMessage).toBeNull();
-    });
 });
-
