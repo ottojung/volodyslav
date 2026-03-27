@@ -6,11 +6,19 @@
  *   segments, replacing the naive token-replacement approach with an LLM that selects
  *   the best words from both the existing overlap and the new window.
  *
- * Validation:
- *   After the LLM returns a merged transcript, every word in the result is checked
+ * Fragment approach:
+ *   The new window text is split into fragments of at most FRAGMENT_MAX_WORDS words
+ *   (~20 seconds of speech).  Only the first fragment is sent to the LLM (together
+ *   with the existing overlap text); subsequent fragments are appended programmatically.
+ *   This ensures the LLM never sees more than ~20 seconds of transcript at once.
+ *
+ * Validation and retry:
+ *   After the LLM returns a merged fragment, every word in the result is checked
  *   against the union of words in the two input texts.  If any word in the output is
- *   not found in the inputs, the result is rejected and an error is thrown so the
- *   caller can fall back to the new-window text.
+ *   not found in the inputs, or if the LLM call fails for any reason, the attempt is
+ *   retried up to MAX_RETRY_ATTEMPTS times.  If all attempts fail the module falls back
+ *   to a simplistic recombination that concatenates both inputs separated by a
+ *   "[10-second overlap]" marker.
  */
 
 const { OpenAI } = require("openai");
@@ -45,7 +53,16 @@ function isAITranscriptRecombinationError(object) {
     return object instanceof AITranscriptRecombinationError;
 }
 
-const RECOMBINATION_MODEL = "gpt-5.2";
+const RECOMBINATION_MODEL = "gpt-4o-mini";
+
+/** Estimated average words per second for splitting text into timed fragments. */
+const AVERAGE_WORDS_PER_SECOND = 3;
+
+/** Maximum number of words in a fragment sent to the LLM (~20 seconds of speech). */
+const FRAGMENT_MAX_WORDS = 20 * AVERAGE_WORDS_PER_SECOND;
+
+/** Number of LLM call attempts before falling back to simplistic recombination. */
+const MAX_RETRY_ATTEMPTS = 5;
 
 const SYSTEM_PROMPT = `You are a transcript editor.
 
@@ -119,21 +136,60 @@ function validateWordSubset(output, allowedWords) {
 }
 
 /**
- * Recombine two overlapping transcript segments using an LLM.
+ * Split text into fragments of at most maxWords words.
+ * @param {string} text
+ * @param {number} [maxWords]
+ * @returns {string[]} Array of fragments; always at least one element.
+ */
+function splitIntoFragments(text, maxWords = FRAGMENT_MAX_WORDS) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return [""];
+    }
+    const words = trimmed.split(/\s+/);
+    /** @type {string[]} */
+    const fragments = [];
+    for (let i = 0; i < words.length; i += maxWords) {
+        fragments.push(words.slice(i, i + maxWords).join(" "));
+    }
+    return fragments;
+}
+
+/**
+ * Simplistic fallback recombination when LLM-based merging fails.
+ * Returns both inputs concatenated with a "[10-second overlap]" marker.
+ * @param {string} existingText
+ * @param {string} newText
+ * @returns {string}
+ */
+function simplisticRecombination(existingText, newText) {
+    if (!existingText.trim()) {
+        return newText;
+    }
+    if (!newText.trim()) {
+        return existingText;
+    }
+    return `${existingText} [10-second overlap] ${newText}`;
+}
+
+/**
+ * Single LLM attempt to recombine two overlapping transcript segments.
+ * Throws AITranscriptRecombinationError on any failure (API error, empty
+ * response, or word-set validation failure).
  * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
- * @param {string} newWindowText - New window transcript text.
- * @returns {Promise<string>} The recombined transcript text.
+ * @param {string} newFragment - New fragment of at most FRAGMENT_MAX_WORDS words.
+ * @returns {Promise<string>} The recombined text.
  */
-async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
+async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment) {
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
     /** @type {Array<{role: "system" | "user", content: string}>} */
     const messages = [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: makeUserPrompt(existingOverlapText, newWindowText) },
+        { role: "user", content: makeUserPrompt(existingOverlapText, newFragment) },
     ];
 
     let rawText;
@@ -158,15 +214,75 @@ async function recombineOverlap(makeClient, capabilities, existingOverlapText, n
     }
 
     // Validate: every word in the result must appear in the original inputs.
-    const allowedWords = makeWordSet(`${existingOverlapText} ${newWindowText}`);
+    const allowedWords = makeWordSet(`${existingOverlapText} ${newFragment}`);
     if (!validateWordSubset(rawText, allowedWords)) {
         throw new AITranscriptRecombinationError(
             "Recombined transcript contains words not found in original inputs",
-            { existingOverlapText, newWindowText, rawText }
+            { existingOverlapText, newFragment, rawText }
         );
     }
 
     return rawText;
+}
+
+/**
+ * Recombine a single fragment with retry logic.
+ * Tries up to MAX_RETRY_ATTEMPTS times.  Falls back to simplisticRecombination
+ * if every attempt throws.
+ * @param {function(string): OpenAI} makeClient
+ * @param {Capabilities} capabilities
+ * @param {string} existingOverlapText
+ * @param {string} newFragment
+ * @returns {Promise<string>}
+ */
+async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment) {
+    for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        try {
+            return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment);
+        } catch {
+            // Try again on next iteration; fall through to simplistic on last attempt.
+        }
+    }
+    return simplisticRecombination(existingOverlapText, newFragment);
+}
+
+/**
+ * Recombine two overlapping transcript segments using an LLM with retry logic.
+ *
+ * The newWindowText is split into fragments of at most FRAGMENT_MAX_WORDS words
+ * (~20 seconds).  The first fragment is merged with existingOverlapText via the
+ * LLM (with up to MAX_RETRY_ATTEMPTS retries and a simplistic fallback).
+ * Subsequent fragments are appended programmatically without LLM involvement.
+ *
+ * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
+ * @param {Capabilities} capabilities
+ * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
+ * @param {string} newWindowText - New window transcript text.
+ * @returns {Promise<string>} The recombined transcript text.
+ */
+async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
+    const fragments = splitIntoFragments(newWindowText);
+
+    /** @type {string[]} */
+    const results = [];
+    for (let i = 0; i < fragments.length; i++) {
+        const fragment = fragments[i] ?? "";
+        if (i === 0) {
+            // First fragment: LLM-based recombination (with retry and fallback).
+            const merged = await recombineFragmentWithRetry(
+                makeClient,
+                capabilities,
+                existingOverlapText,
+                fragment
+            );
+            results.push(merged);
+        } else {
+            // Subsequent fragments: append programmatically — no LLM involved.
+            results.push(fragment);
+        }
+    }
+
+    return results.join(" ");
 }
 
 /**
@@ -192,8 +308,12 @@ module.exports = {
     make,
     isAITranscriptRecombinationError,
     RECOMBINATION_MODEL,
+    FRAGMENT_MAX_WORDS,
+    MAX_RETRY_ATTEMPTS,
     SYSTEM_PROMPT,
     makeUserPrompt,
     makeWordSet,
     validateWordSubset,
+    splitIntoFragments,
+    simplisticRecombination,
 };

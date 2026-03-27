@@ -299,10 +299,11 @@ function makeRouter(capabilities) {
      * Response:
      *   { success: true, recombinedText: string }
      *
-     * The LLM is asked to merge the two overlapping strings into a single coherent
-     * transcript.  The result is validated: every word must appear in the union of
-     * words from the two inputs.  On validation failure the endpoint returns 500 so
-     * the caller can fall back to the new-window text.
+     * The new window text is split into ~20-second fragments.  The first fragment is
+     * merged with the existing overlap text using the LLM (mini model).  Subsequent
+     * fragments are appended programmatically.  If the LLM call fails, it is retried
+     * up to MAX_RETRY_ATTEMPTS times; on exhaustion a simplistic "[10-second overlap]"
+     * fallback is used.  The endpoint therefore always returns 200 with a recombinedText.
      */
     router.post("/diary/live/recombine-overlap", express.json(), async (req, res) => {
         const { sessionId, existingOverlapText, newWindowText } = req.body || {};
