@@ -12,6 +12,7 @@ const graph = require("./graph");
 const version = require("./version");
 const assets = require("./assets");
 const audioRecordingSession = require("./audio_recording_session");
+const diaryLive = require("./diary_live");
 
 module.exports = {
     root,
@@ -28,4 +29,5 @@ module.exports = {
     version,
     assets,
     audioRecordingSession,
+    diaryLive,
 };

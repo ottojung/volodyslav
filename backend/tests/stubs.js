@@ -117,7 +117,23 @@ function stubAiTranscriber(capabilities) {
 }
 
 /**
- * Stubs the AI calories capabilities for testing.
+ * Stubs the AI diary questions capabilities for testing.
+ * @param {object} capabilities
+ */
+function stubAiDiaryQuestions(capabilities) {
+    capabilities.aiDiaryQuestions.generateQuestions = jest
+        .fn()
+        .mockResolvedValue([
+            { text: "What part of today felt most meaningful?", intent: "warm_reflective" },
+            { text: "How did that experience make you feel?", intent: "warm_reflective" },
+            { text: "Can you tell me more about what happened?", intent: "clarifying" },
+            { text: "What details do you want to remember later?", intent: "clarifying" },
+            { text: "What small step feels right from here?", intent: "forward" },
+        ]);
+}
+
+
+/**
  * @param {object} capabilities
  * @param {number | 'N/A'} [defaultCalories='N/A'] - The default calorie count to return for any event/context pair, or 'N/A' for unavailable
  */
@@ -518,6 +534,7 @@ module.exports = {
     stubLogger,
     stubAiTranscriber,
     stubAiCalories,
+    stubAiDiaryQuestions,
     stubNotifier,
     stubDailyTasksExecutable,
     stubSleeper,
