@@ -78,6 +78,15 @@ function extensionForMime(mimeType) {
     return EXTENSION_BY_MIME[base] || "webm";
 }
 
+/**
+ * Normalize a MIME type to its lowercased base form (without parameters).
+ * @param {string} mimeType
+ * @returns {string}
+ */
+function normalizeMimeType(mimeType) {
+    return (mimeType.split(";")[0] || "").trim().toLowerCase();
+}
+
 // ---------------------------------------------------------------------------
 // Low-level DB accessors
 // ---------------------------------------------------------------------------
@@ -275,13 +284,22 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 
 /**
  * Deduplicate questions by normalised text, keeping the first occurrence.
+ *
+ * Normalisation is Unicode-aware: it uses NFKD decomposition, lowercasing,
+ * Unicode-category punctuation/symbol removal, and whitespace collapsing.
+ * This ensures correct deduplication for non-Latin scripts such as Cyrillic.
+ *
  * @param {Array<{text: string, intent: string}>} questions
  * @param {string[]} askedTexts
  * @returns {Array<{text: string, intent: string}>}
  */
 function deduplicateQuestions(questions, askedTexts) {
     const normalise = (/** @type {string} */ s) =>
-        s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+        s.normalize("NFKD")
+         .toLowerCase()
+         .replace(/[\p{P}\p{S}]/gu, "")
+         .replace(/\s+/g, " ")
+         .trim();
 
     const seen = new Set(askedTexts.map(normalise));
     /** @type {Array<{text: string, intent: string}>} */
@@ -301,10 +319,26 @@ function deduplicateQuestions(questions, askedTexts) {
 // ---------------------------------------------------------------------------
 
 /**
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} PushAudioStatus
+ */
+
+/**
+ * @typedef {object} PushAudioResult
+ * @property {Array<{text: string, intent: string}>} questions - Deduplicated new questions to ask.
+ * @property {PushAudioStatus} status - Processing status:
+ *   - `ok`: everything succeeded (questions may still be empty if the session is new or the AI found nothing new),
+ *   - `empty_result`: first fragment — no window available yet,
+ *   - `degraded_transcription`: transcription failed; questions array is empty,
+ *   - `degraded_question_generation`: question generation failed; questions array is empty,
+ *   - `unsupported_mime`: mime type is not supported for safe window assembly.
+ */
+
+/**
  * Push a new 10-second audio fragment for a session.
  *
  * On the first fragment the audio is stored and an empty questions array is
- * returned (there is not yet enough audio to form a 20-second window).
+ * returned (status `empty_result`) — there is not yet enough audio to form a
+ * 20-second window.
  *
  * On every subsequent fragment:
  *  1. Binary-concatenates the stored fragment with the new one to form a 20s window.
@@ -313,6 +347,10 @@ function deduplicateQuestions(questions, askedTexts) {
  *  4. Accumulates the merged result into the running transcript.
  *  5. Generates diary questions from the running transcript.
  *  6. Returns deduplicated new questions.
+ *
+ * Fail-soft behavior is preserved: transcription and question-generation
+ * failures do not throw to the caller.  Instead, the status field of the
+ * returned object distinguishes a genuine empty result from a degraded one.
  *
  * All state (last fragment, transcripts, asked questions) is persisted to the
  * temporary LevelDB database so the backend can be rebooted without losing
@@ -323,10 +361,11 @@ function deduplicateQuestions(questions, askedTexts) {
  * @param {Buffer} fragmentBuffer
  * @param {string} mimeType
  * @param {number} fragmentNumber
- * @returns {Promise<Array<{text: string, intent: string}>>}
+ * @returns {Promise<PushAudioResult>}
  */
 async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, fragmentNumber) {
     const { temporary } = capabilities;
+    const normalizedMimeType = normalizeMimeType(mimeType);
 
     // Ensure session is registered and clean up any old sessions.
     await cleanupOldSessionsIfNeeded(temporary, sessionId);
@@ -336,32 +375,43 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     if (lastFragment === null) {
         // First fragment: store it and return no questions yet.
         await writeLastFragment(temporary, sessionId, fragmentBuffer);
-        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, mimeType);
-        return [];
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+        return { questions: [], status: "empty_result" };
     }
 
-    // We have the previous fragment plus the current one: form a 20s window.
+    if (normalizedMimeType !== "audio/webm") {
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber, mimeType: normalizedMimeType },
+            "Live diary push-audio rejected unsupported mime type for safe window assembly"
+        );
+        return { questions: [], status: "unsupported_mime" };
+    }
+
+    // We have the previous fragment plus the current one: form a ~20s window.
+    // See the note in audio_recording_session/service.js: this concatenation is safe
+    // only for audio/webm (streaming Matroska).  The frontend is required to record
+    // in audio/webm for this invariant to hold.
     const window20s = Buffer.concat([lastFragment, fragmentBuffer]);
 
     // Advance the stored fragment to the current one for the next call.
     await writeLastFragment(temporary, sessionId, fragmentBuffer);
-    await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, mimeType);
+    await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
 
     // Transcribe the 20-second window.
     let newWindowTranscript;
     try {
-        newWindowTranscript = await transcribeBuffer(window20s, mimeType, capabilities);
+        newWindowTranscript = await transcribeBuffer(window20s, normalizedMimeType, capabilities);
     } catch (error) {
         capabilities.logger.logError(
             { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
             "Live diary transcription failed"
         );
-        return [];
+        return { questions: [], status: "degraded_transcription" };
     }
 
     if (!newWindowTranscript) {
         // Silent audio — nothing to recombine or question.
-        return [];
+        return { questions: [], status: "ok" };
     }
 
     // LLM-recombine with the previous window transcript (with programmatic fallback).
@@ -412,7 +462,7 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
             { sessionId, error: error instanceof Error ? error.message : String(error) },
             "Live diary question generation failed"
         );
-        return [];
+        return { questions: [], status: "degraded_question_generation" };
     }
 
     const newQuestions = deduplicateQuestions(allQuestions, askedQuestions);
@@ -424,7 +474,7 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
         ]);
     }
 
-    return newQuestions;
+    return { questions: newQuestions, status: "ok" };
 }
 
 module.exports = {

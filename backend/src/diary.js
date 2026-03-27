@@ -121,8 +121,11 @@ async function processDiaryAudios(capabilities) {
         const event = {
             id,
             date,
-            original: `diary [when 0 hours ago] [audiorecording]`,
-            input: `diary [when 0 hours ago] [audiorecording]`,
+            // `original` stores the source filename — the honest "original input" from the
+            // filesystem perspective.  `input` uses a canonical diary tag that makes the
+            // ingestion source explicit rather than synthetic "when 0 hours ago" phrasing.
+            original: filename,
+            input: `diary [audiorecording] [source filesystem_ingest]`,
             creator,
         };
 

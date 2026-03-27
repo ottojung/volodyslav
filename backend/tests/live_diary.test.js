@@ -59,8 +59,9 @@ function makeCapabilities() {
 describe("pushAudio", () => {
     it("returns empty questions on the first fragment", async () => {
         const caps = makeCapabilities();
-        const questions = await pushAudio(caps, "sess-1", Buffer.from("audio1"), "audio/webm", 1);
-        expect(questions).toEqual([]);
+        const result = await pushAudio(caps, "sess-1", Buffer.from("audio1"), "audio/webm", 1);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("empty_result");
         expect(caps.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 
@@ -74,10 +75,11 @@ describe("pushAudio", () => {
     it("returns questions on the second fragment when transcription succeeds", async () => {
         const caps = makeCapabilities();
         await pushAudio(caps, "sess-q", Buffer.from("audio1"), "audio/webm", 1);
-        const questions = await pushAudio(caps, "sess-q", Buffer.from("audio2"), "audio/webm", 2);
+        const result = await pushAudio(caps, "sess-q", Buffer.from("audio2"), "audio/webm", 2);
         // The stubbed generateQuestions returns 5 questions.
-        expect(Array.isArray(questions)).toBe(true);
-        expect(questions.length).toBeGreaterThan(0);
+        expect(Array.isArray(result.questions)).toBe(true);
+        expect(result.questions.length).toBeGreaterThan(0);
+        expect(result.status).toBe("ok");
     });
 
     it("uses recombination on the third fragment (two windows available)", async () => {
@@ -96,8 +98,9 @@ describe("pushAudio", () => {
             .mockRejectedValue(new Error("API error"));
 
         await pushAudio(caps, "sess-fail", Buffer.from("a1"), "audio/webm", 1);
-        const questions = await pushAudio(caps, "sess-fail", Buffer.from("a2"), "audio/webm", 2);
-        expect(questions).toEqual([]);
+        const result = await pushAudio(caps, "sess-fail", Buffer.from("a2"), "audio/webm", 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("degraded_transcription");
     });
 
     it("returns empty questions when transcription returns empty string (silence)", async () => {
@@ -117,8 +120,9 @@ describe("pushAudio", () => {
         });
 
         await pushAudio(caps, "sess-silent", Buffer.from("a1"), "audio/webm", 1);
-        const questions = await pushAudio(caps, "sess-silent", Buffer.from("a2"), "audio/webm", 2);
-        expect(questions).toEqual([]);
+        const result = await pushAudio(caps, "sess-silent", Buffer.from("a2"), "audio/webm", 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("ok");
     });
 
     it("deduplicates repeated questions across consecutive calls", async () => {
@@ -130,13 +134,44 @@ describe("pushAudio", () => {
         await pushAudio(caps, "sess-dedup", Buffer.from("a1"), "audio/webm", 1);
 
         // Fragment 2: first window → question returned.
-        const q2 = await pushAudio(caps, "sess-dedup", Buffer.from("a2"), "audio/webm", 2);
-        expect(q2).toHaveLength(1);
-        expect(q2[0].text).toBe("Same question?");
+        const r2 = await pushAudio(caps, "sess-dedup", Buffer.from("a2"), "audio/webm", 2);
+        expect(r2.questions).toHaveLength(1);
+        expect(r2.questions[0].text).toBe("Same question?");
+        expect(r2.status).toBe("ok");
 
         // Fragment 3: same question → should be deduplicated out.
-        const q3 = await pushAudio(caps, "sess-dedup", Buffer.from("a3"), "audio/webm", 3);
-        expect(q3).toHaveLength(0);
+        const r3 = await pushAudio(caps, "sess-dedup", Buffer.from("a3"), "audio/webm", 3);
+        expect(r3.questions).toHaveLength(0);
+        expect(r3.status).toBe("ok");
+    });
+
+    it("deduplicates non-ASCII (Cyrillic) questions using Unicode-aware normalization", async () => {
+        const caps = makeCapabilities();
+        // Simulate an AI returning the same Ukrainian question twice.
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockResolvedValue([{ text: "Як ти почуваєшся?", intent: "warm_reflective" }]);
+
+        await pushAudio(caps, "sess-unicode", Buffer.from("a1"), "audio/webm", 1);
+
+        // Fragment 2: question returned for the first time.
+        const r2 = await pushAudio(caps, "sess-unicode", Buffer.from("a2"), "audio/webm", 2);
+        expect(r2.questions).toHaveLength(1);
+        expect(r2.questions[0].text).toBe("Як ти почуваєшся?");
+
+        // Fragment 3: the same Cyrillic question → must be deduplicated out.
+        const r3 = await pushAudio(caps, "sess-unicode", Buffer.from("a3"), "audio/webm", 3);
+        expect(r3.questions).toHaveLength(0);
+    });
+
+    it("returns unsupported_mime when a non-webm fragment is pushed after session bootstrap", async () => {
+        const caps = makeCapabilities();
+        await pushAudio(caps, "sess-mime", Buffer.from("a1"), "audio/webm", 1);
+
+        const result = await pushAudio(caps, "sess-mime", Buffer.from("a2"), "audio/ogg", 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("unsupported_mime");
+        expect(caps.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 });
 
@@ -151,9 +186,10 @@ describe("session cleanup on new session", () => {
         await pushAudio(caps, "old-session", Buffer.from("a2"), "audio/webm", 2);
 
         // Start a completely new session B. Old session data should be cleaned.
-        const q = await pushAudio(caps, "new-session", Buffer.from("b1"), "audio/webm", 1);
+        const r = await pushAudio(caps, "new-session", Buffer.from("b1"), "audio/webm", 1);
         // First fragment of new session → no questions yet.
-        expect(q).toEqual([]);
+        expect(r.questions).toEqual([]);
+        expect(r.status).toBe("empty_result");
 
         // The second push under new-session forms a window and transcribes — not old-session state.
         await pushAudio(caps, "new-session", Buffer.from("b2"), "audio/webm", 2);
@@ -227,8 +263,8 @@ describe("backend reboot continuity", () => {
         const caps1 = makeCapabilitiesWithWorkDir(sharedWorkDir);
         caps1.aiDiaryQuestions.generateQuestions = jest.fn().mockResolvedValue(sameQuestion);
         await pushAudio(caps1, "dedup-session", Buffer.from("f1"), "audio/webm", 1);
-        const q2 = await pushAudio(caps1, "dedup-session", Buffer.from("f2"), "audio/webm", 2);
-        expect(q2[0].text).toBe("What matters most?");
+        const r2 = await pushAudio(caps1, "dedup-session", Buffer.from("f2"), "audio/webm", 2);
+        expect(r2.questions[0].text).toBe("What matters most?");
 
         // Simulate clean shutdown.
         await caps1.temporary.close();
@@ -237,7 +273,7 @@ describe("backend reboot continuity", () => {
         const caps2 = makeCapabilitiesWithWorkDir(sharedWorkDir);
         caps2.aiDiaryQuestions.generateQuestions = jest.fn().mockResolvedValue(sameQuestion);
         await pushAudio(caps2, "dedup-session", Buffer.from("f3"), "audio/webm", 3);
-        const q4 = await pushAudio(caps2, "dedup-session", Buffer.from("f4"), "audio/webm", 4);
-        expect(q4).toHaveLength(0);
+        const r4 = await pushAudio(caps2, "dedup-session", Buffer.from("f4"), "audio/webm", 4);
+        expect(r4.questions).toHaveLength(0);
     });
 });

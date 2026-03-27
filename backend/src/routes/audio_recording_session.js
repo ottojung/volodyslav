@@ -79,8 +79,8 @@ function makeRouter(capabilities) {
             return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
         }
         const normalizedMimeType = parseAudioMimeType(mimeType);
-        if (normalizedMimeType === null) {
-            return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be an audio/* type" });
+        if (normalizedMimeType !== "audio/webm") {
+            return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be audio/webm" });
         }
 
         try {
@@ -145,10 +145,12 @@ function makeRouter(capabilities) {
             const endMsNum = Number(endMs);
             const sequenceNum = Number(sequence);
 
-            // Normalize mimeType: accept only audio/* types; fall back to audio/webm
-            // if the client didn't provide one (e.g., older clients).
+            // Normalize mimeType: audio/webm is required for safe chunk assembly.
             const rawMimeType = typeof mimeType === "string" ? mimeType : String(chunkFile.mimetype || "");
-            const normalizedChunkMimeType = parseAudioMimeType(rawMimeType) || "audio/webm";
+            const normalizedChunkMimeType = parseAudioMimeType(rawMimeType);
+            if (normalizedChunkMimeType !== "audio/webm") {
+                return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be audio/webm" });
+            }
 
             try {
                 const result = await uploadChunk(capabilities, sessionId, {

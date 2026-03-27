@@ -61,8 +61,8 @@ describe("processDiaryAudios", () => {
             expect(entry).toMatchObject({
                 id: expect.any(Object),
                 date,
-                original: "diary [when 0 hours ago] [audiorecording]",
-                input: "diary [when 0 hours ago] [audiorecording]",
+                original: filenames[i],
+                input: "diary [audiorecording] [source filesystem_ingest]",
                 creator: expect.any(Object),
             });
             expect(dateFormatter.format(capabilities, entry.date)).toBe(

@@ -65,7 +65,16 @@ function makeRouter(capabilities) {
      *   fragmentNumber - integer sequence number, 1-based (required)
      *
      * Response:
-     *   { success: true, questions: Array<{text: string, intent: string}> }
+     *   {
+     *     success: true,
+     *     questions: Array<{text: string, intent: string}>,
+     *     status:
+     *       | "ok"
+     *       | "empty_result"
+     *       | "degraded_transcription"
+     *       | "degraded_question_generation"
+     *       | "unsupported_mime"
+     *   }
      */
     router.post("/diary/live/push-audio", upload.single("audio"), async (req, res) => {
         const audioFile = req.file;
@@ -93,7 +102,7 @@ function makeRouter(capabilities) {
             "Live diary push-audio received"
         );
 
-        const questions = await pushAudio(
+        const result = await pushAudio(
             capabilities,
             sessionId,
             audioFile.buffer,
@@ -101,7 +110,7 @@ function makeRouter(capabilities) {
             fragmentNumber
         );
 
-        return res.json({ success: true, questions });
+        return res.json({ success: true, questions: result.questions, status: result.status });
     });
 
     return router;
