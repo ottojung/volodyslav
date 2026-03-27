@@ -55,4 +55,3 @@ describe("audio recording session route MIME validation", () => {
         expect(res.body.error).toMatch(/must be audio\/webm/i);
     });
 });
-
