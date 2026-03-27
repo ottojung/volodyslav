@@ -1,14 +1,10 @@
 import { screen, waitFor, act, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
-jest.mock("../src/DescriptionEntry/api.js", () => ({
-    submitEntry: jest.fn(),
-}));
 jest.mock("../src/DescriptionEntry/logger.js", () => ({
     logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
-import { submitEntry } from "../src/DescriptionEntry/api.js";
 import {
     currentStore,
     injectSnapshot,
@@ -44,7 +40,21 @@ describe("AudioDiary persistence: submit lifecycle", () => {
     });
 
     it("keeps session ID when submit fails", async () => {
-        submitEntry.mockRejectedValueOnce(new Error("network fail"));
+        // Override the fetch mock to fail for diary-audio
+        const originalFetch = global.fetch;
+        global.fetch = jest.fn().mockImplementation((url, options) => {
+            const urlStr = String(url);
+            if (options && options.method === "POST" && urlStr.includes("/entries/diary-audio")) {
+                return Promise.resolve({
+                    ok: false,
+                    status: 500,
+                    json: () => Promise.resolve({ error: "network fail" }),
+                    blob: () => Promise.resolve(new Blob()),
+                });
+            }
+            return originalFetch(url, options);
+        });
+
         injectSnapshot({
             recorderState: "stopped",
             elapsedSeconds: 30,

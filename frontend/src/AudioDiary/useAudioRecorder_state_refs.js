@@ -10,7 +10,6 @@ import { useRef } from "react";
  *
  * @param {RecorderState} recorderState
  * @param {number} elapsedSeconds
- * @param {string} _note - unused, kept for call-site compatibility
  * @returns {{
  *   audioBlobRef: import("react").MutableRefObject<Blob | null>,
  *   isRestoredPauseRef: import("react").MutableRefObject<boolean>,
@@ -18,7 +17,7 @@ import { useRef } from "react";
  *   elapsedSecondsRef: import("react").MutableRefObject<number>,
  * }}
  */
-export function useAudioRecorderStateRefs(recorderState, elapsedSeconds, _note) {
+export function useAudioRecorderStateRefs(recorderState, elapsedSeconds) {
     /** @type {import("react").MutableRefObject<Blob | null>} */
     const audioBlobRef = useRef(null);
     /** @type {import("react").MutableRefObject<boolean>} */

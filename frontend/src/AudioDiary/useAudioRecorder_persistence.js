@@ -2,14 +2,14 @@
  * Persistence helper hook for useAudioRecorder.
  *
  * Backend-driven: on mount, restores session from backend using the stored
- * session ID. No IndexedDB or blob snapshot storage.
+ * session ID. Uses the unified restore endpoint for a single round-trip.
  *
  * @module useAudioRecorder_persistence
  */
 
 import { useEffect } from "react";
 import { loadSessionId, clearSessionId } from "./recording_storage.js";
-import { getSession, fetchFinalAudio } from "./session_api.js";
+import { getSessionRestore, fetchFinalAudio } from "./session_api.js";
 
 /**
  * @typedef {import('./audio_helpers.js').RecorderState} RecorderState
@@ -67,9 +67,9 @@ export function useAudioRecorderPersistence(args) {
                 return;
             }
 
-            let session;
+            let restore;
             try {
-                session = await getSession(sessionId);
+                restore = await getSessionRestore(sessionId);
             } catch {
                 // Backend unavailable or error: skip restore
                 return;
@@ -79,7 +79,7 @@ export function useAudioRecorderPersistence(args) {
                 return;
             }
 
-            if (!session) {
+            if (!restore) {
                 // Session not found on backend: clear stale local id
                 clearSessionId();
                 return;
@@ -87,24 +87,26 @@ export function useAudioRecorderPersistence(args) {
 
             // Restore state from backend session
             sessionIdRef.current = sessionId;
-            mimeTypeRef.current = session.mimeType || "";
+            mimeTypeRef.current = restore.mimeType || "";
             // Seed the sequence counter so resumed uploads continue from the right position
-            sequenceRef.current = session.lastSequence;
+            sequenceRef.current = restore.lastSequence;
 
-            if (session.status === "stopped") {
+            if (restore.status === "stopped") {
                 recorderStateRef.current = "stopped";
                 setRecorderState("stopped");
 
-                // Fetch final audio for preview
-                try {
-                    const blob = await fetchFinalAudio(sessionId);
-                    if (!isMountedRef.current) return;
-                    mimeTypeRef.current = blob.type;
-                    audioBlobRef.current = blob;
-                    setAudioBlob(blob);
-                    setAudioUrl(URL.createObjectURL(blob));
-                } catch {
-                    // Can't restore audio; user will need to re-record
+                // Fetch final audio for preview if available
+                if (restore.hasFinalAudio) {
+                    try {
+                        const blob = await fetchFinalAudio(sessionId);
+                        if (!isMountedRef.current) return;
+                        mimeTypeRef.current = blob.type;
+                        audioBlobRef.current = blob;
+                        setAudioBlob(blob);
+                        setAudioUrl(URL.createObjectURL(blob));
+                    } catch {
+                        // Can't restore audio; user will need to re-record
+                    }
                 }
             } else {
                 recorderStateRef.current = "paused";
@@ -116,8 +118,8 @@ export function useAudioRecorderPersistence(args) {
                 return;
             }
 
-            elapsedSecondsRef.current = session.elapsedSeconds || 0;
-            setElapsedSeconds(session.elapsedSeconds || 0);
+            elapsedSecondsRef.current = restore.elapsedSeconds || 0;
+            setElapsedSeconds(restore.elapsedSeconds || 0);
             setHasRestoredSession(true);
         }
         void tryRestore();

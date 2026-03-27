@@ -12,8 +12,8 @@ import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-jest.mock("../src/DescriptionEntry/api.js", () => ({
-    submitEntry: jest.fn(),
+jest.mock("../src/AudioDiary/diary_audio_api.js", () => ({
+    submitDiaryAudio: jest.fn(),
 }));
 
 jest.mock("../src/DescriptionEntry/logger.js", () => ({
@@ -34,7 +34,7 @@ jest.mock("react-router-dom", () => ({
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 
 import AudioDiary from "../src/AudioDiary/AudioDiary.jsx";
-import { submitEntry } from "../src/DescriptionEntry/api.js";
+import { submitDiaryAudio } from "../src/AudioDiary/diary_audio_api.js";
 
 // ─── MediaRecorder mock ──────────────────────────────────────────────────────
 
@@ -201,12 +201,12 @@ afterAll(() => {
 
 beforeEach(() => {
     mockNavigate.mockClear();
-    submitEntry.mockReset();
+    submitDiaryAudio.mockReset();
     mockGetUserMedia.mockClear();
     mockCreateObjectURL.mockClear();
     mockRevokeObjectURL.mockClear();
     MockMediaRecorder._instance = null;
-    submitEntry.mockResolvedValue({ success: true, entry: { id: "entry-123" } });
+    submitDiaryAudio.mockResolvedValue({ entry: { id: "entry-123" } });
 });
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -435,7 +435,7 @@ describe("AudioDiary page", () => {
 
     // ── Submission ───────────────────────────────────────────────────────────
 
-    it("submit calls submitEntry with diary [audiorecording] and one audio File", async () => {
+    it("submit calls submitDiaryAudio with the audio blob", async () => {
         renderAudioDiary();
 
         await act(async () => {
@@ -459,18 +459,16 @@ describe("AudioDiary page", () => {
         });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledTimes(1);
+            expect(submitDiaryAudio).toHaveBeenCalledTimes(1);
         });
 
-        const [rawInput, _reqId, files] = submitEntry.mock.calls[0];
-        expect(rawInput).toBe("diary [audiorecording]");
-        expect(_reqId).toBeUndefined();
-        expect(Array.isArray(files)).toBe(true);
-        expect(files).toHaveLength(1);
-        expect(files[0]).toBeInstanceOf(File);
+        const [audioBlob, mimeType, note] = submitDiaryAudio.mock.calls[0];
+        expect(audioBlob).toBeInstanceOf(Blob);
+        expect(mimeType).toMatch(/^audio\//);
+        expect(note).toBe("");
     });
 
-    it("submitted audio file has webm extension and audio/webm MIME type", async () => {
+    it("submitted audio: mimeType is audio/webm", async () => {
         renderAudioDiary();
 
         await act(async () => {
@@ -494,15 +492,14 @@ describe("AudioDiary page", () => {
         });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledTimes(1);
+            expect(submitDiaryAudio).toHaveBeenCalledTimes(1);
         });
 
-        const [, , files] = submitEntry.mock.calls[0];
-        expect(files[0].name).toBe("diary-audio.webm");
-        expect(files[0].type).toMatch(/^audio\/webm/);
+        const [, mimeType] = submitDiaryAudio.mock.calls[0];
+        expect(mimeType).toMatch(/^audio\/webm/);
     });
 
-    it("submit with a note includes the note in rawInput", async () => {
+    it("submit with a note passes note to submitDiaryAudio", async () => {
         renderAudioDiary();
 
         await act(async () => {
@@ -530,16 +527,15 @@ describe("AudioDiary page", () => {
         });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledTimes(1);
+            expect(submitDiaryAudio).toHaveBeenCalledTimes(1);
         });
 
-        const [rawInput] = submitEntry.mock.calls[0];
-        expect(rawInput).toBe("diary [audiorecording] morning reflection");
+        const [, , note] = submitDiaryAudio.mock.calls[0];
+        expect(note).toBe("morning reflection");
     });
 
     it("successful submit navigates to the created entry detail page", async () => {
-        submitEntry.mockResolvedValue({
-            success: true,
+        submitDiaryAudio.mockResolvedValue({
             entry: { id: "abc-123" },
         });
 
@@ -571,7 +567,7 @@ describe("AudioDiary page", () => {
     });
 
     it("submit failure shows an error message", async () => {
-        submitEntry.mockRejectedValue(new Error("Network error"));
+        submitDiaryAudio.mockRejectedValue(new Error("Network error"));
 
         renderAudioDiary();
 

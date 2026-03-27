@@ -5,6 +5,7 @@
  */
 
 import { API_BASE_URL } from "../api_base_url.js";
+import { extensionForMime } from "./audio_helpers.js";
 
 const DIARY_LIVE_BASE = `${API_BASE_URL}/diary/live`;
 
@@ -59,25 +60,4 @@ export async function pushAudio(params) {
     }
 
     return { questions: data.questions };
-}
-
-/** @type {Record<string, string>} */
-const MIME_EXTENSION_MAP = {
-    "audio/webm": "webm",
-    "audio/ogg": "ogg",
-    "audio/wav": "wav",
-    "audio/wave": "wav",
-    "audio/mpeg": "mp3",
-    "audio/mp4": "m4a",
-    "audio/flac": "flac",
-};
-
-/**
- * Returns the file extension for a MIME type.
- * @param {string} mimeType
- * @returns {string}
- */
-function extensionForMime(mimeType) {
-    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
-    return MIME_EXTENSION_MAP[base] || "webm";
 }

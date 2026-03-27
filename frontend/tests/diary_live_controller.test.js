@@ -1,98 +1,53 @@
 /**
  * Tests for useDiaryLiveQuestioningController.
+ *
+ * The controller now manages display state only.  Live diary questioning runs
+ * server-side as part of chunk upload; questions arrive via `onQuestions()`.
  */
 
 import { renderHook, act } from "@testing-library/react";
-
-// Mock the API module before importing the hook.
-jest.mock("../src/AudioDiary/diary_live_api.js", () => ({
-    pushAudio: jest.fn(),
-}));
-
 import { useDiaryLiveQuestioningController } from "../src/AudioDiary/useDiaryLiveQuestioningController.js";
-import { pushAudio } from "../src/AudioDiary/diary_live_api.js";
-
-function makeBlob(content = "audio") {
-    return new Blob([content], { type: "audio/webm" });
-}
-
-beforeEach(() => {
-    jest.clearAllMocks();
-    // Default: server returns no questions.
-    pushAudio.mockResolvedValue({ questions: [] });
-});
 
 // ─── startLive / stopLive ─────────────────────────────────────────────────────
 
 describe("startLive", () => {
-    it("resets displayedGenerations and liveErrorMessage", () => {
+    it("resets displayedGenerations", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
-        act(() => result.current.startLive("sess-1", "audio/webm"));
+        act(() => result.current.startLive());
 
         expect(result.current.displayedGenerations).toEqual([]);
-        expect(result.current.liveErrorMessage).toBeNull();
     });
 });
 
 describe("stopLive", () => {
-    it("ignores fragments sent after stopLive is called", async () => {
+    it("ignores questions sent after stopLive is called", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
-        act(() => result.current.startLive("sess-stop", "audio/webm"));
+        act(() => result.current.startLive());
         act(() => result.current.stopLive());
 
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 0, 10000);
+        act(() => {
+            result.current.onQuestions([
+                { text: "Should be ignored", intent: "clarifying" },
+            ], 1);
         });
 
-        // pushAudio should NOT have been called after stop.
-        expect(pushAudio).not.toHaveBeenCalled();
+        expect(result.current.displayedGenerations).toHaveLength(0);
     });
 });
 
-// ─── onFragment ───────────────────────────────────────────────────────────────
+// ─── onQuestions ──────────────────────────────────────────────────────────────
 
-describe("onFragment", () => {
-    it("calls pushAudio with sessionId, mimeType, and an incrementing fragmentNumber", async () => {
+describe("onQuestions", () => {
+    it("adds a QuestionGeneration when called with questions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
+        act(() => result.current.startLive());
 
-        act(() => result.current.startLive("sess-a", "audio/ogg"));
-
-        await act(async () => {
-            await result.current.onFragment(makeBlob("f1"), 0, 10000);
-        });
-
-        expect(pushAudio).toHaveBeenCalledWith(
-            expect.objectContaining({
-                sessionId: "sess-a",
-                fragmentNumber: 1,
-            })
-        );
-
-        await act(async () => {
-            await result.current.onFragment(makeBlob("f2"), 10000, 20000);
-        });
-
-        expect(pushAudio).toHaveBeenCalledWith(
-            expect.objectContaining({
-                fragmentNumber: 2,
-            })
-        );
-    });
-
-    it("adds a QuestionGeneration when the server returns questions", async () => {
-        pushAudio.mockResolvedValue({
-            questions: [
+        act(() => {
+            result.current.onQuestions([
                 { text: "How did that make you feel?", intent: "warm_reflective" },
-            ],
-        });
-
-        const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive("sess-q", "audio/webm"));
-
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 0, 10000);
+            ], 1);
         });
 
         expect(result.current.displayedGenerations).toHaveLength(1);
@@ -101,77 +56,52 @@ describe("onFragment", () => {
         );
     });
 
-    it("does not add a generation when the server returns empty questions", async () => {
-        pushAudio.mockResolvedValue({ questions: [] });
-
+    it("does not add a generation when called with empty questions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive("sess-noq", "audio/webm"));
+        act(() => result.current.startLive());
 
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 0, 10000);
+        act(() => {
+            result.current.onQuestions([], 1);
         });
 
         expect(result.current.displayedGenerations).toHaveLength(0);
     });
 
-    it("sets liveErrorMessage when pushAudio rejects", async () => {
-        pushAudio.mockRejectedValue(new Error("network error"));
-
+    it("uses provided chunk sequence as milestoneNumber", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive("sess-err", "audio/webm"));
+        act(() => result.current.startLive());
 
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 0, 10000);
+        act(() => {
+            result.current.onQuestions([{ text: "Q1", intent: "clarifying" }], 1);
+        });
+        act(() => {
+            result.current.onQuestions([{ text: "Q2", intent: "clarifying" }], 3);
         });
 
-        expect(result.current.liveErrorMessage).not.toBeNull();
+        expect(result.current.displayedGenerations[0].milestoneNumber).toBe(3);
+        expect(result.current.displayedGenerations[1].milestoneNumber).toBe(1);
     });
 
-    it("clears liveErrorMessage after a successful call", async () => {
-        pushAudio
-            .mockRejectedValueOnce(new Error("transient error"))
-            .mockResolvedValue({ questions: [] });
-
+    it("trims displayed generations to MAX_VISIBLE_GENERATIONS (4)", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive("sess-recover", "audio/webm"));
-
-        // First call: fails.
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 0, 10000);
-        });
-        expect(result.current.liveErrorMessage).not.toBeNull();
-
-        // Second call: succeeds.
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 10000, 20000);
-        });
-        expect(result.current.liveErrorMessage).toBeNull();
-    });
-
-    it("trims displayed generations to MAX_VISIBLE_GENERATIONS (4)", async () => {
-        pushAudio.mockResolvedValue({
-            questions: [{ text: "A question", intent: "clarifying" }],
-        });
-
-        const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive("sess-trim", "audio/webm"));
+        act(() => result.current.startLive());
 
         for (let i = 0; i < 6; i++) {
-            await act(async () => {
-                await result.current.onFragment(makeBlob(), i * 10000, (i + 1) * 10000);
+            act(() => {
+                result.current.onQuestions([{ text: `Q${i}`, intent: "clarifying" }], i + 1);
             });
         }
 
         expect(result.current.displayedGenerations.length).toBeLessThanOrEqual(4);
     });
 
-    it("ignores the fragment if called before startLive", async () => {
+    it("ignores questions if called before startLive", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
-        await act(async () => {
-            await result.current.onFragment(makeBlob(), 0, 10000);
+        act(() => {
+            result.current.onQuestions([{ text: "Ignored", intent: "clarifying" }], 1);
         });
 
-        expect(pushAudio).not.toHaveBeenCalled();
+        expect(result.current.displayedGenerations).toHaveLength(0);
     });
 });

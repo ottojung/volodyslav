@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Alert,
@@ -13,15 +13,15 @@ import {
     Field,
 } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
-import { submitEntry } from "../DescriptionEntry/api.js";
 import { useAudioRecorder } from "./useAudioRecorder.js";
-import { formatTime, extensionForMime, generateSessionId } from "./audio_helpers.js";
+import { formatTime } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
 import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
 import RestoredSessionBanner from "./RestoredSessionBanner.jsx";
 import RecorderStatusBadge from "./RecorderStatusBadge.jsx";
 import LiveQuestionsPanel from "./LiveQuestionsPanel.jsx";
 import { useDiaryLiveQuestioningController } from "./useDiaryLiveQuestioningController.js";
+import { submitDiaryAudio } from "./diary_audio_api.js";
 
 const pulseRing = keyframes`
     0%   { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.5); }
@@ -42,14 +42,10 @@ export default function AudioDiary() {
 
     const {
         displayedGenerations,
-        liveErrorMessage,
-        onFragment: liveOnFragment,
+        onQuestions: liveOnQuestions,
         startLive,
         stopLive,
     } = useDiaryLiveQuestioningController();
-
-    /** @type {import("react").MutableRefObject<string>} */
-    const liveSessionIdRef = useRef("");
 
     const {
         recorderState,
@@ -69,19 +65,18 @@ export default function AudioDiary() {
         handleStop: handleStopBase,
         handleDiscard: handleDiscardBase,
         clearPersistedSession,
-    } = useAudioRecorder({ extraOnChunk: liveOnFragment });
+    } = useAudioRecorder({ onQuestions: liveOnQuestions });
 
     // Wrap handleStart to also start live questioning.
     const handleStart = useCallback(async () => {
-        liveSessionIdRef.current = generateSessionId();
         try {
             await handleStartBase();
-            startLive(liveSessionIdRef.current, mimeTypeRef.current || "audio/webm");
+            startLive();
         } catch (error) {
             // Ensure live questioning is not left running if recorder start fails.
             stopLive();
         }
-    }, [handleStartBase, startLive, stopLive, mimeTypeRef]);
+    }, [handleStartBase, startLive, stopLive]);
 
     // Wrap handleStop to also stop live questioning.
     const handleStop = useCallback(async () => {
@@ -107,17 +102,11 @@ export default function AudioDiary() {
         setErrorMessage("");
 
         try {
-            const ext = extensionForMime(mimeTypeRef.current);
-            const filename = `diary-audio.${ext}`;
-            const file = new File([audioBlob], filename, {
-                type: mimeTypeRef.current || "audio/webm",
-            });
-
-            const rawInput = note.trim()
-                ? `diary [audiorecording] ${note.trim()}`
-                : "diary [audiorecording]";
-
-            const result = await submitEntry(rawInput, undefined, [file]);
+            const result = await submitDiaryAudio(
+                audioBlob,
+                mimeTypeRef.current || "audio/webm",
+                note
+            );
 
             if (!isMountedRef.current) {
                 return;
@@ -311,7 +300,7 @@ export default function AudioDiary() {
                 {(isRecording || isPaused) && (
                     <LiveQuestionsPanel
                         displayedGenerations={displayedGenerations}
-                        errorMessage={liveErrorMessage}
+                        errorMessage={null}
                     />
                 )}
 

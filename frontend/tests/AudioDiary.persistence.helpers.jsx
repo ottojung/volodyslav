@@ -2,7 +2,6 @@ import React from "react";
 import { render, cleanup } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { submitEntry } from "../src/DescriptionEntry/api.js";
 import AudioDiary from "../src/AudioDiary/AudioDiary.jsx";
 
 /** @returns {Promise<void>} */
@@ -99,6 +98,16 @@ function makeFetchMock() {
             });
         }
 
+        // POST /entries/diary-audio
+        if (options && options.method === "POST" && urlStr.includes("/entries/diary-audio")) {
+            return Promise.resolve({
+                ok: true,
+                status: 201,
+                json: () => Promise.resolve({ success: true, entry: { id: "entry-123" } }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
         // POST /audio-recording-session/start
         if (options && options.method === "POST" && urlStr.includes("/start")) {
             return Promise.resolve({
@@ -151,6 +160,35 @@ function makeFetchMock() {
                 status: 200,
                 json: () => Promise.resolve({}),
                 blob: () => Promise.resolve(new Blob(["backend-audio"], { type: "audio/webm" })),
+            });
+        }
+
+        // GET /audio-recording-session/:id/restore
+        if (!options && urlStr.includes("/restore")) {
+            if (mockSessionData) {
+                const session = mockSessionData;
+                const hasFinalAudio = session.status === "stopped";
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        success: true,
+                        restore: {
+                            status: session.status,
+                            mimeType: session.mimeType || "audio/webm",
+                            elapsedSeconds: session.elapsedSeconds || 0,
+                            lastSequence: session.lastSequence || 0,
+                            hasFinalAudio,
+                        },
+                    }),
+                    blob: () => Promise.resolve(new Blob()),
+                });
+            }
+            return Promise.resolve({
+                ok: false,
+                status: 404,
+                json: () => Promise.resolve({ success: false, error: "Not found" }),
+                blob: () => Promise.resolve(new Blob()),
             });
         }
 
@@ -207,8 +245,6 @@ export function setupAudioDiaryPersistenceHarness() {
 
     beforeEach(() => {
         mockNavigate.mockClear();
-        submitEntry.mockReset();
-        submitEntry.mockResolvedValue({ success: true, entry: { id: "entry-123" } });
         mockGetUserMedia.mockClear();
         MockMediaRecorder._instance = null;
 

@@ -6,8 +6,6 @@ import {
     saveSessionId,
     loadSessionId,
     clearSessionId,
-    clearRecordingSnapshot,
-    isRecordingStorageError,
 } from "../src/AudioDiary/recording_storage.js";
 
 /** @type {Map<string, string>} */
@@ -41,22 +39,6 @@ afterEach(() => {
     });
 });
 
-describe("recording_storage: isRecordingStorageError", () => {
-    it("returns false for plain Error", () => {
-        expect(isRecordingStorageError(new Error("test"))).toBe(false);
-    });
-
-    it("returns false for null", () => {
-        expect(isRecordingStorageError(null)).toBe(false);
-    });
-
-    it("returns false for any value", () => {
-        expect(isRecordingStorageError("string")).toBe(false);
-        expect(isRecordingStorageError(42)).toBe(false);
-        expect(isRecordingStorageError({})).toBe(false);
-    });
-});
-
 describe("recording_storage: saveSessionId / loadSessionId / clearSessionId", () => {
     it("saves and loads a session ID", () => {
         saveSessionId("test-session-123");
@@ -77,14 +59,6 @@ describe("recording_storage: saveSessionId / loadSessionId / clearSessionId", ()
         saveSessionId("first-session");
         saveSessionId("second-session");
         expect(loadSessionId()).toBe("second-session");
-    });
-});
-
-describe("recording_storage: clearRecordingSnapshot (deprecated compat)", () => {
-    it("resolves without error and clears session ID", async () => {
-        saveSessionId("some-session");
-        await expect(clearRecordingSnapshot()).resolves.toBeUndefined();
-        expect(loadSessionId()).toBeNull();
     });
 });
 

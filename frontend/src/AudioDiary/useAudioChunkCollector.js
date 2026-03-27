@@ -1,61 +1,33 @@
 /**
- * React hook that manages an AudioChunkCollector for useAudioRecorder.
+ * React hook that provides stable no-op chunk collector callbacks for useAudioRecorder.
+ *
+ * This keeps useAudioRecorder's callback wiring unchanged while avoiding
+ * unnecessary fragment accumulation/combination work now that emitted chunks
+ * are no longer consumed by runtime code.
  *
  * @module useAudioChunkCollector
  */
 
-import { useRef, useState, useCallback } from "react";
-import {
-    makeAudioChunkCollector,
-    initialAudioChunks,
-} from "./audio_chunk_collector.js";
-
-/** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
+import { useCallback } from "react";
 
 /**
- * @param {import("react").MutableRefObject<boolean>} isMountedRef
  * @returns {{
- *   audioChunks: AudioChunk[],
  *   pushChunk: (data: Blob, startMs: number, endMs: number) => void,
- *   resetAudioChunks: () => void
+ *   resetCollector: () => void
  * }}
  */
-export function useAudioChunkCollector(isMountedRef) {
-    /** @type {[AudioChunk[], import("react").Dispatch<import("react").SetStateAction<AudioChunk[]>>]} */
-    const [audioChunks, setAudioChunks] = useState(initialAudioChunks());
-
-    /** @type {import("react").MutableRefObject<ReturnType<typeof makeAudioChunkCollector> | null>} */
-    const chunkCollectorRef = useRef(null);
-
-    // Lazy initialization: create collector only on first render so that
-    // makeAudioChunkCollector() is not called on every re-render.
-    if (chunkCollectorRef.current === null) {
-        chunkCollectorRef.current = makeAudioChunkCollector((chunk) => {
-            if (!isMountedRef.current) return;
-            setAudioChunks((prev) => [...prev, chunk]);
-        });
-    }
-
+export function useAudioChunkCollector() {
     const pushChunk = useCallback(
         /**
-         * @param {Blob} data
-         * @param {number} startMs
-         * @param {number} endMs
+         * @param {Blob} _data
+         * @param {number} _startMs
+         * @param {number} _endMs
          */
-        (data, startMs, endMs) => {
-            if (chunkCollectorRef.current !== null) {
-                chunkCollectorRef.current.push(data, startMs, endMs);
-            }
-        },
+        (_data, _startMs, _endMs) => {},
         []
     );
 
-    const resetAudioChunks = useCallback(() => {
-        setAudioChunks(initialAudioChunks());
-        if (chunkCollectorRef.current !== null) {
-            chunkCollectorRef.current.reset();
-        }
-    }, []);
+    const resetCollector = useCallback(() => {}, []);
 
-    return { audioChunks, pushChunk, resetAudioChunks };
+    return { pushChunk, resetCollector };
 }

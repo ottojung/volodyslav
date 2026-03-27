@@ -178,7 +178,7 @@ describe("audio_recording_session", () => {
         it("throws on upload to stopped session", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            await stopSession(caps, TEST_SESSION_ID, 0);
+            await stopSession(caps, TEST_SESSION_ID);
             let err = null;
             try {
                 await uploadChunk(caps, TEST_SESSION_ID, {
@@ -306,32 +306,25 @@ describe("audio_recording_session", () => {
                 mimeType: TEST_MIME_TYPE,
             });
 
-            const result = await stopSession(caps, TEST_SESSION_ID, 20);
+            const result = await stopSession(caps, TEST_SESSION_ID);
             expect(result.status).toBe("stopped");
             expect(result.size).toBe(chunk1.length + chunk2.length);
         });
 
-        it("persists elapsedSeconds in session metadata", async () => {
+        it("derives elapsedSeconds from lastEndMs in session metadata", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            await stopSession(caps, TEST_SESSION_ID, 42);
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                chunk: Buffer.from("data"),
+                startMs: 0,
+                endMs: 42000,
+                sequence: 0,
+                mimeType: TEST_MIME_TYPE,
+            });
+            await stopSession(caps, TEST_SESSION_ID);
             const meta = await getSession(caps, TEST_SESSION_ID);
             expect(meta.elapsedSeconds).toBe(42);
             expect(meta.status).toBe("stopped");
-        });
-
-        it("rejects invalid elapsedSeconds", async () => {
-            const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            for (const bad of [NaN, Infinity, -1, -Infinity, "30", null]) {
-                let err = null;
-                try {
-                    await stopSession(caps, TEST_SESSION_ID, /** @type {any} */ (bad));
-                } catch (e) {
-                    err = e;
-                }
-                expect(isAudioSessionChunkValidationError(err)).toBe(true);
-            }
         });
     });
 
@@ -347,7 +340,7 @@ describe("audio_recording_session", () => {
                 sequence: 0,
                 mimeType: TEST_MIME_TYPE,
             });
-            await stopSession(caps, TEST_SESSION_ID, 10);
+            await stopSession(caps, TEST_SESSION_ID);
             const { buffer, mimeType } = await fetchFinalAudio(caps, TEST_SESSION_ID);
             expect(buffer).toEqual(audioData);
             expect(mimeType).toBe(TEST_MIME_TYPE);

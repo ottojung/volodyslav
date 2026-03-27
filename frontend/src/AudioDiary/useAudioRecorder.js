@@ -22,16 +22,13 @@ import {
 } from "./session_api.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
-import { stopRestoredPausedSession } from "./useAudioRecorder_stop_restore.js";
 import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 import { useRecordingTimer } from "./useRecordingTimer.js";
 
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
-/** @typedef {import('./audio_chunk_collector.js').AudioChunk} AudioChunk */
 
 /**
  * @typedef {object} UseAudioRecorderResult
- * @property {AudioChunk[]} audioChunks
  * @property {RecorderState} recorderState
  * @property {Blob | null} audioBlob
  * @property {string} audioUrl
@@ -41,6 +38,7 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
  * @property {AnalyserNode | null} analyser
  * @property {import("react").MutableRefObject<string>} mimeTypeRef
  * @property {import("react").MutableRefObject<boolean>} isMountedRef
+ * @property {import("react").MutableRefObject<string>} sessionIdRef
  * @property {boolean} hasRestoredSession
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setNote
  * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setErrorMessage
@@ -52,12 +50,16 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
  */
 
 /**
+ * @typedef {import('./session_api.js').DiaryQuestion} DiaryQuestion
+ */
+
+/**
  * @typedef {object} UseAudioRecorderOptions
- * @property {((data: Blob, startMs: number, endMs: number) => void) | null} [extraOnChunk] - Optional extra fragment listener.
+ * @property {((questions: DiaryQuestion[], milestoneNumber: number) => void) | null} [onQuestions] - Called when chunk upload returns live diary questions and the chunk sequence number.
  */
 
 /** @param {UseAudioRecorderOptions} [options] @returns {UseAudioRecorderResult} */
-export function useAudioRecorder({ extraOnChunk = null } = {}) {
+export function useAudioRecorder({ onQuestions = null } = {}) {
     /** @type {[RecorderState, import("react").Dispatch<import("react").SetStateAction<RecorderState>>]} */
     const [recorderState, setRecorderState] = useState(initialRecorderState());
 
@@ -87,15 +89,15 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
 
-    const { audioChunks, pushChunk, resetAudioChunks } =
-        useAudioChunkCollector(isMountedRef);
+    const { pushChunk, resetCollector } =
+        useAudioChunkCollector();
 
     const {
         audioBlobRef,
         isRestoredPauseRef,
         recorderStateRef,
         elapsedSecondsRef,
-    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds, note);
+    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds);
 
     useAudioRecorderPersistence({
         recorderStateRef,
@@ -136,7 +138,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
                     void (async () => {
                         try {
                             await uploadQueueRef.current;
-                            await stopBackendSession(sessionId, elapsedSecondsRef.current);
+                            await stopBackendSession(sessionId);
                             const backendBlob = await fetchFinalAudio(sessionId);
                             if (!isMountedRef.current) return;
                             mimeTypeRef.current = backendBlob.type;
@@ -165,10 +167,8 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
                 const offsetMs = restoredOffsetMsRef.current;
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
-                // Notify the extra fragment listener if provided (e.g., live questioning controller).
-                extraOnChunk?.(chunk, startMs + offsetMs, endMs + offsetMs);
-
-                // Enqueue chunk upload to backend (serialized)
+                // Enqueue chunk upload to backend (serialized).
+                // Live diary questioning runs server-side and questions are returned in the response.
                 const seq = sequenceRef.current + 1;
                 sequenceRef.current = seq;
                 const sessionId = sessionIdRef.current;
@@ -177,13 +177,16 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
                     uploadQueueRef.current = uploadQueueRef.current.then(async () => {
                         if (sessionId !== sessionIdRef.current) return;
                         try {
-                            await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
+                            const questions = await uploadBackendChunk(sessionId, mimeType || "audio/webm", {
                                 chunk,
                                 startMs: startMs + offsetMs,
                                 endMs: endMs + offsetMs,
                                 sequence: seq,
                                 mimeType,
                             });
+                            if (questions.length > 0 && isMountedRef.current) {
+                                onQuestions?.(questions, seq + 1);
+                            }
                         } catch {
                             // Chunk upload failed; recording continues locally
                         }
@@ -245,7 +248,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         restoredOffsetMsRef.current = 0;
         sequenceRef.current = -1;
         uploadQueueRef.current = Promise.resolve();
-        resetAudioChunks();
+        resetCollector();
         if (audioUrl) {
             setAudioUrl("");
         }
@@ -265,7 +268,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         } catch {
             // Non-fatal
         }
-    }, [audioUrl, resetAudioChunks]);
+    }, [audioUrl, resetCollector]);
 
     const handlePauseResume = useCallback(async () => {
         if (!isRecorder(recorderRef.current)) {
@@ -285,18 +288,15 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
     }, [recorderState]);
 
     const handleStop = useCallback(async () => {
-        if (
-            stopRestoredPausedSession({
-                isRestoredPauseRef,
-                recorderStateRef,
-                setRecorderState,
-            })
-        ) {
+        if (isRestoredPauseRef.current) {
             // Session was in restored-paused state; finalize on backend
+            isRestoredPauseRef.current = false;
+            recorderStateRef.current = "stopped";
+            setRecorderState("stopped");
             const sessionId = sessionIdRef.current;
             if (sessionId) {
                 try {
-                    await stopBackendSession(sessionId, elapsedSecondsRef.current);
+                    await stopBackendSession(sessionId);
                     const blob = await fetchFinalAudio(sessionId);
                     if (isMountedRef.current) {
                         mimeTypeRef.current = blob.type;
@@ -318,7 +318,6 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         }
     }, [
         audioBlobRef,
-        elapsedSecondsRef,
         isMountedRef,
         isRestoredPauseRef,
         mimeTypeRef,
@@ -333,7 +332,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         audioBlobRef.current = null;
         restoredOffsetMsRef.current = 0;
         sequenceRef.current = -1;
-        resetAudioChunks();
+        resetCollector();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
         }
@@ -353,7 +352,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         if (sessionId) {
             void discardSession(sessionId);
         }
-    }, [audioUrl, resetAudioChunks]);
+    }, [audioUrl, resetCollector]);
 
     const clearPersistedSession = useCallback(() => {
         setHasRestoredSession(false);
@@ -366,7 +365,6 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
     }, []);
 
     return {
-        audioChunks,
         recorderState,
         audioBlob,
         audioUrl,
@@ -376,6 +374,7 @@ export function useAudioRecorder({ extraOnChunk = null } = {}) {
         analyser,
         mimeTypeRef,
         isMountedRef,
+        sessionIdRef,
         hasRestoredSession,
         setNote,
         setErrorMessage,

@@ -299,25 +299,16 @@ async function getSession(capabilities, sessionId) {
 
 /**
  * Stop and finalize a session: concatenate all chunks into a final audio file.
+ * Elapsed duration is computed from the stored chunk timeline (lastEndMs).
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @param {number} elapsedSeconds
  * @returns {Promise<{ status: 'stopped', finalAudioKey: string, size: number }>}
  */
-async function stopSession(capabilities, sessionId, elapsedSeconds) {
+async function stopSession(capabilities, sessionId) {
     if (!isValidSessionId(sessionId)) {
         throw new AudioSessionChunkValidationError(
             `Invalid session ID: "${sessionId}"`
-        );
-    }
-    if (
-        typeof elapsedSeconds !== "number" ||
-        !Number.isFinite(elapsedSeconds) ||
-        elapsedSeconds < 0
-    ) {
-        throw new AudioSessionChunkValidationError(
-            `Invalid elapsedSeconds: must be a finite, non-negative number, got ${elapsedSeconds}`
         );
     }
 
@@ -371,6 +362,9 @@ async function stopSession(capabilities, sessionId, elapsedSeconds) {
             error
         );
     }
+
+    // Derive elapsed seconds from chunk timeline (canonical backend timing).
+    const elapsedSeconds = Math.ceil(meta.lastEndMs / 1000);
 
     /** @type {AudioSessionMeta} */
     const updatedMeta = {
