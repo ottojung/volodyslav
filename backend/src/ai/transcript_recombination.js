@@ -8,12 +8,6 @@
  *     - newWindowText:       transcription of [T-20s, T]
  *   These share a 10-second overlap region [T-20s, T-10s].
  *
- * Fragment approach:
- *   The new window text is split into fragments of at most FRAGMENT_MAX_WORDS words
- *   (~20 seconds of speech).  Only the first fragment is sent to the LLM (together
- *   with the existing overlap text); subsequent fragments are appended programmatically.
- *   This ensures the LLM never sees more than ~20 seconds of transcript at once.
- *
  * Validation:
  *   After the LLM returns a merged fragment it is validated with validateCombination,
  *   which asserts that the result can be expressed as:
@@ -371,15 +365,13 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
 /**
  * Recombine two overlapping transcript segments using an LLM with retry logic.
  *
- * The expected inputs are:
+ * The expected inputs are exact transcriptions of two 20-second audio windows:
  *   existingOverlapText: transcription of [T-30s, T-10s]
  *   newWindowText:       transcription of [T-20s, T]
  * which share a 10-second overlap in [T-20s, T-10s].
  *
- * The newWindowText is split into fragments of at most FRAGMENT_MAX_WORDS words
- * (~20 seconds).  The first fragment is merged with existingOverlapText via the
- * LLM (with up to MAX_RETRY_ATTEMPTS retries and a programmatic fallback).
- * Subsequent fragments are appended programmatically without LLM involvement.
+ * The LLM attempts to merge both inputs into a single clean transcript (with up
+ * to MAX_RETRY_ATTEMPTS retries and a programmatic fallback on exhaustion).
  *
  * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
  * @param {Capabilities} capabilities
@@ -388,28 +380,7 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
  * @returns {Promise<string>} The recombined transcript text.
  */
 async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
-    const fragments = splitIntoFragments(newWindowText);
-
-    /** @type {string[]} */
-    const results = [];
-    for (let i = 0; i < fragments.length; i++) {
-        const fragment = fragments[i] ?? "";
-        if (i === 0) {
-            // First fragment: LLM-based recombination (with retry and fallback).
-            const merged = await recombineFragmentWithRetry(
-                makeClient,
-                capabilities,
-                existingOverlapText,
-                fragment
-            );
-            results.push(merged);
-        } else {
-            // Subsequent fragments: append programmatically — no LLM involved.
-            results.push(fragment);
-        }
-    }
-
-    return results.join(" ");
+    return recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newWindowText);
 }
 
 /**

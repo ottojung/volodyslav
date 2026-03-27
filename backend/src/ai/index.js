@@ -8,4 +8,5 @@ module.exports = {
     calories,
     diaryQuestions,
     transcriptRecombination,
+    programmaticRecombination: transcriptRecombination.programmaticRecombination,
 };

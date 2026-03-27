@@ -2,8 +2,21 @@
  * Router for live diary questioning endpoints.
  *
  * Endpoints:
- *   POST /diary/live/transcribe-window
- *   POST /diary/live/generate-questions
+ *   POST /diary/live/push-audio
+ *
+ * Design:
+ *   The client sends each successive 10-second audio blob to push-audio.
+ *   The server maintains per-session state (last fragment, last window transcript,
+ *   running transcript, asked questions) in an in-memory map.
+ *
+ *   When the server has received at least two consecutive fragments it can form a
+ *   20-second window (binary concat of the two fragments), transcribe it, then:
+ *     - LLM-recombine with the previous 20-second window transcript, and
+ *     - accumulate the result into a running transcript, and
+ *     - generate diary questions.
+ *
+ *   The response always returns { success: true, questions: DiaryQuestion[] }.
+ *   questions is an empty array until at least two fragments have been received.
  *
  * @module routes/diary_live
  */
@@ -15,6 +28,7 @@ const path = require("path");
 const fsp = require("fs/promises");
 const fs = require("fs");
 const crypto = require("crypto");
+const { programmaticRecombination } = require("../ai");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -30,6 +44,38 @@ const crypto = require("crypto");
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
+
+/**
+ * @typedef {object} SessionState
+ * @property {Buffer | null} lastFragment - Audio bytes of the previous 10s fragment.
+ * @property {string} lastFragmentMime - MIME type of lastFragment.
+ * @property {string} lastWindowTranscript - Transcript of the previous 20s window.
+ * @property {string} runningTranscript - Full accumulated transcript for the session.
+ * @property {string[]} askedQuestions - All question texts returned to the client so far.
+ */
+
+/** @type {Map<string, SessionState>} */
+const sessionMap = new Map();
+
+/**
+ * Return the session state for a sessionId, creating a fresh one if needed.
+ * @param {string} sessionId
+ * @returns {SessionState}
+ */
+function getOrCreateSession(sessionId) {
+    let session = sessionMap.get(sessionId);
+    if (!session) {
+        session = {
+            lastFragment: null,
+            lastFragmentMime: "audio/webm",
+            lastWindowTranscript: "",
+            runningTranscript: "",
+            askedQuestions: [],
+        };
+        sessionMap.set(sessionId, session);
+    }
+    return session;
+}
 
 /** Supported audio MIME types and their extensions. */
 /** @type {Record<string, string>} */
@@ -55,15 +101,6 @@ function extensionForMime(mimeType) {
 }
 
 /**
- * Validates that the value is a non-negative finite integer.
- * @param {unknown} value
- * @returns {value is number}
- */
-function isNonNegativeInteger(value) {
-    return typeof value === "number" && Number.isFinite(value) && value >= 0 && Math.floor(value) === value;
-}
-
-/**
  * Parses an integer from a string. Returns null on failure.
  * @param {unknown} value
  * @returns {number | null}
@@ -80,6 +117,68 @@ function parseIntegerField(value) {
 }
 
 /**
+ * Write a Buffer to a named temp file, transcribe it, then delete the temp file.
+ * Returns the raw transcript string.
+ * @param {Buffer} audioBuffer
+ * @param {string} mimeType
+ * @param {Capabilities} capabilities
+ * @returns {Promise<string>}
+ */
+async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
+    const ext = extensionForMime(mimeType);
+    const randomHex = crypto.randomBytes(8).toString("hex");
+    const tmpFile = path.join(os.tmpdir(), `diary-live-${randomHex}.${ext}`);
+
+    try {
+        await fsp.writeFile(tmpFile, audioBuffer);
+
+        const fileStream = fs.createReadStream(tmpFile);
+
+        // Wait for the file to be opened before calling the transcription service.
+        await new Promise((resolve, reject) => {
+            fileStream.once("open", resolve);
+            fileStream.once("error", reject);
+        });
+
+        let result;
+        try {
+            result = await capabilities.aiTranscription.transcribeStreamDetailed(fileStream);
+        } finally {
+            fileStream.destroy();
+        }
+
+        return result.structured.transcript.trim();
+    } finally {
+        fsp.unlink(tmpFile).catch(() => {
+            // Best-effort cleanup.
+        });
+    }
+}
+
+/**
+ * Deduplicate questions by normalised text, keeping the first occurrence.
+ * @param {Array<{text: string, intent: string}>} questions
+ * @param {string[]} askedTexts
+ * @returns {Array<{text: string, intent: string}>}
+ */
+function deduplicateQuestions(questions, askedTexts) {
+    const normalise = (/** @type {string} */ s) =>
+        s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+
+    const seen = new Set(askedTexts.map(normalise));
+    /** @type {Array<{text: string, intent: string}>} */
+    const result = [];
+    for (const q of questions) {
+        const key = normalise(q.text);
+        if (!seen.has(key)) {
+            seen.add(key);
+            result.push(q);
+        }
+    }
+    return result;
+}
+
+/**
  * @param {Capabilities} capabilities
  * @returns {import('express').Router}
  */
@@ -88,26 +187,35 @@ function makeRouter(capabilities) {
     const upload = multer({ storage: multer.memoryStorage() });
 
     /**
-     * POST /diary/live/transcribe-window
+     * POST /diary/live/push-audio
      *
      * Multipart form fields:
-     *   audio          - binary audio file (required)
+     *   audio          - binary 10-second audio blob (required)
      *   mimeType       - MIME type string (required)
      *   sessionId      - string session identifier (required)
-     *   milestoneNumber - integer (required)
-     *   windowStartMs  - integer ms (required)
-     *   windowEndMs    - integer ms (required)
+     *   fragmentNumber - integer sequence number, 1-based (required)
      *
      * Response:
-     *   { success: true, milestoneNumber, windowStartMs, windowEndMs, tokens, rawText }
+     *   { success: true, questions: Array<{text: string, intent: string}> }
+     *
+     * The server maintains per-session state (in memory).  On the first fragment
+     * it stores the audio and returns an empty questions array.  On every subsequent
+     * fragment it:
+     *   1. Concatenates the stored fragment with the new fragment to form a 20s window.
+     *   2. Transcribes the 20s window.
+     *   3. LLM-recombines with the previous window transcript (or uses it directly if
+     *      none exists yet).
+     *   4. Accumulates the merged result into a running transcript.
+     *   5. Generates questions from the running transcript.
+     *   6. Returns the deduplicated new questions.
      */
-    router.post("/diary/live/transcribe-window", upload.single("audio"), async (req, res) => {
+    router.post("/diary/live/push-audio", upload.single("audio"), async (req, res) => {
         const audioFile = req.file;
         if (!audioFile) {
             return res.status(400).json({ success: false, error: "Missing audio file" });
         }
 
-        const { mimeType, sessionId, milestoneNumber: milestoneNumberRaw, windowStartMs: windowStartMsRaw, windowEndMs: windowEndMsRaw } = req.body || {};
+        const { mimeType, sessionId, fragmentNumber: fragmentNumberRaw } = req.body || {};
 
         if (typeof sessionId !== "string" || !sessionId) {
             return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
@@ -117,230 +225,100 @@ function makeRouter(capabilities) {
             return res.status(400).json({ success: false, error: "Missing or invalid mimeType" });
         }
 
-        const milestoneNumber = parseIntegerField(milestoneNumberRaw);
-        if (milestoneNumber === null || milestoneNumber < 1) {
-            return res.status(400).json({ success: false, error: "Missing or invalid milestoneNumber" });
-        }
-
-        const windowStartMs = parseIntegerField(windowStartMsRaw);
-        if (windowStartMs === null || !isNonNegativeInteger(windowStartMs)) {
-            return res.status(400).json({ success: false, error: "Missing or invalid windowStartMs" });
-        }
-
-        const windowEndMs = parseIntegerField(windowEndMsRaw);
-        if (windowEndMs === null || !isNonNegativeInteger(windowEndMs) || windowEndMs <= windowStartMs) {
-            return res.status(400).json({ success: false, error: "Missing or invalid windowEndMs" });
+        const fragmentNumber = parseIntegerField(fragmentNumberRaw);
+        if (fragmentNumber === null || fragmentNumber < 1) {
+            return res.status(400).json({ success: false, error: "Missing or invalid fragmentNumber" });
         }
 
         capabilities.logger.logInfo(
-            { sessionId, milestoneNumber, windowStartMs, windowEndMs },
-            "Live diary transcription window requested"
+            { sessionId, fragmentNumber },
+            "Live diary push-audio received"
         );
 
-        // Write audio buffer to a temporary file with a random name (no user data in path).
-        // The transcription service requires a named file stream, so we cannot use in-memory streams.
-        const ext = extensionForMime(mimeType);
-        const randomHex = crypto.randomBytes(8).toString("hex");
-        const tmpFile = path.join(os.tmpdir(), `diary-live-${randomHex}.${ext}`);
+        const session = getOrCreateSession(sessionId);
+        const currentFragment = audioFile.buffer;
 
-        try {
-            await fsp.writeFile(tmpFile, audioFile.buffer);
-        } catch (error) {
-            capabilities.logger.logError(
-                { error: error instanceof Error ? error.message : String(error) },
-                "Failed to write temporary audio file for live transcription"
-            );
-            return res.status(500).json({ success: false, error: "Failed to process audio file" });
+        if (session.lastFragment === null) {
+            // First fragment: store it and wait for the next one.
+            session.lastFragment = currentFragment;
+            session.lastFragmentMime = mimeType;
+            return res.json({ success: true, questions: [] });
         }
 
+        // We have the previous fragment plus the current one: form a 20s window.
+        const window20s = Buffer.concat([session.lastFragment, currentFragment]);
+
+        // Advance the session's stored fragment to the current one for next call.
+        session.lastFragment = currentFragment;
+        session.lastFragmentMime = mimeType;
+
+        let newWindowTranscript;
         try {
-            const fileStream = fs.createReadStream(tmpFile);
-
-            // Wait for the file to be opened before calling the transcription service.
-            // This prevents a race between the stream's async open and cleanup (unlink).
-            await new Promise((resolve, reject) => {
-                fileStream.once("open", resolve);
-                fileStream.once("error", reject);
-            });
-
-            let result;
-            try {
-                result = await capabilities.aiTranscription.transcribeStreamDetailed(fileStream);
-            } finally {
-                fileStream.destroy();
-            }
-
-            const rawText = result.structured.transcript;
-
-            // Approximate per-word tokens across the window.
-            // The transcription service does not provide per-word timestamps, so we
-            // distribute the window duration evenly across words.  Fine-grained tokens
-            // allow the replace-zone merge to preserve content outside the current
-            // window when milestones overlap.
-            const trimmedText = rawText.trim();
-
-            /** @type {Array<{text: string, startMs: number, endMs: number}>} */
-            const tokens = [];
-
-            if (trimmedText) {
-                const words = trimmedText.split(/\s+/);
-                const wordCount = words.length;
-                const windowDuration = Math.max(0, windowEndMs - windowStartMs);
-                const durationPerWord = wordCount > 0 ? windowDuration / wordCount : 0;
-
-                let currentStart = windowStartMs;
-                for (let i = 0; i < wordCount; i += 1) {
-                    const isLast = i === wordCount - 1;
-                    const currentEnd = isLast
-                        ? windowEndMs
-                        : windowStartMs + Math.round(durationPerWord * (i + 1));
-
-                    tokens.push({
-                        text: words[i] ?? "",
-                        startMs: currentStart,
-                        endMs: currentEnd,
-                    });
-
-                    currentStart = currentEnd;
-                }
-            }
-
-            return res.json({
-                success: true,
-                milestoneNumber,
-                windowStartMs,
-                windowEndMs,
-                tokens,
-                rawText,
-            });
+            newWindowTranscript = await transcribeBuffer(window20s, mimeType, capabilities);
         } catch (error) {
             capabilities.logger.logError(
-                {
-                    sessionId,
-                    milestoneNumber,
-                    error: error instanceof Error ? error.message : String(error),
-                },
+                { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
                 "Live diary transcription failed"
             );
-            return res.status(500).json({ success: false, error: "Transcription failed" });
-        } finally {
-            fsp.unlink(tmpFile).catch(() => {
-                // Best-effort cleanup
-            });
-        }
-    });
-
-    /**
-     * POST /diary/live/generate-questions
-     *
-     * JSON body:
-     *   sessionId       - string (required)
-     *   milestoneNumber - integer (required)
-     *   transcriptSoFar - string (required)
-     *   askedQuestions  - string[] (required)
-     *
-     * Response:
-     *   { success: true, milestoneNumber, questions: [{text, intent}] }
-     */
-    router.post("/diary/live/generate-questions", express.json(), async (req, res) => {
-        const { sessionId, milestoneNumber: milestoneNumberRaw, transcriptSoFar, askedQuestions } = req.body || {};
-
-        if (typeof sessionId !== "string" || !sessionId) {
-            return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
+            return res.json({ success: true, questions: [] });
         }
 
-        if (typeof milestoneNumberRaw !== "number" || !Number.isFinite(milestoneNumberRaw) || milestoneNumberRaw < 1) {
-            return res.status(400).json({ success: false, error: "Missing or invalid milestoneNumber" });
+        if (!newWindowTranscript) {
+            // Silent audio — nothing to recombine or question.
+            return res.json({ success: true, questions: [] });
         }
 
-        const milestoneNumber = milestoneNumberRaw;
-
-        if (typeof transcriptSoFar !== "string") {
-            return res.status(400).json({ success: false, error: "Missing or invalid transcriptSoFar" });
+        // Recombine with the previous window transcript (LLM-based, with fallback).
+        let merged;
+        if (session.lastWindowTranscript) {
+            try {
+                merged = await capabilities.aiTranscriptRecombination.recombineOverlap(
+                    session.lastWindowTranscript,
+                    newWindowTranscript
+                );
+            } catch (error) {
+                capabilities.logger.logError(
+                    { sessionId, error: error instanceof Error ? error.message : String(error) },
+                    "Live diary recombination failed; using new window transcript directly"
+                );
+                merged = newWindowTranscript;
+            }
+        } else {
+            merged = newWindowTranscript;
         }
 
-        if (!Array.isArray(askedQuestions) || askedQuestions.some((q) => typeof q !== "string")) {
-            return res.status(400).json({ success: false, error: "Missing or invalid askedQuestions: must be a string array" });
-        }
+        session.lastWindowTranscript = newWindowTranscript;
 
-        capabilities.logger.logInfo(
-            { sessionId, milestoneNumber, transcriptLength: transcriptSoFar.length, askedCount: askedQuestions.length },
-            "Live diary question generation requested"
-        );
+        // Accumulate the merged chunk into the running transcript, removing duplicates
+        // at the boundary using the programmatic overlap algorithm.
+        session.runningTranscript = session.runningTranscript
+            ? programmaticRecombination(session.runningTranscript, merged)
+            : merged;
 
+        // Generate questions.
+        let allQuestions;
         try {
-            const questions = await capabilities.aiDiaryQuestions.generateQuestions(transcriptSoFar, askedQuestions);
-            return res.json({
-                success: true,
-                milestoneNumber,
-                questions,
-            });
+            allQuestions = await capabilities.aiDiaryQuestions.generateQuestions(
+                session.runningTranscript,
+                session.askedQuestions
+            );
         } catch (error) {
             capabilities.logger.logError(
-                {
-                    sessionId,
-                    milestoneNumber,
-                    error: error instanceof Error ? error.message : String(error),
-                },
+                { sessionId, error: error instanceof Error ? error.message : String(error) },
                 "Live diary question generation failed"
             );
-            return res.status(500).json({ success: false, error: "Question generation failed" });
-        }
-    });
-
-    /**
-     * POST /diary/live/recombine-overlap
-     *
-     * JSON body:
-     *   sessionId           - string (required)
-     *   existingOverlapText - string of existing transcript in the overlap zone (required)
-     *   newWindowText       - string of the new window transcript (required)
-     *
-     * Response:
-     *   { success: true, recombinedText: string }
-     *
-     * The new window text is split into ~20-second fragments.  The first fragment is
-     * merged with the existing overlap text using the LLM (mini model).  Subsequent
-     * fragments are appended programmatically.  If the LLM call fails, it is retried
-     * up to MAX_RETRY_ATTEMPTS times; on exhaustion a simplistic "[10-second overlap]"
-     * fallback is used.  The endpoint therefore always returns 200 with a recombinedText.
-     */
-    router.post("/diary/live/recombine-overlap", express.json(), async (req, res) => {
-        const { sessionId, existingOverlapText, newWindowText } = req.body || {};
-
-        if (typeof sessionId !== "string" || !sessionId) {
-            return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
+            return res.json({ success: true, questions: [] });
         }
 
-        if (typeof existingOverlapText !== "string") {
-            return res.status(400).json({ success: false, error: "Missing or invalid existingOverlapText" });
-        }
+        const newQuestions = deduplicateQuestions(allQuestions, session.askedQuestions);
 
-        if (typeof newWindowText !== "string") {
-            return res.status(400).json({ success: false, error: "Missing or invalid newWindowText" });
-        }
+        // Record all returned question texts to prevent repetition.
+        session.askedQuestions = [
+            ...session.askedQuestions,
+            ...newQuestions.map((q) => q.text),
+        ];
 
-        capabilities.logger.logInfo(
-            { sessionId, existingOverlapLength: existingOverlapText.length, newWindowLength: newWindowText.length },
-            "Live diary transcript recombination requested"
-        );
-
-        try {
-            const recombinedText = await capabilities.aiTranscriptRecombination.recombineOverlap(
-                existingOverlapText,
-                newWindowText
-            );
-            return res.json({ success: true, recombinedText });
-        } catch (error) {
-            capabilities.logger.logError(
-                {
-                    sessionId,
-                    error: error instanceof Error ? error.message : String(error),
-                },
-                "Live diary transcript recombination failed"
-            );
-            return res.status(500).json({ success: false, error: "Transcript recombination failed" });
-        }
+        return res.json({ success: true, questions: newQuestions });
     });
 
     return router;
