@@ -13,6 +13,7 @@ const graphRouter = routes.graph;
 const versionRouter = routes.version;
 const assetsRouter = routes.assets;
 const audioRecordingSessionRouter = routes.audioRecordingSession;
+const diaryLiveRouter = routes.diaryLive;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const { getBasePath } = require("./base_path");
@@ -30,7 +31,7 @@ const { getBasePath } = require("./base_path");
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./notifications').Notifier} Notifier */
 /** @typedef {import('./capabilities/root').Capabilities} Capabilities */
-/** @typedef {import('./ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('./ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('./exiter').Exiter} Exiter */
 
 /**
@@ -54,6 +55,7 @@ async function addRoutes(capabilities, app) {
     app.use(`${basePath}/api`, versionRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, assetsRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, audioRecordingSessionRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, diaryLiveRouter.makeRouter(capabilities));
     app.use(`${basePath}/`, staticRouter.makeRouter(capabilities));
 }
 

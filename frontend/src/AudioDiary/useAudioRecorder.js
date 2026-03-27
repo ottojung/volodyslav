@@ -51,8 +51,13 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
  * @property {() => void} clearPersistedSession
  */
 
-/** @returns {UseAudioRecorderResult} */
-export function useAudioRecorder() {
+/**
+ * @typedef {object} UseAudioRecorderOptions
+ * @property {((data: Blob, startMs: number, endMs: number) => void) | null} [extraOnChunk] - Optional extra fragment listener.
+ */
+
+/** @param {UseAudioRecorderOptions} [options] @returns {UseAudioRecorderResult} */
+export function useAudioRecorder({ extraOnChunk = null } = {}) {
     /** @type {[RecorderState, import("react").Dispatch<import("react").SetStateAction<RecorderState>>]} */
     const [recorderState, setRecorderState] = useState(initialRecorderState());
 
@@ -159,6 +164,9 @@ export function useAudioRecorder() {
                 }
                 const offsetMs = restoredOffsetMsRef.current;
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
+
+                // Notify the extra fragment listener if provided (e.g., live questioning controller).
+                extraOnChunk?.(chunk, startMs + offsetMs, endMs + offsetMs);
 
                 // Enqueue chunk upload to backend (serialized)
                 const seq = sequenceRef.current + 1;

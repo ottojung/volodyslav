@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Alert,
@@ -15,11 +15,13 @@ import {
 import { keyframes } from "@emotion/react";
 import { submitEntry } from "../DescriptionEntry/api.js";
 import { useAudioRecorder } from "./useAudioRecorder.js";
-import { formatTime, extensionForMime } from "./audio_helpers.js";
+import { formatTime, extensionForMime, generateSessionId } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
 import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
 import RestoredSessionBanner from "./RestoredSessionBanner.jsx";
 import RecorderStatusBadge from "./RecorderStatusBadge.jsx";
+import LiveQuestionsPanel from "./LiveQuestionsPanel.jsx";
+import { useDiaryLiveQuestioningController } from "./useDiaryLiveQuestioningController.js";
 
 const pulseRing = keyframes`
     0%   { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.5); }
@@ -39,6 +41,17 @@ export default function AudioDiary() {
     const navigate = useNavigate();
 
     const {
+        displayedGenerations,
+        liveErrorMessage,
+        onFragment: liveOnFragment,
+        startLive,
+        stopLive,
+    } = useDiaryLiveQuestioningController();
+
+    /** @type {import("react").MutableRefObject<string>} */
+    const liveSessionIdRef = useRef("");
+
+    const {
         recorderState,
         audioBlob,
         audioUrl,
@@ -51,12 +64,31 @@ export default function AudioDiary() {
         hasRestoredSession,
         setNote,
         setErrorMessage,
-        handleStart,
+        handleStart: handleStartBase,
         handlePauseResume,
-        handleStop,
-        handleDiscard,
+        handleStop: handleStopBase,
+        handleDiscard: handleDiscardBase,
         clearPersistedSession,
-    } = useAudioRecorder();
+    } = useAudioRecorder({ extraOnChunk: liveOnFragment });
+
+    // Wrap handleStart to also start live questioning.
+    const handleStart = useCallback(async () => {
+        liveSessionIdRef.current = generateSessionId();
+        startLive(liveSessionIdRef.current, mimeTypeRef.current || "audio/webm");
+        await handleStartBase();
+    }, [handleStartBase, startLive, mimeTypeRef]);
+
+    // Wrap handleStop to also stop live questioning.
+    const handleStop = useCallback(async () => {
+        stopLive();
+        await handleStopBase();
+    }, [handleStopBase, stopLive]);
+
+    // Wrap handleDiscard to also stop live questioning.
+    const handleDiscard = useCallback(() => {
+        stopLive();
+        handleDiscardBase();
+    }, [handleDiscardBase, stopLive]);
 
     /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} */
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -269,6 +301,13 @@ export default function AudioDiary() {
                             <Alert.Description>{errorMessage}</Alert.Description>
                         </Box>
                     </Alert.Root>
+                )}
+
+                {(isRecording || isPaused) && (
+                    <LiveQuestionsPanel
+                        displayedGenerations={displayedGenerations}
+                        errorMessage={liveErrorMessage}
+                    />
                 )}
 
                 <Button
