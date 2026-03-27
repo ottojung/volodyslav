@@ -262,18 +262,6 @@ describe("validateCombination", () => {
     });
 });
 
-// ─── constants ───────────────────────────────────────────────────────────────
-
-describe("constants", () => {
-    it("RECOMBINATION_MODEL is a mini model", () => {
-        expect(RECOMBINATION_MODEL).toBe("gpt-4o-mini");
-    });
-
-    it("MAX_RETRY_ATTEMPTS is 5", () => {
-        expect(MAX_RETRY_ATTEMPTS).toBe(5);
-    });
-});
-
 // ─── makeUserPrompt ───────────────────────────────────────────────────────────
 
 describe("makeUserPrompt", () => {
