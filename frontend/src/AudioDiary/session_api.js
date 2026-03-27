@@ -121,15 +121,13 @@ export async function getSession(sessionId) {
 
 /**
  * Finalize a recording session (concatenates all chunks).
+ * Elapsed duration is computed server-side from the chunk timeline.
  * @param {string} sessionId
- * @param {number} elapsedSeconds
  * @returns {Promise<{ status: string, size: number }>}
  */
-export async function stopSession(sessionId, elapsedSeconds) {
+export async function stopSession(sessionId) {
     const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/stop`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ elapsedSeconds }),
     });
     if (!response.ok) {
         throw new Error(`Failed to stop session: ${response.status}`);
@@ -139,6 +137,36 @@ export async function stopSession(sessionId, elapsedSeconds) {
         throw new Error(data.error || "Failed to stop session");
     }
     return data.session;
+}
+
+/**
+ * @typedef {object} RestoreState
+ * @property {'recording'|'stopped'} status
+ * @property {string} mimeType
+ * @property {number} elapsedSeconds
+ * @property {number} lastSequence
+ * @property {boolean} hasFinalAudio
+ */
+
+/**
+ * Fetch the unified restore payload for a session.
+ * Returns null if session not found (404).
+ * @param {string} sessionId
+ * @returns {Promise<RestoreState | null>}
+ */
+export async function getSessionRestore(sessionId) {
+    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/restore`);
+    if (response.status === 404) {
+        return null;
+    }
+    if (!response.ok) {
+        throw new Error(`Failed to get session restore: ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.error || "Failed to get session restore");
+    }
+    return data.restore;
 }
 
 /**

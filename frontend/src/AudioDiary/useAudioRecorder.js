@@ -138,7 +138,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                     void (async () => {
                         try {
                             await uploadQueueRef.current;
-                            await stopBackendSession(sessionId, elapsedSecondsRef.current);
+                            await stopBackendSession(sessionId);
                             const backendBlob = await fetchFinalAudio(sessionId);
                             if (!isMountedRef.current) return;
                             mimeTypeRef.current = backendBlob.type;
@@ -296,7 +296,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
             const sessionId = sessionIdRef.current;
             if (sessionId) {
                 try {
-                    await stopBackendSession(sessionId, elapsedSecondsRef.current);
+                    await stopBackendSession(sessionId);
                     const blob = await fetchFinalAudio(sessionId);
                     if (isMountedRef.current) {
                         mimeTypeRef.current = blob.type;
@@ -318,7 +318,6 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         }
     }, [
         audioBlobRef,
-        elapsedSecondsRef,
         isMountedRef,
         isRestoredPauseRef,
         mimeTypeRef,

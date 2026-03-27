@@ -10,9 +10,7 @@
 
 const { createEntry, isEntryValidationError } = require("../../entry");
 const { serialize } = require("../../event");
-const event = require("../../event");
-const fromInput = event.fromInput;
-const { processUserInput, isInputParseError } = fromInput;
+const { processUserInput, isInputParseError } = require("../../event").fromInput;
 const { makeFromData } = require("../../filesystem").file_ref;
 const { sanitizeFilename, isFilenameValidationError } = require("../../temporary");
 const { FileValidationError, handleEntryError } = require("./post");

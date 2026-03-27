@@ -164,6 +164,35 @@ function makeFetchMock() {
             });
         }
 
+        // GET /audio-recording-session/:id/restore
+        if (!options && urlStr.includes("/restore")) {
+            if (mockSessionData) {
+                const session = mockSessionData;
+                const hasFinalAudio = session.status === "stopped";
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        success: true,
+                        restore: {
+                            status: session.status,
+                            mimeType: session.mimeType || "audio/webm",
+                            elapsedSeconds: session.elapsedSeconds || 0,
+                            lastSequence: session.lastSequence || 0,
+                            hasFinalAudio,
+                        },
+                    }),
+                    blob: () => Promise.resolve(new Blob()),
+                });
+            }
+            return Promise.resolve({
+                ok: false,
+                status: 404,
+                json: () => Promise.resolve({ success: false, error: "Not found" }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
         // GET /audio-recording-session/:id  (session state lookup)
         if (mockSessionData) {
             const session = mockSessionData;

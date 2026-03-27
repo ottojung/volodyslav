@@ -170,6 +170,7 @@ function makeRouter(capabilities) {
 
                 // Best-effort: invoke live diary questioning pipeline.
                 // Fragment number is 1-based (sequence is 0-based).
+                /** @type {Array<{text: string, intent: string}>} */
                 let liveQuestions = [];
                 try {
                     const liveResult = await pushLiveDiaryAudio(
@@ -241,26 +242,11 @@ function makeRouter(capabilities) {
     });
 
     // POST /audio-recording-session/:sessionId/stop
-    router.post("/audio-recording-session/:sessionId/stop", express.json(), async (req, res) => {
+    router.post("/audio-recording-session/:sessionId/stop", async (req, res) => {
         const { sessionId } = req.params;
-        const { elapsedSeconds } = req.body || {};
-
-        const elapsedSecondsNum =
-            elapsedSeconds === undefined
-                ? 0
-                : typeof elapsedSeconds === "number"
-                ? elapsedSeconds
-                : Number(elapsedSeconds);
-
-        if (!Number.isFinite(elapsedSecondsNum) || elapsedSecondsNum < 0) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid elapsedSeconds: must be a finite, non-negative number",
-            });
-        }
 
         try {
-            const result = await stopSession(capabilities, sessionId, elapsedSecondsNum);
+            const result = await stopSession(capabilities, sessionId);
             return res.json({ success: true, session: result });
         } catch (error) {
             if (isAudioSessionChunkValidationError(error)) {
@@ -305,6 +291,41 @@ function makeRouter(capabilities) {
             capabilities.logger.logError(
                 { error: error instanceof Error ? error.message : String(error) },
                 "Failed to fetch final audio"
+            );
+            return res.status(500).json({ success: false, error: "Internal error" });
+        }
+    });
+
+    // GET /audio-recording-session/:sessionId/restore — unified restore payload
+    // Returns all information needed to restore the UI without a second round-trip.
+    router.get("/audio-recording-session/:sessionId/restore", async (req, res) => {
+        const { sessionId } = req.params;
+
+        try {
+            const meta = await getSession(capabilities, sessionId);
+            const hasFinalAudio = meta.status === "stopped";
+            return res.json({
+                success: true,
+                restore: {
+                    status: meta.status,
+                    mimeType: meta.mimeType,
+                    elapsedSeconds: hasFinalAudio
+                        ? meta.elapsedSeconds
+                        : Math.floor(meta.lastEndMs / 1000),
+                    lastSequence: meta.lastSequence,
+                    hasFinalAudio,
+                },
+            });
+        } catch (error) {
+            if (isAudioSessionChunkValidationError(error)) {
+                return res.status(400).json({ success: false, error: error.message });
+            }
+            if (isAudioSessionNotFoundError(error)) {
+                return res.status(404).json({ success: false, error: error.message });
+            }
+            capabilities.logger.logError(
+                { error: error instanceof Error ? error.message : String(error) },
+                "Failed to build restore payload"
             );
             return res.status(500).json({ success: false, error: "Internal error" });
         }
