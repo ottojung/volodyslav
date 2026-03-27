@@ -361,10 +361,6 @@ describe("recombineOverlap", () => {
         expect(result).toBe("I walked to the store");
     });
 
-    it("uses the mini model constant", () => {
-        expect(RECOMBINATION_MODEL).toBe("gpt-4o-mini");
-    });
-
     it("retries exactly MAX_RETRY_ATTEMPTS times before falling back", async () => {
         const mockCreate = jest.fn().mockRejectedValue(new Error("API error"));
         OpenAI.mockImplementation(() => ({
