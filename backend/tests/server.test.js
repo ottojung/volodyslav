@@ -25,6 +25,8 @@ function getTestCapabilities() {
     return capabilities;
 }
 
+jest.setTimeout(30000); // Some tests involve git operations which can be slow
+
 describe("Startup Dependencies", () => {
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const capabilities = getTestCapabilities();
