@@ -386,6 +386,21 @@ class TemporaryClass {
     }
 
     /**
+     * Close the underlying database connection.
+     * Should be called when the capability is no longer needed (e.g. in tests
+     * that simulate a server reboot by opening the same DB with a new instance).
+     * @returns {Promise<void>}
+     */
+    async close() {
+        if (this._databasePromise !== null) {
+            const pending = this._databasePromise;
+            this._databasePromise = null;
+            const db = await pending;
+            await db.close();
+        }
+    }
+
+    /**
      * Store a binary blob.
      * @param {RequestIdentifier} reqId
      * @param {string} filename

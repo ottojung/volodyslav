@@ -59,12 +59,6 @@ function isAITranscriptRecombinationError(object) {
 
 const RECOMBINATION_MODEL = "gpt-4o-mini";
 
-/** Estimated average words per second for splitting text into timed fragments. */
-const AVERAGE_WORDS_PER_SECOND = 3;
-
-/** Maximum number of words in a fragment sent to the LLM (~20 seconds of speech). */
-const FRAGMENT_MAX_WORDS = 20 * AVERAGE_WORDS_PER_SECOND;
-
 /** Number of LLM call attempts before falling back to programmatic recombination. */
 const MAX_RETRY_ATTEMPTS = 5;
 
@@ -137,26 +131,6 @@ function validateWordSubset(output, allowedWords) {
         }
     }
     return true;
-}
-
-/**
- * Split text into fragments of at most maxWords words.
- * @param {string} text
- * @param {number} [maxWords]
- * @returns {string[]} Array of fragments; always at least one element.
- */
-function splitIntoFragments(text, maxWords = FRAGMENT_MAX_WORDS) {
-    const trimmed = text.trim();
-    if (!trimmed) {
-        return [""];
-    }
-    const words = trimmed.split(/\s+/);
-    /** @type {string[]} */
-    const fragments = [];
-    for (let i = 0; i < words.length; i += maxWords) {
-        fragments.push(words.slice(i, i + maxWords).join(" "));
-    }
-    return fragments;
 }
 
 /**
@@ -406,13 +380,11 @@ module.exports = {
     make,
     isAITranscriptRecombinationError,
     RECOMBINATION_MODEL,
-    FRAGMENT_MAX_WORDS,
     MAX_RETRY_ATTEMPTS,
     SYSTEM_PROMPT,
     makeUserPrompt,
     makeWordSet,
     validateWordSubset,
-    splitIntoFragments,
     programmaticRecombination,
     validateCombination,
 };

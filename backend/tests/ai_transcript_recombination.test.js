@@ -9,7 +9,6 @@ jest.mock("openai", () => ({
 const { OpenAI } = require("openai");
 const {
     RECOMBINATION_MODEL,
-    FRAGMENT_MAX_WORDS,
     MAX_RETRY_ATTEMPTS,
     SYSTEM_PROMPT,
     isAITranscriptRecombinationError,
@@ -17,7 +16,6 @@ const {
     makeUserPrompt,
     makeWordSet,
     validateWordSubset,
-    splitIntoFragments,
     programmaticRecombination,
     validateCombination,
 } = require("../src/ai/transcript_recombination");
@@ -104,67 +102,6 @@ describe("validateWordSubset", () => {
     it("is case-insensitive", () => {
         const allowed = makeWordSet("Hello World");
         expect(validateWordSubset("hello world", allowed)).toBe(true);
-    });
-});
-
-// ─── splitIntoFragments ──────────────────────────────────────────────────────
-
-describe("splitIntoFragments", () => {
-    it("returns a single fragment when text is shorter than maxWords", () => {
-        const result = splitIntoFragments("hello world", 10);
-        expect(result).toEqual(["hello world"]);
-    });
-
-    it("returns exactly one element for empty string", () => {
-        const result = splitIntoFragments("");
-        expect(result).toEqual([""]);
-    });
-
-    it("returns exactly one element for whitespace-only string", () => {
-        const result = splitIntoFragments("   ");
-        expect(result).toEqual([""]);
-    });
-
-    it("splits text into two fragments when words exceed maxWords", () => {
-        const words = Array.from({ length: 10 }, (_, i) => `w${i}`);
-        const result = splitIntoFragments(words.join(" "), 6);
-        expect(result).toHaveLength(2);
-        expect(result[0]).toBe(words.slice(0, 6).join(" "));
-        expect(result[1]).toBe(words.slice(6).join(" "));
-    });
-
-    it("splits text into three fragments when words are triple maxWords", () => {
-        const words = Array.from({ length: 9 }, (_, i) => `w${i}`);
-        const result = splitIntoFragments(words.join(" "), 3);
-        expect(result).toHaveLength(3);
-        expect(result[0]).toBe("w0 w1 w2");
-        expect(result[1]).toBe("w3 w4 w5");
-        expect(result[2]).toBe("w6 w7 w8");
-    });
-
-    it("respects FRAGMENT_MAX_WORDS as default maxWords", () => {
-        const words = Array.from({ length: FRAGMENT_MAX_WORDS + 1 }, (_, i) => `w${i}`);
-        const result = splitIntoFragments(words.join(" "));
-        expect(result).toHaveLength(2);
-        expect(result[0]?.split(" ")).toHaveLength(FRAGMENT_MAX_WORDS);
-        expect(result[1]?.split(" ")).toHaveLength(1);
-    });
-
-    it("returns a single fragment for text exactly at maxWords limit", () => {
-        const words = Array.from({ length: 5 }, (_, i) => `w${i}`);
-        const result = splitIntoFragments(words.join(" "), 5);
-        expect(result).toHaveLength(1);
-        expect(result[0]).toBe(words.join(" "));
-    });
-
-    it("handles single-word text", () => {
-        const result = splitIntoFragments("hello", 10);
-        expect(result).toEqual(["hello"]);
-    });
-
-    it("trims leading/trailing whitespace before splitting", () => {
-        const result = splitIntoFragments("  hello world  ", 10);
-        expect(result).toEqual(["hello world"]);
     });
 });
 
@@ -330,10 +267,6 @@ describe("validateCombination", () => {
 describe("constants", () => {
     it("RECOMBINATION_MODEL is a mini model", () => {
         expect(RECOMBINATION_MODEL).toBe("gpt-4o-mini");
-    });
-
-    it("FRAGMENT_MAX_WORDS equals 20 seconds * 3 words/second = 60", () => {
-        expect(FRAGMENT_MAX_WORDS).toBe(60);
     });
 
     it("MAX_RETRY_ATTEMPTS is 5", () => {
@@ -510,43 +443,27 @@ describe("recombineOverlap", () => {
         expect(result).toBe("existing [10-second overlap] new content");
     });
 
-    it("calls LLM for the full input (fragment splitting removed)", async () => {
-        const words = Array.from({ length: FRAGMENT_MAX_WORDS + 5 }, (_, i) => `word${i}`);
+    it("calls LLM for the full input and falls back to programmatic when output fails validation", async () => {
+        const words = Array.from({ length: 65 }, (_, i) => `word${i}`);
         const newWindowText = words.join(" ");
 
-        const { mockCreate } = setupMockClient(words.slice(0, FRAGMENT_MAX_WORDS).join(" "));
+        // LLM returns only the first 60 words — validateCombination will reject this
+        // (the suffix of newWindowText is not matched), causing retries then fallback.
+        const { mockCreate } = setupMockClient(words.slice(0, 60).join(" "));
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        // With fragment splitting removed, the LLM now receives the full newWindowText.
-        // validateCombination may fail for long inputs, causing retries then programmatic fallback.
-        // We only assert that the LLM was called (at least once) and returns a string.
         await ai.recombineOverlap("overlap", newWindowText);
         expect(mockCreate).toHaveBeenCalled();
     });
 
-    it("calls LLM for the full input (fragment splitting removed)", async () => {
-        const words = Array.from({ length: FRAGMENT_MAX_WORDS + 5 }, (_, i) => `word${i}`);
-        const newWindowText = words.join(" ");
-
-        const { mockCreate } = setupMockClient(words.slice(0, FRAGMENT_MAX_WORDS).join(" "));
-        const capabilities = makeMockCapabilities();
-        const ai = make(() => capabilities);
-
-        // With fragment splitting removed, the LLM now receives the full newWindowText.
-        // validateCombination may fail for long inputs, causing retries then programmatic fallback.
-        // We only assert that the LLM was called (at least once) and returns a string.
-        await ai.recombineOverlap("overlap", newWindowText);
-        expect(mockCreate).toHaveBeenCalled();
-    });
-
-    it("returns LLM result for a two-fragment input (no splitting, single LLM call)", async () => {
-        const fragment1 = Array.from({ length: FRAGMENT_MAX_WORDS }, (_, i) => `a${i}`).join(" ");
-        const fragment2 = Array.from({ length: FRAGMENT_MAX_WORDS }, (_, i) => `b${i}`).join(" ");
-        const newWindowText = `${fragment1} ${fragment2}`;
+    it("returns LLM result for a long two-segment input (no splitting, single LLM call)", async () => {
+        const segment1 = Array.from({ length: 60 }, (_, i) => `a${i}`).join(" ");
+        const segment2 = Array.from({ length: 60 }, (_, i) => `b${i}`).join(" ");
+        const newWindowText = `${segment1} ${segment2}`;
 
         // The LLM receives the full newWindowText. validateCombination must accept the result.
-        // Use fragment1 as existing and newWindowText as new; return newWindowText as result
+        // Use segment1 as existing and newWindowText as new; return newWindowText as result
         // so that split=0 (empty prefix, suffix=newWindowText) is valid.
         const { mockCreate } = setupMockClient(newWindowText);
         const capabilities = makeMockCapabilities();
@@ -569,8 +486,6 @@ describe("recombineOverlap", () => {
     });
 
     it("returns programmatic recombination for empty newWindowText", async () => {
-        // splitIntoFragments("") returns [""] so the LLM will be called with empty
-        // new fragment; the LLM returns empty → fallback is programmaticRecombination("existing text", "")
         setupMockClient("");
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
