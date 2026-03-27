@@ -132,6 +132,19 @@ function stubAiDiaryQuestions(capabilities) {
         ]);
 }
 
+/**
+ * Stubs the AI transcript recombination capabilities for testing.
+ * By default returns the newWindowText unchanged (passthrough).
+ * @param {object} capabilities
+ */
+function stubAiTranscriptRecombination(capabilities) {
+    capabilities.aiTranscriptRecombination.recombineOverlap = jest
+        .fn()
+        .mockImplementation((_existingOverlapText, newWindowText) =>
+            Promise.resolve(newWindowText)
+        );
+}
+
 
 /**
  * @param {object} capabilities
@@ -535,6 +548,7 @@ module.exports = {
     stubAiTranscriber,
     stubAiCalories,
     stubAiDiaryQuestions,
+    stubAiTranscriptRecombination,
     stubNotifier,
     stubDailyTasksExecutable,
     stubSleeper,

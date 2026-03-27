@@ -2,7 +2,7 @@ const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubAiTranscriber, stubAiDiaryQuestions, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger, stubAiTranscriber, stubAiDiaryQuestions, stubAiTranscriptRecombination, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -10,6 +10,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubAiTranscriber(capabilities);
     stubAiDiaryQuestions(capabilities);
+    stubAiTranscriptRecombination(capabilities);
     stubDatetime(capabilities);
     return capabilities;
 }
@@ -290,5 +291,115 @@ describe("POST /api/diary/live/generate-questions", () => {
             "Today was tough but I managed.",
             askedQuestions
         );
+    });
+});
+
+describe("POST /api/diary/live/recombine-overlap", () => {
+    it("returns 400 when sessionId is missing", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/recombine-overlap")
+            .send({
+                existingOverlapText: "I walked to",
+                newWindowText: "I walked to the store",
+            });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/sessionId/i);
+    });
+
+    it("returns 400 when existingOverlapText is missing", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/recombine-overlap")
+            .send({
+                sessionId: "test-session",
+                newWindowText: "I walked to the store",
+            });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/existingOverlapText/i);
+    });
+
+    it("returns 400 when newWindowText is missing", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/recombine-overlap")
+            .send({
+                sessionId: "test-session",
+                existingOverlapText: "I walked to",
+            });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/newWindowText/i);
+    });
+
+    it("returns recombined text on valid request", async () => {
+        const capabilities = getTestCapabilities();
+        capabilities.aiTranscriptRecombination.recombineOverlap = jest
+            .fn()
+            .mockResolvedValue("I walked to the store");
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/recombine-overlap")
+            .send({
+                sessionId: "test-session",
+                existingOverlapText: "I walked to",
+                newWindowText: "walked to the store",
+            });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.recombinedText).toBe("I walked to the store");
+        expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
+            "I walked to",
+            "walked to the store"
+        );
+    });
+
+    it("returns 500 when recombination fails", async () => {
+        const capabilities = getTestCapabilities();
+        capabilities.aiTranscriptRecombination.recombineOverlap = jest
+            .fn()
+            .mockRejectedValue(new Error("LLM failure"));
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/recombine-overlap")
+            .send({
+                sessionId: "test-session",
+                existingOverlapText: "I walked to",
+                newWindowText: "walked to the store",
+            });
+
+        expect(res.statusCode).toBe(500);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/recombination failed/i);
+    });
+
+    it("accepts empty strings as valid inputs", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        const res = await request(app)
+            .post("/api/diary/live/recombine-overlap")
+            .send({
+                sessionId: "test-session",
+                existingOverlapText: "",
+                newWindowText: "hello world",
+            });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
     });
 });
