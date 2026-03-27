@@ -20,6 +20,7 @@ const {
     DATABASE_SUBPATH,
 } = require('./gitstore');
 const { scanFromFilesystem } = require('./render');
+const { getRootDatabase } = require('./get_root_database');
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
@@ -74,7 +75,6 @@ const { scanFromFilesystem } = require('./render');
 async function synchronizeNoLock(capabilities, options) {
     const remotePath = capabilities.environment.generatorsRepository();
     const remoteLocation = { url: remotePath };
-    const { getRootDatabase } = require('./index');
     const rootDatabase = await getRootDatabase(capabilities);
     /** @type {Error | null} */
     let mergeHostBranchesError = null;
