@@ -1,28 +1,22 @@
 /**
- * React hook that manages an AudioChunkCollector for useAudioRecorder.
+ * React hook that provides stable no-op chunk collector callbacks for useAudioRecorder.
+ *
+ * This keeps useAudioRecorder's callback wiring unchanged while avoiding
+ * unnecessary fragment accumulation/combination work now that emitted chunks
+ * are no longer consumed by runtime code.
  *
  * @module useAudioChunkCollector
  */
 
-import { useRef, useCallback } from "react";
-import { makeAudioChunkCollector } from "./audio_chunk_collector.js";
+import { useCallback } from "react";
 
 /**
  * @returns {{
  *   pushChunk: (data: Blob, startMs: number, endMs: number) => void,
- *   resetAudioChunks: () => void
+ *   resetCollector: () => void
  * }}
  */
 export function useAudioChunkCollector() {
-    /** @type {import("react").MutableRefObject<ReturnType<typeof makeAudioChunkCollector> | null>} */
-    const chunkCollectorRef = useRef(null);
-
-    // Lazy initialization: create collector only on first render so that
-    // makeAudioChunkCollector() is not called on every re-render.
-    if (chunkCollectorRef.current === null) {
-        chunkCollectorRef.current = makeAudioChunkCollector(() => {});
-    }
-
     const pushChunk = useCallback(
         /**
          * @param {Blob} data
@@ -30,18 +24,14 @@ export function useAudioChunkCollector() {
          * @param {number} endMs
          */
         (data, startMs, endMs) => {
-            if (chunkCollectorRef.current !== null) {
-                chunkCollectorRef.current.push(data, startMs, endMs);
-            }
+            void data;
+            void startMs;
+            void endMs;
         },
         []
     );
 
-    const resetAudioChunks = useCallback(() => {
-        if (chunkCollectorRef.current !== null) {
-            chunkCollectorRef.current.reset();
-        }
-    }, []);
+    const resetCollector = useCallback(() => {}, []);
 
-    return { pushChunk, resetAudioChunks };
+    return { pushChunk, resetCollector };
 }

@@ -89,7 +89,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
 
-    const { pushChunk, resetAudioChunks } =
+    const { pushChunk, resetCollector } =
         useAudioChunkCollector();
 
     const {
@@ -248,7 +248,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         restoredOffsetMsRef.current = 0;
         sequenceRef.current = -1;
         uploadQueueRef.current = Promise.resolve();
-        resetAudioChunks();
+        resetCollector();
         if (audioUrl) {
             setAudioUrl("");
         }
@@ -268,7 +268,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         } catch {
             // Non-fatal
         }
-    }, [audioUrl, resetAudioChunks]);
+    }, [audioUrl, resetCollector]);
 
     const handlePauseResume = useCallback(async () => {
         if (!isRecorder(recorderRef.current)) {
@@ -332,7 +332,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         audioBlobRef.current = null;
         restoredOffsetMsRef.current = 0;
         sequenceRef.current = -1;
-        resetAudioChunks();
+        resetCollector();
         if (isRecorder(recorderRef.current)) {
             recorderRef.current.discard();
         }
@@ -352,7 +352,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         if (sessionId) {
             void discardSession(sessionId);
         }
-    }, [audioUrl, resetAudioChunks]);
+    }, [audioUrl, resetCollector]);
 
     const clearPersistedSession = useCallback(() => {
         setHasRestoredSession(false);
