@@ -179,6 +179,11 @@ export function useDiaryLiveQuestioningController() {
     /** @type {React.MutableRefObject<Set<number>>} */
     const inFlightQuestionsRef = useRef(new Set());
 
+    // Track the highest milestone whose transcription has been applied so
+    // out-of-order (slower) responses don't overwrite newer state.
+    /** @type {React.MutableRefObject<number>} */
+    const lastAppliedMilestoneRef = useRef(0);
+
     /**
      * Process one milestone: slice audio window, transcribe, then generate questions.
      * @param {number} milestoneNumber
@@ -239,6 +244,12 @@ export function useDiaryLiveQuestioningController() {
             if (!isRunningRef.current) {
                 return;
             }
+
+            // Ignore stale results: a newer milestone may have already been applied.
+            if (milestoneNumber < lastAppliedMilestoneRef.current) {
+                return;
+            }
+            lastAppliedMilestoneRef.current = milestoneNumber;
 
             // Merge the new window into canonical tokens.
             const updatedTokens = mergeTranscriptionWindow(
@@ -373,6 +384,7 @@ export function useDiaryLiveQuestioningController() {
             mimeTypeRef.current = mimeType;
             isRunningRef.current = true;
             milestoneRef.current = 0;
+            lastAppliedMilestoneRef.current = 0;
             ringBufferRef.current = [];
             canonicalTokensRef.current = [];
             lastGeneratedTranscriptRef.current = "";

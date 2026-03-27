@@ -74,9 +74,14 @@ export default function AudioDiary() {
     // Wrap handleStart to also start live questioning.
     const handleStart = useCallback(async () => {
         liveSessionIdRef.current = generateSessionId();
-        startLive(liveSessionIdRef.current, mimeTypeRef.current || "audio/webm");
-        await handleStartBase();
-    }, [handleStartBase, startLive, mimeTypeRef]);
+        try {
+            await handleStartBase();
+            startLive(liveSessionIdRef.current, mimeTypeRef.current || "audio/webm");
+        } catch (error) {
+            // Ensure live questioning is not left running if recorder start fails.
+            stopLive();
+        }
+    }, [handleStartBase, startLive, stopLive, mimeTypeRef]);
 
     // Wrap handleStop to also stop live questioning.
     const handleStop = useCallback(async () => {

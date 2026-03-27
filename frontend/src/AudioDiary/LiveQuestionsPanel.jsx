@@ -8,7 +8,7 @@
  * @module LiveQuestionsPanel
  */
 
-import React, { useRef } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Box, Text, VStack, List } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 
@@ -82,19 +82,27 @@ function GenerationCard({ generation, index, isNew }) {
 export default function LiveQuestionsPanel({ displayedGenerations, errorMessage }) {
     const hasContent = displayedGenerations.length > 0 || errorMessage;
 
+    // Track which generation ID was last committed to the DOM via useEffect,
+    // so the "isNew" fade-in flag is derived from committed state (not render).
     /** @type {React.MutableRefObject<string | null>} */
     const latestGenerationIdRef = useRef(null);
+    const [isNewGeneration, setIsNewGeneration] = useState(false);
+
+    const newestId = displayedGenerations[0]?.generationId ?? null;
+
+    useEffect(() => {
+        if (newestId !== null && newestId !== latestGenerationIdRef.current) {
+            latestGenerationIdRef.current = newestId;
+            setIsNewGeneration(true);
+            // Clear the "new" flag after the animation completes (300 ms).
+            const timer = setTimeout(() => setIsNewGeneration(false), 300);
+            return () => clearTimeout(timer);
+        }
+        return undefined;
+    }, [newestId]);
 
     if (!hasContent) {
         return null;
-    }
-
-    const newestId = displayedGenerations[0]?.generationId ?? null;
-    const isNewGeneration = newestId !== null && newestId !== latestGenerationIdRef.current;
-
-    // Update the ref synchronously during render (safe since it doesn't affect renders).
-    if (isNewGeneration) {
-        latestGenerationIdRef.current = newestId;
     }
 
     return (

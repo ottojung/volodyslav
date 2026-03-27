@@ -14,6 +14,7 @@ const os = require("os");
 const path = require("path");
 const fsp = require("fs/promises");
 const fs = require("fs");
+const crypto = require("crypto");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -134,10 +135,11 @@ function makeRouter(capabilities) {
             "Live diary transcription window requested"
         );
 
-        // Write audio buffer to a temporary file so we can use the existing file-based transcription service.
+        // Write audio buffer to a temporary file with a random name (no user data in path).
+        // The transcription service requires a named file stream, so we cannot use in-memory streams.
         const ext = extensionForMime(mimeType);
-        const tmpDir = os.tmpdir();
-        const tmpFile = path.join(tmpDir, `diary-live-window-${sessionId}-${milestoneNumber}.${ext}`);
+        const randomHex = crypto.randomBytes(8).toString("hex");
+        const tmpFile = path.join(os.tmpdir(), `diary-live-${randomHex}.${ext}`);
 
         try {
             await fsp.writeFile(tmpFile, audioFile.buffer);
@@ -168,12 +170,38 @@ function makeRouter(capabilities) {
 
             const rawText = result.structured.transcript;
 
-            // Return a single token spanning the full window, since the current
-            // transcription service does not provide per-word timestamps.
+            // Approximate per-word tokens across the window.
+            // The transcription service does not provide per-word timestamps, so we
+            // distribute the window duration evenly across words.  Fine-grained tokens
+            // allow the replace-zone merge to preserve content outside the current
+            // window when milestones overlap.
+            const trimmedText = rawText.trim();
+
             /** @type {Array<{text: string, startMs: number, endMs: number}>} */
-            const tokens = rawText.trim()
-                ? [{ text: rawText, startMs: windowStartMs, endMs: windowEndMs }]
-                : [];
+            const tokens = [];
+
+            if (trimmedText) {
+                const words = trimmedText.split(/\s+/);
+                const wordCount = words.length;
+                const windowDuration = Math.max(0, windowEndMs - windowStartMs);
+                const durationPerWord = wordCount > 0 ? windowDuration / wordCount : 0;
+
+                let currentStart = windowStartMs;
+                for (let i = 0; i < wordCount; i += 1) {
+                    const isLast = i === wordCount - 1;
+                    const currentEnd = isLast
+                        ? windowEndMs
+                        : windowStartMs + Math.round(durationPerWord * (i + 1));
+
+                    tokens.push({
+                        text: words[i] ?? "",
+                        startMs: currentStart,
+                        endMs: currentEnd,
+                    });
+
+                    currentStart = currentEnd;
+                }
+            }
 
             return res.json({
                 success: true,
