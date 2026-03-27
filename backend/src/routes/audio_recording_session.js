@@ -184,7 +184,14 @@ function makeRouter(capabilities) {
                     );
                     liveQuestions = liveResult.questions;
                     liveStatus = liveResult.status;
-                } catch {
+                } catch (error) {
+                    capabilities.logger.logError(
+                        {
+                            error: error instanceof Error ? error.message : String(error),
+                            stack: error instanceof Error ? error.stack : undefined,
+                        },
+                        "Live diary questioning pipeline failed"
+                    );
                     // Live questioning failure is non-fatal; fragment persistence succeeded.
                     liveStatus = "degraded_question_generation";
                 }
