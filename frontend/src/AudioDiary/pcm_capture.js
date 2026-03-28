@@ -321,8 +321,10 @@ class PcmCaptureClass {
                 this._resampleRemainder = input.slice(downsampled.consumedInput);
             }
         }
-        this._bufferChunks.push(int16);
-        this._totalSamples += int16.length;
+        if (int16.length > 0) {
+            this._bufferChunks.push(int16);
+            this._totalSamples += int16.length;
+        }
     }
 
     /**
