@@ -83,6 +83,54 @@ function normalizeMimeType(mimeType) {
     return (mimeType.split(";")[0] || "").trim().toLowerCase();
 }
 
+/**
+ * Prepare a window transcript for recombination.
+ *
+ * When the transcript contains at least 4 words, remove the last word before
+ * sending it to the recombination model (to avoid anchoring on a likely
+ * unstable boundary token), then append that removed word back after
+ * recombination.
+ *
+ * @param {string} transcript
+ * @returns {{ textForRecombination: string, removedTailWord: string }}
+ */
+function prepareTranscriptForRecombination(transcript) {
+    const trimmed = transcript.trim();
+    if (!trimmed) {
+        return { textForRecombination: transcript, removedTailWord: "" };
+    }
+
+    const words = trimmed.split(/\s+/u);
+    if (words.length < 4) {
+        return { textForRecombination: transcript, removedTailWord: "" };
+    }
+
+    const removedTailWord = words.pop() || "";
+    return {
+        textForRecombination: words.join(" "),
+        removedTailWord,
+    };
+}
+
+/**
+ * Append a removed tail word to recombination output.
+ * @param {string} recombinedText
+ * @param {string} removedTailWord
+ * @returns {string}
+ */
+function appendRemovedTailWord(recombinedText, removedTailWord) {
+    if (!removedTailWord) {
+        return recombinedText;
+    }
+
+    const trimmed = recombinedText.trim();
+    if (!trimmed) {
+        return removedTailWord;
+    }
+
+    return `${trimmed} ${removedTailWord}`;
+}
+
 const LIVE_DIARY_SUBLEVEL = "live_diary";
 const LAST_FRAGMENT_KEY = stringToTempKey("last_fragment");
 const LAST_FRAGMENT_MIME_KEY = stringToTempKey("last_fragment_mime");
@@ -434,10 +482,12 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     let merged;
     if (lastWindowTranscript) {
         try {
+            const prepared = prepareTranscriptForRecombination(newWindowTranscript);
             merged = await capabilities.aiTranscriptRecombination.recombineOverlap(
                 lastWindowTranscript,
-                newWindowTranscript
+                prepared.textForRecombination
             );
+            merged = appendRemovedTailWord(merged, prepared.removedTailWord);
         } catch (error) {
             capabilities.logger.logError(
                 { sessionId, error: error instanceof Error ? error.message : String(error) },

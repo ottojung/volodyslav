@@ -91,6 +91,217 @@ describe("pushAudio", () => {
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
 
+    it("removes the last word from the newer transcript before recombination when it has at least four words", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "one two three four five",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "one two three four five", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "alpha beta gamma delta epsilon",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "alpha beta gamma delta epsilon", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            });
+
+        await pushAudio(caps, "sess-trim", Buffer.from("a1"), "audio/webm", 1);
+        await pushAudio(caps, "sess-trim", Buffer.from("a2"), "audio/webm", 2);
+        await pushAudio(caps, "sess-trim", Buffer.from("a3"), "audio/webm", 3);
+
+        expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
+            "one two three four five",
+            "alpha beta gamma delta"
+        );
+    });
+
+    it("keeps the newer transcript unchanged for recombination when it has fewer than four words", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "existing overlap transcript",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "existing overlap transcript", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "only three words",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "only three words", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            });
+
+        await pushAudio(caps, "sess-short", Buffer.from("a1"), "audio/webm", 1);
+        await pushAudio(caps, "sess-short", Buffer.from("a2"), "audio/webm", 2);
+        await pushAudio(caps, "sess-short", Buffer.from("a3"), "audio/webm", 3);
+
+        expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
+            "existing overlap transcript",
+            "only three words"
+        );
+    });
+
+    it("removes the last word when the newer transcript has exactly four words", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "first overlap window text",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "first overlap window text", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "red blue green yellow",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "red blue green yellow", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            });
+
+        await pushAudio(caps, "sess-four", Buffer.from("a1"), "audio/webm", 1);
+        await pushAudio(caps, "sess-four", Buffer.from("a2"), "audio/webm", 2);
+        await pushAudio(caps, "sess-four", Buffer.from("a3"), "audio/webm", 3);
+
+        expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
+            "first overlap window text",
+            "red blue green"
+        );
+    });
+
+    it("appends the removed last word to recombination output", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "walking to the park now",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "walking to the park now", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "to the park for fresh air",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "to the park for fresh air", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            });
+        caps.aiTranscriptRecombination.recombineOverlap = jest
+            .fn()
+            .mockResolvedValue("walking to the park for fresh");
+
+        await pushAudio(caps, "sess-append", Buffer.from("a1"), "audio/webm", 1);
+        await pushAudio(caps, "sess-append", Buffer.from("a2"), "audio/webm", 2);
+        const result = await pushAudio(caps, "sess-append", Buffer.from("a3"), "audio/webm", 3);
+
+        // Running transcript generated at fragment 3 should include the appended boundary word.
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
+            expect.stringContaining("walking to the park for fresh air"),
+            expect.any(Array)
+        );
+        expect(result.status).toBe("ok");
+    });
+
+    it("uses the removed last word as merged text when recombination output is empty", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "first second third fourth fifth",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "first second third fourth fifth", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "new overlap sentence ending word",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "new overlap sentence ending word", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            });
+        caps.aiTranscriptRecombination.recombineOverlap = jest.fn().mockResolvedValue("   ");
+
+        await pushAudio(caps, "sess-empty-merge", Buffer.from("a1"), "audio/webm", 1);
+        await pushAudio(caps, "sess-empty-merge", Buffer.from("a2"), "audio/webm", 2);
+        await pushAudio(caps, "sess-empty-merge", Buffer.from("a3"), "audio/webm", 3);
+
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
+            expect.stringContaining("word"),
+            expect.any(Array)
+        );
+    });
+
     it("returns empty questions when transcription fails (non-fatal)", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamDetailed = jest
