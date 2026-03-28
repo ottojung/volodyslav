@@ -317,6 +317,77 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         expect(liveRes.body.questions).toEqual([]);
     });
 
+    it("continues processing newer fragments when one fragment transcription hangs", async () => {
+        const capabilities = getTestCapabilities();
+        let transcribeCallCount = 0;
+        capabilities.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockImplementation(async () => {
+                transcribeCallCount += 1;
+                if (transcribeCallCount === 2) {
+                    return await new Promise((resolve) => {
+                        setTimeout(() => {
+                            resolve({
+                                text: "late transcript",
+                                provider: "Google",
+                                model: "mocked",
+                                finishReason: "STOP",
+                                finishMessage: null,
+                                candidateTokenCount: 0,
+                                usageMetadata: null,
+                                modelVersion: null,
+                                responseId: null,
+                                structured: { transcript: "late transcript", coverage: "full", warnings: [], unclearAudio: false },
+                                rawResponse: null,
+                            });
+                        }, 60);
+                    });
+                }
+                return {
+                    text: `transcript-${transcribeCallCount}`,
+                    provider: "Google",
+                    model: "mocked",
+                    finishReason: "STOP",
+                    finishMessage: null,
+                    candidateTokenCount: 0,
+                    usageMetadata: null,
+                    modelVersion: null,
+                    responseId: null,
+                    structured: { transcript: `transcript-${transcribeCallCount}`, coverage: "full", warnings: [], unclearAudio: false },
+                    rawResponse: null,
+                };
+            });
+        const app = await makeApp(capabilities);
+        const sessionId = "session-hanging-fragment";
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
+
+        const sendFragment = (i) => request(app)
+            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
+            .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
+            .field("mimeType", "audio/webm")
+            .field("sequence", String(i - 1))
+            .field("startMs", String((i - 1) * 10000))
+            .field("endMs", String(i * 10000));
+
+        await sendFragment(1);
+        await sendFragment(2);
+        await sendFragment(3);
+        await sendFragment(4);
+
+        await flushProcessing();
+
+        const liveRes = await request(app)
+            .get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(liveRes.statusCode).toBe(200);
+        expect(liveRes.body.success).toBe(true);
+        expect(Array.isArray(liveRes.body.questions)).toBe(true);
+        // Despite fragment 3 timing out, fragment 4 should still produce questions.
+        expect(liveRes.body.questions.length).toBeGreaterThan(0);
+    });
+
     it("returns 200 with questions via live-questions even when recombination fails (fallback)", async () => {
         const capabilities = getTestCapabilities();
         // Override recombination to throw.
