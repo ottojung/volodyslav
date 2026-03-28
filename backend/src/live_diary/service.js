@@ -46,6 +46,16 @@ const {
     appendPendingQuestions,
     clearPendingQuestions,
 } = require("./session_state");
+const {
+    DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS,
+    isLiveDiaryStepTimeoutError,
+    withStepTimeout,
+} = require("./step_timeout");
+const {
+    prepareTranscriptForRecombination,
+    appendRemovedTailWord,
+    deduplicateQuestions,
+} = require("./text_processing");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
@@ -93,56 +103,6 @@ function extensionForMime(mimeType) {
  */
 function normalizeMimeType(mimeType) {
     return (mimeType.split(";")[0] || "").trim().toLowerCase();
-}
-
-/**
- * Prepare a window transcript for recombination.
- *
- * When the transcript is not too short, remove the last word before
- * sending it to the recombination model (to avoid anchoring on a likely
- * unstable boundary token), then append that removed word back after
- * recombination.
- *
- * @param {string} transcript
- * @returns {{ textForRecombination: string, removedTailWord: string }}
- */
-function prepareTranscriptForRecombination(transcript) {
-    const trimmed = transcript.trim();
-    if (!trimmed) {
-        return { textForRecombination: transcript, removedTailWord: "" };
-    }
-
-    const words = trimmed.split(/\s+/u);
-    const tooFewWords = words.length < 2;
-    const removedTailWord = words.pop() || "";
-    const tooFewCharsInInitialWords = words.join("").length < 4;
-    if (tooFewWords || tooFewCharsInInitialWords) {
-        return { textForRecombination: transcript, removedTailWord: "" };
-    }
-
-    return {
-        textForRecombination: words.join(" "),
-        removedTailWord,
-    };
-}
-
-/**
- * Append a removed tail word to recombination output.
- * @param {string} recombinedText
- * @param {string} removedTailWord
- * @returns {string}
- */
-function appendRemovedTailWord(recombinedText, removedTailWord) {
-    if (!removedTailWord) {
-        return recombinedText;
-    }
-
-    const trimmed = recombinedText.trim();
-    if (!trimmed) {
-        return removedTailWord;
-    }
-
-    return `${trimmed} ${removedTailWord}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,38 +180,6 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 // Question deduplication
 // ---------------------------------------------------------------------------
 
-/**
- * Deduplicate questions by normalised text, keeping the first occurrence.
- *
- * Normalisation is Unicode-aware: it uses NFKD decomposition, lowercasing,
- * Unicode-category punctuation/symbol removal, and whitespace collapsing.
- * This ensures correct deduplication for non-Latin scripts such as Cyrillic.
- *
- * @param {Array<{text: string, intent: string}>} questions
- * @param {string[]} askedTexts
- * @returns {Array<{text: string, intent: string}>}
- */
-function deduplicateQuestions(questions, askedTexts) {
-    const normalise = (/** @type {string} */ s) =>
-        s.normalize("NFKD")
-         .toLowerCase()
-         .replace(/[\p{P}\p{S}]/gu, "")
-         .replace(/\s+/g, " ")
-         .trim();
-
-    const seen = new Set(askedTexts.map(normalise));
-    /** @type {Array<{text: string, intent: string}>} */
-    const result = [];
-    for (const q of questions) {
-        const key = normalise(q.text);
-        if (!seen.has(key)) {
-            seen.add(key);
-            result.push(q);
-        }
-    }
-    return result;
-}
-
 // ---------------------------------------------------------------------------
 // Public service function
 // ---------------------------------------------------------------------------
@@ -299,9 +227,17 @@ function deduplicateQuestions(questions, askedTexts) {
  * @param {Buffer} fragmentBuffer
  * @param {string} mimeType
  * @param {number} fragmentNumber
+ * @param {number} [stepTimeoutMs]
  * @returns {Promise<PushAudioResult>}
  */
-async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, fragmentNumber) {
+async function pushAudio(
+    capabilities,
+    sessionId,
+    fragmentBuffer,
+    mimeType,
+    fragmentNumber,
+    stepTimeoutMs = DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS
+) {
     const { temporary } = capabilities;
     const normalizedMimeType = normalizeMimeType(mimeType);
 
@@ -358,12 +294,23 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     // Transcribe the overlap window.
     let newWindowTranscript;
     try {
-        newWindowTranscript = await transcribeBuffer(window20s, normalizedMimeType, capabilities);
-    } catch (error) {
-        capabilities.logger.logError(
-            { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
-            "Live diary transcription failed"
+        newWindowTranscript = await withStepTimeout(
+            "transcription",
+            () => transcribeBuffer(window20s, normalizedMimeType, capabilities),
+            stepTimeoutMs
         );
+    } catch (error) {
+        if (isLiveDiaryStepTimeoutError(error)) {
+            capabilities.logger.logWarning(
+                { sessionId, fragmentNumber, timeoutMs: error.timeoutMs, step: error.step },
+                "Live diary transcription timed out; skipping this fragment"
+            );
+        } else {
+            capabilities.logger.logError(
+                { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
+                "Live diary transcription failed"
+            );
+        }
         return { questions: [], status: "degraded_transcription" };
     }
 
@@ -400,9 +347,13 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
             "Live diary attempting LLM recombination of overlap window transcripts"
         );
         try {
-            merged = await capabilities.aiTranscriptRecombination.recombineOverlap(
-                lastWindowTranscript,
-                prepared.textForRecombination
+            merged = await withStepTimeout(
+                "recombination",
+                () => capabilities.aiTranscriptRecombination.recombineOverlap(
+                    lastWindowTranscript,
+                    prepared.textForRecombination
+                ),
+                stepTimeoutMs
             );
             merged = appendRemovedTailWord(merged, prepared.removedTailWord);
             capabilities.logger.logDebug(
@@ -446,15 +397,26 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     const askedQuestions = await readAskedQuestions(temporary, sessionId);
     let allQuestions;
     try {
-        allQuestions = await capabilities.aiDiaryQuestions.generateQuestions(
-            updatedRunningTranscript,
-            askedQuestions
+        allQuestions = await withStepTimeout(
+            "question_generation",
+            () => capabilities.aiDiaryQuestions.generateQuestions(
+                updatedRunningTranscript,
+                askedQuestions
+            ),
+            stepTimeoutMs
         );
     } catch (error) {
-        capabilities.logger.logError(
-            { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
-            "Live diary question generation failed"
-        );
+        if (isLiveDiaryStepTimeoutError(error)) {
+            capabilities.logger.logWarning(
+                { sessionId, fragmentNumber, timeoutMs: error.timeoutMs, step: error.step },
+                "Live diary question generation timed out; skipping this fragment"
+            );
+        } else {
+            capabilities.logger.logError(
+                { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
+                "Live diary question generation failed"
+            );
+        }
         return { questions: [], status: "degraded_question_generation" };
     }
 

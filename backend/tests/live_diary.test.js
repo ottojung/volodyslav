@@ -54,6 +54,8 @@ function makeCapabilities() {
     return makeCapabilitiesWithWorkDir(workDir);
 }
 
+const SHORT_TIMEOUT_MS = 10;
+
 // ─── Basic behavior ──────────────────────────────────────────────────────────
 
 describe("pushAudio", () => {
@@ -314,6 +316,41 @@ describe("pushAudio", () => {
         expect(result.status).toBe("degraded_transcription");
     });
 
+    it("returns degraded_transcription if transcription takes too long", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest
+            .fn()
+            .mockImplementation(() => new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve({
+                        text: "late transcript",
+                        provider: "Google",
+                        model: "mocked",
+                        finishReason: "STOP",
+                        finishMessage: null,
+                        candidateTokenCount: 0,
+                        usageMetadata: null,
+                        modelVersion: null,
+                        responseId: null,
+                        structured: { transcript: "late transcript", coverage: "full", warnings: [], unclearAudio: false },
+                        rawResponse: null,
+                    });
+                }, 50);
+            }));
+
+        await pushAudio(caps, "sess-timeout-transcription", Buffer.from("a1"), "audio/webm", 1);
+        const result = await pushAudio(
+            caps,
+            "sess-timeout-transcription",
+            Buffer.from("a2"),
+            "audio/webm",
+            2,
+            SHORT_TIMEOUT_MS
+        );
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("degraded_transcription");
+    });
+
     it("returns empty questions when transcription returns empty string (silence)", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
@@ -354,6 +391,43 @@ describe("pushAudio", () => {
         const r3 = await pushAudio(caps, "sess-dedup", Buffer.from("a3"), "audio/webm", 3);
         expect(r3.questions).toHaveLength(0);
         expect(r3.status).toBe("ok");
+    });
+
+    it("returns degraded_question_generation if question generation takes too long", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
+            text: "steady transcript",
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: { transcript: "steady transcript", coverage: "full", warnings: [], unclearAudio: false },
+            rawResponse: null,
+        });
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockImplementation(() => new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve([{ text: "late question", intent: "warm_reflective" }]);
+                }, 50);
+            }));
+
+        await pushAudio(caps, "sess-timeout-questions", Buffer.from("a1"), "audio/webm", 1, SHORT_TIMEOUT_MS);
+        const result = await pushAudio(
+            caps,
+            "sess-timeout-questions",
+            Buffer.from("a2"),
+            "audio/webm",
+            2,
+            SHORT_TIMEOUT_MS
+        );
+
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("degraded_question_generation");
     });
 
     it("deduplicates non-ASCII (Cyrillic) questions using Unicode-aware normalization", async () => {
