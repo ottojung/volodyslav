@@ -16,7 +16,8 @@
     "luxon": "^3.7.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.5.3"
+    "react-router-dom": "^7.5.3",
+    "wavefile": "^11.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.5",

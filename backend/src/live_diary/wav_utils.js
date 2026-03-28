@@ -1,13 +1,14 @@
 /**
  * WAV format utilities for PCM-based live diary analysis.
  *
- * These helpers parse and build RIFF/WAV files with PCM audio data.
- * Used by the live diary service to safely concatenate two 10-second
- * PCM fragments into a 20-second overlap window without the structural
- * fragility of raw WebM concatenation.
+ * Parsing and building of RIFF/WAV files is delegated to the `wavefile`
+ * library, which handles edge cases, malformed input, and a wide range of
+ * WAVE variants reliably.
  *
  * @module live_diary/wav_utils
  */
+
+const { WaveFile } = require("wavefile");
 
 /**
  * @typedef {object} WavInfo
@@ -27,66 +28,37 @@
  * @returns {WavInfo | null}
  */
 function parseWav(buffer) {
-    if (!Buffer.isBuffer(buffer) || buffer.length < 44) {
-        return null;
-    }
-
-    if (buffer.toString("ascii", 0, 4) !== "RIFF") {
-        return null;
-    }
-    if (buffer.toString("ascii", 8, 12) !== "WAVE") {
-        return null;
-    }
-
-    let sampleRate = 0;
-    let channels = 0;
-    let bitDepth = 0;
-    let dataOffset = -1;
-    let dataSize = -1;
-
-    let offset = 12;
-    while (offset + 8 <= buffer.length) {
-        const chunkId = buffer.toString("ascii", offset, offset + 4);
-        const chunkSize = buffer.readUInt32LE(offset + 4);
-
-        if (chunkId === "fmt ") {
-            if (chunkSize < 16) {
-                return null;
-            }
-            const audioFormat = buffer.readUInt16LE(offset + 8);
-            if (audioFormat !== 1) {
-                // Not linear PCM — reject.
-                return null;
-            }
-            channels = buffer.readUInt16LE(offset + 10);
-            sampleRate = buffer.readUInt32LE(offset + 12);
-            bitDepth = buffer.readUInt16LE(offset + 22);
-        } else if (chunkId === "data") {
-            dataOffset = offset + 8;
-            dataSize = chunkSize;
-            break;
+    try {
+        const wf = new WaveFile(buffer);
+        // wavefile's fmt/data objects are typed as bare 'object'; use
+        // Reflect.get + typeof/instanceof guards to access properties safely.
+        const audioFormat = Reflect.get(wf.fmt, "audioFormat");
+        if (typeof audioFormat !== "number" || audioFormat !== 1) {
+            return null;
         }
-
-        offset += 8 + chunkSize;
-        // RIFF chunks are padded to even byte boundaries.
-        if (chunkSize % 2 !== 0) {
-            offset += 1;
+        const sampleRate = Reflect.get(wf.fmt, "sampleRate");
+        const numChannels = Reflect.get(wf.fmt, "numChannels");
+        const bitsPerSample = Reflect.get(wf.fmt, "bitsPerSample");
+        if (typeof sampleRate !== "number" || typeof numChannels !== "number" || typeof bitsPerSample !== "number") {
+            return null;
         }
-    }
-
-    if (sampleRate === 0 || channels === 0 || bitDepth === 0 || dataOffset < 0 || dataSize < 0) {
+        const rawSamples = Reflect.get(wf.data, "samples");
+        if (!(rawSamples instanceof Uint8Array)) {
+            return null;
+        }
+        return {
+            pcm: Buffer.from(rawSamples),
+            sampleRate,
+            channels: numChannels,
+            bitDepth: bitsPerSample,
+        };
+    } catch {
         return null;
     }
-
-    // Clamp to actual buffer length in case the reported dataSize is larger.
-    const pcmEnd = Math.min(dataOffset + dataSize, buffer.length);
-    const pcm = buffer.slice(dataOffset, pcmEnd);
-
-    return { pcm, sampleRate, channels, bitDepth };
 }
 
 /**
- * Wrap raw PCM data in a RIFF/WAV container.
+ * Wrap raw 16-bit signed LE PCM data in a RIFF/WAV container.
  *
  * @param {Buffer} pcm - Raw PCM sample bytes.
  * @param {number} sampleRate
@@ -95,26 +67,14 @@ function parseWav(buffer) {
  * @returns {Buffer}
  */
 function buildWav(pcm, sampleRate, channels, bitDepth) {
-    const blockAlign = channels * Math.ceil(bitDepth / 8);
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = pcm.length;
-
-    const header = Buffer.allocUnsafe(44);
-    header.write("RIFF", 0, "ascii");
-    header.writeUInt32LE(36 + dataSize, 4);
-    header.write("WAVE", 8, "ascii");
-    header.write("fmt ", 12, "ascii");
-    header.writeUInt32LE(16, 16);       // fmt chunk size
-    header.writeUInt16LE(1, 20);        // PCM format
-    header.writeUInt16LE(channels, 22);
-    header.writeUInt32LE(sampleRate, 24);
-    header.writeUInt32LE(byteRate, 28);
-    header.writeUInt16LE(blockAlign, 32);
-    header.writeUInt16LE(bitDepth, 34);
-    header.write("data", 36, "ascii");
-    header.writeUInt32LE(dataSize, 40);
-
-    return Buffer.concat([header, pcm]);
+    const numSamples = Math.floor(pcm.length / 2);
+    const samples = new Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+        samples[i] = pcm.readInt16LE(i * 2);
+    }
+    const wf = new WaveFile();
+    wf.fromScratch(channels, sampleRate, String(bitDepth), samples);
+    return Buffer.from(wf.toBuffer());
 }
 
 /** Supported audio MIME types and their file extensions. */
@@ -150,3 +110,4 @@ function normalizeMimeType(mimeType) {
 }
 
 module.exports = { parseWav, buildWav, extensionForMime, normalizeMimeType };
+

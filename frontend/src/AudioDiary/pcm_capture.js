@@ -12,10 +12,12 @@
  *     avoids the deprecated ScriptProcessorNode.
  *   Fallback path: ScriptProcessorNode.  Used when AudioWorklet is not
  *     available (older browsers).  If neither API is available, PCM
- *     capture silently degrades to a no-op; analysis chunks will be null.
+ *     capture degrades to a no-op and makePcmCapture returns null.
  *
  * @module AudioDiary/pcm_capture
  */
+
+import { WaveFile } from "wavefile";
 
 /** Target analysis sample rate (Hz). */
 const TARGET_SAMPLE_RATE = 16000;
@@ -42,7 +44,7 @@ registerProcessor("${WORKLET_PROCESSOR_NAME}", PcmCaptureProcessor);
 `;
 
 // ---------------------------------------------------------------------------
-// WAV builder (browser-side, ArrayBuffer-based)
+// WAV builder (browser-side, using wavefile library)
 // ---------------------------------------------------------------------------
 
 /**
@@ -52,36 +54,14 @@ registerProcessor("${WORKLET_PROCESSOR_NAME}", PcmCaptureProcessor);
  * @returns {Blob}
  */
 function buildWavBlob(samples, sampleRate) {
-    const numChannels = 1;
-    const bitsPerSample = 16;
-    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-    const blockAlign = numChannels * (bitsPerSample / 8);
-    const dataSize = samples.length * 2;
-
-    const header = new ArrayBuffer(44);
-    const v = new DataView(header);
-
-    // "RIFF"
-    v.setUint8(0, 0x52); v.setUint8(1, 0x49); v.setUint8(2, 0x46); v.setUint8(3, 0x46);
-    v.setUint32(4, 36 + dataSize, true);
-    // "WAVE"
-    v.setUint8(8, 0x57); v.setUint8(9, 0x41); v.setUint8(10, 0x56); v.setUint8(11, 0x45);
-    // "fmt "
-    v.setUint8(12, 0x66); v.setUint8(13, 0x6d); v.setUint8(14, 0x74); v.setUint8(15, 0x20);
-    v.setUint32(16, 16, true);            // fmt chunk size
-    v.setUint16(20, 1, true);             // PCM format
-    v.setUint16(22, numChannels, true);
-    v.setUint32(24, sampleRate, true);
-    v.setUint32(28, byteRate, true);
-    v.setUint16(32, blockAlign, true);
-    v.setUint16(34, bitsPerSample, true);
-    // "data"
-    v.setUint8(36, 0x64); v.setUint8(37, 0x61); v.setUint8(38, 0x74); v.setUint8(39, 0x61);
-    v.setUint32(40, dataSize, true);
-
-    // Create a fresh copy of samples so the Blob owns its own buffer.
-    const pcmCopy = new Int16Array(samples);
-    return new Blob([header, pcmCopy.buffer], { type: "audio/wav" });
+    const wf = new WaveFile();
+    wf.fromScratch(1, sampleRate, "16", Array.from(samples));
+    const bytes = wf.toBuffer();
+    // Copy to a plain ArrayBuffer so it is accepted as a valid BlobPart
+    // (toBuffer() returns a Uint8Array whose .buffer may be a SharedArrayBuffer).
+    const buf = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(buf).set(bytes);
+    return new Blob([buf], { type: "audio/wav" });
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +116,8 @@ class PcmCaptureClass {
     _sourceNode;
     /** @type {AudioWorkletNode | ScriptProcessorNode | null} */
     _captureNode = null;
+    /** @type {GainNode | null} */
+    _silentGain = null;
     /** @type {number} */
     _sourceSampleRate;
     /** @type {Int16Array[]} */
@@ -161,19 +143,19 @@ class PcmCaptureClass {
     /**
      * Attach the capture node to the audio graph.
      * Tries AudioWorklet first; falls back to ScriptProcessorNode.
-     * Resolves without error even when neither API is available.
-     * @returns {Promise<void>}
+     * Returns true if a capture node was successfully attached, false otherwise.
+     * @returns {Promise<boolean>}
      */
     async setup() {
         if (this._audioContext.audioWorklet) {
             try {
                 await this._setupWorklet();
-                return;
+                return true;
             } catch {
                 // Fall through to ScriptProcessorNode.
             }
         }
-        this._setupScriptProcessor();
+        return this._setupScriptProcessor();
     }
 
     /** @returns {Promise<void>} */
@@ -191,13 +173,23 @@ class PcmCaptureClass {
                 this._addSamples(e.data);
             }
         };
+        // Connect source → worklet → silent gain → destination.
+        // The downstream connection to destination is required to keep the
+        // worklet node in the rendering graph; without it some browsers may
+        // garbage-collect or suspend the node, stopping PCM delivery.
+        const silent = this._audioContext.createGain();
+        silent.gain.value = 0;
+        silent.connect(this._audioContext.destination);
         this._sourceNode.connect(workletNode);
+        workletNode.connect(silent);
         this._captureNode = workletNode;
+        this._silentGain = silent;
     }
 
+    /** @returns {boolean} */
     _setupScriptProcessor() {
         if (typeof this._audioContext.createScriptProcessor !== "function") {
-            return;
+            return false;
         }
         try {
             const node = this._audioContext.createScriptProcessor(4096, 1, 1);
@@ -205,14 +197,18 @@ class PcmCaptureClass {
                 const channelData = e.inputBuffer.getChannelData(0);
                 this._addSamples(channelData);
             };
-            this._sourceNode.connect(node);
-            // Connect output to a silent gain node so the graph stays active.
+            // Connect source → node → silent gain → destination.
+            // Without the destination connection onaudioprocess may not fire.
             const silent = this._audioContext.createGain();
             silent.gain.value = 0;
+            silent.connect(this._audioContext.destination);
+            this._sourceNode.connect(node);
             node.connect(silent);
             this._captureNode = node;
+            this._silentGain = silent;
+            return true;
         } catch {
-            // PCM capture unavailable.
+            return false;
         }
     }
 
@@ -307,6 +303,14 @@ class PcmCaptureClass {
             }
             this._captureNode = null;
         }
+        if (this._silentGain) {
+            try {
+                this._silentGain.disconnect();
+            } catch {
+                // Ignore.
+            }
+            this._silentGain = null;
+        }
         this._bufferChunks = [];
         this._totalSamples = 0;
     }
@@ -314,7 +318,8 @@ class PcmCaptureClass {
 
 /**
  * Create and set up a PCM capture node attached to an existing audio graph.
- * Returns null when the required browser APIs are not available.
+ * Returns null when neither AudioWorklet nor ScriptProcessorNode is available
+ * in the current browser environment.
  *
  * @param {AudioContext} audioContext
  * @param {MediaStreamAudioSourceNode} sourceNode
@@ -323,8 +328,8 @@ class PcmCaptureClass {
 export async function makePcmCapture(audioContext, sourceNode) {
     try {
         const capture = new PcmCaptureClass(audioContext, sourceNode);
-        await capture.setup();
-        return capture;
+        const attached = await capture.setup();
+        return attached ? capture : null;
     } catch {
         return null;
     }
@@ -336,3 +341,4 @@ export function isPcmCapture(object) {
 }
 
 export { buildWavBlob, downsample, TARGET_SAMPLE_RATE };
+
