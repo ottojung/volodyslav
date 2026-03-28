@@ -20,25 +20,29 @@ else
     exit 1
 fi
 
-mkdir -p -- "$PREFIX"/bin
-mkdir -p -- "$PREFIX"/share/volodyslav
+BINDIR="$PREFIX"/bin
+DATADIR="$PREFIX"/share/volodyslav
+SOURCEDIR="$DATADIR"/source
+
+mkdir -p -- "$BINDIR"
+mkdir -p -- "$DATADIR"
 
 if command -v rsync >/dev/null 2>&1
 then
     COPY="rsync --recursive --partial --delete --links --times"
 else
     COPY="cp -r -T"
-    rm -rf -- "$PREFIX"/share/volodyslav/source
+    rm -rf -- "$SOURCEDIR"
 fi
 
-$COPY -- ./ "$PREFIX"/share/volodyslav/source/
+$COPY -- ./ "$SOURCEDIR"
 
-echo "$VERSION" > "$PREFIX"/share/volodyslav/source/VERSION
+echo "$VERSION" > "$SOURCEDIR"/VERSION
 
 # Store the full VOLODYSLAV_BASEURL for the installed version
-printf '%s' "${VOLODYSLAV_BASEURL:-}" > "$PREFIX"/share/volodyslav/source/BASE_PATH
+printf '%s' "${VOLODYSLAV_BASEURL:-}" > "$SOURCEDIR"/BASE_PATH
 
 # Remove .git to avoid broken references in submodule setups
-rm -rf -- "$PREFIX"/share/volodyslav/source/.git
+rm -rf -- "$SOURCEDIR"/.git
 
-ln -srfT -- "$PREFIX"/share/volodyslav/source/scripts/run-main "$PREFIX"/bin/volodyslav
+ln -srfT -- "$SOURCEDIR"/scripts/run-main "$BINDIR"/volodyslav
