@@ -110,6 +110,29 @@ function stubAiTranscriber(capabilities) {
             },
             rawResponse: null,
         });
+    capabilities.aiTranscription.transcribeStreamPrecise = jest
+        .fn()
+        .mockResolvedValue("mocked transcription result");
+    capabilities.aiTranscription.transcribeStreamPreciseDetailed = jest
+        .fn()
+        .mockResolvedValue({
+            text: "mocked transcription result",
+            provider: "OpenAI",
+            model: "whisper-1",
+            finishReason: null,
+            finishMessage: null,
+            candidateTokenCount: null,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: {
+                transcript: "mocked transcription result",
+                coverage: "full",
+                warnings: [],
+                unclearAudio: false,
+            },
+            rawResponse: null,
+        });
     capabilities.aiTranscription.getTranscriberInfo = jest.fn().mockReturnValue({
         name: "mocked-transcriber",
         creator: "Mocked Creator",

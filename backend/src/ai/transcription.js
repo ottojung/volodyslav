@@ -18,6 +18,7 @@
  */
 
 const { GoogleGenAI, createUserContent, createPartFromUri, ThinkingLevel } = require("@google/genai");
+const { OpenAI } = require("openai");
 const path = require("path");
 const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
@@ -56,7 +57,7 @@ const {
 /**
  * @typedef {object} TranscriptionResult
  * @property {string} text - The final transcript text.
- * @property {string} provider - The AI provider name ("Google").
+ * @property {string} provider - The AI provider name.
  * @property {string} model - The model name used.
  * @property {string | null} finishReason - The candidate finish reason.
  * @property {string | null} finishMessage - The candidate finish message.
@@ -71,6 +72,7 @@ const {
 /** @typedef {import('./transcription_gemini').UploadedGeminiFile} UploadedGeminiFile */
 
 const TRANSCRIBER_MODEL = "gemini-3-flash-preview";
+const PRECISE_TRANSCRIBER_MODEL = "whisper-1";
 const MAX_OUTPUT_TOKENS = 65536;
 const TEMPERATURE = 0.0;
 const THINKING_LEVEL = ThinkingLevel.LOW;
@@ -128,8 +130,81 @@ function mimeTypeForPath(filePath) {
  * @typedef {object} AITranscription
  * @property {(fileStream: import('fs').ReadStream) => Promise<string>} transcribeStream
  * @property {(fileStream: import('fs').ReadStream) => Promise<TranscriptionResult>} transcribeStreamDetailed
+ * @property {(fileStream: import('fs').ReadStream) => Promise<string>} transcribeStreamPrecise
+ * @property {(fileStream: import('fs').ReadStream) => Promise<TranscriptionResult>} transcribeStreamPreciseDetailed
  * @property {() => Transcriber} getTranscriberInfo
  */
+
+/**
+ * Transcribes short audio fragments with Whisper for precise speech-to-text output.
+ * @param {function(string): OpenAI} makeClient - A memoized function to create an OpenAI client.
+ * @param {Capabilities} capabilities - The capabilities object.
+ * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
+ * @returns {Promise<TranscriptionResult>}
+ */
+async function transcribeStreamPreciseDetailed(makeClient, capabilities, fileStream) {
+    const apiKey = capabilities.environment.openaiAPIKey();
+    const client = makeClient(apiKey);
+
+    let rawResponse;
+    try {
+        rawResponse = await client.audio.transcriptions.create({
+            file: fileStream,
+            model: PRECISE_TRANSCRIBER_MODEL,
+            response_format: "verbose_json",
+        });
+    } catch (error) {
+        throw new AITranscriptionError(
+            `Failed to generate precise transcription: ${error instanceof Error ? error.message : String(error)}`,
+            error
+        );
+    }
+
+    if (!rawResponse || typeof rawResponse !== "object") {
+        throw new AITranscriptionError("Precise transcription response is not an object", rawResponse);
+    }
+
+    if (typeof rawResponse.text !== "string") {
+        throw new AITranscriptionError("Precise transcription response is missing 'text'", rawResponse);
+    }
+
+    return {
+        text: rawResponse.text,
+        provider: "OpenAI",
+        model: PRECISE_TRANSCRIBER_MODEL,
+        finishReason: null,
+        finishMessage: null,
+        candidateTokenCount: null,
+        usageMetadata: null,
+        modelVersion: null,
+        responseId: null,
+        structured: {
+            transcript: rawResponse.text,
+            coverage: "full",
+            warnings: [],
+            unclearAudio: false,
+        },
+        rawResponse,
+    };
+}
+
+/**
+ * Transcribes short audio fragments with Whisper and returns only transcript text.
+ * @param {function(string): OpenAI} makeClient - A memoized function to create an OpenAI client.
+ * @param {Capabilities} capabilities - The capabilities object.
+ * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
+ * @returns {Promise<string>}
+ */
+async function transcribeStreamPrecise(makeClient, capabilities, fileStream) {
+    const result = await transcribeStreamPreciseDetailed(makeClient, capabilities, fileStream);
+    capabilities.logger.logInfo(
+        {
+            file: fileStream.path,
+        },
+        "Precise transcription completed"
+    );
+    return result.text;
+}
 
 /**
  * Transcribes audio with full metadata using the Gemini API.
@@ -339,10 +414,15 @@ function getTranscriberInfo() {
 function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
     const makeClient = memoize((apiKey) => new GoogleGenAI({ apiKey }));
+    const makeOpenAIClient = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
         transcribeStream: (fileStream) => transcribeStream(makeClient, getCapabilitiesMemo(), fileStream),
         transcribeStreamDetailed: (fileStream) =>
             transcribeStreamDetailed(makeClient, getCapabilitiesMemo(), fileStream),
+        transcribeStreamPrecise: (fileStream) =>
+            transcribeStreamPrecise(makeOpenAIClient, getCapabilitiesMemo(), fileStream),
+        transcribeStreamPreciseDetailed: (fileStream) =>
+            transcribeStreamPreciseDetailed(makeOpenAIClient, getCapabilitiesMemo(), fileStream),
         getTranscriberInfo,
     };
 }
@@ -351,6 +431,7 @@ module.exports = {
     make,
     isAITranscriptionError,
     TRANSCRIBER_MODEL,
+    PRECISE_TRANSCRIBER_MODEL,
     MAX_OUTPUT_TOKENS,
     TEMPERATURE,
     THINKING_LEVEL,

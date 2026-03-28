@@ -145,7 +145,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         // Wait for background processing then verify transcription was not called.
         await flushProcessing();
-        expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 
     it("transcribes the overlap window and makes questions available via live-questions endpoint", async () => {
@@ -184,7 +184,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         await flushProcessing();
 
         // Transcription was called once (for the overlap window formed by fragments 1+2).
-        expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
         // Question generation was called once.
         expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
 
@@ -220,14 +220,14 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         // Fragments 2: transcription(1+2) → first window. No recombination (no previous window).
         // Fragments 3: transcription(2+3) → second window. Recombination(window1, window2) called.
-        expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(2);
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(2);
         expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
 
     it("returns empty live-questions when the transcript is silent (empty transcription)", async () => {
         const capabilities = getTestCapabilities();
         // Override transcription to return empty.
-        capabilities.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
+        capabilities.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
             text: "",
             provider: "Google",
             model: "mocked",
@@ -279,7 +279,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
     it("returns 200 immediately even when transcription fails (background non-fatal)", async () => {
         const capabilities = getTestCapabilities();
-        capabilities.aiTranscription.transcribeStreamDetailed = jest
+        capabilities.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockRejectedValue(new Error("Transcription API error"));
         const app = await makeApp(capabilities);
@@ -321,7 +321,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
     it("continues processing newer fragments when one fragment transcription hangs", async () => {
         const capabilities = getTestCapabilities();
         let transcribeCallCount = 0;
-        capabilities.aiTranscription.transcribeStreamDetailed = jest
+        capabilities.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockImplementation(async () => {
                 transcribeCallCount += 1;
@@ -529,6 +529,6 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         await flushProcessing();
 
         // Each new session starts fresh with no previous fragment to combine.
-        expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 });

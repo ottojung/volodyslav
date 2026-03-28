@@ -18,12 +18,17 @@ jest.mock("@google/genai", () => {
         GoogleGenAI: jest.fn(),
     };
 });
+jest.mock("openai", () => ({
+    OpenAI: jest.fn(),
+}));
 
 const { GoogleGenAI } = require("@google/genai");
+const { OpenAI } = require("openai");
 const {
     make,
     isAITranscriptionError,
     TRANSCRIBER_MODEL,
+    PRECISE_TRANSCRIBER_MODEL,
     MAX_OUTPUT_TOKENS,
     TEMPERATURE,
     THINKING_LEVEL,
@@ -39,6 +44,7 @@ function makeMockCapabilities() {
     return {
         environment: {
             geminiApiKey: jest.fn().mockReturnValue("test-api-key"),
+            openaiAPIKey: jest.fn().mockReturnValue("test-openai-api-key"),
         },
         sleeper: {
             sleep: jest.fn().mockResolvedValue(undefined),
@@ -50,6 +56,23 @@ function makeMockCapabilities() {
             logDebug: jest.fn(),
         },
     };
+}
+
+function setupMockOpenAIClient(resultOrError) {
+    const createTranscription = jest.fn();
+    if (resultOrError instanceof Error) {
+        createTranscription.mockRejectedValue(resultOrError);
+    } else {
+        createTranscription.mockResolvedValue(resultOrError);
+    }
+    OpenAI.mockImplementation(() => ({
+        audio: {
+            transcriptions: {
+                create: createTranscription,
+            },
+        },
+    }));
+    return { createTranscription };
 }
 
 function makeFileStream(filePath = "/tmp/test.mp3") {
@@ -962,5 +985,50 @@ describe("transcribeStream: compatibility", () => {
 
         expect(info.name).toBe(TRANSCRIBER_MODEL);
         expect(info.creator).toBe("Google");
+    });
+});
+
+describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    test("uses whisper-1 for precise detailed transcription", async () => {
+        const { createTranscription } = setupMockOpenAIClient({
+            text: "precise transcript",
+            language: "en",
+        });
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+
+        const fileStream = makeFileStream("/tmp/fragment.webm");
+        const result = await ai.transcribeStreamPreciseDetailed(fileStream);
+
+        expect(createTranscription).toHaveBeenCalledWith({
+            file: fileStream,
+            model: PRECISE_TRANSCRIBER_MODEL,
+            response_format: "verbose_json",
+        });
+        expect(result.provider).toBe("OpenAI");
+        expect(result.model).toBe(PRECISE_TRANSCRIBER_MODEL);
+        expect(result.structured.transcript).toBe("precise transcript");
+    });
+
+    test("returns text in transcribeStreamPrecise", async () => {
+        setupMockOpenAIClient({ text: "precise transcript" });
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+
+        await expect(ai.transcribeStreamPrecise(makeFileStream("/tmp/fragment.mp3"))).resolves.toBe(
+            "precise transcript"
+        );
+    });
+
+    test("throws AITranscriptionError when precise transcription request fails", async () => {
+        setupMockOpenAIClient(new Error("network down"));
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+
+        await expectAITranscriptionError(ai.transcribeStreamPreciseDetailed(makeFileStream("/tmp/fragment.mp3")));
     });
 });

@@ -163,7 +163,7 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 
         let result;
         try {
-            result = await capabilities.aiTranscription.transcribeStreamDetailed(fileStream);
+            result = await capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream);
         } finally {
             fileStream.destroy();
         }
