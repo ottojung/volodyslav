@@ -89,6 +89,8 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
     const sessionIdRef = useRef("");
     /** @type {import("react").MutableRefObject<number>} */
     const sequenceRef = useRef(-1);
+    /** @type {import("react").MutableRefObject<number>} */
+    const pcmUploadedCountRef = useRef(0);
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
 
@@ -135,12 +137,14 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 setAudioBlob(blob);
                 setAudioUrl(URL.createObjectURL(blob));
 
-                // Async: drain upload queue, then finalize + fetch from backend
+                // Async: drain upload queue, then finalize + fetch from backend only
+                // if at least one PCM fragment was successfully uploaded.
                 const sessionId = sessionIdRef.current;
                 if (sessionId) {
                     void (async () => {
                         try {
                             await uploadQueueRef.current;
+                            if (pcmUploadedCountRef.current === 0) return;
                             await stopBackendSession(sessionId);
                             const backendBlob = await fetchFinalAudio(sessionId);
                             if (!isMountedRef.current) return;
@@ -190,6 +194,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                                 endMs: endMs + offsetMs,
                                 sequence: seq,
                             });
+                            pcmUploadedCountRef.current += 1;
                         } catch {
                             // Push-PCM failed; recording continues locally
                         }
@@ -250,6 +255,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         isRestoredPauseRef.current = false;
         restoredOffsetMsRef.current = 0;
         sequenceRef.current = -1;
+        pcmUploadedCountRef.current = 0;
         uploadQueueRef.current = Promise.resolve();
         resetCollector();
         if (audioUrl) {

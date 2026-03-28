@@ -67,14 +67,14 @@ export async function startSession(sessionId) {
  */
 
 /**
- * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'invalid_pcm' | 'accepted'} PushPcmStatus
+ * @typedef {'accepted'} PushPcmStatus
  */
 
 /**
  * Push a single raw PCM fragment to the session.
  * @param {string} sessionId
  * @param {{ pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
- * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[], status: PushPcmStatus }>}
+ * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, status: PushPcmStatus }>}
  */
 export async function pushPcm(sessionId, { pcmBytes, sampleRateHz, channels, bitDepth, startMs, endMs, sequence }) {
     const formData = new FormData();
@@ -103,8 +103,7 @@ export async function pushPcm(sessionId, { pcmBytes, sampleRateHz, channels, bit
     return {
         stored: data.stored,
         session: data.session,
-        questions: data.questions || [],
-        status: data.status || "ok",
+        status: data.status,
     };
 }
 
@@ -115,7 +114,7 @@ export async function pushPcm(sessionId, { pcmBytes, sampleRateHz, channels, bit
  *
  * @param {string} sessionId
  * @param {{ pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
- * @returns {Promise<{ questions: DiaryQuestion[], status: PushPcmStatus }>}
+ * @returns {Promise<{ status: PushPcmStatus }>}
  */
 export async function pushPcmWithSessionRetry(sessionId, params) {
     let result;
@@ -130,7 +129,7 @@ export async function pushPcmWithSessionRetry(sessionId, params) {
             throw err;
         }
     }
-    return { questions: result.questions, status: result.status };
+    return { status: result.status };
 }
 
 /**
