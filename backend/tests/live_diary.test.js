@@ -64,14 +64,14 @@ describe("pushAudio", () => {
         const result = await pushAudio(caps, "sess-1", Buffer.from("audio1"), "audio/webm", 1);
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("empty_result");
-        expect(caps.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
+        expect(caps.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 
     it("transcribes the 20s window on the second fragment", async () => {
         const caps = makeCapabilities();
         await pushAudio(caps, "sess-2", Buffer.from("audio1"), "audio/webm", 1);
         await pushAudio(caps, "sess-2", Buffer.from("audio2"), "audio/webm", 2);
-        expect(caps.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
+        expect(caps.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
     });
 
     it("returns questions on the second fragment when transcription succeeds", async () => {
@@ -89,13 +89,13 @@ describe("pushAudio", () => {
         await pushAudio(caps, "sess-3", Buffer.from("a1"), "audio/webm", 1);
         await pushAudio(caps, "sess-3", Buffer.from("a2"), "audio/webm", 2);
         await pushAudio(caps, "sess-3", Buffer.from("a3"), "audio/webm", 3);
-        expect(caps.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(2);
+        expect(caps.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(2);
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
 
     it("removes the last word from the newer transcript before recombination when it has at least four words", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockResolvedValueOnce({
                 text: "one two three four five",
@@ -136,7 +136,7 @@ describe("pushAudio", () => {
 
     it("keeps the newer transcript unchanged for recombination when it has fewer than two words", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockResolvedValueOnce({
                 text: "existing overlap transcript",
@@ -177,7 +177,7 @@ describe("pushAudio", () => {
 
     it("removes the last word when the newer transcript has exactly four words", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockResolvedValueOnce({
                 text: "first overlap window text",
@@ -218,7 +218,7 @@ describe("pushAudio", () => {
 
     it("appends the removed last word to recombination output", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockResolvedValueOnce({
                 text: "walking to the park now",
@@ -264,7 +264,7 @@ describe("pushAudio", () => {
 
     it("uses the removed last word as merged text when recombination output is empty", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockResolvedValueOnce({
                 text: "first second third fourth fifth",
@@ -306,7 +306,7 @@ describe("pushAudio", () => {
 
     it("returns empty questions when transcription fails (non-fatal)", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockRejectedValue(new Error("API error"));
 
@@ -318,7 +318,7 @@ describe("pushAudio", () => {
 
     it("returns degraded_transcription if transcription takes too long", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockImplementation(() => new Promise((resolve) => {
                 setTimeout(() => {
@@ -353,7 +353,7 @@ describe("pushAudio", () => {
 
     it("returns empty questions when transcription returns empty string (silence)", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
             text: "",
             provider: "Google",
             model: "mocked",
@@ -395,7 +395,7 @@ describe("pushAudio", () => {
 
     it("returns degraded_question_generation if question generation takes too long", async () => {
         const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
             text: "steady transcript",
             provider: "Google",
             model: "mocked",
@@ -456,7 +456,7 @@ describe("pushAudio", () => {
         const result = await pushAudio(caps, "sess-mime", Buffer.from("a2"), "audio/ogg", 2);
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("unsupported_mime");
-        expect(caps.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
+        expect(caps.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 });
 
@@ -480,7 +480,7 @@ describe("session cleanup on new session", () => {
         await pushAudio(caps, "new-session", Buffer.from("b2"), "audio/webm", 2);
 
         // Total transcription calls: 1 (for old-session window) + 1 (for new-session window) = 2.
-        expect(caps.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(2);
+        expect(caps.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(2);
     });
 });
 
@@ -506,9 +506,9 @@ describe("backend reboot continuity", () => {
         // Fragment 2 arrives at the new instance. It should find fragment 1 in DB and transcribe.
         await pushAudio(caps2, "reboot-session", Buffer.from("fragment-2"), "audio/webm", 2);
 
-        expect(caps2.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
+        expect(caps2.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
         // caps1 should NOT have been asked to transcribe (it only stored fragment 1).
-        expect(caps1.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
+        expect(caps1.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 
     it("persists running transcript across backend restarts", async () => {
@@ -532,7 +532,7 @@ describe("backend reboot continuity", () => {
 
         // caps2 should have called transcription (for window f2+f3) and recombination
         // (because the last window transcript was persisted).
-        expect(caps2.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
+        expect(caps2.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
         expect(caps2.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
 
