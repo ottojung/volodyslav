@@ -32,6 +32,8 @@ function getTestCapabilities() {
     return capabilities;
 }
 
+jest.setTimeout(30000); // Some tests involve git operations which can be slow
+
 describe("Server Integration with Declarative Scheduler", () => {
 
     test("server can initialize with declarative scheduler on first run", async () => {
