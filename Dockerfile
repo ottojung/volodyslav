@@ -1,6 +1,7 @@
-FROM node:25.8 AS builder
+FROM node:25.8
 WORKDIR /tmp/volodyslav
-RUN apt-get update -y && apt-get install -y rsync git
+RUN apt-get update -y
+RUN apt-get install -y rsync git
 COPY scripts/development/termux-notification /usr/local/bin/termux-notification
 COPY scripts/development/termux-wifi-connectioninfo /usr/local/bin/termux-wifi-connectioninfo
 COPY scripts/development/volodyslav-daily-tasks /usr/local/bin/volodyslav-daily-tasks
@@ -12,10 +13,6 @@ COPY . .
 ARG VOLODYSLAV_BASEURL='/volodyslav'
 RUN npm run build
 RUN sh scripts/link /usr/local
-
-FROM node:25.8-slim
 WORKDIR /workspace
-RUN apt-get update -y && apt-get install -y rsync git
-COPY --from=builder /usr/local/bin/volodyslav /usr/local/bin/volodyslav
-COPY --from=builder /usr/local/share/volodyslav /usr/local/share/volodyslav
+RUN rm -fr /tmp/volodyslav
 ENTRYPOINT [ "volodyslav" ]
