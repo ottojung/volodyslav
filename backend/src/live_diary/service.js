@@ -6,7 +6,6 @@
  * can be rebooted without losing session progress.
  *
  * State is keyed under the shared audio session tree:
- *   audio_session/index/current_session_id → tracks the active session
  *   audio_session/sessions/<sessionId>/live_diary/ → per-session live state fields
  *
  * Session lifecycle:

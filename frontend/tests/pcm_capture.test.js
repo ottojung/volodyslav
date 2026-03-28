@@ -78,8 +78,10 @@ function fireAudioProcess(scriptNode, samples) {
 describe("downsample()", () => {
     it("identity (fromRate === toRate) converts Float32 to Int16", () => {
         const input = new Float32Array([0, 0.5, -0.5, 1, -1]);
-        const out = downsample(input, 16000, 16000);
+        const result = downsample(input, 16000, 16000);
+        const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
+        expect(result.consumedInput).toBe(input.length);
         expect(out.length).toBe(5);
         expect(out[0]).toBe(0);
         expect(out[1]).toBeCloseTo(16384, -1);    // 0.5 * 32767 ≈ 16383
@@ -91,8 +93,10 @@ describe("downsample()", () => {
     it("downsamples 48 kHz → 16 kHz (3:1)", () => {
         // A constant 0.25 signal — after averaging still 0.25.
         const input = new Float32Array(9).fill(0.25);
-        const out = downsample(input, 48000, 16000);
+        const result = downsample(input, 48000, 16000);
+        const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
+        expect(result.consumedInput).toBe(9);
         expect(out.length).toBe(3); // 9 / 3 = 3
         for (const s of out) {
             expect(s).toBeCloseTo(8192, -1); // 0.25 * 32767 ≈ 8192
@@ -103,24 +107,39 @@ describe("downsample()", () => {
         // fromRate < toRate falls through to the scalar path.
         const input = new Float32Array([0.5, -0.5]);
         expect(() => downsample(input, 8000, 16000)).not.toThrow();
-        const out = downsample(input, 8000, 16000);
+        const result = downsample(input, 8000, 16000);
+        const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
+        expect(result.consumedInput).toBe(input.length);
         expect(out.length).toBe(2);
         expect(out[0]).toBeCloseTo(16384, -1);
         expect(out[1]).toBeCloseTo(-16384, -1);
     });
 
     it("handles empty input", () => {
-        const out = downsample(new Float32Array(0), 48000, 16000);
+        const result = downsample(new Float32Array(0), 48000, 16000);
+        const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
+        expect(result.consumedInput).toBe(0);
         expect(out.length).toBe(0);
     });
 
     it("clamps values at ±1 to the Int16 range", () => {
         const input = new Float32Array([1.5, -1.5]);
-        const out = downsample(input, 16000, 16000);
+        const out = downsample(input, 16000, 16000).samples;
         expect(out[0]).toBe(32767);
         expect(out[1]).toBe(-32768);
+    });
+
+    it("handles non-integer ratio downsampling (44.1 kHz → 16 kHz) without overlap", () => {
+        // Constant signal keeps expected value stable while verifying interval math.
+        const input = new Float32Array(45).fill(0.25);
+        const result = downsample(input, 44100, 16000);
+        expect(result.samples.length).toBe(16); // Math.floor(45 * 16000 / 44100)
+        expect(result.consumedInput).toBe(44);  // one source sample remains as remainder
+        for (const s of result.samples) {
+            expect(s).toBeCloseTo(8192, -1);
+        }
     });
 });
 

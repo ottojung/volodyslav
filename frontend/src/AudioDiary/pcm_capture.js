@@ -99,16 +99,25 @@ function buildWavBlob(samples, sampleRate) {
 // ---------------------------------------------------------------------------
 
 /**
- * Downsample a Float32 mono channel to a target sample rate, returning Int16.
- * Uses linear averaging over each output sample's contributing input interval.
+ * @typedef {object} DownsampleResult
+ * @property {Int16Array} samples
+ * @property {number} consumedInput
+ */
+
+/**
+ * Downsample a Float32 mono channel to a target sample rate, returning Int16
+ * plus the exact number of input samples consumed to produce the output.
  *
  * When `fromRate` is less than or equal to `toRate` (no downsampling needed)
  * each input sample is converted directly to Int16 without averaging.
  *
+ * For downsampling, uses non-overlapping input intervals so each source sample
+ * contributes to at most one output interval.
+ *
  * @param {Float32Array} input - Input samples at `fromRate` Hz.
  * @param {number} fromRate - Input sample rate.
  * @param {number} toRate - Output sample rate.
- * @returns {Int16Array}
+ * @returns {DownsampleResult}
  */
 function downsample(input, fromRate, toRate) {
     if (fromRate <= toRate) {
@@ -117,22 +126,38 @@ function downsample(input, fromRate, toRate) {
             const sample = input[i] ?? 0;
             out[i] = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
         }
-        return out;
+        return { samples: out, consumedInput: input.length };
     }
     const ratio = fromRate / toRate;
     const outLen = Math.floor(input.length / ratio);
     const out = new Int16Array(outLen);
+    let inputIndex = 0;
+    let inputOffset = 0;
+
     for (let i = 0; i < outLen; i++) {
-        const start = Math.floor(i * ratio);
-        const end = Math.min(Math.ceil((i + 1) * ratio), input.length);
+        let remaining = ratio;
         let sum = 0;
-        for (let j = start; j < end; j++) {
-            sum += input[j] ?? 0;
+        let sumWeight = 0;
+
+        while (remaining > 0 && inputIndex < input.length) {
+            const available = 1 - inputOffset;
+            const take = remaining < available ? remaining : available;
+            const sample = input[inputIndex] ?? 0;
+            sum += sample * take;
+            sumWeight += take;
+            remaining -= take;
+            inputOffset += take;
+
+            if (inputOffset >= 1) {
+                inputIndex += 1;
+                inputOffset = 0;
+            }
         }
-        const avg = sum / (end - start);
+
+        const avg = sumWeight > 0 ? (sum / sumWeight) : 0;
         out[i] = Math.max(-32768, Math.min(32767, Math.round(avg * 32767)));
     }
-    return out;
+    return { samples: out, consumedInput: inputIndex };
 }
 
 // ---------------------------------------------------------------------------
@@ -278,12 +303,12 @@ class PcmCaptureClass {
             input = merged;
             this._resampleRemainder = new Float32Array(0);
         }
-        const int16 = downsample(input, this._sourceSampleRate, TARGET_SAMPLE_RATE);
+        const downsampled = downsample(input, this._sourceSampleRate, TARGET_SAMPLE_RATE);
+        const int16 = downsampled.samples;
         // Save any unconsumed input frames for the next callback (downsampling only).
         if (this._sourceSampleRate > TARGET_SAMPLE_RATE) {
-            const consumed = Math.floor(int16.length * (this._sourceSampleRate / TARGET_SAMPLE_RATE));
-            if (consumed < input.length) {
-                this._resampleRemainder = input.slice(consumed);
+            if (downsampled.consumedInput < input.length) {
+                this._resampleRemainder = input.slice(downsampled.consumedInput);
             }
         }
         this._bufferChunks.push(int16);
