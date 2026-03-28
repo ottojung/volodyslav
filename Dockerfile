@@ -1,5 +1,5 @@
 FROM node:25.8
-WORKDIR /workspace
+WORKDIR /tmp/volodyslav
 RUN apt-get update -y
 RUN apt-get install -y rsync git
 COPY scripts/development/termux-notification /usr/local/bin/termux-notification
@@ -13,4 +13,5 @@ COPY . .
 ARG VOLODYSLAV_BASEURL='/volodyslav'
 RUN npm run build
 RUN sh scripts/link /usr/local
+WORKDIR /workspace
 ENTRYPOINT [ "volodyslav" ]
