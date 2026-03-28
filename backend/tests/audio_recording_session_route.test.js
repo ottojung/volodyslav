@@ -124,4 +124,63 @@ describe("audio recording session route", () => {
         expect(res.body.success).toBe(false);
         expect(res.body.error).toMatch(/sampleRateHz, channels, or bitDepth/i);
     });
+
+    it("logs debug on valid push-pcm request", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "sess-route-debug" });
+
+        const pcmBuffer = Buffer.from(new Int16Array(160).buffer);
+        const res = await request(app)
+            .post("/api/audio-recording-session/sess-route-debug/push-pcm")
+            .attach("pcm", pcmBuffer, { filename: "fragment.pcm", contentType: "application/octet-stream" })
+            .field("startMs", "0")
+            .field("endMs", "10000")
+            .field("sequence", "0")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
+
+        expect(res.statusCode).toBe(200);
+        // Debug logs should have been called: one on receipt, one on validation, one on success
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+            expect.objectContaining({ sessionId: "sess-route-debug" }),
+            expect.stringContaining("push-pcm: request received")
+        );
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+            expect.objectContaining({ sessionId: "sess-route-debug", sequence: 0 }),
+            expect.stringContaining("push-pcm: validated")
+        );
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+            expect.objectContaining({ sessionId: "sess-route-debug", sequence: 0 }),
+            expect.stringContaining("push-pcm: fragment stored")
+        );
+    });
+
+    it("rejects push-pcm with unexpected file field and logs error", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        // Send a file with a field name that multer does not expect ("audio" instead of "pcm")
+        const res = await request(app)
+            .post("/api/audio-recording-session/sess-route-unexpected/push-pcm")
+            .attach("audio", Buffer.from(new Int16Array(8).buffer), { filename: "fragment.pcm", contentType: "application/octet-stream" })
+            .field("startMs", "0")
+            .field("endMs", "10000")
+            .field("sequence", "0")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/multipart parse error/i);
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
+            expect.objectContaining({ sessionId: "sess-route-unexpected" }),
+            expect.stringContaining("push-pcm: multipart parse error")
+        );
+    });
 });

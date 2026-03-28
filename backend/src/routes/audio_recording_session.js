@@ -92,7 +92,28 @@ function makeRouter(capabilities) {
     // POST /audio-recording-session/:sessionId/push-pcm
     router.post(
         "/audio-recording-session/:sessionId/push-pcm",
-        upload.fields([{ name: "pcm", maxCount: 1 }]),
+        (req, res, next) => {
+            capabilities.logger.logDebug(
+                { sessionId: req.params.sessionId, contentType: req.headers["content-type"] },
+                "push-pcm: request received, processing multipart upload"
+            );
+            upload.fields([{ name: "pcm", maxCount: 1 }])(req, res, (err) => {
+                if (err) {
+                    capabilities.logger.logError(
+                        {
+                            sessionId: req.params.sessionId,
+                            error: err.message,
+                            code: err.code,
+                            stack: err.stack,
+                        },
+                        "push-pcm: multipart parse error"
+                    );
+                    res.status(400).json({ success: false, error: `Multipart parse error: ${err.message}` });
+                    return;
+                }
+                next();
+            });
+        },
         async (req, res) => {
             const { sessionId } = req.params;
             if (!sessionId) {
@@ -149,6 +170,20 @@ function makeRouter(capabilities) {
                 return res.status(400).json({ success: false, error: "bitDepth must be 16" });
             }
 
+            capabilities.logger.logDebug(
+                {
+                    sessionId,
+                    sequence: sequenceNum,
+                    sampleRateHz: sampleRateHzNum,
+                    channels: channelsNum,
+                    bitDepth: bitDepthNum,
+                    pcmBytes: pcmFile.buffer.length,
+                    startMs: startMsNum,
+                    endMs: endMsNum,
+                },
+                "push-pcm: validated, storing PCM fragment"
+            );
+
             try {
                 const result = await pushAudioFragment(capabilities, sessionId, {
                     pcm: pcmFile.buffer,
@@ -172,6 +207,15 @@ function makeRouter(capabilities) {
                     bitDepth: bitDepthNum,
                 }, sequenceNum);
 
+                capabilities.logger.logDebug(
+                    {
+                        sessionId,
+                        sequence: sequenceNum,
+                        fragmentCount: result.session.fragmentCount,
+                    },
+                    "push-pcm: fragment stored, AI analysis queued"
+                );
+
                 // Respond immediately — questions will be available via GET /live-questions.
                 return res.json({ success: true, ...result, questions: [], status: "accepted" });
             } catch (error) {
@@ -185,7 +229,12 @@ function makeRouter(capabilities) {
                     return res.status(409).json({ success: false, error: error.message });
                 }
                 capabilities.logger.logError(
-                    { error: error instanceof Error ? error.message : String(error) },
+                    {
+                        sessionId,
+                        sequence: sequenceNum,
+                        error: error instanceof Error ? error.message : String(error),
+                        stack: error instanceof Error ? error.stack : undefined,
+                    },
                     "Failed to push PCM fragment"
                 );
                 return res.status(500).json({ success: false, error: "Internal error" });
