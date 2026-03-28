@@ -219,6 +219,11 @@ async function uploadChunk(capabilities, sessionId, params) {
         throw new AudioSessionChunkValidationError(uploadError);
     }
 
+    capabilities.logger.logDebug(
+        { sessionId, sequence, sampleRateHz, channels, bitDepth, pcmBytes: pcm.length },
+        "uploadChunk: reading session metadata"
+    );
+
     const meta = await readMeta(temporary, sessionId);
     if (meta === null) {
         throw new AudioSessionNotFoundError(sessionId);
@@ -270,6 +275,17 @@ async function uploadChunk(capabilities, sessionId, params) {
         bitDepth: meta.bitDepth !== 0 ? meta.bitDepth : bitDepth,
     };
     await writeMeta(temporary, updatedMeta);
+
+    capabilities.logger.logDebug(
+        {
+            sessionId,
+            sequence,
+            isNewChunk,
+            fragmentCount: updatedMeta.fragmentCount,
+            lastEndMs: updatedMeta.lastEndMs,
+        },
+        "uploadChunk: PCM fragment stored"
+    );
 
     const filename = `${seqPadded}.pcm`;
     return {

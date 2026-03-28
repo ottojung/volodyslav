@@ -55,6 +55,25 @@ async function addRoutes(capabilities, app) {
     app.use(`${basePath}/api`, assetsRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, audioRecordingSessionRouter.makeRouter(capabilities));
     app.use(`${basePath}/`, staticRouter.makeRouter(capabilities));
+
+    // Global error handler — catches errors passed via next(err) from any middleware
+    // (e.g. multer parse errors, unhandled route errors).  Without this, Express's
+    // default handler responds with 500 and logs nothing to the pino logger.
+    app.use(/** @param {Error & {status?: number, code?: string}} err @param {import('express').Request} req @param {import('express').Response} res @param {import('express').NextFunction} _next */ (err, req, res, _next) => {
+        capabilities.logger.logError(
+            {
+                path: req.path,
+                method: req.method,
+                error: err instanceof Error ? err.message : String(err),
+                code: err.code,
+                stack: err instanceof Error ? err.stack : undefined,
+            },
+            "Unhandled route error"
+        );
+        if (!res.headersSent) {
+            res.status(err.status || 500).json({ success: false, error: err.message || "Internal error" });
+        }
+    });
 }
 
 /**
