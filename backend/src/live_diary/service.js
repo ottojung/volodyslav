@@ -155,7 +155,7 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} PushAudioStatus
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime' | 'invalid_wav'} PushAudioStatus
  */
 
 /**
@@ -166,7 +166,8 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
  *   - `empty_result`: first fragment — no window available yet,
  *   - `degraded_transcription`: transcription failed; questions array is empty,
  *   - `degraded_question_generation`: question generation failed; questions array is empty,
- *   - `unsupported_mime`: mime type is not supported for safe window assembly.
+ *   - `unsupported_mime`: mime type is not audio/wav,
+ *   - `invalid_wav`: fragment buffer could not be parsed as a valid 16-bit PCM WAV file.
  */
 
 /**
@@ -234,7 +235,7 @@ async function pushAudio(
             { sessionId, fragmentNumber, fragmentSizeBytes: fragmentBuffer.length },
             "Live diary push-audio rejected malformed WAV buffer"
         );
-        return { questions: [], status: "unsupported_mime" };
+        return { questions: [], status: "invalid_wav" };
     }
 
     const lastFragment = await readLastFragment(temporary, sessionId);

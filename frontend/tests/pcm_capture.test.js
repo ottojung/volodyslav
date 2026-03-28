@@ -155,7 +155,7 @@ describe("drainWav()", () => {
         const ctx = makeFakeAudioContext(48000);
         const src = makeFakeSourceNode();
         capture = await makePcmCapture(ctx, src);
-        expect(capture).not.toBeNull();
+        if (!capture) throw new Error("makePcmCapture returned null — capture setup failed");
         scriptNode = ctx._scriptNode;
     });
 

@@ -14,6 +14,15 @@
  *     available (older browsers).  If neither API is available, PCM
  *     capture degrades to a no-op and makePcmCapture returns null.
  *
+ * Implementation note — WAV encoding:
+ *   buildWavBlob() writes the 44-byte RIFF/PCM header directly into an
+ *   ArrayBuffer using DataView and copies the raw Int16 bytes with a
+ *   Uint8Array.set() — no per-sample boxing required.  This matters because
+ *   each 10-second fragment at 16 kHz holds ~160 000 samples; libraries
+ *   that require a plain JS Number[] (e.g. wavefile.fromScratch()) would
+ *   allocate ~160 000 Number objects per fragment, creating significant GC
+ *   pressure.  The manual approach has zero per-sample allocations.
+ *
  * @module AudioDiary/pcm_capture
  */
 
@@ -148,6 +157,14 @@ class PcmCaptureClass {
     _bufferChunks = [];
     /** @type {number} */
     _totalSamples = 0;
+    /**
+     * Leftover Float32 input samples from the last _addSamples call that were
+     * not consumed by downsample() because the block size is not an exact
+     * multiple of the resampling ratio.  Prepended to the next callback to
+     * prevent cumulative sample drift.
+     * @type {Float32Array}
+     */
+    _resampleRemainder = new Float32Array(0);
     /** @type {boolean} */
     _isRecording = true;
 
@@ -168,9 +185,16 @@ class PcmCaptureClass {
      * Attach the capture node to the audio graph.
      * Tries AudioWorklet first; falls back to ScriptProcessorNode.
      * Returns true if a capture node was successfully attached, false otherwise.
+     *
+     * Returns false without attaching anything when the AudioContext sample rate
+     * is below TARGET_SAMPLE_RATE — in that case the WAV header sampleRate would
+     * not match the actual sample data (no upsampling is performed).
      * @returns {Promise<boolean>}
      */
     async setup() {
+        if (this._sourceSampleRate < TARGET_SAMPLE_RATE) {
+            return false;
+        }
         if (this._audioContext.audioWorklet) {
             try {
                 await this._setupWorklet();
@@ -243,7 +267,25 @@ class PcmCaptureClass {
         if (!this._isRecording) {
             return;
         }
-        const int16 = downsample(float32Samples, this._sourceSampleRate, TARGET_SAMPLE_RATE);
+        // Prepend leftover input samples from the previous callback to prevent
+        // cumulative drift when the audio block size (e.g. 128 frames) is not
+        // an exact multiple of the resampling ratio (e.g. 3× for 48→16 kHz).
+        let input = float32Samples;
+        if (this._resampleRemainder.length > 0) {
+            const merged = new Float32Array(this._resampleRemainder.length + float32Samples.length);
+            merged.set(this._resampleRemainder, 0);
+            merged.set(float32Samples, this._resampleRemainder.length);
+            input = merged;
+            this._resampleRemainder = new Float32Array(0);
+        }
+        const int16 = downsample(input, this._sourceSampleRate, TARGET_SAMPLE_RATE);
+        // Save any unconsumed input frames for the next callback (downsampling only).
+        if (this._sourceSampleRate > TARGET_SAMPLE_RATE && int16.length > 0) {
+            const consumed = Math.floor(int16.length * (this._sourceSampleRate / TARGET_SAMPLE_RATE));
+            if (consumed < input.length) {
+                this._resampleRemainder = input.slice(consumed);
+            }
+        }
         this._bufferChunks.push(int16);
         this._totalSamples += int16.length;
     }
@@ -258,6 +300,7 @@ class PcmCaptureClass {
         // Discard samples accumulated between last drain and this pause.
         this._bufferChunks = [];
         this._totalSamples = 0;
+        this._resampleRemainder = new Float32Array(0);
     }
 
     /**
@@ -338,6 +381,7 @@ class PcmCaptureClass {
         }
         this._bufferChunks = [];
         this._totalSamples = 0;
+        this._resampleRemainder = new Float32Array(0);
     }
 }
 
