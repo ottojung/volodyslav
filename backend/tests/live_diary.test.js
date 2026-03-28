@@ -476,7 +476,7 @@ describe("pushAudio", () => {
         expect(r3.questions).toHaveLength(0);
     });
 
-    it("returns unsupported_mime when a non-webm fragment is pushed after session bootstrap", async () => {
+    it("returns unsupported_mime when a non-wav fragment is pushed after session bootstrap", async () => {
         const caps = makeCapabilities();
         await pushAudio(caps, "sess-mime", buildTestWavBuffer(), "audio/wav", 1);
 
@@ -489,21 +489,21 @@ describe("pushAudio", () => {
 
 // ─── Session cleanup ─────────────────────────────────────────────────────────
 
-describe("session cleanup on new session", () => {
-    it("cleans up old session data when a new session id arrives", async () => {
+describe("session isolation across session ids", () => {
+    it("keeps session data isolated when a new session id arrives", async () => {
         const caps = makeCapabilities();
 
         // Establish session A with two fragments (sets up full state in DB).
         await pushAudio(caps, "old-session", buildTestWavBuffer(), "audio/wav", 1);
         await pushAudio(caps, "old-session", buildTestWavBuffer(), "audio/wav", 2);
 
-        // Start a completely new session B. Old session data should be cleaned.
+        // Start a completely new session B.
         const r = await pushAudio(caps, "new-session", buildTestWavBuffer(), "audio/wav", 1);
         // First fragment of new session → no questions yet.
         expect(r.questions).toEqual([]);
         expect(r.status).toBe("empty_result");
 
-        // The second push under new-session forms a window and transcribes — not old-session state.
+        // The second push under new-session forms a window and transcribes independently of old-session state.
         await pushAudio(caps, "new-session", buildTestWavBuffer(), "audio/wav", 2);
 
         // Total transcription calls: 1 (for old-session window) + 1 (for new-session window) = 2.

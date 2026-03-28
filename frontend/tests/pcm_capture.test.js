@@ -229,4 +229,14 @@ describe("drainWav()", () => {
         const wav = capture.drainWav(0.01); // durationMs=0.01 => floor((16000 * 0.01) / 1000) = floor(0.16) = 0
         expect(wav).toBeNull();
     });
+
+    it("preserves downsample remainder even when a callback yields zero output samples", () => {
+        // First callback has fewer than 3 frames at 48→16 kHz, so output is 0 and
+        // frames must be preserved as remainder.
+        fireAudioProcess(scriptNode, new Float32Array([0.1, 0.1]));
+        // Second callback adds one more frame, making 3 total -> 1 output sample.
+        fireAudioProcess(scriptNode, new Float32Array([0.1]));
+        const wav = capture.drainWav(1000);
+        expect(wav).not.toBeNull();
+    });
 });

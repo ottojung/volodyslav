@@ -280,7 +280,7 @@ class PcmCaptureClass {
         }
         const int16 = downsample(input, this._sourceSampleRate, TARGET_SAMPLE_RATE);
         // Save any unconsumed input frames for the next callback (downsampling only).
-        if (this._sourceSampleRate > TARGET_SAMPLE_RATE && int16.length > 0) {
+        if (this._sourceSampleRate > TARGET_SAMPLE_RATE) {
             const consumed = Math.floor(int16.length * (this._sourceSampleRate / TARGET_SAMPLE_RATE));
             if (consumed < input.length) {
                 this._resampleRemainder = input.slice(consumed);

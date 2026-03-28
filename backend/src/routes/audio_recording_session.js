@@ -142,6 +142,22 @@ function makeRouter(capabilities) {
                 return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be audio/webm" });
             }
 
+            // Both analysisAudio and analysisMimeType must be supplied together.
+            // Supplying one without the other is a malformed request shape.
+            const hasAnalysisFile = analysisFile !== undefined;
+            const hasAnalysisMimeType = typeof analysisMimeType === "string";
+            if (hasAnalysisFile !== hasAnalysisMimeType) {
+                return res.status(400).json({ success: false, error: "analysisAudio and analysisMimeType must both be present or both absent" });
+            }
+            /** @type {Buffer | null} */
+            let analysisBuffer = null;
+            if (hasAnalysisFile) {
+                if (parseAudioMimeType(analysisMimeType) !== "audio/wav") {
+                    return res.status(400).json({ success: false, error: "analysisMimeType must be audio/wav" });
+                }
+                analysisBuffer = analysisFile.buffer;
+            }
+
             try {
                 const result = await pushAudioFragment(capabilities, sessionId, {
                     chunk: chunkFile.buffer,
@@ -150,22 +166,6 @@ function makeRouter(capabilities) {
                     sequence: sequenceNum,
                     mimeType: normalizedChunkMimeType,
                 });
-
-                // Both analysisAudio and analysisMimeType must be supplied together.
-                // Supplying one without the other is a malformed request shape.
-                const hasAnalysisFile = analysisFile !== undefined;
-                const hasAnalysisMimeType = typeof analysisMimeType === "string";
-                if (hasAnalysisFile !== hasAnalysisMimeType) {
-                    return res.status(400).json({ success: false, error: "analysisAudio and analysisMimeType must both be present or both absent" });
-                }
-                /** @type {Buffer | null} */
-                let analysisBuffer = null;
-                if (hasAnalysisFile) {
-                    if (parseAudioMimeType(analysisMimeType) !== "audio/wav") {
-                        return res.status(400).json({ success: false, error: "analysisMimeType must be audio/wav" });
-                    }
-                    analysisBuffer = analysisFile.buffer;
-                }
 
                 // Queue live diary AI processing asynchronously to avoid HTTP gateway timeout.
                 // The AI pipeline (transcription + recombination + question generation) can take
