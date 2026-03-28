@@ -15,11 +15,8 @@ set -xe
 PREFIX="$1"
 shift
 
-# Capture the version from the source repository and store it for the installed version
-if command -v git >/dev/null 2>&1
+if ! command -v git >/dev/null 2>&1
 then
-    VERSION=$(git describe 2>/dev/null || echo "unknown")
-else
     echo "This program requires git to capture the version, but git is not installed." >&2
     exit 1
 fi
