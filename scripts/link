@@ -4,12 +4,16 @@ set -e
 
 cd -- "${0%/*}"/..
 
+if ! test "$#" = 1
+then
+    echo "Usage: $0 <prefix>" >&2
+    exit 1
+fi
+
 set -xe
 
 PREFIX="$1"
 shift
-
-test "$#" = 0
 
 # Capture the version from the source repository and store it for the installed version
 if command -v git >/dev/null 2>&1
