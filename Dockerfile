@@ -12,5 +12,5 @@ RUN npm ci
 COPY . .
 ARG VOLODYSLAV_BASEURL='/volodyslav'
 RUN npm run build
-RUN sh scripts/link /usr/local
+RUN sh scripts/link-targeted "$PWD" /usr/local
 ENTRYPOINT [ "volodyslav" ]
