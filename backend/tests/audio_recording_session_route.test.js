@@ -101,4 +101,27 @@ describe("audio recording session route", () => {
         expect(res.body.success).toBe(false);
         expect(res.body.error).toMatch(/bitDepth must be 16/i);
     });
+
+    it("rejects push-pcm with sampleRateHz=0 (POSINT_RE rejects zero)", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "sess-route-rate0" });
+
+        const res = await request(app)
+            .post("/api/audio-recording-session/sess-route-rate0/push-pcm")
+            .attach("pcm", Buffer.from(new Int16Array(8).buffer), { filename: "fragment.pcm", contentType: "application/octet-stream" })
+            .field("startMs", "0")
+            .field("endMs", "10000")
+            .field("sequence", "0")
+            .field("sampleRateHz", "0")
+            .field("channels", "1")
+            .field("bitDepth", "16");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/sampleRateHz, channels, or bitDepth/i);
+    });
 });

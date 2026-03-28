@@ -267,6 +267,79 @@ describe("audio_recording_session", () => {
             expect(isAudioSessionChunkValidationError(err)).toBe(true);
         });
 
+        it("rejects zero sampleRateHz", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    ...TEST_PCM_PARAMS,
+                    sampleRateHz: 0,
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: 0,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
+        it("rejects zero channels", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    ...TEST_PCM_PARAMS,
+                    channels: 0,
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: 0,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
+        it("rejects bitDepth other than 16", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    ...TEST_PCM_PARAMS,
+                    bitDepth: 24,
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: 0,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
+        it("rejects pcm buffer not aligned to frame size", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID);
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    ...TEST_PCM_PARAMS,
+                    // 3 bytes: not aligned to 2 bytes/frame (16-bit mono)
+                    pcm: Buffer.alloc(3),
+                    startMs: 0,
+                    endMs: 10000,
+                    sequence: 0,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
+        });
+
         it("rejects PCM format mismatch between chunks", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID);

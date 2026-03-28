@@ -20,6 +20,7 @@ const {
 } = require("./errors");
 const {
     isValidSessionId,
+    validateUploadChunkParams,
 } = require("./helpers");
 const { buildWav } = require("../build_wav");
 const {
@@ -205,7 +206,7 @@ async function startSession(capabilities, sessionId) {
  * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number } }>}
  */
 async function uploadChunk(capabilities, sessionId, params) {
-    const { pcm, sampleRateHz, channels, bitDepth, startMs, endMs, sequence } = params;
+    const { pcm, sampleRateHz, channels, bitDepth, endMs, sequence } = params;
     const { temporary } = capabilities;
 
     if (!isValidSessionId(sessionId)) {
@@ -213,20 +214,9 @@ async function uploadChunk(capabilities, sessionId, params) {
             `Invalid session ID: "${sessionId}"`
         );
     }
-    if (!Number.isInteger(sequence) || sequence < 0 || sequence > 999999) {
-        throw new AudioSessionChunkValidationError(
-            `Invalid sequence: must be a non-negative integer not exceeding 999999, got ${sequence}`
-        );
-    }
-    if (!Number.isFinite(startMs) || startMs < 0) {
-        throw new AudioSessionChunkValidationError(
-            `Invalid startMs: must be a non-negative finite number, got ${startMs}`
-        );
-    }
-    if (!Number.isFinite(endMs) || endMs < startMs) {
-        throw new AudioSessionChunkValidationError(
-            `Invalid endMs: must be >= startMs (${startMs}), got ${endMs}`
-        );
+    const uploadError = validateUploadChunkParams(params);
+    if (uploadError !== null) {
+        throw new AudioSessionChunkValidationError(uploadError);
     }
 
     const meta = await readMeta(temporary, sessionId);
@@ -460,7 +450,6 @@ async function discardSession(capabilities, sessionId) {
 }
 
 module.exports = {
-    isValidSessionId,
     startSession,
     uploadChunk,
     getSession,

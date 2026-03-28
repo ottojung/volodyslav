@@ -25,6 +25,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const {
     markSessionExists,
+    validatePcmParams,
 } = require("../audio_recording_session");
 const { programmaticRecombination } = require("../ai");
 const {
@@ -185,19 +186,20 @@ async function pushAudio(
     const { temporary } = capabilities;
     const { pcm, sampleRateHz, channels, bitDepth } = pcmInfo;
 
+    // Validate the full PcmInfo shape before touching any state.
+    const pcmError = validatePcmParams(pcm, sampleRateHz, channels, bitDepth);
+    if (pcmError !== null) {
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber, error: pcmError },
+            "Live diary push-pcm rejected: invalid PCM parameters"
+        );
+        return { questions: [], status: "invalid_pcm" };
+    }
+
     capabilities.logger.logDebug(
         { sessionId, fragmentNumber, chunkSizeBytes: pcm.length, sampleRateHz, channels, bitDepth },
         "Live diary received PCM chunk"
     );
-
-    // Only 16-bit PCM is supported (buildWav interprets raw bytes as 16-bit signed LE).
-    if (bitDepth !== 16) {
-        capabilities.logger.logWarning(
-            { sessionId, fragmentNumber, bitDepth },
-            "Live diary push-audio rejected unsupported bit depth; 16-bit required"
-        );
-        return { questions: [], status: "invalid_pcm" };
-    }
 
     // Ensure session is registered.
     await markSessionExists(temporary, sessionId);

@@ -113,7 +113,8 @@ function makeRouter(capabilities) {
             // and lexicographic sort order used when concatenating persisted fragments.
             const UINT_RE = /^\d{1,6}$/;
             const UFLOAT_RE = /^\d+(\.\d+)?$/;
-            const POSINT_RE = /^\d+$/;
+            // Positive integer (no zero), limited to 6 digits to avoid overly large values
+            const POSINT_RE = /^[1-9]\d{0,5}$/;
 
             if (
                 typeof startMs !== "string" ||
