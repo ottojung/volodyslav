@@ -54,6 +54,8 @@ function makeCapabilities() {
     return makeCapabilitiesWithWorkDir(workDir);
 }
 
+const SHORT_TIMEOUT_MS = 10;
+
 // ─── Basic behavior ──────────────────────────────────────────────────────────
 
 describe("pushAudio", () => {
@@ -343,7 +345,7 @@ describe("pushAudio", () => {
             Buffer.from("a2"),
             "audio/webm",
             2,
-            10
+            SHORT_TIMEOUT_MS
         );
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("degraded_transcription");
@@ -414,14 +416,14 @@ describe("pushAudio", () => {
                 }, 50);
             }));
 
-        await pushAudio(caps, "sess-timeout-questions", Buffer.from("a1"), "audio/webm", 1, 10);
+        await pushAudio(caps, "sess-timeout-questions", Buffer.from("a1"), "audio/webm", 1, SHORT_TIMEOUT_MS);
         const result = await pushAudio(
             caps,
             "sess-timeout-questions",
             Buffer.from("a2"),
             "audio/webm",
             2,
-            10
+            SHORT_TIMEOUT_MS
         );
 
         expect(result.questions).toEqual([]);

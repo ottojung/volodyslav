@@ -37,7 +37,7 @@ function isLiveDiaryStepTimeoutError(object) {
 async function withStepTimeout(step, operation, timeoutMs) {
     /** @type {NodeJS.Timeout | undefined} */
     let timer;
-    const timeoutPromise = new Promise((_, reject) => {
+    const timeoutPromise = new Promise((_resolve, reject) => {
         timer = setTimeout(() => {
             reject(new LiveDiaryStepTimeoutError(step, timeoutMs));
         }, timeoutMs);

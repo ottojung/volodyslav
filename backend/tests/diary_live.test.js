@@ -31,6 +31,7 @@ async function makeApp(capabilities) {
  * on slow CI runners.
  */
 const PROCESSING_FLUSH_DELAY_MS = 300;
+const LONG_TRANSCRIPTION_DELAY_MS = 60;
 
 async function flushProcessing() {
     await new Promise((resolve) => setTimeout(resolve, PROCESSING_FLUSH_DELAY_MS));
@@ -325,7 +326,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .mockImplementation(async () => {
                 transcribeCallCount += 1;
                 if (transcribeCallCount === 2) {
-                    return await new Promise((resolve) => {
+                    return new Promise((resolve) => {
                         setTimeout(() => {
                             resolve({
                                 text: "late transcript",
@@ -340,7 +341,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
                                 structured: { transcript: "late transcript", coverage: "full", warnings: [], unclearAudio: false },
                                 rawResponse: null,
                             });
-                        }, 60);
+                        }, LONG_TRANSCRIPTION_DELAY_MS);
                     });
                 }
                 return {
