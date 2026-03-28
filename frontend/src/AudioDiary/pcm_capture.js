@@ -317,7 +317,8 @@ class PcmCaptureClass {
             } catch {
                 // Ignore errors when the graph is already torn down.
             }
-            if (this._captureNode instanceof AudioWorkletNode) {
+            if (typeof AudioWorkletNode !== "undefined" &&
+                this._captureNode instanceof AudioWorkletNode) {
                 try {
                     this._captureNode.disconnect();
                     this._captureNode.port.close();

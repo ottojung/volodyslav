@@ -6,22 +6,11 @@
  * makePcmCapture() to obtain a live instance.
  */
 
-import { downsample, buildWavBlob, TARGET_SAMPLE_RATE, makePcmCapture } from "../src/AudioDiary/pcm_capture.js";
+import { downsample, buildWavBlob, makePcmCapture } from "../src/AudioDiary/pcm_capture.js";
 
 // ---------------------------------------------------------------------------
 // Browser API stubs (not available in jsdom)
 // ---------------------------------------------------------------------------
-
-let origAudioWorkletNode;
-beforeAll(() => {
-    // close() uses `instanceof AudioWorkletNode`; provide a stub so it doesn't
-    // throw ReferenceError in the jsdom environment.
-    origAudioWorkletNode = global.AudioWorkletNode;
-    global.AudioWorkletNode = class {};
-});
-afterAll(() => {
-    global.AudioWorkletNode = origAudioWorkletNode;
-});
 
 // ---------------------------------------------------------------------------
 // Helpers

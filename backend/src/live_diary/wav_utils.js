@@ -1,9 +1,10 @@
 /**
  * WAV format utilities for PCM-based live diary analysis.
  *
- * Parsing and building of RIFF/WAV files is delegated to the `wavefile`
- * library, which handles edge cases, malformed input, and a wide range of
- * WAVE variants reliably.
+ * WAV parsing is delegated to the `wavefile` library, which handles edge
+ * cases, malformed input, and a wide range of WAVE variants reliably.
+ * WAV building uses a direct 44-byte RIFF/PCM header write to avoid
+ * per-sample boxing that would occur with wavefile's fromScratch() API.
  *
  * @module live_diary/wav_utils
  */
@@ -63,23 +64,39 @@ function parseWav(buffer) {
 }
 
 /**
- * Wrap raw 16-bit signed LE PCM data in a RIFF/WAV container.
+ * Wrap raw PCM data in a RIFF/WAV container.
  *
- * @param {Buffer} pcm - Raw PCM sample bytes.
+ * Writes a standard 44-byte PCM WAV header directly into a Buffer and
+ * copies the raw sample bytes after it — no per-sample boxing required.
+ *
+ * @param {Buffer} pcm - Raw PCM sample bytes (16-bit signed LE).
  * @param {number} sampleRate
  * @param {number} channels
- * @param {number} bitDepth
+ * @param {number} bitDepth - Must be 16.
  * @returns {Buffer}
  */
 function buildWav(pcm, sampleRate, channels, bitDepth) {
-    const numSamples = Math.floor(pcm.length / 2);
-    const samples = new Array(numSamples);
-    for (let i = 0; i < numSamples; i++) {
-        samples[i] = pcm.readInt16LE(i * 2);
-    }
-    const wf = new WaveFile();
-    wf.fromScratch(channels, sampleRate, String(bitDepth), samples);
-    return Buffer.from(wf.toBuffer());
+    const bytesPerSample = bitDepth / 8;
+    const dataSize = pcm.length;
+    const buf = Buffer.allocUnsafe(44 + dataSize);
+    // RIFF descriptor
+    buf.write("RIFF", 0, "ascii");
+    buf.writeUInt32LE(36 + dataSize, 4);
+    buf.write("WAVE", 8, "ascii");
+    // "fmt " sub-chunk
+    buf.write("fmt ", 12, "ascii");
+    buf.writeUInt32LE(16, 16);                                          // Subchunk1Size
+    buf.writeUInt16LE(1, 20);                                           // AudioFormat = PCM
+    buf.writeUInt16LE(channels, 22);
+    buf.writeUInt32LE(sampleRate, 24);
+    buf.writeUInt32LE(sampleRate * channels * bytesPerSample, 28);      // ByteRate
+    buf.writeUInt16LE(channels * bytesPerSample, 32);                   // BlockAlign
+    buf.writeUInt16LE(bitDepth, 34);
+    // "data" sub-chunk
+    buf.write("data", 36, "ascii");
+    buf.writeUInt32LE(dataSize, 40);
+    pcm.copy(buf, 44);
+    return buf;
 }
 
 /** Supported audio MIME types and their file extensions. */
