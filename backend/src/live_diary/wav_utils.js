@@ -46,6 +46,11 @@ function parseWav(buffer) {
         if (!(rawSamples instanceof Uint8Array)) {
             return null;
         }
+        // Only 16-bit PCM is accepted; buildWav interprets raw bytes as
+        // 16-bit signed little-endian, so other bit depths would be corrupt.
+        if (bitsPerSample !== 16) {
+            return null;
+        }
         return {
             pcm: Buffer.from(rawSamples),
             sampleRate,

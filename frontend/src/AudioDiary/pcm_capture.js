@@ -17,8 +17,6 @@
  * @module AudioDiary/pcm_capture
  */
 
-import { WaveFile } from "wavefile";
-
 /** Target analysis sample rate (Hz). */
 const TARGET_SAMPLE_RATE = 16000;
 
@@ -44,24 +42,47 @@ registerProcessor("${WORKLET_PROCESSOR_NAME}", PcmCaptureProcessor);
 `;
 
 // ---------------------------------------------------------------------------
-// WAV builder (browser-side, using wavefile library)
+// WAV builder (browser-side)
 // ---------------------------------------------------------------------------
 
 /**
  * Build a WAV-wrapped Blob from an Int16 PCM sample array.
+ * Writes a 44-byte standard PCM header directly into an ArrayBuffer and
+ * copies the raw sample bytes after it — no per-sample boxing required.
+ *
  * @param {Int16Array} samples - Mono PCM16 samples.
  * @param {number} sampleRate
  * @returns {Blob}
  */
 function buildWavBlob(samples, sampleRate) {
-    const wf = new WaveFile();
-    wf.fromScratch(1, sampleRate, "16", Array.from(samples));
-    const bytes = wf.toBuffer();
-    // Copy to a plain ArrayBuffer so it is accepted as a valid BlobPart
-    // (toBuffer() returns a Uint8Array whose .buffer may be a SharedArrayBuffer).
-    const buf = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(buf).set(bytes);
-    return new Blob([buf], { type: "audio/wav" });
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const bytesPerSample = bitsPerSample / 8;
+    const dataSize = samples.byteLength;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    // RIFF descriptor
+    view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46);
+    view.setUint32(4, 36 + dataSize, true);
+    view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45);
+    // "fmt " sub-chunk
+    view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20);
+    view.setUint32(16, 16, true);                                        // Subchunk1Size
+    view.setUint16(20, 1, true);                                         // AudioFormat = PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // ByteRate
+    view.setUint16(32, numChannels * bytesPerSample, true);              // BlockAlign
+    view.setUint16(34, bitsPerSample, true);
+    // "data" sub-chunk
+    view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61);
+    view.setUint32(40, dataSize, true);
+
+    // Copy raw PCM bytes after the header.
+    new Uint8Array(buffer, 44).set(new Uint8Array(samples.buffer, samples.byteOffset, dataSize));
+
+    return new Blob([buffer], { type: "audio/wav" });
 }
 
 // ---------------------------------------------------------------------------
@@ -72,13 +93,16 @@ function buildWavBlob(samples, sampleRate) {
  * Downsample a Float32 mono channel to a target sample rate, returning Int16.
  * Uses linear averaging over each output sample's contributing input interval.
  *
+ * When `fromRate` is less than or equal to `toRate` (no downsampling needed)
+ * each input sample is converted directly to Int16 without averaging.
+ *
  * @param {Float32Array} input - Input samples at `fromRate` Hz.
  * @param {number} fromRate - Input sample rate.
  * @param {number} toRate - Output sample rate.
  * @returns {Int16Array}
  */
 function downsample(input, fromRate, toRate) {
-    if (fromRate === toRate) {
+    if (fromRate <= toRate) {
         const out = new Int16Array(input.length);
         for (let i = 0; i < input.length; i++) {
             const sample = input[i] ?? 0;

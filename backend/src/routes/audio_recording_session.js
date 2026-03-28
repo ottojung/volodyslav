@@ -159,9 +159,21 @@ function makeRouter(capabilities) {
                     mimeType: normalizedChunkMimeType,
                 });
 
-                // analysisBuffer is non-null only when the upload includes a valid WAV
-                // analysis fragment; live-diary AI processing is skipped otherwise.
-                const analysisBuffer = (analysisFile && typeof analysisMimeType === "string" && parseAudioMimeType(analysisMimeType) === "audio/wav") ? analysisFile.buffer : null;
+                // Both analysisAudio and analysisMimeType must be supplied together.
+                // Supplying one without the other is a malformed request shape.
+                const hasAnalysisFile = analysisFile !== undefined;
+                const hasAnalysisMimeType = typeof analysisMimeType === "string";
+                if (hasAnalysisFile !== hasAnalysisMimeType) {
+                    return res.status(400).json({ success: false, error: "analysisAudio and analysisMimeType must both be present or both absent" });
+                }
+                /** @type {Buffer | null} */
+                let analysisBuffer = null;
+                if (hasAnalysisFile) {
+                    if (parseAudioMimeType(analysisMimeType) !== "audio/wav") {
+                        return res.status(400).json({ success: false, error: "analysisMimeType must be audio/wav" });
+                    }
+                    analysisBuffer = analysisFile.buffer;
+                }
 
                 capabilities.logger.logDebug(
                     { sessionId, sequence: sequenceNum, chunkSizeBytes: chunkFile.buffer.length },
