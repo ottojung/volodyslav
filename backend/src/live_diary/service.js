@@ -10,10 +10,11 @@
  *   audio_session/sessions/<sessionId>/live_diary/ → per-session live state fields
  *
  * Session lifecycle:
- *   - The first pushAudio call for a new sessionId triggers cleanup of any
- *     previous live diary session before recording new state.
- *   - Only one live diary session is "current" at a time; all others are
- *     cleaned up automatically.
+ *   - Live diary state is scoped by sessionId and processed asynchronously
+ *     per session via queueing in the route layer.
+ *   - Cross-session cleanup is intentionally not triggered from this async
+ *     fragment-processing path to avoid stale in-flight fragments deleting
+ *     state for a newer active session.
  *
  * @module live_diary/service
  */
@@ -25,17 +26,12 @@ const fs = require("fs");
 const crypto = require("crypto");
 const {
     markSessionExists,
-    unmarkSessionExists,
-    listKnownSessionIds,
-    deleteSessionData,
 } = require("../audio_recording_session");
 const { programmaticRecombination } = require("../ai");
 const {
     LAST_FRAGMENT_MIME_KEY,
     LAST_WINDOW_TRANSCRIPT_KEY,
     RUNNING_TRANSCRIPT_KEY,
-    readCurrentSessionId,
-    writeCurrentSessionId,
     readLastFragment,
     writeLastFragment,
     readStringField,
@@ -74,34 +70,6 @@ const {
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
 
-
-// ---------------------------------------------------------------------------
-// Session lifecycle helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Delete all live diary data for sessions other than the given sessionId.
- * Short-circuits when the given session is already the current one.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<void>}
- */
-async function cleanupOldSessionsIfNeeded(temporary, sessionId) {
-    const currentId = await readCurrentSessionId(temporary);
-    if (currentId === sessionId) {
-        return; // Already current — nothing to clean up.
-    }
-
-    const sessionIds = await listKnownSessionIds(temporary);
-    for (const id of sessionIds) {
-        if (id !== sessionId) {
-            await deleteSessionData(temporary, id);
-            await unmarkSessionExists(temporary, id);
-        }
-    }
-    await writeCurrentSessionId(temporary, sessionId);
-    await markSessionExists(temporary, sessionId);
-}
 
 // ---------------------------------------------------------------------------
 // Transcription helper
@@ -217,8 +185,8 @@ async function pushAudio(
         "Live diary received audio chunk"
     );
 
-    // Ensure session is registered and clean up any old sessions.
-    await cleanupOldSessionsIfNeeded(temporary, sessionId);
+    // Ensure session is registered.
+    await markSessionExists(temporary, sessionId);
 
     // Live diary requires WAV-wrapped PCM for safe sample-level concatenation.
     if (normalizedMimeType !== "audio/wav") {

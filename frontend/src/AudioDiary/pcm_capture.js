@@ -337,7 +337,9 @@ class PcmCaptureClass {
         this._totalSamples = 0;
 
         // Drain at most the expected number of samples for this fragment duration.
-        const expectedSamples = Math.round((TARGET_SAMPLE_RATE * durationMs) / 1000);
+        // Use floor to avoid borrowing a sample from the next fragment when
+        // durationMs includes fractional milliseconds.
+        const expectedSamples = Math.floor((TARGET_SAMPLE_RATE * durationMs) / 1000);
         const drainCount = Math.min(expectedSamples, all.length);
 
         // Keep any excess samples for the next fragment using an independent copy.
@@ -346,6 +348,9 @@ class PcmCaptureClass {
             this._totalSamples = all.length - drainCount;
         }
 
+        if (drainCount === 0) {
+            return null;
+        }
         const drained = new Int16Array(all.buffer, 0, drainCount);
         return buildWavBlob(drained, TARGET_SAMPLE_RATE);
     }
@@ -410,4 +415,3 @@ export function isPcmCapture(object) {
 }
 
 export { buildWavBlob, downsample, TARGET_SAMPLE_RATE };
-

@@ -222,4 +222,11 @@ describe("drainWav()", () => {
         const wav = capture.drainWav(10000);
         expect(wav).not.toBeNull();
     });
+
+    it("returns null instead of a header-only WAV when floored expected sample count is zero", () => {
+        // At 48 kHz, a 2-frame callback downsampled to 16 kHz yields 0 samples.
+        fireAudioProcess(scriptNode, new Float32Array([0.2, 0.2]));
+        const wav = capture.drainWav(0.01); // durationMs=0.01 => floor((16000 * 0.01) / 1000) = floor(0.16) = 0
+        expect(wav).toBeNull();
+    });
 });

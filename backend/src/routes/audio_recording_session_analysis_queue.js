@@ -71,6 +71,13 @@ function enqueueAnalysis(capabilities, sessionId, analysisBuffer, sequenceNum) {
         }
     });
     processingQueues.set(sessionId, next);
+    next.finally(() => {
+        // Delete only if this promise is still the latest tail for the session.
+        // This avoids removing a newer queue tail enqueued after this one.
+        if (processingQueues.get(sessionId) === next) {
+            processingQueues.delete(sessionId);
+        }
+    });
 }
 
 /**
