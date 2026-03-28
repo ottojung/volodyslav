@@ -20,8 +20,8 @@ const {
 } = require("./errors");
 const {
     isValidSessionId,
-    extensionFromMimeType,
 } = require("./helpers");
+const { buildWav } = require("../build_wav");
 const {
     CURRENT_SESSION_KEY,
     indexSublevel,
@@ -146,10 +146,9 @@ async function cleanupOldSessionIfNeeded(temporary, sessionId) {
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @param {string} mimeType
  * @returns {Promise<AudioSessionMeta>}
  */
-async function startSession(capabilities, sessionId, mimeType) {
+async function startSession(capabilities, sessionId) {
     if (!isValidSessionId(sessionId)) {
         throw new AudioSessionChunkValidationError(
             `Invalid session ID: "${sessionId}"`
@@ -162,11 +161,10 @@ async function startSession(capabilities, sessionId, mimeType) {
 
     const existing = await readMeta(temporary, sessionId);
     if (existing !== null) {
-        // Touch existing session: ensure index is current and update mimeType/updatedAt
+        // Touch existing session: ensure index is current and update updatedAt
         const now = toISOString(capabilities.datetime.now());
         const updatedMeta = {
             ...existing,
-            mimeType,
             updatedAt: now,
         };
         await writeMeta(temporary, updatedMeta);
@@ -182,11 +180,14 @@ async function startSession(capabilities, sessionId, mimeType) {
         createdAt: now,
         updatedAt: now,
         status: "recording",
-        mimeType,
+        mimeType: "audio/wav",
         fragmentCount: 0,
         lastSequence: -1,
         lastEndMs: 0,
         elapsedSeconds: 0,
+        sampleRateHz: 0,
+        channels: 0,
+        bitDepth: 0,
     };
     await writeMeta(temporary, meta);
     await writeCurrentSessionId(temporary, sessionId);
@@ -196,15 +197,15 @@ async function startSession(capabilities, sessionId, mimeType) {
 }
 
 /**
- * Upload a single audio chunk for a session.
+ * Upload a single raw PCM chunk for a session.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @param {{ chunk: Buffer, startMs: number, endMs: number, sequence: number, mimeType: string }} params
+ * @param {{ pcm: Buffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
  * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number } }>}
  */
 async function uploadChunk(capabilities, sessionId, params) {
-    const { chunk, startMs, endMs, sequence, mimeType } = params;
+    const { pcm, sampleRateHz, channels, bitDepth, startMs, endMs, sequence } = params;
     const { temporary } = capabilities;
 
     if (!isValidSessionId(sessionId)) {
@@ -239,6 +240,18 @@ async function uploadChunk(capabilities, sessionId, params) {
         );
     }
 
+    // Validate PCM format consistency across fragments.
+    // On first chunk (sampleRateHz === 0), accept any valid format.
+    const formatMismatch = meta.sampleRateHz !== 0 && (
+        meta.sampleRateHz !== sampleRateHz || meta.channels !== channels || meta.bitDepth !== bitDepth
+    );
+    if (formatMismatch) {
+        throw new AudioSessionChunkValidationError(
+            `PCM format mismatch: expected ${meta.sampleRateHz}Hz/${meta.channels}ch/${meta.bitDepth}bit, ` +
+            `got ${sampleRateHz}Hz/${channels}ch/${bitDepth}bit`
+        );
+    }
+
     const seqPadded = String(sequence).padStart(6, "0");
     const sessionChunks = chunksSublevel(temporary, sessionId);
     const chunkTempKey = chunkKey(sequence);
@@ -248,7 +261,7 @@ async function uploadChunk(capabilities, sessionId, params) {
 
     await sessionChunks.put(chunkTempKey, {
         type: "blob",
-        data: chunk.toString("base64"),
+        data: pcm.toString("base64"),
     });
 
     const shouldUpdateLastSequence = isNewChunk && sequence > meta.lastSequence;
@@ -257,16 +270,18 @@ async function uploadChunk(capabilities, sessionId, params) {
     const isOverwriteOfLatestChunk = !isNewChunk && sequence === meta.lastSequence;
     const updatedMeta = {
         ...meta,
-        mimeType: mimeType || meta.mimeType,
         updatedAt: toISOString(capabilities.datetime.now()),
         fragmentCount: isNewChunk ? meta.fragmentCount + 1 : meta.fragmentCount,
         lastSequence: shouldUpdateLastSequence ? sequence : meta.lastSequence,
         lastEndMs: shouldUpdateLastSequence || isOverwriteOfLatestChunk ? endMs : meta.lastEndMs,
+        // Store format info from first chunk (subsequent chunks must match).
+        sampleRateHz: meta.sampleRateHz !== 0 ? meta.sampleRateHz : sampleRateHz,
+        channels: meta.channels !== 0 ? meta.channels : channels,
+        bitDepth: meta.bitDepth !== 0 ? meta.bitDepth : bitDepth,
     };
     await writeMeta(temporary, updatedMeta);
 
-    const chunkMimeType = mimeType || meta.mimeType;
-    const filename = `${seqPadded}.${extensionFromMimeType(chunkMimeType)}`;
+    const filename = `${seqPadded}.pcm`;
     return {
         stored: { sequence, filename },
         session: {
@@ -332,23 +347,24 @@ async function stopSession(capabilities, sessionId) {
     chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
 
     /** @type {Buffer[]} */
-    const buffers = [];
+    const pcmBuffers = [];
     for (const key of chunkKeys) {
         const entry = await sessionChunks.get(key);
         if (entry !== undefined && entry.type === "blob") {
-            buffers.push(Buffer.from(entry.data, "base64"));
+            pcmBuffers.push(Buffer.from(entry.data, "base64"));
         }
     }
 
-    // Assembly assumption: chunk buffers are concatenated with Buffer.concat.
-    // This is safe only for container formats that support streaming concatenation.
-    // The recording pipeline is constrained to audio/webm (Matroska/WebM), which is
-    // a cluster-based streaming format: successive MediaRecorder chunks are valid
-    // individually and can be byte-concatenated into a single decodable stream.
-    // Other formats (MP4, WAV, FLAC, …) are NOT safely byte-concatenable.
-    // If support for additional formats is added in the future, this assembly step
-    // MUST be replaced with a format-aware remux/re-encode step.
-    const finalBuffer = Buffer.concat(buffers);
+    // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
+    // PCM sample-level concatenation is always safe: no container format concerns.
+    const concatenatedPcm = Buffer.concat(pcmBuffers);
+
+    // Use PCM format stored in session metadata.  If no chunks were uploaded yet
+    // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
+    const sampleRateHz = meta.sampleRateHz || 16000;
+    const channels = meta.channels || 1;
+    const bitDepth = meta.bitDepth || 16;
+    const finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
 
     try {
         await sessionSublevel(temporary, sessionId).put(finalKey(), {

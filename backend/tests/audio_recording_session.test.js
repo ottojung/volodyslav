@@ -11,6 +11,7 @@ const {
     isAudioSessionChunkValidationError,
     isAudioSessionConflictError,
 } = require("../src/audio_recording_session");
+const { parseWav } = require("../src/live_diary/wav_utils");
 
 function getCapabilities() {
     const caps = getMockedRootCapabilities();
@@ -20,26 +21,33 @@ function getCapabilities() {
 }
 
 const TEST_SESSION_ID = "test-session-abc123";
-const TEST_MIME_TYPE = "audio/webm";
+
+/** Minimal PCM chunk parameters used across tests. */
+const TEST_PCM_PARAMS = {
+    pcm: Buffer.from(new Int16Array(8).buffer),
+    sampleRateHz: 16000,
+    channels: 1,
+    bitDepth: 16,
+};
 
 describe("audio_recording_session", () => {
     describe("startSession", () => {
         it("creates session metadata in temporary storage", async () => {
             const caps = getCapabilities();
-            const session = await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const session = await startSession(caps, TEST_SESSION_ID);
             expect(session.sessionId).toBe(TEST_SESSION_ID);
             expect(session.status).toBe("recording");
-            expect(session.mimeType).toBe(TEST_MIME_TYPE);
+            expect(session.mimeType).toBe("audio/wav");
             expect(session.fragmentCount).toBe(0);
             expect(session.elapsedSeconds).toBe(0);
         });
 
-        it("updates mimeType when called twice with same id", async () => {
+        it("touches session when called twice with same id", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            const session2 = await startSession(caps, TEST_SESSION_ID, "audio/ogg");
+            await startSession(caps, TEST_SESSION_ID);
+            const session2 = await startSession(caps, TEST_SESSION_ID);
             expect(session2.sessionId).toBe(TEST_SESSION_ID);
-            expect(session2.mimeType).toBe("audio/ogg");
+            expect(session2.mimeType).toBe("audio/wav");
             expect(session2.fragmentCount).toBe(0);
         });
 
@@ -47,7 +55,7 @@ describe("audio_recording_session", () => {
             const caps = getCapabilities();
             let err = null;
             try {
-                await startSession(caps, "invalid/session", TEST_MIME_TYPE);
+                await startSession(caps, "invalid/session");
             } catch (e) {
                 err = e;
             }
@@ -56,20 +64,19 @@ describe("audio_recording_session", () => {
 
         it("deletes prior session when new session id is used", async () => {
             const caps = getCapabilities();
-            await startSession(caps, "old-session-id", TEST_MIME_TYPE);
+            await startSession(caps, "old-session-id");
             await uploadChunk(caps, "old-session-id", {
-                chunk: Buffer.from("audio-data"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             // Verify old session exists
             const oldSession = await getSession(caps, "old-session-id");
             expect(oldSession.fragmentCount).toBe(1);
 
             // Start new session - should delete old one
-            await startSession(caps, "new-session-id", TEST_MIME_TYPE);
+            await startSession(caps, "new-session-id");
 
             // Old session should be gone
             let err = null;
@@ -84,20 +91,19 @@ describe("audio_recording_session", () => {
         it("deletes orphaned sessions not tracked in index", async () => {
             const caps = getCapabilities();
             // Create first session normally (gets indexed)
-            await startSession(caps, "orphan-session-1", TEST_MIME_TYPE);
+            await startSession(caps, "orphan-session-1");
             await uploadChunk(caps, "orphan-session-1", {
-                chunk: Buffer.from("data"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
 
             // Manually create a second session to simulate orphan (not indexed)
-            await startSession(caps, "orphan-session-2", TEST_MIME_TYPE);
+            await startSession(caps, "orphan-session-2");
 
             // Start a third new session - should clean up both orphans
-            await startSession(caps, "fresh-session", TEST_MIME_TYPE);
+            await startSession(caps, "fresh-session");
 
             // Both orphans should be gone
             let err1 = null;
@@ -121,37 +127,34 @@ describe("audio_recording_session", () => {
     describe("uploadChunk", () => {
         it("stores chunk and updates session metadata", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             const result = await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("audio-chunk-data"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             expect(result.stored.sequence).toBe(0);
-            expect(result.stored.filename).toBe("000000.webm");
+            expect(result.stored.filename).toBe("000000.pcm");
             expect(result.session.fragmentCount).toBe(1);
             expect(result.session.lastEndMs).toBe(10000);
         });
 
         it("accepts duplicate sequence by overwriting", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("original-chunk"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             // Upload again with same sequence
             const result = await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("replacement-chunk"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             expect(result.stored.sequence).toBe(0);
             // fragmentCount should still be 1 (not 2)
@@ -163,11 +166,10 @@ describe("audio_recording_session", () => {
             let err = null;
             try {
                 await uploadChunk(caps, "nonexistent-session", {
-                    chunk: Buffer.from("data"),
+                    ...TEST_PCM_PARAMS,
                     startMs: 0,
                     endMs: 10000,
                     sequence: 0,
-                    mimeType: TEST_MIME_TYPE,
                 });
             } catch (e) {
                 err = e;
@@ -177,16 +179,15 @@ describe("audio_recording_session", () => {
 
         it("throws on upload to stopped session", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             await stopSession(caps, TEST_SESSION_ID);
             let err = null;
             try {
                 await uploadChunk(caps, TEST_SESSION_ID, {
-                    chunk: Buffer.from("data"),
+                    ...TEST_PCM_PARAMS,
                     startMs: 0,
                     endMs: 10000,
                     sequence: 1,
-                    mimeType: TEST_MIME_TYPE,
                 });
             } catch (e) {
                 err = e;
@@ -196,15 +197,14 @@ describe("audio_recording_session", () => {
 
         it("rejects Infinity startMs", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             let err = null;
             try {
                 await uploadChunk(caps, TEST_SESSION_ID, {
-                    chunk: Buffer.from("data"),
+                    ...TEST_PCM_PARAMS,
                     startMs: Infinity,
                     endMs: 10000,
                     sequence: 0,
-                    mimeType: TEST_MIME_TYPE,
                 });
             } catch (e) {
                 err = e;
@@ -214,15 +214,14 @@ describe("audio_recording_session", () => {
 
         it("rejects -Infinity endMs", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             let err = null;
             try {
                 await uploadChunk(caps, TEST_SESSION_ID, {
-                    chunk: Buffer.from("data"),
+                    ...TEST_PCM_PARAMS,
                     startMs: 0,
                     endMs: -Infinity,
                     sequence: 0,
-                    mimeType: TEST_MIME_TYPE,
                 });
             } catch (e) {
                 err = e;
@@ -232,22 +231,20 @@ describe("audio_recording_session", () => {
 
         it("counts fragmentCount correctly for out-of-order uploads", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             // Upload sequence 1 first (out of order)
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("chunk-1"),
+                ...TEST_PCM_PARAMS,
                 startMs: 10000,
                 endMs: 20000,
                 sequence: 1,
-                mimeType: TEST_MIME_TYPE,
             });
             // Upload sequence 0 second
             const result = await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("chunk-0"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             // fragmentCount should be 2, not 1
             expect(result.session.fragmentCount).toBe(2);
@@ -255,15 +252,14 @@ describe("audio_recording_session", () => {
 
         it("rejects invalid sequence", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             let err = null;
             try {
                 await uploadChunk(caps, TEST_SESSION_ID, {
-                    chunk: Buffer.from("data"),
+                    ...TEST_PCM_PARAMS,
                     startMs: 0,
                     endMs: 10000,
                     sequence: -1,
-                    mimeType: TEST_MIME_TYPE,
                 });
             } catch (e) {
                 err = e;
@@ -271,55 +267,70 @@ describe("audio_recording_session", () => {
             expect(isAudioSessionChunkValidationError(err)).toBe(true);
         });
 
-        it("derives filename extension from mimeType", async () => {
+        it("rejects PCM format mismatch between chunks", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, "audio/ogg");
-            const result = await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("ogg-data"),
+            await startSession(caps, TEST_SESSION_ID);
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: "audio/ogg",
             });
-            expect(result.stored.filename).toBe("000000.ogg");
+            let err = null;
+            try {
+                await uploadChunk(caps, TEST_SESSION_ID, {
+                    ...TEST_PCM_PARAMS,
+                    sampleRateHz: 44100, // different from first chunk
+                    startMs: 10000,
+                    endMs: 20000,
+                    sequence: 1,
+                });
+            } catch (e) {
+                err = e;
+            }
+            expect(isAudioSessionChunkValidationError(err)).toBe(true);
         });
     });
-
     describe("stopSession", () => {
-        it("concatenates chunks and stores final audio", async () => {
+        it("concatenates PCM chunks and stores final WAV audio", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            const chunk1 = Buffer.from("chunk-one-data");
-            const chunk2 = Buffer.from("chunk-two-data");
+            await startSession(caps, TEST_SESSION_ID);
+            // Upload two PCM fragments (silent 8-sample buffers each)
+            const pcm1 = Buffer.from(new Int16Array(8).buffer);
+            const pcm2 = Buffer.from(new Int16Array(8).buffer);
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: chunk1,
+                pcm: pcm1,
+                sampleRateHz: 16000,
+                channels: 1,
+                bitDepth: 16,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: chunk2,
+                pcm: pcm2,
+                sampleRateHz: 16000,
+                channels: 1,
+                bitDepth: 16,
                 startMs: 10000,
                 endMs: 20000,
                 sequence: 1,
-                mimeType: TEST_MIME_TYPE,
             });
 
             const result = await stopSession(caps, TEST_SESSION_ID);
             expect(result.status).toBe("stopped");
-            expect(result.size).toBe(chunk1.length + chunk2.length);
+            // Final buffer is WAV: 44-byte header + concatenated PCM
+            expect(result.size).toBe(44 + pcm1.length + pcm2.length);
         });
 
         it("derives elapsedSeconds from lastEndMs in session metadata", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("data"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 42000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             await stopSession(caps, TEST_SESSION_ID);
             const meta = await getSession(caps, TEST_SESSION_ID);
@@ -329,26 +340,34 @@ describe("audio_recording_session", () => {
     });
 
     describe("fetchFinalAudio", () => {
-        it("returns final audio after stop", async () => {
+        it("returns WAV final audio after stop", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
-            const audioData = Buffer.from("audio-bytes-here");
+            await startSession(caps, TEST_SESSION_ID);
+            const pcmSamples = Buffer.from(new Int16Array(8).buffer);
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: audioData,
+                pcm: pcmSamples,
+                sampleRateHz: 16000,
+                channels: 1,
+                bitDepth: 16,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             await stopSession(caps, TEST_SESSION_ID);
             const { buffer, mimeType } = await fetchFinalAudio(caps, TEST_SESSION_ID);
-            expect(buffer).toEqual(audioData);
-            expect(mimeType).toBe(TEST_MIME_TYPE);
+            expect(mimeType).toBe("audio/wav");
+            // Verify it parses as a valid WAV file containing the uploaded PCM
+            const wavInfo = parseWav(buffer);
+            expect(wavInfo).not.toBeNull();
+            expect(wavInfo.sampleRate).toBe(16000);
+            expect(wavInfo.channels).toBe(1);
+            expect(wavInfo.bitDepth).toBe(16);
+            expect(wavInfo.pcm).toEqual(pcmSamples);
         });
 
         it("throws on not-yet-finalized session", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             let err = null;
             try {
                 await fetchFinalAudio(caps, TEST_SESSION_ID);
@@ -373,13 +392,12 @@ describe("audio_recording_session", () => {
     describe("discardSession", () => {
         it("deletes session data", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             await uploadChunk(caps, TEST_SESSION_ID, {
-                chunk: Buffer.from("data"),
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
                 endMs: 10000,
                 sequence: 0,
-                mimeType: TEST_MIME_TYPE,
             });
             await discardSession(caps, TEST_SESSION_ID);
             let err = null;
@@ -393,20 +411,20 @@ describe("audio_recording_session", () => {
 
         it("clears the index when discarding the current session", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             await discardSession(caps, TEST_SESSION_ID);
             // After discard, starting a new session with same id should behave like a fresh start
-            const session = await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            const session = await startSession(caps, TEST_SESSION_ID);
             expect(session.fragmentCount).toBe(0);
             expect(session.status).toBe("recording");
         });
 
         it("allows starting a different session after discarding current session", async () => {
             const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID, TEST_MIME_TYPE);
+            await startSession(caps, TEST_SESSION_ID);
             await discardSession(caps, TEST_SESSION_ID);
             // Start a completely different session; should not find any residue
-            const newSession = await startSession(caps, "brand-new-session", TEST_MIME_TYPE);
+            const newSession = await startSession(caps, "brand-new-session");
             expect(newSession.fragmentCount).toBe(0);
         });
     });

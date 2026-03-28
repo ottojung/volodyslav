@@ -15,7 +15,7 @@ import {
 import { saveSessionId, clearSessionId } from "./recording_storage.js";
 import {
     startSession as startBackendSession,
-    pushAudioWithSessionRetry as pushBackendAudio,
+    pushPcmWithSessionRetry as pushBackendPcm,
     stopSession as stopBackendSession,
     fetchFinalAudio,
     discardSession,
@@ -162,7 +162,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 if (!isMountedRef.current) return;
                 setAnalyser(node);
             },
-            onChunk: (chunk, startMs, endMs, analysisChunk) => {
+            onChunk: (chunk, startMs, endMs, pcmChunk) => {
                 if (!isMountedRef.current) return;
                 if (chunk.type) {
                     mimeTypeRef.current = chunk.type;
@@ -170,27 +170,28 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 const offsetMs = restoredOffsetMsRef.current;
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
-                // Enqueue audio fragment push to backend (serialized).
+                // Enqueue PCM fragment push to backend (serialized).
                 // Live diary questioning runs asynchronously server-side; questions are
-                // consumed by polling /live-questions, not from push-audio response.
+                // consumed by polling /live-questions, not from push-pcm response.
+                if (!pcmChunk) return; // PCM capture unavailable; skip backend upload
                 const seq = sequenceRef.current + 1;
                 sequenceRef.current = seq;
                 const sessionId = sessionIdRef.current;
-                const mimeType = chunk.type || mimeTypeRef.current;
                 if (sessionId) {
                     uploadQueueRef.current = uploadQueueRef.current.then(async () => {
                         if (sessionId !== sessionIdRef.current) return;
                         try {
-                            await pushBackendAudio(sessionId, mimeType || "audio/webm", {
-                                chunk,
+                            await pushBackendPcm(sessionId, {
+                                pcmBytes: pcmChunk.pcmBytes,
+                                sampleRateHz: pcmChunk.sampleRateHz,
+                                channels: pcmChunk.channels,
+                                bitDepth: pcmChunk.bitDepth,
                                 startMs: startMs + offsetMs,
                                 endMs: endMs + offsetMs,
                                 sequence: seq,
-                                mimeType,
-                                analysisChunk: analysisChunk ?? undefined,
                             });
                         } catch {
-                            // Push-audio failed; recording continues locally
+                            // Push-PCM failed; recording continues locally
                         }
                     });
                 }
@@ -266,7 +267,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
 
         // Start backend session (best-effort; recording continues even if this fails)
         try {
-            await startBackendSession(newSessionId, mimeTypeRef.current || "audio/webm");
+            await startBackendSession(newSessionId);
         } catch {
             // Non-fatal
         }

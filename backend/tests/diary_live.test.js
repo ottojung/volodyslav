@@ -3,7 +3,7 @@ const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubAiTranscriber, stubAiDiaryQuestions, stubAiTranscriptRecombination, stubDatetime } = require("./stubs");
-const { buildTestWavBuffer } = require("./wav_helpers");
+const { buildTestPcmBuffer, TEST_PCM_FORMAT } = require("./pcm_helpers");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -38,23 +38,44 @@ async function flushProcessing() {
     await new Promise((resolve) => setTimeout(resolve, PROCESSING_FLUSH_DELAY_MS));
 }
 
-// ─── POST /api/audio-recording-session/:sessionId/push-audio ─────────────────
+/**
+ * Helper: send a PCM fragment via the push-pcm endpoint.
+ * @param {import('supertest').SuperTest<import('supertest').Test>} app
+ * @param {string} sessionId
+ * @param {number} i - Fragment number (1-based).
+ * @returns {import('supertest').Test}
+ */
+function sendPcmFragment(app, sessionId, i) {
+    return request(app)
+        .post(`/api/audio-recording-session/${sessionId}/push-pcm`)
+        .attach("pcm", buildTestPcmBuffer(), { filename: `f${i}.pcm`, contentType: "application/octet-stream" })
+        .field("sequence", String(i - 1))
+        .field("startMs", String((i - 1) * 10000))
+        .field("endMs", String(i * 10000))
+        .field("sampleRateHz", String(TEST_PCM_FORMAT.sampleRateHz))
+        .field("channels", String(TEST_PCM_FORMAT.channels))
+        .field("bitDepth", String(TEST_PCM_FORMAT.bitDepth));
+}
 
-describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
-    it("returns 400 when audio file is missing", async () => {
+// ─── POST /api/audio-recording-session/:sessionId/push-pcm ───────────────────
+
+describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
+    it("returns 400 when pcm file is missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/audio-recording-session/test-session/push-audio")
-            .field("mimeType", "audio/webm")
+            .post("/api/audio-recording-session/test-session/push-pcm")
             .field("sequence", "0")
             .field("startMs", "0")
-            .field("endMs", "1000");
+            .field("endMs", "1000")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/Missing audio file/i);
+        expect(res.body.error).toMatch(/Missing pcm file/i);
     });
 
     it("returns 404 when session does not exist", async () => {
@@ -62,28 +83,14 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/audio-recording-session/test-session/push-audio")
-            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
+            .post("/api/audio-recording-session/test-session/push-pcm")
+            .attach("pcm", buildTestPcmBuffer(), { filename: "f.pcm", contentType: "application/octet-stream" })
             .field("sequence", "0")
             .field("startMs", "0")
-            .field("endMs", "1000");
-
-        expect(res.statusCode).toBe(404);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/Session not found/i);
-    });
-
-    it("returns 404 when mimeType field is omitted but file content type is valid", async () => {
-        const capabilities = getTestCapabilities();
-        const app = await makeApp(capabilities);
-
-        const res = await request(app)
-            .post("/api/audio-recording-session/test-session/push-audio")
-            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "1000");
+            .field("endMs", "1000")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
 
         expect(res.statusCode).toBe(404);
         expect(res.body.success).toBe(false);
@@ -95,11 +102,13 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const app = await makeApp(capabilities);
 
         const res = await request(app)
-            .post("/api/audio-recording-session/test-session/push-audio")
-            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
+            .post("/api/audio-recording-session/test-session/push-pcm")
+            .attach("pcm", buildTestPcmBuffer(), { filename: "f.pcm", contentType: "application/octet-stream" })
             .field("startMs", "0")
-            .field("endMs", "1000");
+            .field("endMs", "1000")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
@@ -110,13 +119,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
-        const res = await request(app)
-            .post("/api/audio-recording-session/test-session/push-audio")
-            .attach("audio", Buffer.from("fake audio"), { filename: "f.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "1000");
+        const res = await sendPcmFragment(app, "test-session", 1);
 
         expect(res.statusCode).toBe(404);
         expect(res.body.success).toBe(false);
@@ -129,18 +132,12 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId: "session-first", mimeType: "audio/webm" });
-        const res = await request(app)
-            .post("/api/audio-recording-session/session-first/push-audio")
-            .attach("audio", Buffer.from("fake audio 1"), { filename: "f1.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "10000");
+            .send({ sessionId: "session-first" });
+        const res = await sendPcmFragment(app, "session-first", 1);
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
-        // Push-audio responds immediately; live diary status is "accepted" (async).
+        // Push-pcm responds immediately; live diary status is "accepted" (async).
         expect(res.body.questions).toEqual([]);
         expect(res.body.status).toBe("accepted");
 
@@ -156,29 +153,13 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
 
         // First fragment — stores but background processing finds no previous fragment.
-        await request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from("audio-fragment-1"), { filename: "f1.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "10000")
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a1.wav", contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+        await sendPcmFragment(app, sessionId, 1);
 
-        // Second fragment — push-audio responds immediately (async processing queued).
-        const res = await request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from("audio-fragment-2"), { filename: "f2.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "1")
-            .field("startMs", "10000")
-            .field("endMs", "20000")
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a2.wav", contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+        // Second fragment — push-pcm responds immediately (async processing queued).
+        const res = await sendPcmFragment(app, sessionId, 2);
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -209,17 +190,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
         for (let i = 1; i <= 3; i++) {
-            await request(app)
-                .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-                .attach("audio", Buffer.from(`audio-fragment-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-                .field("mimeType", "audio/webm")
-                .field("sequence", String(i - 1))
-                .field("startMs", String((i - 1) * 10000))
-                .field("endMs", String(i * 10000))
-                .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
-                .field("analysisMimeType", "audio/wav");
+            await sendPcmFragment(app, sessionId, i);
         }
 
         // Wait for all background processing to complete.
@@ -251,29 +224,13 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const sessionId = "session-silent";
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
 
         // First fragment.
-        await request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from("silence"), { filename: "s1.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "10000")
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: "sa1.wav", contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+        await sendPcmFragment(app, sessionId, 1);
 
         // Second fragment — transcription returns empty string.
-        const res = await request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from("silence"), { filename: "s2.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "1")
-            .field("startMs", "10000")
-            .field("endMs", "20000")
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: "sa2.wav", contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+        const res = await sendPcmFragment(app, sessionId, 2);
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -297,29 +254,13 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const sessionId = "session-trans-fail";
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
 
-        await request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from("audio1"), { filename: "f1.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "10000")
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a1.wav", contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+        await sendPcmFragment(app, sessionId, 1);
 
-        const res = await request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from("audio2"), { filename: "f2.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "1")
-            .field("startMs", "10000")
-            .field("endMs", "20000")
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a2.wav", contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+        const res = await sendPcmFragment(app, sessionId, 2);
 
-        // Push-audio responds immediately regardless of AI failure.
+        // Push-pcm responds immediately regardless of AI failure.
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.status).toBe("accepted");
@@ -378,22 +319,11 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
 
-        const sendFragment = (i) => request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", String(i - 1))
-            .field("startMs", String((i - 1) * 10000))
-            .field("endMs", String(i * 10000))
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
-
-        await sendFragment(1);
-        await sendFragment(2);
-        await sendFragment(3);
-        await sendFragment(4);
+        for (let i = 1; i <= 4; i++) {
+            await sendPcmFragment(app, sessionId, i);
+        }
 
         await flushProcessing();
 
@@ -416,18 +346,10 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const sessionId = "session-recomb-fail";
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
 
         for (let i = 1; i <= 3; i++) {
-            await request(app)
-                .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-                .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-                .field("mimeType", "audio/webm")
-                .field("sequence", String(i - 1))
-                .field("startMs", String((i - 1) * 10000))
-                .field("endMs", String(i * 10000))
-                .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
-                .field("analysisMimeType", "audio/wav");
+            await sendPcmFragment(app, sessionId, i);
         }
 
         // Wait for background processing.
@@ -447,42 +369,32 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         const sessionId = "session-dedup";
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
-
-        const sendFragment = (i) => request(app)
-            .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-            .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", String(i - 1))
-            .field("startMs", String((i - 1) * 10000))
-            .field("endMs", String(i * 10000))
-            .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
-            .field("analysisMimeType", "audio/wav");
+            .send({ sessionId });
 
         const pollLiveQuestions = () =>
             request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
 
-        // Fragment 1: only stores the audio (background: no previous fragment, no AI).
-        await sendFragment(1);
+        // Fragment 1: only stores the PCM (background: no previous fragment, no AI).
+        await sendPcmFragment(app, sessionId, 1);
         await flushProcessing();
         const lq1 = await pollLiveQuestions();
         expect(lq1.body.questions).toHaveLength(0);
 
         // Fragment 2: first overlap window available — question is new, should appear.
-        await sendFragment(2);
+        await sendPcmFragment(app, sessionId, 2);
         await flushProcessing();
         const lq2 = await pollLiveQuestions();
         expect(lq2.body.questions).toHaveLength(1);
         expect(lq2.body.questions[0].text).toBe("How are you?");
 
         // Fragment 3: same question returned by AI, but already asked — deduplicated out.
-        await sendFragment(3);
+        await sendPcmFragment(app, sessionId, 3);
         await flushProcessing();
         const lq3 = await pollLiveQuestions();
         expect(lq3.body.questions).toHaveLength(0);
 
         // Fragment 4: still deduplicated.
-        await sendFragment(4);
+        await sendPcmFragment(app, sessionId, 4);
         await flushProcessing();
         const lq4 = await pollLiveQuestions();
         expect(lq4.body.questions).toHaveLength(0);
@@ -495,18 +407,10 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId, mimeType: "audio/webm" });
+            .send({ sessionId });
 
         for (let i = 1; i <= 2; i++) {
-            await request(app)
-                .post(`/api/audio-recording-session/${sessionId}/push-audio`)
-                .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
-                .field("mimeType", "audio/webm")
-                .field("sequence", String(i - 1))
-                .field("startMs", String((i - 1) * 10000))
-                .field("endMs", String(i * 10000))
-                .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
-                .field("analysisMimeType", "audio/wav");
+            await sendPcmFragment(app, sessionId, i);
         }
 
         await flushProcessing();
@@ -528,25 +432,13 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId: "session-a", mimeType: "audio/webm" });
-        await request(app)
-            .post("/api/audio-recording-session/session-a/push-audio")
-            .attach("audio", Buffer.from("audio-a"), { filename: "fa.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "10000");
+            .send({ sessionId: "session-a" });
+        await sendPcmFragment(app, "session-a", 1);
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId: "session-b", mimeType: "audio/webm" });
-        await request(app)
-            .post("/api/audio-recording-session/session-b/push-audio")
-            .attach("audio", Buffer.from("audio-b"), { filename: "fb.webm", contentType: "audio/webm" })
-            .field("mimeType", "audio/webm")
-            .field("sequence", "0")
-            .field("startMs", "0")
-            .field("endMs", "10000");
+            .send({ sessionId: "session-b" });
+        await sendPcmFragment(app, "session-b", 1);
 
         // Wait for background processing.
         await flushProcessing();

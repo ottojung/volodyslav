@@ -28,7 +28,7 @@ const {
 } = require("../audio_recording_session");
 const { programmaticRecombination } = require("../ai");
 const {
-    LAST_FRAGMENT_MIME_KEY,
+    LAST_FRAGMENT_FORMAT_KEY,
     LAST_WINDOW_TRANSCRIPT_KEY,
     RUNNING_TRANSCRIPT_KEY,
     readLastFragment,
@@ -41,7 +41,7 @@ const {
     appendPendingQuestions,
     clearPendingQuestions,
 } = require("./session_state");
-const { parseWav, buildWav, extensionForMime, normalizeMimeType } = require("./wav_utils");
+const { buildWav, extensionForMime } = require("./wav_utils");
 const {
     DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS,
     isLiveDiaryStepTimeoutError,
@@ -122,7 +122,15 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime' | 'invalid_wav'} PushAudioStatus
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'invalid_pcm'} PushAudioStatus
+ */
+
+/**
+ * @typedef {object} PcmInfo
+ * @property {Buffer} pcm - Raw PCM sample bytes (16-bit signed little-endian).
+ * @property {number} sampleRateHz - Samples per second.
+ * @property {number} channels - Number of audio channels.
+ * @property {number} bitDepth - Bits per sample (must be 16).
  */
 
 /**
@@ -133,37 +141,36 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
  *   - `empty_result`: first fragment — no window available yet,
  *   - `degraded_transcription`: transcription failed; questions array is empty,
  *   - `degraded_question_generation`: question generation failed; questions array is empty,
- *   - `unsupported_mime`: mime type is not audio/wav,
- *   - `invalid_wav`: fragment buffer could not be parsed as a valid 16-bit PCM WAV file.
+ *   - `invalid_pcm`: fragment PCM info is invalid (unsupported bitDepth or missing data).
  */
 
 /**
- * Push a new nominal-10s audio fragment for a session.
+ * Push a new nominal-10s PCM audio fragment for a session.
  *
- * On the first fragment the audio is stored and an empty questions array is
+ * On the first fragment the PCM is stored and an empty questions array is
  * returned (status `empty_result`) — there is not yet enough audio to form the
  * first 2-fragment overlap window.
  *
  * On every subsequent fragment:
- *  1. Binary-concatenates the stored fragment with the new one to form a 2-fragment window.
- *  2. Transcribes that overlap window.
- *  3. LLM-recombines with the previous window transcript (with programmatic fallback).
- *  4. Accumulates the merged result into the running transcript.
- *  5. Generates diary questions from the running transcript.
- *  6. Returns deduplicated new questions.
+ *  1. Binary-concatenates the stored PCM with the new one to form a 2-fragment window.
+ *  2. Wraps the combined PCM in a WAV file for transcription.
+ *  3. Transcribes that overlap window.
+ *  4. LLM-recombines with the previous window transcript (with programmatic fallback).
+ *  5. Accumulates the merged result into the running transcript.
+ *  6. Generates diary questions from the running transcript.
+ *  7. Returns deduplicated new questions.
  *
  * Fail-soft behavior is preserved: transcription and question-generation
  * failures do not throw to the caller.  Instead, the status field of the
  * returned object distinguishes a genuine empty result from a degraded one.
  *
- * All state (last fragment, transcripts, asked questions) is persisted under
+ * All state (last PCM fragment, transcripts, asked questions) is persisted under
  * the shared audio_session keyspace so the backend can be rebooted without
  * losing session progress.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @param {Buffer} fragmentBuffer
- * @param {string} mimeType
+ * @param {PcmInfo} pcmInfo
  * @param {number} fragmentNumber
  * @param {number} [stepTimeoutMs]
  * @returns {Promise<PushAudioResult>}
@@ -171,90 +178,68 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 async function pushAudio(
     capabilities,
     sessionId,
-    fragmentBuffer,
-    mimeType,
+    pcmInfo,
     fragmentNumber,
     stepTimeoutMs = DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS
 ) {
     const { temporary } = capabilities;
-    const normalizedMimeType = normalizeMimeType(mimeType);
+    const { pcm, sampleRateHz, channels, bitDepth } = pcmInfo;
 
     capabilities.logger.logDebug(
-        { sessionId, fragmentNumber, chunkSizeBytes: fragmentBuffer.length, mimeType: normalizedMimeType },
-        "Live diary received audio chunk"
+        { sessionId, fragmentNumber, chunkSizeBytes: pcm.length, sampleRateHz, channels, bitDepth },
+        "Live diary received PCM chunk"
     );
+
+    // Only 16-bit PCM is supported (buildWav interprets raw bytes as 16-bit signed LE).
+    if (bitDepth !== 16) {
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber, bitDepth },
+            "Live diary push-audio rejected unsupported bit depth; 16-bit required"
+        );
+        return { questions: [], status: "invalid_pcm" };
+    }
 
     // Ensure session is registered.
     await markSessionExists(temporary, sessionId);
 
-    // Live diary requires WAV-wrapped PCM for safe sample-level concatenation.
-    if (normalizedMimeType !== "audio/wav") {
-        capabilities.logger.logWarning(
-            { sessionId, fragmentNumber, mimeType: normalizedMimeType },
-            "Live diary push-audio rejected unsupported mime type; audio/wav required"
-        );
-        return { questions: [], status: "unsupported_mime" };
-    }
+    const lastFragmentBuffer = await readLastFragment(temporary, sessionId);
 
-    const currentWavInfo = parseWav(fragmentBuffer);
-    if (!currentWavInfo) {
-        capabilities.logger.logWarning(
-            { sessionId, fragmentNumber, fragmentSizeBytes: fragmentBuffer.length },
-            "Live diary push-audio rejected malformed WAV buffer"
-        );
-        return { questions: [], status: "invalid_wav" };
-    }
-
-    const lastFragment = await readLastFragment(temporary, sessionId);
-
-    if (lastFragment === null) {
-        // First fragment: store the full WAV buffer and return no questions yet.
-        await writeLastFragment(temporary, sessionId, fragmentBuffer);
-        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+    if (lastFragmentBuffer === null) {
+        // First fragment: store the PCM and return no questions yet.
+        await writeLastFragment(temporary, sessionId, pcm);
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_FORMAT_KEY, `${sampleRateHz}/${channels}/${bitDepth}`);
         capabilities.logger.logDebug(
             { sessionId, fragmentNumber },
-            "Live diary first WAV fragment stored; waiting for second fragment to form overlap window"
+            "Live diary first PCM fragment stored; waiting for second fragment to form overlap window"
         );
         return { questions: [], status: "empty_result" };
     }
 
-    // Parse the stored previous WAV fragment to extract its PCM payload.
-    const prevWavInfo = parseWav(lastFragment);
-    if (!prevWavInfo) {
-        // Previous fragment is corrupt; reset with the current one and skip this window.
-        capabilities.logger.logWarning(
-            { sessionId, fragmentNumber },
-            "Live diary stored fragment is corrupt; resetting with current fragment"
-        );
-        await writeLastFragment(temporary, sessionId, fragmentBuffer);
-        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
-        return { questions: [], status: "degraded_transcription" };
-    }
+    // Parse the stored previous fragment metadata.
+    const lastFragmentMeta = await readStringField(temporary, sessionId, LAST_FRAGMENT_FORMAT_KEY);
+    const [prevSampleRateHz, prevChannels, prevBitDepth] = (lastFragmentMeta || "")
+        .split("/")
+        .map(Number);
 
     // Concatenate raw PCM bytes from the two fragments to form the 20-second overlap window.
-    // PCM concatenation is structurally safe because sample boundaries are explicit.
-    // Reject the window if the two fragments report different audio formats — concatenating
-    // PCM from mismatched streams would produce corrupt audio.
+    // Reject the window if the two fragments report different audio formats.
     if (
-        prevWavInfo.sampleRate !== currentWavInfo.sampleRate ||
-        prevWavInfo.channels !== currentWavInfo.channels ||
-        prevWavInfo.bitDepth !== currentWavInfo.bitDepth
+        prevSampleRateHz !== sampleRateHz ||
+        prevChannels !== channels ||
+        prevBitDepth !== bitDepth
     ) {
         capabilities.logger.logWarning(
             { sessionId, fragmentNumber },
             "Live diary PCM format mismatch between fragments; resetting with current fragment"
         );
-        await writeLastFragment(temporary, sessionId, fragmentBuffer);
-        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+        await writeLastFragment(temporary, sessionId, pcm);
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_FORMAT_KEY, `${sampleRateHz}/${channels}/${bitDepth}`);
         return { questions: [], status: "degraded_transcription" };
     }
-    const combinedPcm = Buffer.concat([prevWavInfo.pcm, currentWavInfo.pcm]);
-    const window20s = buildWav(
-        combinedPcm,
-        currentWavInfo.sampleRate,
-        currentWavInfo.channels,
-        currentWavInfo.bitDepth
-    );
+
+    const combinedPcm = Buffer.concat([lastFragmentBuffer, pcm]);
+    // Wrap combined PCM in WAV for transcription API.
+    const window20s = buildWav(combinedPcm, sampleRateHz, channels, bitDepth);
 
     capabilities.logger.logDebug(
         { sessionId, fragmentNumber },
@@ -262,8 +247,8 @@ async function pushAudio(
     );
 
     // Advance the stored fragment to the current one for the next call.
-    await writeLastFragment(temporary, sessionId, fragmentBuffer);
-    await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+    await writeLastFragment(temporary, sessionId, pcm);
+    await writeStringField(temporary, sessionId, LAST_FRAGMENT_FORMAT_KEY, `${sampleRateHz}/${channels}/${bitDepth}`);
 
     // Transcribe the overlap window (always audio/wav — built from PCM above).
     let newWindowTranscript;

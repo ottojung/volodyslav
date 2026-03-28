@@ -20,38 +20,85 @@ async function makeApp(capabilities) {
     return app;
 }
 
-describe("audio recording session route MIME validation", () => {
-    it("rejects non-webm mimeType on start", async () => {
+describe("audio recording session route", () => {
+    it("starts a session without mimeType", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         const res = await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId: "sess-route-start", mimeType: "audio/ogg" });
+            .send({ sessionId: "sess-route-start" });
 
-        expect(res.statusCode).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/must be audio\/webm/i);
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.session.sessionId).toBe("sess-route-start");
     });
 
-    it("rejects non-webm mimeType on push-audio", async () => {
+    it("rejects push-pcm with missing pcm file", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
         await request(app)
             .post("/api/audio-recording-session/start")
-            .send({ sessionId: "sess-route-chunk", mimeType: "audio/webm" });
+            .send({ sessionId: "sess-route-push" });
 
         const res = await request(app)
-            .post("/api/audio-recording-session/sess-route-chunk/push-audio")
-            .attach("audio", Buffer.from("fake-audio"), { filename: "c1.ogg", contentType: "audio/ogg" })
+            .post("/api/audio-recording-session/sess-route-push/push-pcm")
             .field("startMs", "0")
             .field("endMs", "10000")
             .field("sequence", "0")
-            .field("mimeType", "audio/ogg");
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
 
         expect(res.statusCode).toBe(400);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toMatch(/must be audio\/webm/i);
+    });
+
+    it("accepts push-pcm with valid PCM payload", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "sess-route-pcm" });
+
+        const pcmBuffer = Buffer.from(new Int16Array(160).buffer); // 160 samples of silence
+        const res = await request(app)
+            .post("/api/audio-recording-session/sess-route-pcm/push-pcm")
+            .attach("pcm", pcmBuffer, { filename: "fragment.pcm", contentType: "application/octet-stream" })
+            .field("startMs", "0")
+            .field("endMs", "10000")
+            .field("sequence", "0")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "16");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.status).toBe("accepted");
+    });
+
+    it("rejects push-pcm with bitDepth other than 16", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "sess-route-bd" });
+
+        const res = await request(app)
+            .post("/api/audio-recording-session/sess-route-bd/push-pcm")
+            .attach("pcm", Buffer.alloc(160), { filename: "fragment.pcm", contentType: "application/octet-stream" })
+            .field("startMs", "0")
+            .field("endMs", "10000")
+            .field("sequence", "0")
+            .field("sampleRateHz", "16000")
+            .field("channels", "1")
+            .field("bitDepth", "24");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/bitDepth must be 16/i);
     });
 });

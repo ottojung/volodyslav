@@ -106,11 +106,14 @@ function tempKeyToString(key) {
  * @property {string} createdAt - ISO timestamp
  * @property {string} updatedAt - ISO timestamp
  * @property {'recording'|'stopped'} status
- * @property {string} mimeType
+ * @property {string} mimeType - always "audio/wav" for PCM-native sessions
  * @property {number} fragmentCount
  * @property {number} lastSequence
  * @property {number} lastEndMs
  * @property {number} elapsedSeconds - elapsed recording time in seconds (set on stop)
+ * @property {number} sampleRateHz - PCM sample rate; 0 when no chunks uploaded yet
+ * @property {number} channels - PCM channel count; 0 when no chunks uploaded yet
+ * @property {number} bitDepth - PCM bit depth; 0 when no chunks uploaded yet
  */
 
 /**

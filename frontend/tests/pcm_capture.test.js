@@ -1,12 +1,12 @@
 /**
- * Unit tests for pcm_capture internals: downsample() and drainWav().
+ * Unit tests for pcm_capture internals: downsample() and drainPcm().
  *
- * drainWav() is a method of the internal PcmCaptureClass, so a minimal
+ * drainPcm() is a method of the internal PcmCaptureClass, so a minimal
  * AudioContext stub with createScriptProcessor is used together with
  * makePcmCapture() to obtain a live instance.
  */
 
-import { downsample, buildWavBlob, makePcmCapture } from "../src/AudioDiary/pcm_capture.js";
+import { downsample, makePcmCapture } from "../src/AudioDiary/pcm_capture.js";
 
 // ---------------------------------------------------------------------------
 // Browser API stubs (not available in jsdom)
@@ -157,29 +157,10 @@ describe("downsample()", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildWavBlob()
+// drainPcm() via PcmCaptureClass (through makePcmCapture)
 // ---------------------------------------------------------------------------
 
-describe("buildWavBlob()", () => {
-    it("returns a Blob with audio/wav type", () => {
-        const samples = new Int16Array([0, 100, -100, 200]);
-        const blob = buildWavBlob(samples, 16000);
-        expect(blob).toBeInstanceOf(Blob);
-        expect(blob.type).toBe("audio/wav");
-    });
-
-    it("produced blob is larger than the raw PCM (has a header)", () => {
-        const samples = new Int16Array(160); // 10 ms @ 16 kHz
-        const blob = buildWavBlob(samples, 16000);
-        expect(blob.size).toBeGreaterThan(samples.byteLength);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// drainWav() via PcmCaptureClass (through makePcmCapture)
-// ---------------------------------------------------------------------------
-
-describe("drainWav()", () => {
+describe("drainPcm()", () => {
     let capture;
     let scriptNode;
 
@@ -196,26 +177,29 @@ describe("drainWav()", () => {
     });
 
     it("returns null when no samples have been collected", () => {
-        expect(capture.drainWav(1000)).toBeNull();
+        expect(capture.drainPcm(1000)).toBeNull();
     });
 
-    it("returns a WAV Blob when samples are present", () => {
+    it("returns a PCM result with correct metadata when samples are present", () => {
         // Feed 160 samples (10 ms at 16 kHz, already at target rate)
         // Context sample rate is 48000 so downsample(160 samples @ 48kHz → 16kHz)
         // gives Math.floor(160 / 3) = 53 samples — still non-zero.
         fireAudioProcess(scriptNode, new Float32Array(160).fill(0.1));
-        const wav = capture.drainWav(1000);
-        expect(wav).toBeInstanceOf(Blob);
-        expect(wav.type).toBe("audio/wav");
+        const pcm = capture.drainPcm(1000);
+        expect(pcm).not.toBeNull();
+        expect(pcm.pcmBytes).toBeInstanceOf(ArrayBuffer);
+        expect(pcm.sampleRateHz).toBe(16000);
+        expect(pcm.channels).toBe(1);
+        expect(pcm.bitDepth).toBe(16);
     });
 
     it("drains samples and resets internal buffer", () => {
         fireAudioProcess(scriptNode, new Float32Array(160).fill(0.1));
-        const wav1 = capture.drainWav(10000);
-        expect(wav1).not.toBeNull();
+        const pcm1 = capture.drainPcm(10000);
+        expect(pcm1).not.toBeNull();
         // A second drain with no new samples should return null.
-        const wav2 = capture.drainWav(10000);
-        expect(wav2).toBeNull();
+        const pcm2 = capture.drainPcm(10000);
+        expect(pcm2).toBeNull();
     });
 
     it("carries over excess samples to the next drain", () => {
@@ -223,27 +207,26 @@ describe("drainWav()", () => {
         // After downsampling to 16 kHz: Math.floor(1440 / 3) = 480 samples.
         // durationMs=10 expects 160 samples at 16 kHz; excess 320 are kept.
         fireAudioProcess(scriptNode, new Float32Array(1440).fill(0.2));
-        const wav1 = capture.drainWav(10); // 10 ms → expect 160 samples drained
-        expect(wav1).not.toBeNull();
-
+        const pcm1 = capture.drainPcm(10); // 10 ms → expect 160 samples drained
+        expect(pcm1).not.toBeNull();
         // The second drain should still have samples from the carryover.
-        const wav2 = capture.drainWav(10000); // large window — drain all remaining
-        expect(wav2).not.toBeNull();
+        const pcm2 = capture.drainPcm(10000); // large window — drain all remaining
+        expect(pcm2).not.toBeNull();
     });
 
     it("discards accumulated samples on pause()", () => {
         fireAudioProcess(scriptNode, new Float32Array(160).fill(0.1));
         capture.pause();
         // After pause, nothing new is accumulated — drain returns null.
-        const wav = capture.drainWav(10000);
-        expect(wav).toBeNull();
+        const pcm = capture.drainPcm(10000);
+        expect(pcm).toBeNull();
     });
 
     it("ignores samples fed while paused", () => {
         capture.pause();
         fireAudioProcess(scriptNode, new Float32Array(160).fill(0.5));
-        const wav = capture.drainWav(10000);
-        expect(wav).toBeNull();
+        const pcm = capture.drainPcm(10000);
+        expect(pcm).toBeNull();
     });
 
     it("resumes accumulation after resume()", () => {
@@ -251,15 +234,15 @@ describe("drainWav()", () => {
         fireAudioProcess(scriptNode, new Float32Array(160).fill(0.5)); // ignored
         capture.resume();
         fireAudioProcess(scriptNode, new Float32Array(160).fill(0.2)); // captured
-        const wav = capture.drainWav(10000);
-        expect(wav).not.toBeNull();
+        const pcm = capture.drainPcm(10000);
+        expect(pcm).not.toBeNull();
     });
 
-    it("returns null instead of a header-only WAV when floored expected sample count is zero", () => {
+    it("returns null instead of a header-only buffer when floored expected sample count is zero", () => {
         // At 48 kHz, a 2-frame callback downsampled to 16 kHz yields 0 samples.
         fireAudioProcess(scriptNode, new Float32Array([0.2, 0.2]));
-        const wav = capture.drainWav(0.01); // durationMs=0.01 => floor((16000 * 0.01) / 1000) = floor(0.16) = 0
-        expect(wav).toBeNull();
+        const pcm = capture.drainPcm(0.01); // durationMs=0.01 => floor((16000 * 0.01) / 1000) = floor(0.16) = 0
+        expect(pcm).toBeNull();
     });
 
     it("preserves downsample remainder even when a callback yields zero output samples", () => {
@@ -268,7 +251,7 @@ describe("drainWav()", () => {
         fireAudioProcess(scriptNode, new Float32Array([0.1, 0.1]));
         // Second callback adds one more frame, making 3 total -> 1 output sample.
         fireAudioProcess(scriptNode, new Float32Array([0.1]));
-        const wav = capture.drainWav(1000);
-        expect(wav).not.toBeNull();
+        const pcm = capture.drainPcm(1000);
+        expect(pcm).not.toBeNull();
     });
 });

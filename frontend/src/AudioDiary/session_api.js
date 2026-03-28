@@ -27,14 +27,14 @@ const SESSION_BASE = `${API_BASE_URL}/audio-recording-session`;
  */
 
 /**
- * Thrown by pushAudio when the backend returns 404 (session not found).
+ * Thrown by pushPcm when the backend returns 404 (session not found).
  * Callers can detect this to lazily (re-)create the session.
  */
-export class PushAudioSessionNotFoundError extends Error {
+export class PushPcmSessionNotFoundError extends Error {
     /** @param {string} sessionId */
     constructor(sessionId) {
-        super(`Session not found during push audio: ${sessionId}`);
-        this.name = "PushAudioSessionNotFoundError";
+        super(`Session not found during push PCM: ${sessionId}`);
+        this.name = "PushPcmSessionNotFoundError";
         this.sessionId = sessionId;
     }
 }
@@ -42,14 +42,13 @@ export class PushAudioSessionNotFoundError extends Error {
 /**
  * Initialize or touch a recording session.
  * @param {string} sessionId
- * @param {string} mimeType
  * @returns {Promise<SessionInfo>}
  */
-export async function startSession(sessionId, mimeType) {
+export async function startSession(sessionId) {
     const response = await fetch(`${SESSION_BASE}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, mimeType }),
+        body: JSON.stringify({ sessionId }),
     });
     if (!response.ok) {
         throw new Error(`Failed to start session: ${response.status}`);
@@ -68,40 +67,38 @@ export async function startSession(sessionId, mimeType) {
  */
 
 /**
- * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime' | 'accepted'} PushAudioStatus
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'invalid_pcm' | 'accepted'} PushPcmStatus
  */
 
 /**
- * Push a single audio fragment to the session.
+ * Push a single raw PCM fragment to the session.
  * @param {string} sessionId
- * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string, analysisChunk?: Blob }} params
- * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[], status: PushAudioStatus }>}
+ * @param {{ pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
+ * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[], status: PushPcmStatus }>}
  */
-export async function pushAudio(sessionId, { chunk, startMs, endMs, sequence, mimeType, analysisChunk }) {
+export async function pushPcm(sessionId, { pcmBytes, sampleRateHz, channels, bitDepth, startMs, endMs, sequence }) {
     const formData = new FormData();
-    formData.append("audio", chunk, "fragment.webm");
+    formData.append("pcm", new Blob([pcmBytes], { type: "application/octet-stream" }), "fragment.pcm");
     formData.append("startMs", String(startMs));
     formData.append("endMs", String(endMs));
     formData.append("sequence", String(sequence));
-    formData.append("mimeType", mimeType);
-    if (analysisChunk) {
-        formData.append("analysisAudio", analysisChunk, "analysis.wav");
-        formData.append("analysisMimeType", "audio/wav");
-    }
+    formData.append("sampleRateHz", String(sampleRateHz));
+    formData.append("channels", String(channels));
+    formData.append("bitDepth", String(bitDepth));
 
-    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/push-audio`, {
+    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/push-pcm`, {
         method: "POST",
         body: formData,
     });
     if (response.status === 404) {
-        throw new PushAudioSessionNotFoundError(sessionId);
+        throw new PushPcmSessionNotFoundError(sessionId);
     }
     if (!response.ok) {
-        throw new Error(`Failed to push audio: ${response.status}`);
+        throw new Error(`Failed to push PCM: ${response.status}`);
     }
     const data = await response.json();
     if (!data.success) {
-        throw new Error(data.error || "Failed to push audio");
+        throw new Error(data.error || "Failed to push PCM");
     }
     return {
         stored: data.stored,
@@ -109,6 +106,31 @@ export async function pushAudio(sessionId, { chunk, startMs, endMs, sequence, mi
         questions: data.questions || [],
         status: data.status || "ok",
     };
+}
+
+/**
+ * Push PCM, recreating the session on 404 and retrying once.
+ * This ensures the backend workflow recovers when the initial `startSession`
+ * call failed transiently.
+ *
+ * @param {string} sessionId
+ * @param {{ pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
+ * @returns {Promise<{ questions: DiaryQuestion[], status: PushPcmStatus }>}
+ */
+export async function pushPcmWithSessionRetry(sessionId, params) {
+    let result;
+    try {
+        result = await pushPcm(sessionId, params);
+    } catch (err) {
+        if (err instanceof PushPcmSessionNotFoundError) {
+            // Session missing (startSession failed earlier) — recreate then retry once.
+            await startSession(sessionId);
+            result = await pushPcm(sessionId, params);
+        } else {
+            throw err;
+        }
+    }
+    return { questions: result.questions, status: result.status };
 }
 
 /**
@@ -193,32 +215,6 @@ export async function fetchFinalAudio(sessionId) {
         throw new Error(`Failed to fetch final audio: ${response.status}`);
     }
     return response.blob();
-}
-
-/**
- * Push audio, recreating the session on 404 and retrying once.
- * This ensures the backend workflow recovers when the initial `startSession`
- * call failed transiently.
- *
- * @param {string} sessionId
- * @param {string} fallbackMimeType - used to recreate the session on 404
- * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string, analysisChunk?: Blob }} params
- * @returns {Promise<{ questions: DiaryQuestion[], status: PushAudioStatus }>}
- */
-export async function pushAudioWithSessionRetry(sessionId, fallbackMimeType, params) {
-    let result;
-    try {
-        result = await pushAudio(sessionId, params);
-    } catch (err) {
-        if (err instanceof PushAudioSessionNotFoundError) {
-            // Session missing (startSession failed earlier) — recreate then retry once.
-            await startSession(sessionId, fallbackMimeType || "audio/webm");
-            result = await pushAudio(sessionId, params);
-        } else {
-            throw err;
-        }
-    }
-    return { questions: result.questions, status: result.status };
 }
 
 /**
