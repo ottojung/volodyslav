@@ -14,4 +14,5 @@ ARG VOLODYSLAV_BASEURL='/volodyslav'
 RUN npm run build
 RUN sh scripts/link /usr/local
 WORKDIR /workspace
+RUN rm -fr /tmp/volodyslav
 ENTRYPOINT [ "volodyslav" ]
