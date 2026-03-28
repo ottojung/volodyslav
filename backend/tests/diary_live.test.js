@@ -24,6 +24,31 @@ async function makeApp(capabilities) {
 }
 
 /**
+ * Build a minimal valid WAV buffer for test analysis audio.
+ * @returns {Buffer}
+ */
+function buildTestWavBuffer() {
+    const sampleRate = 16000;
+    const numSamples = 8;
+    const pcm = Buffer.alloc(numSamples * 2);
+    const header = Buffer.alloc(44);
+    header.write("RIFF", 0, "ascii");
+    header.writeUInt32LE(36 + pcm.length, 4);
+    header.write("WAVE", 8, "ascii");
+    header.write("fmt ", 12, "ascii");
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20); // PCM
+    header.writeUInt16LE(1, 22); // mono
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(sampleRate * 2, 28);
+    header.writeUInt16LE(2, 32);
+    header.writeUInt16LE(16, 34);
+    header.write("data", 36, "ascii");
+    header.writeUInt32LE(pcm.length, 40);
+    return Buffer.concat([header, pcm]);
+}
+
+/**
  * Flush queued promises so background AI processing completes before assertions.
  * The background processing uses LevelDB I/O and file system operations which
  * require real async I/O cycles (setTimeout) to complete, not just microtask draining.
@@ -164,7 +189,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", "0")
             .field("startMs", "0")
-            .field("endMs", "10000");
+            .field("endMs", "10000")
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a1.wav", contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         // Second fragment — push-audio responds immediately (async processing queued).
         const res = await request(app)
@@ -173,7 +200,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", "1")
             .field("startMs", "10000")
-            .field("endMs", "20000");
+            .field("endMs", "20000")
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a2.wav", contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -212,7 +241,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
                 .field("mimeType", "audio/webm")
                 .field("sequence", String(i - 1))
                 .field("startMs", String((i - 1) * 10000))
-                .field("endMs", String(i * 10000));
+                .field("endMs", String(i * 10000))
+                .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
+                .field("analysisMimeType", "audio/wav");
         }
 
         // Wait for all background processing to complete.
@@ -253,7 +284,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", "0")
             .field("startMs", "0")
-            .field("endMs", "10000");
+            .field("endMs", "10000")
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: "sa1.wav", contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         // Second fragment — transcription returns empty string.
         const res = await request(app)
@@ -262,7 +295,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", "1")
             .field("startMs", "10000")
-            .field("endMs", "20000");
+            .field("endMs", "20000")
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: "sa2.wav", contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
@@ -294,7 +329,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", "0")
             .field("startMs", "0")
-            .field("endMs", "10000");
+            .field("endMs", "10000")
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a1.wav", contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         const res = await request(app)
             .post(`/api/audio-recording-session/${sessionId}/push-audio`)
@@ -302,7 +339,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", "1")
             .field("startMs", "10000")
-            .field("endMs", "20000");
+            .field("endMs", "20000")
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: "a2.wav", contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         // Push-audio responds immediately regardless of AI failure.
         expect(res.statusCode).toBe(200);
@@ -371,7 +410,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", String(i - 1))
             .field("startMs", String((i - 1) * 10000))
-            .field("endMs", String(i * 10000));
+            .field("endMs", String(i * 10000))
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         await sendFragment(1);
         await sendFragment(2);
@@ -408,7 +449,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
                 .field("mimeType", "audio/webm")
                 .field("sequence", String(i - 1))
                 .field("startMs", String((i - 1) * 10000))
-                .field("endMs", String(i * 10000));
+                .field("endMs", String(i * 10000))
+                .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
+                .field("analysisMimeType", "audio/wav");
         }
 
         // Wait for background processing.
@@ -436,7 +479,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("mimeType", "audio/webm")
             .field("sequence", String(i - 1))
             .field("startMs", String((i - 1) * 10000))
-            .field("endMs", String(i * 10000));
+            .field("endMs", String(i * 10000))
+            .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
+            .field("analysisMimeType", "audio/wav");
 
         const pollLiveQuestions = () =>
             request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
@@ -483,7 +528,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
                 .field("mimeType", "audio/webm")
                 .field("sequence", String(i - 1))
                 .field("startMs", String((i - 1) * 10000))
-                .field("endMs", String(i * 10000));
+                .field("endMs", String(i * 10000))
+                .attach("analysisAudio", buildTestWavBuffer(), { filename: `a${i}.wav`, contentType: "audio/wav" })
+                .field("analysisMimeType", "audio/wav");
         }
 
         await flushProcessing();

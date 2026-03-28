@@ -120,7 +120,8 @@ describe("makeRecorder: regular timeslice timestamps", () => {
         expect(onChunkSpy).toHaveBeenCalledWith(
             expect.any(Blob),
             0,
-            FRAGMENT_MS
+            FRAGMENT_MS,
+            null
         );
         recorder.discard();
     });
@@ -133,7 +134,8 @@ describe("makeRecorder: regular timeslice timestamps", () => {
             2,
             expect.any(Blob),
             FRAGMENT_MS,
-            FRAGMENT_MS * 2
+            FRAGMENT_MS * 2,
+            null
         );
         recorder.discard();
     });
@@ -143,7 +145,7 @@ describe("makeRecorder: regular timeslice timestamps", () => {
         fireData(instance, new Blob([])); // empty — size 0
         fireData(instance, new Blob(["a"]));
         expect(onChunkSpy).toHaveBeenCalledTimes(1);
-        expect(onChunkSpy).toHaveBeenCalledWith(expect.any(Blob), 0, FRAGMENT_MS);
+        expect(onChunkSpy).toHaveBeenCalledWith(expect.any(Blob), 0, FRAGMENT_MS, null);
         recorder.discard();
     });
 });
@@ -164,7 +166,8 @@ describe("makeRecorder: requestData() flush timestamps", () => {
         expect(onChunkSpy).toHaveBeenCalledWith(
             expect.any(Blob),
             0,   // fragStart (counter not yet incremented)
-            3000 // wall-clock elapsed (3000 - 0)
+            3000, // wall-clock elapsed (3000 - 0)
+            null
         );
         recorder.discard();
     });
@@ -199,7 +202,8 @@ describe("makeRecorder: stop() flush timestamps", () => {
         expect(onChunkSpy).toHaveBeenCalledWith(
             expect.any(Blob),
             0,    // fragStart
-            7000  // wall-clock elapsed
+            7000, // wall-clock elapsed
+            null
         );
         recorder.discard();
     });
@@ -210,14 +214,14 @@ describe("makeRecorder: stop() flush timestamps", () => {
         mockNow = 10000;
         fireData(instance, new Blob(["ts"]));
         expect(onChunkSpy).toHaveBeenNthCalledWith(
-            1, expect.any(Blob), 0, FRAGMENT_MS
+            1, expect.any(Blob), 0, FRAGMENT_MS, null
         );
         // Partial stop fragment at t=13 s
         mockNow = 13000;
         instance.state = "inactive";
         fireData(instance, new Blob(["stop"]));
         expect(onChunkSpy).toHaveBeenNthCalledWith(
-            2, expect.any(Blob), FRAGMENT_MS, 13000
+            2, expect.any(Blob), FRAGMENT_MS, 13000, null
         );
         recorder.discard();
     });
@@ -239,7 +243,7 @@ describe("makeRecorder: pause/resume wall-clock accounting", () => {
         });
         await recorder.requestData();
         // Active = 10 000 - 0 - 3 000 (paused) = 7 000 ms
-        expect(onChunkSpy).toHaveBeenCalledWith(expect.any(Blob), 0, 7000);
+        expect(onChunkSpy).toHaveBeenCalledWith(expect.any(Blob), 0, 7000, null);
         recorder.discard();
     });
 
@@ -248,14 +252,14 @@ describe("makeRecorder: pause/resume wall-clock accounting", () => {
         // Timeslice while recording
         fireData(instance, new Blob(["r"]));
         expect(onChunkSpy).toHaveBeenCalledWith(
-            expect.any(Blob), 0, FRAGMENT_MS
+            expect.any(Blob), 0, FRAGMENT_MS, null
         );
         // Pause, then fire another regular timeslice
         recorder.pause();
         instance.state = "paused";
         fireData(instance, new Blob(["p"]));
         expect(onChunkSpy).toHaveBeenNthCalledWith(
-            2, expect.any(Blob), FRAGMENT_MS, FRAGMENT_MS * 2
+            2, expect.any(Blob), FRAGMENT_MS, FRAGMENT_MS * 2, null
         );
         recorder.discard();
     });

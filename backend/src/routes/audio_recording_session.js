@@ -105,14 +105,16 @@ function makeRouter(capabilities) {
     // POST /audio-recording-session/:sessionId/push-audio
     router.post(
         "/audio-recording-session/:sessionId/push-audio",
-        upload.single("audio"),
+        upload.fields([{ name: "audio", maxCount: 1 }, { name: "analysisAudio", maxCount: 1 }]),
         async (req, res) => {
             const { sessionId } = req.params;
             if (!sessionId) {
                 return res.status(400).json({ success: false, error: "Missing session ID" });
             }
-            const { startMs, endMs, sequence, mimeType } = req.body || {};
-            const chunkFile = req.file;
+            const { startMs, endMs, sequence, mimeType, analysisMimeType } = req.body || {};
+            const filesMap = req.files;
+            const chunkFile = (filesMap && !(filesMap instanceof Array)) ? filesMap["audio"]?.[0] : undefined;
+            const analysisFile = (filesMap && !(filesMap instanceof Array)) ? filesMap["analysisAudio"]?.[0] : undefined;
 
             if (!chunkFile) {
                 return res.status(400).json({ success: false, error: "Missing audio file" });
@@ -157,6 +159,10 @@ function makeRouter(capabilities) {
                     mimeType: normalizedChunkMimeType,
                 });
 
+                // analysisBuffer is non-null only when the upload includes a valid WAV
+                // analysis fragment; live-diary AI processing is skipped otherwise.
+                const analysisBuffer = (analysisFile && typeof analysisMimeType === "string" && parseAudioMimeType(analysisMimeType) === "audio/wav") ? analysisFile.buffer : null;
+
                 capabilities.logger.logDebug(
                     { sessionId, sequence: sequenceNum, chunkSizeBytes: chunkFile.buffer.length },
                     "Push-audio: audio fragment stored; queuing live diary AI processing"
@@ -169,37 +175,35 @@ function makeRouter(capabilities) {
                 // can poll GET /live-questions to retrieve generated questions.
                 // Chaining through `.catch(() => Promise.resolve())` ensures rejections in a
                 // previous fragment's processing do not break subsequent fragments' chains.
-                const existingQueue = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
-                const nextQueue = existingQueue.then(async () => {
-                    capabilities.logger.logDebug(
-                        { sessionId, sequence: sequenceNum, fragmentNumber: sequenceNum + 1 },
-                        "Live diary AI processing starting for fragment"
-                    );
-                    try {
-                        await pushLiveDiaryAudio(
-                            capabilities,
-                            sessionId,
-                            chunkFile.buffer,
-                            normalizedChunkMimeType,
-                            sequenceNum + 1
-                        );
-                        capabilities.logger.logDebug(
-                            { sessionId, sequence: sequenceNum },
-                            "Live diary AI processing completed for fragment"
-                        );
-                    } catch (error) {
-                        capabilities.logger.logError(
-                            {
+                if (analysisBuffer) {
+                    const existingQueue = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
+                    const nextQueue = existingQueue.then(async () => {
+                        try {
+                            await pushLiveDiaryAudio(
+                                capabilities,
                                 sessionId,
-                                sequence: sequenceNum,
-                                error: error instanceof Error ? error.message : String(error),
-                                stack: error instanceof Error ? error.stack : undefined,
-                            },
-                            "Live diary AI processing failed for fragment"
-                        );
-                    }
-                });
-                processingQueues.set(sessionId, nextQueue);
+                                analysisBuffer,
+                                "audio/wav",
+                                sequenceNum + 1
+                            );
+                            capabilities.logger.logDebug(
+                                { sessionId, sequence: sequenceNum },
+                                "Live diary AI processing completed for fragment"
+                            );
+                        } catch (error) {
+                            capabilities.logger.logError(
+                                {
+                                    sessionId,
+                                    sequence: sequenceNum,
+                                    error: error instanceof Error ? error.message : String(error),
+                                    stack: error instanceof Error ? error.stack : undefined,
+                                },
+                                "Live diary AI processing failed for fragment"
+                            );
+                        }
+                    });
+                    processingQueues.set(sessionId, nextQueue);
+                }
 
                 // Respond immediately — questions will be available via GET /live-questions.
                 return res.json({ success: true, ...result, questions: [], status: "accepted" });

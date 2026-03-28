@@ -46,6 +46,7 @@ const {
     appendPendingQuestions,
     clearPendingQuestions,
 } = require("./session_state");
+const { parseWav, buildWav, extensionForMime, normalizeMimeType } = require("./wav_utils");
 const {
     DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS,
     isLiveDiaryStepTimeoutError,
@@ -73,37 +74,6 @@ const {
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
 
-/** Supported audio MIME types and their extensions. */
-/** @type {Record<string, string>} */
-const EXTENSION_BY_MIME = {
-    "audio/webm": "webm",
-    "audio/ogg": "ogg",
-    "audio/wav": "wav",
-    "audio/wave": "wav",
-    "audio/x-wav": "wav",
-    "audio/mpeg": "mp3",
-    "audio/mp4": "m4a",
-    "audio/flac": "flac",
-};
-
-/**
- * Returns the file extension for a MIME type, defaulting to "webm".
- * @param {string} mimeType
- * @returns {string}
- */
-function extensionForMime(mimeType) {
-    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
-    return EXTENSION_BY_MIME[base] || "webm";
-}
-
-/**
- * Normalize a MIME type to its lowercased base form (without parameters).
- * @param {string} mimeType
- * @returns {string}
- */
-function normalizeMimeType(mimeType) {
-    return (mimeType.split(";")[0] || "").trim().toLowerCase();
-}
 
 // ---------------------------------------------------------------------------
 // Session lifecycle helpers
@@ -249,54 +219,90 @@ async function pushAudio(
     // Ensure session is registered and clean up any old sessions.
     await cleanupOldSessionsIfNeeded(temporary, sessionId);
 
-    const lastFragment = await readLastFragment(temporary, sessionId);
-
-    if (lastFragment === null) {
-        // First fragment: store it and return no questions yet.
-        await writeLastFragment(temporary, sessionId, fragmentBuffer);
-        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
-        capabilities.logger.logDebug(
-            { sessionId, fragmentNumber },
-            "Live diary first fragment stored; waiting for second fragment to form overlap window"
-        );
-        return { questions: [], status: "empty_result" };
-    }
-
-    if (normalizedMimeType !== "audio/webm") {
+    // Live diary requires WAV-wrapped PCM for safe sample-level concatenation.
+    if (normalizedMimeType !== "audio/wav") {
         capabilities.logger.logWarning(
             { sessionId, fragmentNumber, mimeType: normalizedMimeType },
-            "Live diary push-audio rejected unsupported mime type for safe window assembly"
+            "Live diary push-audio rejected unsupported mime type; audio/wav required"
         );
         return { questions: [], status: "unsupported_mime" };
     }
 
-    // We have the previous fragment plus the current one: form an overlap window.
-    // See the note in audio_recording_session/service.js: this concatenation is safe
-    // only for audio/webm (streaming Matroska).  The frontend is required to record
-    // in audio/webm for this invariant to hold.
-    const window20s = Buffer.concat([lastFragment, fragmentBuffer]);
+    const currentWavInfo = parseWav(fragmentBuffer);
+    if (!currentWavInfo) {
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber, fragmentSizeBytes: fragmentBuffer.length },
+            "Live diary push-audio rejected malformed WAV buffer"
+        );
+        return { questions: [], status: "unsupported_mime" };
+    }
+
+    const lastFragment = await readLastFragment(temporary, sessionId);
+
+    if (lastFragment === null) {
+        // First fragment: store the full WAV buffer and return no questions yet.
+        await writeLastFragment(temporary, sessionId, fragmentBuffer);
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber },
+            "Live diary first WAV fragment stored; waiting for second fragment to form overlap window"
+        );
+        return { questions: [], status: "empty_result" };
+    }
+
+    // Parse the stored previous WAV fragment to extract its PCM payload.
+    const prevWavInfo = parseWav(lastFragment);
+    if (!prevWavInfo) {
+        // Previous fragment is corrupt; reset with the current one and skip this window.
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber },
+            "Live diary stored fragment is corrupt; resetting with current fragment"
+        );
+        await writeLastFragment(temporary, sessionId, fragmentBuffer);
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+        return { questions: [], status: "degraded_transcription" };
+    }
+
+    // Concatenate raw PCM bytes from the two fragments to form the 20-second overlap window.
+    // PCM concatenation is structurally safe because sample boundaries are explicit.
+    // Reject the window if the two fragments report different audio formats — concatenating
+    // PCM from mismatched streams would produce corrupt audio.
+    if (
+        prevWavInfo.sampleRate !== currentWavInfo.sampleRate ||
+        prevWavInfo.channels !== currentWavInfo.channels ||
+        prevWavInfo.bitDepth !== currentWavInfo.bitDepth
+    ) {
+        capabilities.logger.logWarning(
+            { sessionId, fragmentNumber },
+            "Live diary PCM format mismatch between fragments; resetting with current fragment"
+        );
+        await writeLastFragment(temporary, sessionId, fragmentBuffer);
+        await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+        return { questions: [], status: "degraded_transcription" };
+    }
+    const combinedPcm = Buffer.concat([prevWavInfo.pcm, currentWavInfo.pcm]);
+    const window20s = buildWav(
+        combinedPcm,
+        currentWavInfo.sampleRate,
+        currentWavInfo.channels,
+        currentWavInfo.bitDepth
+    );
 
     capabilities.logger.logDebug(
-        {
-            sessionId,
-            fragmentNumber,
-            previousFragmentSizeBytes: lastFragment.length,
-            currentFragmentSizeBytes: fragmentBuffer.length,
-            windowSizeBytes: window20s.length,
-        },
-        "Live diary forming 20s overlap window for transcription"
+        { sessionId, fragmentNumber },
+        "Live diary forming 20s PCM overlap window for transcription"
     );
 
     // Advance the stored fragment to the current one for the next call.
     await writeLastFragment(temporary, sessionId, fragmentBuffer);
     await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
 
-    // Transcribe the overlap window.
+    // Transcribe the overlap window (always audio/wav — built from PCM above).
     let newWindowTranscript;
     try {
         newWindowTranscript = await withStepTimeout(
             "transcription",
-            () => transcribeBuffer(window20s, normalizedMimeType, capabilities),
+            () => transcribeBuffer(window20s, "audio/wav", capabilities),
             stepTimeoutMs
         );
     } catch (error) {

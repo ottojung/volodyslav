@@ -4,6 +4,7 @@
  */
 import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./recorder_helpers.js";
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
+import { makePcmCapture, isPcmCapture } from "./pcm_capture.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
 export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment collection
 /**
@@ -12,7 +13,7 @@ export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment coll
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob, startMs: number, endMs: number) => void} [onChunk] - called with each fragment and its relative timestamps (timestamps are authoritative)
+ * @property {(chunk: Blob, startMs: number, endMs: number, analysisChunk: Blob | null) => void} [onChunk] - called with each fragment, its relative timestamps (authoritative), and a WAV-wrapped PCM analysis chunk (null when PCM capture unavailable)
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -33,6 +34,8 @@ class RecorderClass {
     _sourceNode = null;
     /** @type {AnalyserNode | null} */
     _analyserNode = null;
+    /** @type {Awaited<ReturnType<typeof makePcmCapture>>} */
+    _pcmCapture = null;
     /** @type {MediaStream | null} */
     _stream = null;
     /** @type {Array<() => void>} */
@@ -108,6 +111,14 @@ class RecorderClass {
                 this._analyserNode.fftSize = 256;
                 this._sourceNode.connect(this._analyserNode);
                 this._callbacks.onAnalyser(this._analyserNode);
+
+                // Attach parallel PCM capture for live-diary analysis.
+                // Best-effort: failure here does not affect archival recording.
+                try {
+                    this._pcmCapture = await makePcmCapture(this._audioContext, this._sourceNode);
+                } catch {
+                    this._pcmCapture = null;
+                }
             }
         } catch {
             this._stopAudioGraph();
@@ -161,7 +172,10 @@ class RecorderClass {
                 const fragEnd = this._activeRecordedMs;
                 this._chunks.push(e.data);
                 if (this._callbacks.onChunk) {
-                    this._callbacks.onChunk(e.data, fragStart, fragEnd);
+                    const analysisChunk = this._pcmCapture
+                        ? this._pcmCapture.drainWav(fragEnd - fragStart)
+                        : null;
+                    this._callbacks.onChunk(e.data, fragStart, fragEnd, analysisChunk);
                 }
             }
         };
@@ -207,6 +221,7 @@ class RecorderClass {
         }
         this._pauseStartMs = performance.now();
         this._mediaRecorder.pause();
+        this._pcmCapture?.pause();
         this._setState("paused");
     }
     resume() {
@@ -218,6 +233,7 @@ class RecorderClass {
             this._pauseStartMs = 0;
         }
         this._mediaRecorder.resume();
+        this._pcmCapture?.resume();
         this._setState("recording");
     }
     /** @returns {Promise<void>} */
@@ -284,6 +300,10 @@ class RecorderClass {
         this._stream = stopStream(this._stream);
     }
     _stopAudioGraph() {
+        if (isPcmCapture(this._pcmCapture)) {
+            this._pcmCapture.close();
+            this._pcmCapture = null;
+        }
         const next = stopAudioGraph(this._sourceNode, this._audioContext);
         this._sourceNode = next.sourceNode;
         this._audioContext = next.audioContext;

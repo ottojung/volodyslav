@@ -74,16 +74,20 @@ export async function startSession(sessionId, mimeType) {
 /**
  * Push a single audio fragment to the session.
  * @param {string} sessionId
- * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
+ * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string, analysisChunk?: Blob }} params
  * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, questions: DiaryQuestion[], status: PushAudioStatus }>}
  */
-export async function pushAudio(sessionId, { chunk, startMs, endMs, sequence, mimeType }) {
+export async function pushAudio(sessionId, { chunk, startMs, endMs, sequence, mimeType, analysisChunk }) {
     const formData = new FormData();
     formData.append("audio", chunk, "fragment.webm");
     formData.append("startMs", String(startMs));
     formData.append("endMs", String(endMs));
     formData.append("sequence", String(sequence));
     formData.append("mimeType", mimeType);
+    if (analysisChunk) {
+        formData.append("analysisAudio", analysisChunk, "analysis.wav");
+        formData.append("analysisMimeType", "audio/wav");
+    }
 
     const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/push-audio`, {
         method: "POST",
@@ -198,7 +202,7 @@ export async function fetchFinalAudio(sessionId) {
  *
  * @param {string} sessionId
  * @param {string} fallbackMimeType - used to recreate the session on 404
- * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string }} params
+ * @param {{ chunk: Blob, startMs: number, endMs: number, sequence: number, mimeType: string, analysisChunk?: Blob }} params
  * @returns {Promise<{ questions: DiaryQuestion[], status: PushAudioStatus }>}
  */
 export async function pushAudioWithSessionRetry(sessionId, fallbackMimeType, params) {

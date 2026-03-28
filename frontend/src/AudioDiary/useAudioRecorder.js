@@ -159,7 +159,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 if (!isMountedRef.current) return;
                 setAnalyser(node);
             },
-            onChunk: (chunk, startMs, endMs) => {
+            onChunk: (chunk, startMs, endMs, analysisChunk) => {
                 if (!isMountedRef.current) return;
                 if (chunk.type) {
                     mimeTypeRef.current = chunk.type;
@@ -183,6 +183,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                                 endMs: endMs + offsetMs,
                                 sequence: seq,
                                 mimeType,
+                                analysisChunk: analysisChunk ?? undefined,
                             });
                             if (questions.length > 0 && isMountedRef.current) {
                                 onQuestions?.(questions, seq + 1);
