@@ -86,7 +86,7 @@ function normalizeMimeType(mimeType) {
 /**
  * Prepare a window transcript for recombination.
  *
- * When the transcript contains at least 4 words, remove the last word before
+ * When the transcript is not too short, remove the last word before
  * sending it to the recombination model (to avoid anchoring on a likely
  * unstable boundary token), then append that removed word back after
  * recombination.
@@ -101,11 +101,13 @@ function prepareTranscriptForRecombination(transcript) {
     }
 
     const words = trimmed.split(/\s+/u);
-    if (words.length < 4) {
+    const tooFewWords = words.length < 2;
+    const removedTailWord = words.pop() || "";
+    const tooFewCharsInInitialWords = words.join("").length < 4;
+    if (tooFewWords || tooFewCharsInInitialWords) {
         return { textForRecombination: transcript, removedTailWord: "" };
     }
 
-    const removedTailWord = words.pop() || "";
     return {
         textForRecombination: words.join(" "),
         removedTailWord,

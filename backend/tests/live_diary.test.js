@@ -132,7 +132,7 @@ describe("pushAudio", () => {
         );
     });
 
-    it("keeps the newer transcript unchanged for recombination when it has fewer than four words", async () => {
+    it("keeps the newer transcript unchanged for recombination when it has fewer than two words", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamDetailed = jest
             .fn()
@@ -150,7 +150,7 @@ describe("pushAudio", () => {
                 rawResponse: null,
             })
             .mockResolvedValueOnce({
-                text: "only three words",
+                text: "aSingleLongWord",
                 provider: "Google",
                 model: "mocked",
                 finishReason: "STOP",
@@ -159,7 +159,7 @@ describe("pushAudio", () => {
                 usageMetadata: null,
                 modelVersion: null,
                 responseId: null,
-                structured: { transcript: "only three words", coverage: "full", warnings: [], unclearAudio: false },
+                structured: { transcript: "aSingleLongWord", coverage: "full", warnings: [], unclearAudio: false },
                 rawResponse: null,
             });
 
@@ -169,7 +169,7 @@ describe("pushAudio", () => {
 
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
             "existing overlap transcript",
-            "only three words"
+            "aSingleLongWord"
         );
     });
 
