@@ -15,4 +15,5 @@ module.exports = {
     ...errors,
     ...keys,
     parseAudioMimeType: helpers.parseAudioMimeType,
+    validatePcmParams: helpers.validatePcmParams,
 };

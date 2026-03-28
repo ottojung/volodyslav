@@ -20,7 +20,11 @@ const { pushAudio, getPendingQuestions } = require("../src/live_diary");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
-const { buildTestWavBuffer } = require("./wav_helpers");
+const { buildTestPcmBuffer } = require("./pcm_helpers");
+
+function buildTestPcmInfo() {
+    return { pcm: buildTestPcmBuffer(), sampleRateHz: 16000, channels: 1, bitDepth: 16 };
+}
 
 /** Temp dirs created during tests, cleaned up in afterAll. */
 const tempDirs = [];
@@ -62,7 +66,7 @@ const SHORT_TIMEOUT_MS = 10;
 describe("pushAudio", () => {
     it("returns empty questions on the first fragment", async () => {
         const caps = makeCapabilities();
-        const result = await pushAudio(caps, "sess-1", buildTestWavBuffer(), "audio/wav", 1);
+        const result = await pushAudio(caps, "sess-1", buildTestPcmInfo(), 1);
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("empty_result");
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
@@ -70,15 +74,15 @@ describe("pushAudio", () => {
 
     it("transcribes the 20s window on the second fragment", async () => {
         const caps = makeCapabilities();
-        await pushAudio(caps, "sess-2", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-2", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "sess-2", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-2", buildTestPcmInfo(), 2);
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
     });
 
     it("returns questions on the second fragment when transcription succeeds", async () => {
         const caps = makeCapabilities();
-        await pushAudio(caps, "sess-q", buildTestWavBuffer(), "audio/wav", 1);
-        const result = await pushAudio(caps, "sess-q", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "sess-q", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-q", buildTestPcmInfo(), 2);
         // The stubbed generateQuestions returns 5 questions.
         expect(Array.isArray(result.questions)).toBe(true);
         expect(result.questions.length).toBeGreaterThan(0);
@@ -87,9 +91,9 @@ describe("pushAudio", () => {
 
     it("uses recombination on the third fragment (two windows available)", async () => {
         const caps = makeCapabilities();
-        await pushAudio(caps, "sess-3", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-3", buildTestWavBuffer(), "audio/wav", 2);
-        await pushAudio(caps, "sess-3", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-3", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-3", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-3", buildTestPcmInfo(), 3);
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(2);
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
@@ -125,9 +129,9 @@ describe("pushAudio", () => {
                 rawResponse: null,
             });
 
-        await pushAudio(caps, "sess-trim", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-trim", buildTestWavBuffer(), "audio/wav", 2);
-        await pushAudio(caps, "sess-trim", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-trim", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-trim", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-trim", buildTestPcmInfo(), 3);
 
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
             "one two three four five",
@@ -166,9 +170,9 @@ describe("pushAudio", () => {
                 rawResponse: null,
             });
 
-        await pushAudio(caps, "sess-short", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-short", buildTestWavBuffer(), "audio/wav", 2);
-        await pushAudio(caps, "sess-short", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-short", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-short", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-short", buildTestPcmInfo(), 3);
 
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
             "existing overlap transcript",
@@ -207,9 +211,9 @@ describe("pushAudio", () => {
                 rawResponse: null,
             });
 
-        await pushAudio(caps, "sess-four", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-four", buildTestWavBuffer(), "audio/wav", 2);
-        await pushAudio(caps, "sess-four", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-four", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-four", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-four", buildTestPcmInfo(), 3);
 
         expect(caps.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledWith(
             "first overlap window text",
@@ -251,9 +255,9 @@ describe("pushAudio", () => {
             .fn()
             .mockResolvedValue("walking to the park for fresh");
 
-        await pushAudio(caps, "sess-append", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-append", buildTestWavBuffer(), "audio/wav", 2);
-        const result = await pushAudio(caps, "sess-append", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-append", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-append", buildTestPcmInfo(), 2);
+        const result = await pushAudio(caps, "sess-append", buildTestPcmInfo(), 3);
 
         // Running transcript generated at fragment 3 should include the appended boundary word.
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
@@ -295,9 +299,9 @@ describe("pushAudio", () => {
             });
         caps.aiTranscriptRecombination.recombineOverlap = jest.fn().mockResolvedValue("   ");
 
-        await pushAudio(caps, "sess-empty-merge", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-empty-merge", buildTestWavBuffer(), "audio/wav", 2);
-        await pushAudio(caps, "sess-empty-merge", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 3);
 
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
             expect.stringContaining("word"),
@@ -311,8 +315,8 @@ describe("pushAudio", () => {
             .fn()
             .mockRejectedValue(new Error("API error"));
 
-        await pushAudio(caps, "sess-fail", buildTestWavBuffer(), "audio/wav", 1);
-        const result = await pushAudio(caps, "sess-fail", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "sess-fail", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-fail", buildTestPcmInfo(), 2);
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("degraded_transcription");
     });
@@ -339,12 +343,11 @@ describe("pushAudio", () => {
                 }, 50);
             }));
 
-        await pushAudio(caps, "sess-timeout-transcription", buildTestWavBuffer(), "audio/wav", 1);
+        await pushAudio(caps, "sess-timeout-transcription", buildTestPcmInfo(), 1);
         const result = await pushAudio(
             caps,
             "sess-timeout-transcription",
-            buildTestWavBuffer(),
-            "audio/wav",
+            buildTestPcmInfo(),
             2,
             SHORT_TIMEOUT_MS
         );
@@ -368,8 +371,8 @@ describe("pushAudio", () => {
             rawResponse: null,
         });
 
-        await pushAudio(caps, "sess-silent", buildTestWavBuffer(), "audio/wav", 1);
-        const result = await pushAudio(caps, "sess-silent", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "sess-silent", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-silent", buildTestPcmInfo(), 2);
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("ok");
     });
@@ -380,16 +383,16 @@ describe("pushAudio", () => {
             .fn()
             .mockResolvedValue([{ text: "Same question?", intent: "warm_reflective" }]);
 
-        await pushAudio(caps, "sess-dedup", buildTestWavBuffer(), "audio/wav", 1);
+        await pushAudio(caps, "sess-dedup", buildTestPcmInfo(), 1);
 
         // Fragment 2: first window → question returned.
-        const r2 = await pushAudio(caps, "sess-dedup", buildTestWavBuffer(), "audio/wav", 2);
+        const r2 = await pushAudio(caps, "sess-dedup", buildTestPcmInfo(), 2);
         expect(r2.questions).toHaveLength(1);
         expect(r2.questions[0].text).toBe("Same question?");
         expect(r2.status).toBe("ok");
 
         // Fragment 3: same question → should be deduplicated out.
-        const r3 = await pushAudio(caps, "sess-dedup", buildTestWavBuffer(), "audio/wav", 3);
+        const r3 = await pushAudio(caps, "sess-dedup", buildTestPcmInfo(), 3);
         expect(r3.questions).toHaveLength(0);
         expect(r3.status).toBe("ok");
     });
@@ -417,12 +420,11 @@ describe("pushAudio", () => {
                 }, 50);
             }));
 
-        await pushAudio(caps, "sess-timeout-questions", buildTestWavBuffer(), "audio/wav", 1, SHORT_TIMEOUT_MS);
+        await pushAudio(caps, "sess-timeout-questions", buildTestPcmInfo(), 1, SHORT_TIMEOUT_MS);
         const result = await pushAudio(
             caps,
             "sess-timeout-questions",
-            buildTestWavBuffer(),
-            "audio/wav",
+            buildTestPcmInfo(),
             2,
             SHORT_TIMEOUT_MS
         );
@@ -438,25 +440,25 @@ describe("pushAudio", () => {
             .fn()
             .mockResolvedValue([{ text: "Як ти почуваєшся?", intent: "warm_reflective" }]);
 
-        await pushAudio(caps, "sess-unicode", buildTestWavBuffer(), "audio/wav", 1);
+        await pushAudio(caps, "sess-unicode", buildTestPcmInfo(), 1);
 
         // Fragment 2: question returned for the first time.
-        const r2 = await pushAudio(caps, "sess-unicode", buildTestWavBuffer(), "audio/wav", 2);
+        const r2 = await pushAudio(caps, "sess-unicode", buildTestPcmInfo(), 2);
         expect(r2.questions).toHaveLength(1);
         expect(r2.questions[0].text).toBe("Як ти почуваєшся?");
 
         // Fragment 3: the same Cyrillic question → must be deduplicated out.
-        const r3 = await pushAudio(caps, "sess-unicode", buildTestWavBuffer(), "audio/wav", 3);
+        const r3 = await pushAudio(caps, "sess-unicode", buildTestPcmInfo(), 3);
         expect(r3.questions).toHaveLength(0);
     });
 
-    it("returns unsupported_mime when a non-wav fragment is pushed after session bootstrap", async () => {
+    it("returns invalid_pcm when bitDepth is not 16", async () => {
         const caps = makeCapabilities();
-        await pushAudio(caps, "sess-mime", buildTestWavBuffer(), "audio/wav", 1);
+        await pushAudio(caps, "sess-bitdepth", buildTestPcmInfo(), 1);
 
-        const result = await pushAudio(caps, "sess-mime", Buffer.from("a2"), "audio/ogg", 2);
+        const result = await pushAudio(caps, "sess-bitdepth", { pcm: Buffer.from(new Int16Array(8).buffer), sampleRateHz: 16000, channels: 1, bitDepth: 24 }, 2);
         expect(result.questions).toEqual([]);
-        expect(result.status).toBe("unsupported_mime");
+        expect(result.status).toBe("invalid_pcm");
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 });
@@ -468,17 +470,17 @@ describe("session isolation across session ids", () => {
         const caps = makeCapabilities();
 
         // Establish session A with two fragments (sets up full state in DB).
-        await pushAudio(caps, "old-session", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "old-session", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "old-session", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "old-session", buildTestPcmInfo(), 2);
 
         // Start a completely new session B.
-        const r = await pushAudio(caps, "new-session", buildTestWavBuffer(), "audio/wav", 1);
+        const r = await pushAudio(caps, "new-session", buildTestPcmInfo(), 1);
         // First fragment of new session → no questions yet.
         expect(r.questions).toEqual([]);
         expect(r.status).toBe("empty_result");
 
         // The second push under new-session forms a window and transcribes independently of old-session state.
-        await pushAudio(caps, "new-session", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "new-session", buildTestPcmInfo(), 2);
 
         // Total transcription calls: 1 (for old-session window) + 1 (for new-session window) = 2.
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(2);
@@ -496,7 +498,7 @@ describe("backend reboot continuity", () => {
 
         // First backend instance: stores fragment 1.
         const caps1 = makeCapabilitiesWithWorkDir(sharedWorkDir);
-        await pushAudio(caps1, "reboot-session", buildTestWavBuffer(), "audio/wav", 1);
+        await pushAudio(caps1, "reboot-session", buildTestPcmInfo(), 1);
 
         // Simulate clean shutdown (releases LevelDB lock).
         await caps1.temporary.close();
@@ -505,7 +507,7 @@ describe("backend reboot continuity", () => {
         const caps2 = makeCapabilitiesWithWorkDir(sharedWorkDir);
 
         // Fragment 2 arrives at the new instance. It should find fragment 1 in DB and transcribe.
-        await pushAudio(caps2, "reboot-session", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps2, "reboot-session", buildTestPcmInfo(), 2);
 
         expect(caps2.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
         // caps1 should NOT have been asked to transcribe (it only stored fragment 1).
@@ -520,8 +522,8 @@ describe("backend reboot continuity", () => {
 
         // First instance: establish running transcript via fragments 1+2.
         const caps1 = makeCapabilitiesWithWorkDir(sharedWorkDir);
-        await pushAudio(caps1, "persist-session", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps1, "persist-session", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps1, "persist-session", buildTestPcmInfo(), 1);
+        await pushAudio(caps1, "persist-session", buildTestPcmInfo(), 2);
 
         // Simulate clean shutdown.
         await caps1.temporary.close();
@@ -529,7 +531,7 @@ describe("backend reboot continuity", () => {
         // Second instance (reboot): fragment 3 should see the stored window transcript
         // and call recombination.
         const caps2 = makeCapabilitiesWithWorkDir(sharedWorkDir);
-        await pushAudio(caps2, "persist-session", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps2, "persist-session", buildTestPcmInfo(), 3);
 
         // caps2 should have called transcription (for window f2+f3) and recombination
         // (because the last window transcript was persisted).
@@ -548,8 +550,8 @@ describe("backend reboot continuity", () => {
         // First instance: receive a question.
         const caps1 = makeCapabilitiesWithWorkDir(sharedWorkDir);
         caps1.aiDiaryQuestions.generateQuestions = jest.fn().mockResolvedValue(sameQuestion);
-        await pushAudio(caps1, "dedup-session", buildTestWavBuffer(), "audio/wav", 1);
-        const r2 = await pushAudio(caps1, "dedup-session", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps1, "dedup-session", buildTestPcmInfo(), 1);
+        const r2 = await pushAudio(caps1, "dedup-session", buildTestPcmInfo(), 2);
         expect(r2.questions[0].text).toBe("What matters most?");
 
         // Simulate clean shutdown.
@@ -558,8 +560,8 @@ describe("backend reboot continuity", () => {
         // Second instance: the same question is generated again but must be deduplicated.
         const caps2 = makeCapabilitiesWithWorkDir(sharedWorkDir);
         caps2.aiDiaryQuestions.generateQuestions = jest.fn().mockResolvedValue(sameQuestion);
-        await pushAudio(caps2, "dedup-session", buildTestWavBuffer(), "audio/wav", 3);
-        const r4 = await pushAudio(caps2, "dedup-session", buildTestWavBuffer(), "audio/wav", 4);
+        await pushAudio(caps2, "dedup-session", buildTestPcmInfo(), 3);
+        const r4 = await pushAudio(caps2, "dedup-session", buildTestPcmInfo(), 4);
         expect(r4.questions).toHaveLength(0);
     });
 });
@@ -575,8 +577,8 @@ describe("getPendingQuestions", () => {
 
     it("returns questions generated by pushAudio", async () => {
         const caps = makeCapabilities();
-        await pushAudio(caps, "sess-pending", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-pending", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "sess-pending", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-pending", buildTestPcmInfo(), 2);
 
         const questions = await getPendingQuestions(caps, "sess-pending");
         expect(Array.isArray(questions)).toBe(true);
@@ -586,8 +588,8 @@ describe("getPendingQuestions", () => {
 
     it("clears pending questions after they are fetched (consume-once)", async () => {
         const caps = makeCapabilities();
-        await pushAudio(caps, "sess-consume", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-consume", buildTestWavBuffer(), "audio/wav", 2);
+        await pushAudio(caps, "sess-consume", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-consume", buildTestPcmInfo(), 2);
 
         // First fetch: returns questions.
         const first = await getPendingQuestions(caps, "sess-consume");
@@ -606,9 +608,9 @@ describe("getPendingQuestions", () => {
             .mockResolvedValueOnce([{ text: "Question A?", intent: "warm_reflective" }])
             .mockResolvedValueOnce([{ text: "Question B?", intent: "clarifying" }]);
 
-        await pushAudio(caps, "sess-multi", buildTestWavBuffer(), "audio/wav", 1);
-        await pushAudio(caps, "sess-multi", buildTestWavBuffer(), "audio/wav", 2);
-        await pushAudio(caps, "sess-multi", buildTestWavBuffer(), "audio/wav", 3);
+        await pushAudio(caps, "sess-multi", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-multi", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-multi", buildTestPcmInfo(), 3);
 
         // Neither generation has been fetched yet — both should be pending.
         const pending = await getPendingQuestions(caps, "sess-multi");

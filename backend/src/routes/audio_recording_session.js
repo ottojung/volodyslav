@@ -3,7 +3,7 @@
  *
  * Endpoints:
  *   POST   /audio-recording-session/start
- *   POST   /audio-recording-session/:sessionId/push-audio
+ *   POST   /audio-recording-session/:sessionId/push-pcm
  *   GET    /audio-recording-session/:sessionId
  *   POST   /audio-recording-session/:sessionId/stop
  *   GET    /audio-recording-session/:sessionId/final-audio
@@ -25,7 +25,6 @@ const {
     isAudioSessionChunkValidationError,
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
-    parseAudioMimeType,
 } = require("../audio_recording_session");
 const { getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
 const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_analysis_queue");
@@ -61,18 +60,14 @@ function makeRouter(capabilities) {
 
     // POST /audio-recording-session/start
     router.post("/audio-recording-session/start", express.json(), async (req, res) => {
-        const { sessionId, mimeType } = req.body || {};
+        const { sessionId } = req.body || {};
 
         if (typeof sessionId !== "string" || !sessionId) {
             return res.status(400).json({ success: false, error: "Missing or invalid sessionId" });
         }
-        const normalizedMimeType = parseAudioMimeType(mimeType);
-        if (normalizedMimeType !== "audio/webm") {
-            return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be audio/webm" });
-        }
 
         try {
-            const session = await startSession(capabilities, sessionId, normalizedMimeType);
+            const session = await startSession(capabilities, sessionId);
             return res.json({
                 success: true,
                 session: {
@@ -94,22 +89,21 @@ function makeRouter(capabilities) {
         }
     });
 
-    // POST /audio-recording-session/:sessionId/push-audio
+    // POST /audio-recording-session/:sessionId/push-pcm
     router.post(
-        "/audio-recording-session/:sessionId/push-audio",
-        upload.fields([{ name: "audio", maxCount: 1 }, { name: "analysisAudio", maxCount: 1 }]),
+        "/audio-recording-session/:sessionId/push-pcm",
+        upload.fields([{ name: "pcm", maxCount: 1 }]),
         async (req, res) => {
             const { sessionId } = req.params;
             if (!sessionId) {
                 return res.status(400).json({ success: false, error: "Missing session ID" });
             }
-            const { startMs, endMs, sequence, mimeType, analysisMimeType } = req.body || {};
+            const { startMs, endMs, sequence, sampleRateHz, channels, bitDepth } = req.body || {};
             const filesMap = req.files;
-            const chunkFile = (filesMap && !(filesMap instanceof Array)) ? filesMap["audio"]?.[0] : undefined;
-            const analysisFile = (filesMap && !(filesMap instanceof Array)) ? filesMap["analysisAudio"]?.[0] : undefined;
+            const pcmFile = (filesMap && !(filesMap instanceof Array)) ? filesMap["pcm"]?.[0] : undefined;
 
-            if (!chunkFile) {
-                return res.status(400).json({ success: false, error: "Missing audio file" });
+            if (!pcmFile) {
+                return res.status(400).json({ success: false, error: "Missing pcm file" });
             }
 
             // Accept only plain base-10 non-negative integer strings for sequence
@@ -119,6 +113,8 @@ function makeRouter(capabilities) {
             // and lexicographic sort order used when concatenating persisted fragments.
             const UINT_RE = /^\d{1,6}$/;
             const UFLOAT_RE = /^\d+(\.\d+)?$/;
+            // Positive integer (no zero), limited to 6 digits to avoid overly large values
+            const POSINT_RE = /^[1-9]\d{0,5}$/;
 
             if (
                 typeof startMs !== "string" ||
@@ -131,40 +127,37 @@ function makeRouter(capabilities) {
                 return res.status(400).json({ success: false, error: "Invalid startMs, endMs, or sequence" });
             }
 
+            if (
+                typeof sampleRateHz !== "string" ||
+                typeof channels !== "string" ||
+                typeof bitDepth !== "string" ||
+                !POSINT_RE.test(sampleRateHz) ||
+                !POSINT_RE.test(channels) ||
+                !POSINT_RE.test(bitDepth)
+            ) {
+                return res.status(400).json({ success: false, error: "Invalid sampleRateHz, channels, or bitDepth" });
+            }
+
             const startMsNum = Number(startMs);
             const endMsNum = Number(endMs);
             const sequenceNum = Number(sequence);
+            const sampleRateHzNum = Number(sampleRateHz);
+            const channelsNum = Number(channels);
+            const bitDepthNum = Number(bitDepth);
 
-            // Normalize mimeType: audio/webm is required for safe chunk assembly.
-            const rawMimeType = typeof mimeType === "string" ? mimeType : String(chunkFile.mimetype || "");
-            const normalizedChunkMimeType = parseAudioMimeType(rawMimeType);
-            if (normalizedChunkMimeType !== "audio/webm") {
-                return res.status(400).json({ success: false, error: "Missing or invalid mimeType: must be audio/webm" });
-            }
-
-            // Both analysisAudio and analysisMimeType must be supplied together.
-            // Supplying one without the other is a malformed request shape.
-            const hasAnalysisFile = analysisFile !== undefined;
-            const hasAnalysisMimeType = typeof analysisMimeType === "string";
-            if (hasAnalysisFile !== hasAnalysisMimeType) {
-                return res.status(400).json({ success: false, error: "analysisAudio and analysisMimeType must both be present or both absent" });
-            }
-            /** @type {Buffer | null} */
-            let analysisBuffer = null;
-            if (hasAnalysisFile) {
-                if (parseAudioMimeType(analysisMimeType) !== "audio/wav") {
-                    return res.status(400).json({ success: false, error: "analysisMimeType must be audio/wav" });
-                }
-                analysisBuffer = analysisFile.buffer;
+            if (bitDepthNum !== 16) {
+                return res.status(400).json({ success: false, error: "bitDepth must be 16" });
             }
 
             try {
                 const result = await pushAudioFragment(capabilities, sessionId, {
-                    chunk: chunkFile.buffer,
+                    pcm: pcmFile.buffer,
+                    sampleRateHz: sampleRateHzNum,
+                    channels: channelsNum,
+                    bitDepth: bitDepthNum,
                     startMs: startMsNum,
                     endMs: endMsNum,
                     sequence: sequenceNum,
-                    mimeType: normalizedChunkMimeType,
                 });
 
                 // Queue live diary AI processing asynchronously to avoid HTTP gateway timeout.
@@ -172,9 +165,12 @@ function makeRouter(capabilities) {
                 // 30-90 seconds, which would exceed typical proxy timeouts.  By running it in
                 // the background and storing results in the pending-questions state, the client
                 // can poll GET /live-questions to retrieve generated questions.
-                if (analysisBuffer) {
-                    enqueueAnalysis(capabilities, sessionId, analysisBuffer, sequenceNum);
-                }
+                enqueueAnalysis(capabilities, sessionId, {
+                    pcm: pcmFile.buffer,
+                    sampleRateHz: sampleRateHzNum,
+                    channels: channelsNum,
+                    bitDepth: bitDepthNum,
+                }, sequenceNum);
 
                 // Respond immediately — questions will be available via GET /live-questions.
                 return res.json({ success: true, ...result, questions: [], status: "accepted" });
@@ -190,7 +186,7 @@ function makeRouter(capabilities) {
                 }
                 capabilities.logger.logError(
                     { error: error instanceof Error ? error.message : String(error) },
-                    "Failed to push audio fragment"
+                    "Failed to push PCM fragment"
                 );
                 return res.status(500).json({ success: false, error: "Internal error" });
             }

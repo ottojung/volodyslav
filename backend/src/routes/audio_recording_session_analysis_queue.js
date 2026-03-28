@@ -25,6 +25,10 @@ const { pushAudio: pushLiveDiaryAudio } = require("../live_diary");
  */
 
 /**
+ * @typedef {import('../live_diary/service').PcmInfo} PcmInfo
+ */
+
+/**
  * Per-session promise chain for serializing live-diary AI processing.
  * Storing the tail promise per session ensures that fragments are processed
  * in order without blocking the HTTP response.
@@ -34,24 +38,23 @@ const { pushAudio: pushLiveDiaryAudio } = require("../live_diary");
 const processingQueues = new Map();
 
 /**
- * Enqueue a live-diary analysis audio fragment for async AI processing.
+ * Enqueue a live-diary PCM audio fragment for async AI processing.
  * The fragment is processed after all previously enqueued fragments for the
  * same session, without blocking the HTTP response.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @param {Buffer} analysisBuffer - WAV-wrapped PCM audio fragment.
+ * @param {PcmInfo} pcmInfo - Raw PCM audio fragment with format metadata.
  * @param {number} sequenceNum - Fragment sequence number (0-based).
  */
-function enqueueAnalysis(capabilities, sessionId, analysisBuffer, sequenceNum) {
+function enqueueAnalysis(capabilities, sessionId, pcmInfo, sequenceNum) {
     const existing = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
     const next = existing.then(async () => {
         try {
             await pushLiveDiaryAudio(
                 capabilities,
                 sessionId,
-                analysisBuffer,
-                "audio/wav",
+                pcmInfo,
                 sequenceNum + 1
             );
             capabilities.logger.logDebug(

@@ -47,8 +47,61 @@ function parseAudioMimeType(mimeType) {
     return `audio/${match[1]}`;
 }
 
+/**
+ * Validate raw PCM format parameters: sampleRateHz, channels, bitDepth, and buffer shape.
+ * Returns null on success, or an error message string describing the first violation.
+ *
+ * @param {unknown} pcm
+ * @param {unknown} sampleRateHz
+ * @param {unknown} channels
+ * @param {unknown} bitDepth
+ * @returns {string | null}
+ */
+function validatePcmParams(pcm, sampleRateHz, channels, bitDepth) {
+    if (!Buffer.isBuffer(pcm)) {
+        return "Invalid pcm: must be a Buffer";
+    }
+    if (typeof sampleRateHz !== "number" || !Number.isInteger(sampleRateHz) || sampleRateHz <= 0) {
+        return `Invalid sampleRateHz: must be a positive integer, got ${sampleRateHz}`;
+    }
+    if (typeof channels !== "number" || !Number.isInteger(channels) || channels <= 0) {
+        return `Invalid channels: must be a positive integer, got ${channels}`;
+    }
+    if (bitDepth !== 16) {
+        return `Invalid bitDepth: only 16 is supported, got ${bitDepth}`;
+    }
+    const bytesPerFrame = channels * (bitDepth / 8);
+    if (pcm.length % bytesPerFrame !== 0) {
+        return `Invalid pcm: byte length ${pcm.length} is not aligned to frame size ${bytesPerFrame}`;
+    }
+    return null;
+}
+
+/**
+ * Validate a complete PCM chunk upload: sequence, timing, buffer, and format.
+ * Returns null on success, or an error message string describing the first violation.
+ *
+ * @param {{ pcm: unknown, sampleRateHz: unknown, channels: unknown, bitDepth: unknown, startMs: unknown, endMs: unknown, sequence: unknown }} params
+ * @returns {string | null}
+ */
+function validateUploadChunkParams(params) {
+    const { pcm, sampleRateHz, channels, bitDepth, startMs, endMs, sequence } = params;
+    if (typeof sequence !== "number" || !Number.isInteger(sequence) || sequence < 0 || sequence > 999999) {
+        return `Invalid sequence: must be a non-negative integer not exceeding 999999, got ${sequence}`;
+    }
+    if (typeof startMs !== "number" || !Number.isFinite(startMs) || startMs < 0) {
+        return `Invalid startMs: must be a non-negative finite number, got ${startMs}`;
+    }
+    if (typeof endMs !== "number" || !Number.isFinite(endMs) || endMs < startMs) {
+        return `Invalid endMs: must be >= startMs (${startMs}), got ${endMs}`;
+    }
+    return validatePcmParams(pcm, sampleRateHz, channels, bitDepth);
+}
+
 module.exports = {
     isValidSessionId,
     extensionFromMimeType,
     parseAudioMimeType,
+    validatePcmParams,
+    validateUploadChunkParams,
 };

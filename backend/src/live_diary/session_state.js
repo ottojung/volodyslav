@@ -19,7 +19,7 @@ const { stringToTempKey } = require("../temporary");
 const LIVE_DIARY_SUBLEVEL = "live_diary";
 
 const LAST_FRAGMENT_KEY = stringToTempKey("last_fragment");
-const LAST_FRAGMENT_MIME_KEY = stringToTempKey("last_fragment_mime");
+const LAST_FRAGMENT_FORMAT_KEY = stringToTempKey("last_fragment_mime");
 const LAST_WINDOW_TRANSCRIPT_KEY = stringToTempKey("last_window_transcript");
 const RUNNING_TRANSCRIPT_KEY = stringToTempKey("running_transcript");
 const ASKED_QUESTIONS_KEY = stringToTempKey("asked_questions");
@@ -197,7 +197,7 @@ async function clearPendingQuestions(temporary, sessionId) {
 }
 
 module.exports = {
-    LAST_FRAGMENT_MIME_KEY,
+    LAST_FRAGMENT_FORMAT_KEY,
     LAST_WINDOW_TRANSCRIPT_KEY,
     RUNNING_TRANSCRIPT_KEY,
     ASKED_QUESTIONS_KEY,

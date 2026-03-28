@@ -3,9 +3,8 @@
  *
  * Captures audio from an existing AudioContext + MediaStreamSource in
  * parallel with MediaRecorder, producing mono PCM16 fragments at a fixed
- * 16 kHz sample rate.  Each fragment can then be wrapped as a WAV file
- * and uploaded alongside the archival WebM chunk for transcription-based
- * live questioning.
+ * 16 kHz sample rate.  Each fragment can then be uploaded as raw PCM bytes
+ * to the backend, which performs all audio preprocessing server-side.
  *
  * Implementation note — capture node choice:
  *   Primary path:  AudioWorkletProcessor.  Runs off the main thread and
@@ -13,15 +12,6 @@
  *   Fallback path: ScriptProcessorNode.  Used when AudioWorklet is not
  *     available (older browsers).  If neither API is available, PCM
  *     capture degrades to a no-op and makePcmCapture returns null.
- *
- * Implementation note — WAV encoding:
- *   buildWavBlob() writes the 44-byte RIFF/PCM header directly into an
- *   ArrayBuffer using DataView and copies the raw Int16 bytes with a
- *   Uint8Array.set() — no per-sample boxing required.  This matters because
- *   each 10-second fragment at 16 kHz holds ~160 000 samples; libraries
- *   that require a plain JS Number[] (e.g. wavefile.fromScratch()) would
- *   allocate ~160 000 Number objects per fragment, creating significant GC
- *   pressure.  The manual approach has zero per-sample allocations.
  *
  * @module AudioDiary/pcm_capture
  */
@@ -51,48 +41,8 @@ registerProcessor("${WORKLET_PROCESSOR_NAME}", PcmCaptureProcessor);
 `;
 
 // ---------------------------------------------------------------------------
-// WAV builder (browser-side)
+// (WAV builder removed — backend is the single owner of WAV conversion)
 // ---------------------------------------------------------------------------
-
-/**
- * Build a WAV-wrapped Blob from an Int16 PCM sample array.
- * Writes a 44-byte standard PCM header directly into an ArrayBuffer and
- * copies the raw sample bytes after it — no per-sample boxing required.
- *
- * @param {Int16Array} samples - Mono PCM16 samples.
- * @param {number} sampleRate
- * @returns {Blob}
- */
-function buildWavBlob(samples, sampleRate) {
-    const numChannels = 1;
-    const bitsPerSample = 16;
-    const bytesPerSample = bitsPerSample / 8;
-    const dataSize = samples.byteLength;
-    const buffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(buffer);
-
-    // RIFF descriptor
-    view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46);
-    view.setUint32(4, 36 + dataSize, true);
-    view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45);
-    // "fmt " sub-chunk
-    view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20);
-    view.setUint32(16, 16, true);                                        // Subchunk1Size
-    view.setUint16(20, 1, true);                                         // AudioFormat = PCM
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // ByteRate
-    view.setUint16(32, numChannels * bytesPerSample, true);              // BlockAlign
-    view.setUint16(34, bitsPerSample, true);
-    // "data" sub-chunk
-    view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61);
-    view.setUint32(40, dataSize, true);
-
-    // Copy raw PCM bytes after the header.
-    new Uint8Array(buffer, 44).set(new Uint8Array(samples.buffer, samples.byteOffset, dataSize));
-
-    return new Blob([buffer], { type: "audio/wav" });
-}
 
 // ---------------------------------------------------------------------------
 // Downsampling helper
@@ -350,16 +300,17 @@ class PcmCaptureClass {
 
     /**
      * Drain accumulated PCM samples for a given active duration and return
-     * a WAV-wrapped Blob.  Returns null when no samples are available.
+     * raw PCM bytes with format metadata.  Returns null when no samples are
+     * available.
      *
      * The number of samples drained is clamped to the expected count based
      * on `durationMs` at the target sample rate; any excess is kept for the
      * next call.
      *
      * @param {number} durationMs - Active recording duration in milliseconds.
-     * @returns {Blob | null}
+     * @returns {{ pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number } | null}
      */
-    drainWav(durationMs) {
+    drainPcm(durationMs) {
         if (this._totalSamples === 0) {
             return null;
         }
@@ -389,8 +340,10 @@ class PcmCaptureClass {
         if (drainCount === 0) {
             return null;
         }
-        const drained = new Int16Array(all.buffer, 0, drainCount);
-        return buildWavBlob(drained, TARGET_SAMPLE_RATE);
+
+        // Return a copy of just the drained PCM bytes (raw Int16 little-endian).
+        const pcmBytes = all.buffer.slice(0, drainCount * 2);
+        return { pcmBytes, sampleRateHz: TARGET_SAMPLE_RATE, channels: 1, bitDepth: 16 };
     }
 
     /**
@@ -453,4 +406,4 @@ export function isPcmCapture(object) {
     return object instanceof PcmCaptureClass;
 }
 
-export { buildWavBlob, downsample, TARGET_SAMPLE_RATE };
+export { downsample, TARGET_SAMPLE_RATE };

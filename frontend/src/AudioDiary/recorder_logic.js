@@ -13,7 +13,7 @@ export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment coll
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob, startMs: number, endMs: number, analysisChunk: Blob | null) => void} [onChunk] - called with each fragment, its relative timestamps (authoritative), and a WAV-wrapped PCM analysis chunk (null when PCM capture unavailable)
+ * @property {(chunk: Blob, startMs: number, endMs: number, pcmChunk: { pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number } | null) => void} [onChunk] - called with each fragment, its relative timestamps (authoritative), and raw PCM bytes with format metadata (null when PCM capture unavailable)
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -172,10 +172,10 @@ class RecorderClass {
                 const fragEnd = this._activeRecordedMs;
                 this._chunks.push(e.data);
                 if (this._callbacks.onChunk) {
-                    const analysisChunk = this._pcmCapture
-                        ? this._pcmCapture.drainWav(fragEnd - fragStart)
+                    const pcmChunk = this._pcmCapture
+                        ? this._pcmCapture.drainPcm(fragEnd - fragStart)
                         : null;
-                    this._callbacks.onChunk(e.data, fragStart, fragEnd, analysisChunk);
+                    this._callbacks.onChunk(e.data, fragStart, fragEnd, pcmChunk);
                 }
             }
         };
