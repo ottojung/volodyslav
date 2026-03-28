@@ -25,8 +25,9 @@ const {
     isAudioSessionChunkValidationError,
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
+    parseAudioMimeType,
 } = require("../audio_recording_session");
-const { pushAudio: pushLiveDiaryAudio } = require("../live_diary");
+const { pushAudio: pushLiveDiaryAudio, getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -48,25 +49,13 @@ const { pushAudio: pushLiveDiaryAudio } = require("../live_diary");
  */
 
 /**
- * Validate and normalize a MIME type.
- * Accepts only audio/* types; strips parameter suffixes (e.g., "; codecs=vp9").
- * Returns the normalized type string, or null if invalid.
- * Shape-only check: ensures client and server agree on the expected format.
- * @param {unknown} mimeType
- * @returns {string | null}
+ * Per-session promise chain for serializing live-diary AI processing.
+ * Storing the tail promise per session ensures that fragments are processed
+ * in order without blocking the HTTP response.
+ *
+ * @type {Map<string, Promise<void>>}
  */
-function parseAudioMimeType(mimeType) {
-    if (typeof mimeType !== "string" || !mimeType) {
-        return null;
-    }
-    // Strip parameters (everything after the first semicolon) and normalize case.
-    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
-    const match = /^audio\/([^\s;]+)$/.exec(base);
-    if (!match) {
-        return null;
-    }
-    return `audio/${match[1]}`;
-}
+const processingQueues = new Map();
 
 /**
  * @param {Capabilities} capabilities
@@ -168,35 +157,52 @@ function makeRouter(capabilities) {
                     mimeType: normalizedChunkMimeType,
                 });
 
-                // Invoke live diary questioning pipeline.
-                // Fragment number is 1-based (sequence is 0-based).
-                /** @type {Array<{text: string, intent: string}>} */
-                let liveQuestions = [];
-                /** @type {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} */
-                let liveStatus = "ok";
-                try {
-                    const liveResult = await pushLiveDiaryAudio(
-                        capabilities,
-                        sessionId,
-                        chunkFile.buffer,
-                        normalizedChunkMimeType,
-                        sequenceNum + 1
-                    );
-                    liveQuestions = liveResult.questions;
-                    liveStatus = liveResult.status;
-                } catch (error) {
-                    capabilities.logger.logError(
-                        {
-                            error: error instanceof Error ? error.message : String(error),
-                            stack: error instanceof Error ? error.stack : undefined,
-                        },
-                        "Live diary questioning pipeline failed"
-                    );
-                    // Live questioning failure is non-fatal; fragment persistence succeeded.
-                    liveStatus = "degraded_question_generation";
-                }
+                capabilities.logger.logDebug(
+                    { sessionId, sequence: sequenceNum, chunkSizeBytes: chunkFile.buffer.length },
+                    "Push-audio: audio fragment stored; queuing live diary AI processing"
+                );
 
-                return res.json({ success: true, ...result, questions: liveQuestions, status: liveStatus });
+                // Queue live diary AI processing asynchronously to avoid HTTP gateway timeout.
+                // The AI pipeline (transcription + recombination + question generation) can take
+                // 30-90 seconds, which would exceed typical proxy timeouts.  By running it in
+                // the background and storing results in the pending-questions state, the client
+                // can poll GET /live-questions to retrieve generated questions.
+                // Chaining through `.catch(() => Promise.resolve())` ensures rejections in a
+                // previous fragment's processing do not break subsequent fragments' chains.
+                const existingQueue = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
+                const nextQueue = existingQueue.then(async () => {
+                    capabilities.logger.logDebug(
+                        { sessionId, sequence: sequenceNum, fragmentNumber: sequenceNum + 1 },
+                        "Live diary AI processing starting for fragment"
+                    );
+                    try {
+                        await pushLiveDiaryAudio(
+                            capabilities,
+                            sessionId,
+                            chunkFile.buffer,
+                            normalizedChunkMimeType,
+                            sequenceNum + 1
+                        );
+                        capabilities.logger.logDebug(
+                            { sessionId, sequence: sequenceNum },
+                            "Live diary AI processing completed for fragment"
+                        );
+                    } catch (error) {
+                        capabilities.logger.logError(
+                            {
+                                sessionId,
+                                sequence: sequenceNum,
+                                error: error instanceof Error ? error.message : String(error),
+                                stack: error instanceof Error ? error.stack : undefined,
+                            },
+                            "Live diary AI processing failed for fragment"
+                        );
+                    }
+                });
+                processingQueues.set(sessionId, nextQueue);
+
+                // Respond immediately — questions will be available via GET /live-questions.
+                return res.json({ success: true, ...result, questions: [], status: "accepted" });
             } catch (error) {
                 if (isAudioSessionChunkValidationError(error)) {
                     return res.status(400).json({ success: false, error: error.message });
@@ -342,9 +348,32 @@ function makeRouter(capabilities) {
         }
     });
 
+    // GET /audio-recording-session/:sessionId/live-questions — poll for pending diary questions
+    // Returns questions generated by the background live diary AI pipeline since the last poll.
+    // Questions are cleared after being returned (consume-once semantics).
+    router.get("/audio-recording-session/:sessionId/live-questions", async (req, res) => {
+        const { sessionId } = req.params;
+
+        try {
+            const questions = await getLiveDiaryPendingQuestions(capabilities, sessionId);
+            return res.json({ success: true, questions });
+        } catch (error) {
+            capabilities.logger.logError(
+                { sessionId, error: error instanceof Error ? error.message : String(error) },
+                "Failed to fetch live diary pending questions"
+            );
+            return res.status(500).json({ success: false, error: "Internal error" });
+        }
+    });
+
     // DELETE /audio-recording-session/:sessionId
     router.delete("/audio-recording-session/:sessionId", async (req, res) => {
         const { sessionId } = req.params;
+
+        // Remove the queue tail reference so the map does not grow unboundedly.
+        // Any in-flight AI processing for this session continues to completion but
+        // subsequent fragments for this sessionId will not be processed.
+        processingQueues.delete(sessionId);
 
         try {
             await discardSession(capabilities, sessionId);

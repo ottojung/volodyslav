@@ -68,7 +68,7 @@ export async function startSession(sessionId, mimeType) {
  */
 
 /**
- * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime'} PushAudioStatus
+ * @typedef {'ok' | 'empty_result' | 'degraded_transcription' | 'degraded_question_generation' | 'unsupported_mime' | 'accepted'} PushAudioStatus
  */
 
 /**
@@ -215,6 +215,25 @@ export async function pushAudioWithSessionRetry(sessionId, fallbackMimeType, par
         }
     }
     return { questions: result.questions, status: result.status };
+}
+
+/**
+ * Fetch pending live diary questions generated since the last poll.
+ * Questions are cleared server-side after being returned (consume-once semantics).
+ * Returns an empty array if no questions are available yet.
+ * @param {string} sessionId
+ * @returns {Promise<DiaryQuestion[]>}
+ */
+export async function getLiveQuestions(sessionId) {
+    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/live-questions`);
+    if (!response.ok) {
+        throw new Error(`Failed to get live questions: ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.error || "Failed to get live questions");
+    }
+    return data.questions || [];
 }
 
 /**

@@ -57,6 +57,7 @@ export default function AudioDiary() {
         analyser,
         mimeTypeRef,
         isMountedRef,
+        sessionIdRef,
         hasRestoredSession,
         setNote,
         setErrorMessage,
@@ -71,12 +72,12 @@ export default function AudioDiary() {
     const handleStart = useCallback(async () => {
         try {
             await handleStartBase();
-            startLive();
+            startLive(sessionIdRef.current);
         } catch (error) {
             // Ensure live questioning is not left running if recorder start fails.
             stopLive();
         }
-    }, [handleStartBase, startLive, stopLive]);
+    }, [handleStartBase, sessionIdRef, startLive, stopLive]);
 
     // Wrap handleStop to also stop live questioning.
     const handleStop = useCallback(async () => {
