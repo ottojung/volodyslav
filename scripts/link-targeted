@@ -1,0 +1,28 @@
+#! /bin/sh
+
+set -e
+
+cd -- "${0%/*}"/..
+
+if ! test "$#" = 2
+then
+    echo "Usage: $0 <source-directory> <prefix>" >&2
+    exit 1
+fi
+
+set -xe
+
+SOURCEDIR="$1"
+shift
+
+PREFIX="$1"
+shift
+
+BINDIR="$PREFIX"/bin
+
+echo "$VERSION" > "$SOURCEDIR"/VERSION
+
+# Store the full VOLODYSLAV_BASEURL for the installed version
+printf '%s' "${VOLODYSLAV_BASEURL:-}" > "$SOURCEDIR"/BASE_PATH
+
+ln -srfT -- "$SOURCEDIR"/scripts/run-main "$BINDIR"/volodyslav
