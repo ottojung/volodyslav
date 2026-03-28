@@ -23,17 +23,29 @@ const path = require("path");
 const fsp = require("fs/promises");
 const fs = require("fs");
 const crypto = require("crypto");
-const { stringToTempKey } = require("../temporary");
 const {
-    CURRENT_SESSION_KEY,
-    indexSublevel,
-    sessionSublevel,
     markSessionExists,
     unmarkSessionExists,
     listKnownSessionIds,
     deleteSessionData,
 } = require("../audio_recording_session");
 const { programmaticRecombination } = require("../ai");
+const {
+    LAST_FRAGMENT_MIME_KEY,
+    LAST_WINDOW_TRANSCRIPT_KEY,
+    RUNNING_TRANSCRIPT_KEY,
+    readCurrentSessionId,
+    writeCurrentSessionId,
+    readLastFragment,
+    writeLastFragment,
+    readStringField,
+    writeStringField,
+    readAskedQuestions,
+    writeAskedQuestions,
+    readPendingQuestions,
+    appendPendingQuestions,
+    clearPendingQuestions,
+} = require("./session_state");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
@@ -131,142 +143,6 @@ function appendRemovedTailWord(recombinedText, removedTailWord) {
     }
 
     return `${trimmed} ${removedTailWord}`;
-}
-
-const LIVE_DIARY_SUBLEVEL = "live_diary";
-const LAST_FRAGMENT_KEY = stringToTempKey("last_fragment");
-const LAST_FRAGMENT_MIME_KEY = stringToTempKey("last_fragment_mime");
-const LAST_WINDOW_TRANSCRIPT_KEY = stringToTempKey("last_window_transcript");
-const RUNNING_TRANSCRIPT_KEY = stringToTempKey("running_transcript");
-const ASKED_QUESTIONS_KEY = stringToTempKey("asked_questions");
-
-/**
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {import('../temporary/database').TemporarySublevel}
- */
-function liveDiarySessionSublevel(temporary, sessionId) {
-    return sessionSublevel(temporary, sessionId).getSublevel(LIVE_DIARY_SUBLEVEL);
-}
-
-// ---------------------------------------------------------------------------
-// Low-level DB accessors
-// ---------------------------------------------------------------------------
-
-/**
- * Read the current session id from the index.
- * Returns null if not set.
- * @param {Temporary} temporary
- * @returns {Promise<string | null>}
- */
-async function readCurrentSessionId(temporary) {
-    const entry = await indexSublevel(temporary).get(CURRENT_SESSION_KEY);
-    if (entry === undefined || entry.type !== "audio_session_index") {
-        return null;
-    }
-    return entry.sessionId;
-}
-
-/**
- * Write the current session id to the index.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<void>}
- */
-async function writeCurrentSessionId(temporary, sessionId) {
-    await indexSublevel(temporary).put(CURRENT_SESSION_KEY, {
-        type: "audio_session_index",
-        sessionId,
-    });
-}
-
-/**
- * Read the stored last audio fragment for a session.
- * Returns null if none stored.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<Buffer | null>}
- */
-async function readLastFragment(temporary, sessionId) {
-    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
-    if (entry === undefined || entry.type !== "blob") {
-        return null;
-    }
-    return Buffer.from(entry.data, "base64");
-}
-
-/**
- * Write the last audio fragment for a session.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {Buffer} fragment
- * @returns {Promise<void>}
- */
-async function writeLastFragment(temporary, sessionId, fragment) {
-    await liveDiarySessionSublevel(temporary, sessionId).put(LAST_FRAGMENT_KEY, {
-        type: "blob",
-        data: fragment.toString("base64"),
-    });
-}
-
-/**
- * Read a string field for a session.
- * Returns empty string if not set.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {import('../temporary/database/types').TempKey} key
- * @returns {Promise<string>}
- */
-async function readStringField(temporary, sessionId, key) {
-    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(key);
-    if (entry === undefined || entry.type !== "live_diary_string") {
-        return "";
-    }
-    return entry.value;
-}
-
-/**
- * Write a string field for a session.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {import('../temporary/database/types').TempKey} key
- * @param {string} value
- * @returns {Promise<void>}
- */
-async function writeStringField(temporary, sessionId, key, value) {
-    await liveDiarySessionSublevel(temporary, sessionId).put(key, {
-        type: "live_diary_string",
-        value,
-    });
-}
-
-/**
- * Read the asked-questions list for a session.
- * Returns empty array if not set.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<string[]>}
- */
-async function readAskedQuestions(temporary, sessionId) {
-    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(ASKED_QUESTIONS_KEY);
-    if (entry === undefined || entry.type !== "live_diary_questions") {
-        return [];
-    }
-    return entry.questions.map((q) => q.text);
-}
-
-/**
- * Write the asked-questions list for a session.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {string[]} questions
- * @returns {Promise<void>}
- */
-async function writeAskedQuestions(temporary, sessionId, questions) {
-    await liveDiarySessionSublevel(temporary, sessionId).put(ASKED_QUESTIONS_KEY, {
-        type: "live_diary_questions",
-        questions: questions.map((text) => ({ text, intent: "" })),
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +305,11 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     const { temporary } = capabilities;
     const normalizedMimeType = normalizeMimeType(mimeType);
 
+    capabilities.logger.logDebug(
+        { sessionId, fragmentNumber, chunkSizeBytes: fragmentBuffer.length, mimeType: normalizedMimeType },
+        "Live diary received audio chunk"
+    );
+
     // Ensure session is registered and clean up any old sessions.
     await cleanupOldSessionsIfNeeded(temporary, sessionId);
 
@@ -438,6 +319,10 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
         // First fragment: store it and return no questions yet.
         await writeLastFragment(temporary, sessionId, fragmentBuffer);
         await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber },
+            "Live diary first fragment stored; waiting for second fragment to form overlap window"
+        );
         return { questions: [], status: "empty_result" };
     }
 
@@ -455,6 +340,17 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
     // in audio/webm for this invariant to hold.
     const window20s = Buffer.concat([lastFragment, fragmentBuffer]);
 
+    capabilities.logger.logDebug(
+        {
+            sessionId,
+            fragmentNumber,
+            previousFragmentSizeBytes: lastFragment.length,
+            currentFragmentSizeBytes: fragmentBuffer.length,
+            windowSizeBytes: window20s.length,
+        },
+        "Live diary forming 20s overlap window for transcription"
+    );
+
     // Advance the stored fragment to the current one for the next call.
     await writeLastFragment(temporary, sessionId, fragmentBuffer);
     await writeStringField(temporary, sessionId, LAST_FRAGMENT_MIME_KEY, normalizedMimeType);
@@ -471,8 +367,17 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
         return { questions: [], status: "degraded_transcription" };
     }
 
+    capabilities.logger.logDebug(
+        { sessionId, fragmentNumber, transcriptLength: newWindowTranscript.length, transcript: newWindowTranscript },
+        "Live diary overlap window transcription result"
+    );
+
     if (!newWindowTranscript) {
         // Silent audio — nothing to recombine or question.
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber },
+            "Live diary overlap window transcript is empty (silent audio); skipping recombination and questions"
+        );
         return { questions: [], status: "ok" };
     }
 
@@ -483,22 +388,40 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
 
     let merged;
     if (lastWindowTranscript) {
+        const prepared = prepareTranscriptForRecombination(newWindowTranscript);
+        capabilities.logger.logDebug(
+            {
+                sessionId,
+                fragmentNumber,
+                lastWindowTranscriptLength: lastWindowTranscript.length,
+                newWindowTranscriptForRecombinationLength: prepared.textForRecombination.length,
+                removedTailWord: prepared.removedTailWord,
+            },
+            "Live diary attempting LLM recombination of overlap window transcripts"
+        );
         try {
-            const prepared = prepareTranscriptForRecombination(newWindowTranscript);
             merged = await capabilities.aiTranscriptRecombination.recombineOverlap(
                 lastWindowTranscript,
                 prepared.textForRecombination
             );
             merged = appendRemovedTailWord(merged, prepared.removedTailWord);
+            capabilities.logger.logDebug(
+                { sessionId, fragmentNumber, mergedLength: merged.length, merged },
+                "Live diary LLM recombination succeeded"
+            );
         } catch (error) {
             capabilities.logger.logError(
-                { sessionId, error: error instanceof Error ? error.message : String(error) },
+                { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
                 "Live diary recombination failed; using new window transcript directly"
             );
             merged = newWindowTranscript;
         }
     } else {
         merged = newWindowTranscript;
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber },
+            "Live diary no previous window transcript; using new window transcript directly"
+        );
     }
 
     await writeStringField(temporary, sessionId, LAST_WINDOW_TRANSCRIPT_KEY, newWindowTranscript);
@@ -513,6 +436,12 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
 
     await writeStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY, updatedRunningTranscript);
 
+    const transcriptSuffix = updatedRunningTranscript.slice(-200);
+    capabilities.logger.logDebug(
+        { sessionId, fragmentNumber, runningTranscriptLength: updatedRunningTranscript.length, suffix: transcriptSuffix },
+        "Live diary running transcript updated (200-char suffix shown)"
+    );
+
     // Generate questions.
     const askedQuestions = await readAskedQuestions(temporary, sessionId);
     let allQuestions;
@@ -523,7 +452,7 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
         );
     } catch (error) {
         capabilities.logger.logError(
-            { sessionId, error: error instanceof Error ? error.message : String(error) },
+            { sessionId, fragmentNumber, error: error instanceof Error ? error.message : String(error) },
             "Live diary question generation failed"
         );
         return { questions: [], status: "degraded_question_generation" };
@@ -531,16 +460,46 @@ async function pushAudio(capabilities, sessionId, fragmentBuffer, mimeType, frag
 
     const newQuestions = deduplicateQuestions(allQuestions, askedQuestions);
 
+    capabilities.logger.logDebug(
+        { sessionId, fragmentNumber, newQuestionsCount: newQuestions.length, totalAskedCount: askedQuestions.length },
+        "Live diary question generation result"
+    );
+
     if (newQuestions.length > 0) {
         await writeAskedQuestions(temporary, sessionId, [
             ...askedQuestions,
             ...newQuestions.map((q) => q.text),
         ]);
+        await appendPendingQuestions(temporary, sessionId, newQuestions);
     }
 
     return { questions: newQuestions, status: "ok" };
 }
 
+/**
+ * Fetch and clear pending live diary questions for a session.
+ *
+ * Returns all questions that have been generated since the last call.
+ * The pending list is cleared atomically so each question is returned at most once.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @returns {Promise<Array<{text: string, intent: string}>>}
+ */
+async function getPendingQuestions(capabilities, sessionId) {
+    const { temporary } = capabilities;
+    const questions = await readPendingQuestions(temporary, sessionId);
+    if (questions.length > 0) {
+        await clearPendingQuestions(temporary, sessionId);
+        capabilities.logger.logDebug(
+            { sessionId, count: questions.length },
+            "Live diary pending questions fetched and cleared"
+        );
+    }
+    return questions;
+}
+
 module.exports = {
     pushAudio,
+    getPendingQuestions,
 };

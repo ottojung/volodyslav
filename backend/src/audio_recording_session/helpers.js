@@ -27,7 +27,28 @@ function extensionFromMimeType(mimeType) {
     return "webm";
 }
 
+/**
+ * Validate and normalize an audio MIME type string.
+ * Accepts only audio/* types; strips parameter suffixes (e.g., "; codecs=vp9").
+ * Returns the normalized type string, or null if invalid.
+ * @param {unknown} mimeType
+ * @returns {string | null}
+ */
+function parseAudioMimeType(mimeType) {
+    if (typeof mimeType !== "string" || !mimeType) {
+        return null;
+    }
+    // Strip parameters (everything after the first semicolon) and normalize case.
+    const base = (mimeType.split(";")[0] || "").trim().toLowerCase();
+    const match = /^audio\/([^\s;]+)$/.exec(base);
+    if (!match) {
+        return null;
+    }
+    return `audio/${match[1]}`;
+}
+
 module.exports = {
     isValidSessionId,
     extensionFromMimeType,
+    parseAudioMimeType,
 };

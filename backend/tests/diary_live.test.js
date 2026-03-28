@@ -23,6 +23,19 @@ async function makeApp(capabilities) {
     return app;
 }
 
+/**
+ * Flush queued promises so background AI processing completes before assertions.
+ * The background processing uses LevelDB I/O and file system operations which
+ * require real async I/O cycles (setTimeout) to complete, not just microtask draining.
+ * 300ms is sufficient for mocked AI stubs + LevelDB + file-system operations even
+ * on slow CI runners.
+ */
+const PROCESSING_FLUSH_DELAY_MS = 300;
+
+async function flushProcessing() {
+    await new Promise((resolve) => setTimeout(resolve, PROCESSING_FLUSH_DELAY_MS));
+}
+
 // ─── POST /api/audio-recording-session/:sessionId/push-audio ─────────────────
 
 describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
@@ -108,7 +121,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         expect(res.body.error).toMatch(/Session not found/i);
     });
 
-    it("returns empty questions on the first fragment (not enough context yet)", async () => {
+    it("returns 200 with accepted status on the first fragment (AI processing is async)", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
 
@@ -125,13 +138,16 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
+        // Push-audio responds immediately; live diary status is "accepted" (async).
         expect(res.body.questions).toEqual([]);
-        expect(res.body.status).toBe("empty_result");
-        // Transcription should NOT have been called — we don't have two fragments yet.
+        expect(res.body.status).toBe("accepted");
+
+        // Wait for background processing then verify transcription was not called.
+        await flushProcessing();
         expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
     });
 
-    it("transcribes the overlap window and returns questions on the second fragment", async () => {
+    it("transcribes the overlap window and makes questions available via live-questions endpoint", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
         const sessionId = "session-two-frags";
@@ -139,7 +155,8 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
         await request(app)
             .post("/api/audio-recording-session/start")
             .send({ sessionId, mimeType: "audio/webm" });
-        // First fragment — stores but returns no questions.
+
+        // First fragment — stores but background processing finds no previous fragment.
         await request(app)
             .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("audio-fragment-1"), { filename: "f1.webm", contentType: "audio/webm" })
@@ -148,7 +165,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("startMs", "0")
             .field("endMs", "10000");
 
-        // Second fragment — triggers transcription + question generation.
+        // Second fragment — push-audio responds immediately (async processing queued).
         const res = await request(app)
             .post(`/api/audio-recording-session/${sessionId}/push-audio`)
             .attach("audio", Buffer.from("audio-fragment-2"), { filename: "f2.webm", contentType: "audio/webm" })
@@ -159,12 +176,24 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.status).toBe("ok");
-        expect(Array.isArray(res.body.questions)).toBe(true);
+        expect(res.body.status).toBe("accepted");
+        expect(res.body.questions).toEqual([]);
+
+        // Wait for background AI processing to complete.
+        await flushProcessing();
+
         // Transcription was called once (for the overlap window formed by fragments 1+2).
         expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(1);
         // Question generation was called once.
         expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
+
+        // Questions are now available via the live-questions polling endpoint.
+        const liveRes = await request(app)
+            .get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(liveRes.statusCode).toBe(200);
+        expect(liveRes.body.success).toBe(true);
+        expect(Array.isArray(liveRes.body.questions)).toBe(true);
+        expect(liveRes.body.questions.length).toBeGreaterThan(0);
     });
 
     it("calls recombination when a second window is available (third fragment)", async () => {
@@ -185,13 +214,16 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
                 .field("endMs", String(i * 10000));
         }
 
+        // Wait for all background processing to complete.
+        await flushProcessing();
+
         // Fragments 2: transcription(1+2) → first window. No recombination (no previous window).
         // Fragments 3: transcription(2+3) → second window. Recombination(window1, window2) called.
         expect(capabilities.aiTranscription.transcribeStreamDetailed).toHaveBeenCalledTimes(2);
         expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
 
-    it("returns empty questions when the transcript is silent (empty transcription)", async () => {
+    it("returns empty live-questions when the transcript is silent (empty transcription)", async () => {
         const capabilities = getTestCapabilities();
         // Override transcription to return empty.
         capabilities.aiTranscription.transcribeStreamDetailed = jest.fn().mockResolvedValue({
@@ -233,11 +265,18 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
+        expect(res.body.status).toBe("accepted");
         expect(res.body.questions).toEqual([]);
-        expect(res.body.status).toBe("ok");
+
+        // Wait for background processing and check no questions appear.
+        await flushProcessing();
+        const liveRes = await request(app)
+            .get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(liveRes.statusCode).toBe(200);
+        expect(liveRes.body.questions).toEqual([]);
     });
 
-    it("returns 200 with empty questions when transcription fails (non-fatal)", async () => {
+    it("returns 200 immediately even when transcription fails (background non-fatal)", async () => {
         const capabilities = getTestCapabilities();
         capabilities.aiTranscription.transcribeStreamDetailed = jest
             .fn()
@@ -264,13 +303,21 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("startMs", "10000")
             .field("endMs", "20000");
 
+        // Push-audio responds immediately regardless of AI failure.
         expect(res.statusCode).toBe(200);
         expect(res.body.success).toBe(true);
+        expect(res.body.status).toBe("accepted");
         expect(res.body.questions).toEqual([]);
-        expect(res.body.status).toBe("degraded_transcription");
+
+        // Wait for background processing; transcription error is non-fatal.
+        await flushProcessing();
+        const liveRes = await request(app)
+            .get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(liveRes.statusCode).toBe(200);
+        expect(liveRes.body.questions).toEqual([]);
     });
 
-    it("returns 200 with questions even when recombination fails (fallback)", async () => {
+    it("returns 200 with questions via live-questions even when recombination fails (fallback)", async () => {
         const capabilities = getTestCapabilities();
         // Override recombination to throw.
         capabilities.aiTranscriptRecombination.recombineOverlap = jest
@@ -292,12 +339,14 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
                 .field("endMs", String(i * 10000));
         }
 
-        // No assertion failure — the route should have returned 200 for each call.
-        // By the third call, recombination threw but we still got questions from the raw window transcript.
+        // Wait for background processing.
+        await flushProcessing();
+
+        // By the third call, recombination threw but question generation still ran from the raw window transcript.
         expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalled();
     });
 
-    it("deduplicates questions across successive calls within the same session", async () => {
+    it("deduplicates questions across successive calls within the same session via live-questions", async () => {
         const capabilities = getTestCapabilities();
         // generateQuestions always returns the same question.
         capabilities.aiDiaryQuestions.generateQuestions = jest
@@ -317,21 +366,65 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("startMs", String((i - 1) * 10000))
             .field("endMs", String(i * 10000));
 
-        // Fragment 1: only stores the audio, no questions yet.
-        await sendFragment(1);
+        const pollLiveQuestions = () =>
+            request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
 
-        // Fragment 2: first overlap window available — question is new, should be returned.
-        const res2 = await sendFragment(2);
-        expect(res2.body.questions).toHaveLength(1);
-        expect(res2.body.questions[0].text).toBe("How are you?");
+        // Fragment 1: only stores the audio (background: no previous fragment, no AI).
+        await sendFragment(1);
+        await flushProcessing();
+        const lq1 = await pollLiveQuestions();
+        expect(lq1.body.questions).toHaveLength(0);
+
+        // Fragment 2: first overlap window available — question is new, should appear.
+        await sendFragment(2);
+        await flushProcessing();
+        const lq2 = await pollLiveQuestions();
+        expect(lq2.body.questions).toHaveLength(1);
+        expect(lq2.body.questions[0].text).toBe("How are you?");
 
         // Fragment 3: same question returned by AI, but already asked — deduplicated out.
-        const res3 = await sendFragment(3);
-        expect(res3.body.questions).toHaveLength(0);
+        await sendFragment(3);
+        await flushProcessing();
+        const lq3 = await pollLiveQuestions();
+        expect(lq3.body.questions).toHaveLength(0);
 
         // Fragment 4: still deduplicated.
-        const res4 = await sendFragment(4);
-        expect(res4.body.questions).toHaveLength(0);
+        await sendFragment(4);
+        await flushProcessing();
+        const lq4 = await pollLiveQuestions();
+        expect(lq4.body.questions).toHaveLength(0);
+    });
+
+    it("live-questions returns empty array after questions have been consumed", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+        const sessionId = "session-consume";
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId, mimeType: "audio/webm" });
+
+        for (let i = 1; i <= 2; i++) {
+            await request(app)
+                .post(`/api/audio-recording-session/${sessionId}/push-audio`)
+                .attach("audio", Buffer.from(`audio-${i}`), { filename: `f${i}.webm`, contentType: "audio/webm" })
+                .field("mimeType", "audio/webm")
+                .field("sequence", String(i - 1))
+                .field("startMs", String((i - 1) * 10000))
+                .field("endMs", String(i * 10000));
+        }
+
+        await flushProcessing();
+
+        // First poll returns questions.
+        const first = await request(app)
+            .get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(first.body.questions.length).toBeGreaterThan(0);
+
+        // Second poll returns empty (questions were consumed).
+        const second = await request(app)
+            .get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(second.body.questions).toHaveLength(0);
     });
 
     it("new session cleanup resets previous live state", async () => {
@@ -359,6 +452,9 @@ describe("POST /api/audio-recording-session/:sessionId/push-audio", () => {
             .field("sequence", "0")
             .field("startMs", "0")
             .field("endMs", "10000");
+
+        // Wait for background processing.
+        await flushProcessing();
 
         // Each new session starts fresh with no previous fragment to combine.
         expect(capabilities.aiTranscription.transcribeStreamDetailed).not.toHaveBeenCalled();
