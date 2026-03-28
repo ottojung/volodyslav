@@ -42,7 +42,7 @@ echo "$VERSION" > "$SOURCEDIR"/VERSION
 # Store the full VOLODYSLAV_BASEURL for the installed version
 printf '%s' "${VOLODYSLAV_BASEURL:-}" > "$SOURCEDIR"/BASE_PATH
 
+ln -srfT -- "$SOURCEDIR"/scripts/run-main "$BINDIR"/volodyslav
+
 # Remove .git to avoid broken references in submodule setups
 rm -rf -- "$SOURCEDIR"/.git
-
-ln -srfT -- "$SOURCEDIR"/scripts/run-main "$BINDIR"/volodyslav
