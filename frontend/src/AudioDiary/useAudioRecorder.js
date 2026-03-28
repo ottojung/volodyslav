@@ -4,26 +4,19 @@
  * @module useAudioRecorder
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { makeRecorder, isRecorder } from "./recorder_logic.js";
 import {
     initialRecorderState,
     initialAudioBlob,
     initialAnalyser,
-    generateSessionId,
 } from "./audio_helpers.js";
-import { saveSessionId, clearSessionId } from "./recording_storage.js";
-import {
-    startSession as startBackendSession,
-    pushPcmWithSessionRetry as pushBackendPcm,
-    stopSession as stopBackendSession,
-    fetchFinalAudio,
-    discardSession,
-} from "./session_api.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
 import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 import { useRecordingTimer } from "./useRecordingTimer.js";
+import { createRecorderCallbacks } from "./useAudioRecorder_recorder_callbacks.js";
+import { createAudioRecorderActionHandlers } from "./useAudioRecorder_action_handlers.js";
 
 /** @typedef {import('./audio_helpers.js').RecorderState} RecorderState */
 
@@ -123,95 +116,25 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
     useEffect(() => {
         isMountedRef.current = true;
 
-        const recorder = makeRecorder({
-            onStateChange: (state) => {
-                if (!isMountedRef.current) return;
-                recorderStateRef.current = state;
-                setRecorderState(state);
-            },
-            onStop: (blob) => {
-                if (!isMountedRef.current) return;
-                mimeTypeRef.current = blob.type;
-                // Set local blob first as a fallback
-                audioBlobRef.current = blob;
-                setAudioBlob(blob);
-                setAudioUrl(URL.createObjectURL(blob));
-
-                // Async: drain upload queue, then finalize + fetch from backend only
-                // if at least one PCM fragment was successfully uploaded.
-                const sessionId = sessionIdRef.current;
-                if (sessionId) {
-                    void (async () => {
-                        try {
-                            await uploadQueueRef.current;
-                            if (pcmUploadedCountRef.current === 0) {
-                                // No PCM fragments were successfully uploaded; discard unusable backend session
-                                try {
-                                    await discardSession(sessionId);
-                                } catch {
-                                    // Best-effort discard; ignore failures and keep local blob
-                                }
-                                sessionIdRef.current = "";
-                                clearSessionId();
-                                return;
-                            }
-                            await stopBackendSession(sessionId);
-                            const backendBlob = await fetchFinalAudio(sessionId);
-                            if (!isMountedRef.current) return;
-                            mimeTypeRef.current = backendBlob.type;
-                            audioBlobRef.current = backendBlob;
-                            setAudioBlob(backendBlob);
-                            setAudioUrl(URL.createObjectURL(backendBlob));
-                        } catch {
-                            // Keep the local fallback blob
-                        }
-                    })();
-                }
-            },
-            onError: (message) => {
-                if (!isMountedRef.current) return;
-                setErrorMessage(message);
-            },
-            onAnalyser: (node) => {
-                if (!isMountedRef.current) return;
-                setAnalyser(node);
-            },
-            onChunk: (chunk, startMs, endMs, pcmChunk) => {
-                if (!isMountedRef.current) return;
-                if (chunk.type) {
-                    mimeTypeRef.current = chunk.type;
-                }
-                const offsetMs = restoredOffsetMsRef.current;
-                pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
-
-                // Enqueue PCM fragment push to backend (serialized).
-                // Live diary questioning runs asynchronously server-side; questions are
-                // consumed by polling /live-questions, not from push-pcm response.
-                if (!pcmChunk) return; // PCM capture unavailable; skip backend upload
-                const seq = sequenceRef.current + 1;
-                sequenceRef.current = seq;
-                const sessionId = sessionIdRef.current;
-                if (sessionId) {
-                    uploadQueueRef.current = uploadQueueRef.current.then(async () => {
-                        if (sessionId !== sessionIdRef.current) return;
-                        try {
-                            await pushBackendPcm(sessionId, {
-                                pcmBytes: pcmChunk.pcmBytes,
-                                sampleRateHz: pcmChunk.sampleRateHz,
-                                channels: pcmChunk.channels,
-                                bitDepth: pcmChunk.bitDepth,
-                                startMs: startMs + offsetMs,
-                                endMs: endMs + offsetMs,
-                                sequence: seq,
-                            });
-                            pcmUploadedCountRef.current += 1;
-                        } catch {
-                            // Push-PCM failed; recording continues locally
-                        }
-                    });
-                }
-            },
-        });
+        const recorder = makeRecorder(
+            createRecorderCallbacks({
+                isMountedRef,
+                recorderStateRef,
+                setRecorderState,
+                setAudioBlob,
+                setAudioUrl,
+                setAnalyser,
+                setErrorMessage,
+                sessionIdRef,
+                pcmUploadedCountRef,
+                uploadQueueRef,
+                audioBlobRef,
+                mimeTypeRef,
+                restoredOffsetMsRef,
+                sequenceRef,
+                pushChunk,
+            })
+        );
 
         recorderRef.current = recorder;
 
@@ -255,133 +178,36 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
 
     useRecordingTimer(recorderState, timerRef, setElapsedSeconds);
 
-    const handleStart = useCallback(async () => {
-        clearSessionId();
-        setHasRestoredSession(false);
-        setErrorMessage("");
-        setElapsedSeconds(0);
-        audioBlobRef.current = null;
-        setAudioBlob(null);
-        isRestoredPauseRef.current = false;
-        restoredOffsetMsRef.current = 0;
-        sequenceRef.current = -1;
-        pcmUploadedCountRef.current = 0;
-        uploadQueueRef.current = Promise.resolve();
-        resetCollector();
-        if (audioUrl) {
-            setAudioUrl("");
-        }
-
-        // Generate and store session ID before starting recorder
-        const newSessionId = generateSessionId();
-        sessionIdRef.current = newSessionId;
-        saveSessionId(newSessionId);
-
-        if (isRecorder(recorderRef.current)) {
-            await recorderRef.current.start();
-        }
-
-        // Start backend session (best-effort; recording continues even if this fails)
-        try {
-            await startBackendSession(newSessionId);
-        } catch {
-            // Non-fatal
-        }
-    }, [audioUrl, resetCollector]);
-
-    const handlePauseResume = useCallback(async () => {
-        if (!isRecorder(recorderRef.current)) {
-            return;
-        }
-        if (recorderState === "recording") {
-            recorderRef.current.pause();
-        } else if (recorderState === "paused") {
-            if (isRestoredPauseRef.current) {
-                restoredOffsetMsRef.current = elapsedSecondsRef.current * 1000;
-                isRestoredPauseRef.current = false;
-                await recorderRef.current.start();
-            } else {
-                recorderRef.current.resume();
-            }
-        }
-    }, [recorderState]);
-
-    const handleStop = useCallback(async () => {
-        if (isRestoredPauseRef.current) {
-            // Session was in restored-paused state; finalize on backend
-            isRestoredPauseRef.current = false;
-            recorderStateRef.current = "stopped";
-            setRecorderState("stopped");
-            const sessionId = sessionIdRef.current;
-            if (sessionId) {
-                try {
-                    await stopBackendSession(sessionId);
-                    const blob = await fetchFinalAudio(sessionId);
-                    if (isMountedRef.current) {
-                        mimeTypeRef.current = blob.type;
-                        audioBlobRef.current = blob;
-                        setAudioBlob(blob);
-                        setAudioUrl(URL.createObjectURL(blob));
-                        recorderStateRef.current = "stopped";
-                        setRecorderState("stopped");
-                    }
-                } catch {
-                    // Backend finalize failed; keep local fallback if any
-                }
-            }
-            return;
-        }
-        if (isRecorder(recorderRef.current)) {
-            recorderRef.current.stop();
-            // Backend finalization happens in the onStop callback after upload queue drains
-        }
-    }, [
-        audioBlobRef,
-        isMountedRef,
-        isRestoredPauseRef,
-        mimeTypeRef,
+    const {
+        handleStart,
+        handlePauseResume,
+        handleStop,
+        handleDiscard,
+        clearPersistedSession,
+    } = createAudioRecorderActionHandlers({
+        recorderRef,
         recorderStateRef,
+        isRestoredPauseRef,
+        restoredOffsetMsRef,
+        sequenceRef,
+        pcmUploadedCountRef,
+        uploadQueueRef,
+        audioBlobRef,
+        mimeTypeRef,
+        elapsedSecondsRef,
+        sessionIdRef,
+        isMountedRef,
+        setHasRestoredSession,
+        setErrorMessage,
+        setElapsedSeconds,
         setAudioBlob,
         setAudioUrl,
+        setNote,
+        setAnalyser,
         setRecorderState,
-    ]);
-
-    const handleDiscard = useCallback(() => {
-        isRestoredPauseRef.current = false;
-        audioBlobRef.current = null;
-        restoredOffsetMsRef.current = 0;
-        sequenceRef.current = -1;
-        resetCollector();
-        if (isRecorder(recorderRef.current)) {
-            recorderRef.current.discard();
-        }
-        setAudioBlob(null);
-        if (audioUrl) {
-            setAudioUrl("");
-        }
-        setElapsedSeconds(0);
-        setNote("");
-        setErrorMessage("");
-        setAnalyser(null);
-        setHasRestoredSession(false);
-
-        const sessionId = sessionIdRef.current;
-        clearSessionId();
-        sessionIdRef.current = "";
-        if (sessionId) {
-            void discardSession(sessionId);
-        }
-    }, [audioUrl, resetCollector]);
-
-    const clearPersistedSession = useCallback(() => {
-        setHasRestoredSession(false);
-        const sessionId = sessionIdRef.current;
-        clearSessionId();
-        sessionIdRef.current = "";
-        if (sessionId) {
-            void discardSession(sessionId);
-        }
-    }, []);
+        resetCollector,
+        audioUrl,
+    });
 
     return {
         recorderState,
