@@ -55,11 +55,14 @@ import { useRecordingTimer } from "./useRecordingTimer.js";
 
 /**
  * @typedef {object} UseAudioRecorderOptions
- * @property {((questions: DiaryQuestion[], milestoneNumber: number) => void) | null} [onQuestions] - Called when push-audio returns live diary questions and the fragment sequence number.
+ * @property {((questions: DiaryQuestion[], milestoneNumber: number) => void) | null} [onQuestions] - Reserved callback for live-question delivery; current flow uses polling.
  */
 
 /** @param {UseAudioRecorderOptions} [options] @returns {UseAudioRecorderResult} */
 export function useAudioRecorder({ onQuestions = null } = {}) {
+    // Reserved for future direct-delivery path; current live questions arrive via polling.
+    void onQuestions;
+
     /** @type {[RecorderState, import("react").Dispatch<import("react").SetStateAction<RecorderState>>]} */
     const [recorderState, setRecorderState] = useState(initialRecorderState());
 
@@ -159,7 +162,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 if (!isMountedRef.current) return;
                 setAnalyser(node);
             },
-            onChunk: (chunk, startMs, endMs) => {
+            onChunk: (chunk, startMs, endMs, analysisChunk) => {
                 if (!isMountedRef.current) return;
                 if (chunk.type) {
                     mimeTypeRef.current = chunk.type;
@@ -168,7 +171,8 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
                 // Enqueue audio fragment push to backend (serialized).
-                // Live diary questioning runs server-side and questions are returned in the response.
+                // Live diary questioning runs asynchronously server-side; questions are
+                // consumed by polling /live-questions, not from push-audio response.
                 const seq = sequenceRef.current + 1;
                 sequenceRef.current = seq;
                 const sessionId = sessionIdRef.current;
@@ -177,16 +181,14 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                     uploadQueueRef.current = uploadQueueRef.current.then(async () => {
                         if (sessionId !== sessionIdRef.current) return;
                         try {
-                            const { questions } = await pushBackendAudio(sessionId, mimeType || "audio/webm", {
+                            await pushBackendAudio(sessionId, mimeType || "audio/webm", {
                                 chunk,
                                 startMs: startMs + offsetMs,
                                 endMs: endMs + offsetMs,
                                 sequence: seq,
                                 mimeType,
+                                analysisChunk: analysisChunk ?? undefined,
                             });
-                            if (questions.length > 0 && isMountedRef.current) {
-                                onQuestions?.(questions, seq + 1);
-                            }
                         } catch {
                             // Push-audio failed; recording continues locally
                         }
