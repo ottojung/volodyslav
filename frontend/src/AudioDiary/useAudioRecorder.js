@@ -144,7 +144,17 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                     void (async () => {
                         try {
                             await uploadQueueRef.current;
-                            if (pcmUploadedCountRef.current === 0) return;
+                            if (pcmUploadedCountRef.current === 0) {
+                                // No PCM fragments were successfully uploaded; discard unusable backend session
+                                try {
+                                    await discardSession(sessionId);
+                                } catch {
+                                    // Best-effort discard; ignore failures and keep local blob
+                                }
+                                sessionIdRef.current = "";
+                                clearSessionId();
+                                return;
+                            }
                             await stopBackendSession(sessionId);
                             const backendBlob = await fetchFinalAudio(sessionId);
                             if (!isMountedRef.current) return;
