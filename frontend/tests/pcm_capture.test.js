@@ -82,6 +82,7 @@ describe("downsample()", () => {
         const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
         expect(result.consumedInput).toBe(input.length);
+        expect(result.consumedOffset).toBe(0);
         expect(out.length).toBe(5);
         expect(out[0]).toBe(0);
         expect(out[1]).toBeCloseTo(16384, -1);    // 0.5 * 32767 ≈ 16383
@@ -97,6 +98,7 @@ describe("downsample()", () => {
         const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
         expect(result.consumedInput).toBe(9);
+        expect(result.consumedOffset).toBe(0);
         expect(out.length).toBe(3); // 9 / 3 = 3
         for (const s of out) {
             expect(s).toBeCloseTo(8192, -1); // 0.25 * 32767 ≈ 8192
@@ -111,6 +113,7 @@ describe("downsample()", () => {
         const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
         expect(result.consumedInput).toBe(input.length);
+        expect(result.consumedOffset).toBe(0);
         expect(out.length).toBe(2);
         expect(out[0]).toBeCloseTo(16384, -1);
         expect(out[1]).toBeCloseTo(-16384, -1);
@@ -121,6 +124,7 @@ describe("downsample()", () => {
         const out = result.samples;
         expect(out).toBeInstanceOf(Int16Array);
         expect(result.consumedInput).toBe(0);
+        expect(result.consumedOffset).toBe(0);
         expect(out.length).toBe(0);
     });
 
@@ -137,9 +141,18 @@ describe("downsample()", () => {
         const result = downsample(input, 44100, 16000);
         expect(result.samples.length).toBe(16); // Math.floor(45 * 16000 / 44100)
         expect(result.consumedInput).toBe(44);  // one source sample remains as remainder
+        expect(result.consumedOffset).toBeCloseTo(0.1, 6); // 0.1 of the boundary sample was consumed
         for (const s of result.samples) {
             expect(s).toBeCloseTo(8192, -1);
         }
+    });
+
+    it("accepts startOffset and advances fractional consumption continuously", () => {
+        const input = new Float32Array(4).fill(0.25);
+        const result = downsample(input, 44100, 16000, 0.1);
+        expect(result.samples.length).toBe(1);
+        expect(result.consumedInput).toBe(2);
+        expect(result.consumedOffset).toBeCloseTo(0.85625, 6);
     });
 });
 

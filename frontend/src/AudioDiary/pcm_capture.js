@@ -102,6 +102,7 @@ function buildWavBlob(samples, sampleRate) {
  * @typedef {object} DownsampleResult
  * @property {Int16Array} samples
  * @property {number} consumedInput
+ * @property {number} consumedOffset
  */
 
 /**
@@ -117,22 +118,23 @@ function buildWavBlob(samples, sampleRate) {
  * @param {Float32Array} input - Input samples at `fromRate` Hz.
  * @param {number} fromRate - Input sample rate.
  * @param {number} toRate - Output sample rate.
+ * @param {number} [startOffset=0] - Fractional offset already consumed from input[0], in [0,1).
  * @returns {DownsampleResult}
  */
-function downsample(input, fromRate, toRate) {
+function downsample(input, fromRate, toRate, startOffset = 0) {
     if (fromRate <= toRate) {
         const out = new Int16Array(input.length);
         for (let i = 0; i < input.length; i++) {
             const sample = input[i] ?? 0;
             out[i] = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
         }
-        return { samples: out, consumedInput: input.length };
+        return { samples: out, consumedInput: input.length, consumedOffset: 0 };
     }
     const ratio = fromRate / toRate;
     const outLen = Math.floor(input.length / ratio);
     const out = new Int16Array(outLen);
     let inputIndex = 0;
-    let inputOffset = 0;
+    let inputOffset = startOffset;
 
     for (let i = 0; i < outLen; i++) {
         let remaining = ratio;
@@ -157,7 +159,7 @@ function downsample(input, fromRate, toRate) {
         const avg = sumWeight > 0 ? (sum / sumWeight) : 0;
         out[i] = Math.max(-32768, Math.min(32767, Math.round(avg * 32767)));
     }
-    return { samples: out, consumedInput: inputIndex };
+    return { samples: out, consumedInput: inputIndex, consumedOffset: inputOffset };
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +192,8 @@ class PcmCaptureClass {
      * @type {Float32Array}
      */
     _resampleRemainder = new Float32Array(0);
+    /** @type {number} */
+    _resampleInputOffset = 0;
     /** @type {boolean} */
     _isRecording = true;
 
@@ -303,10 +307,16 @@ class PcmCaptureClass {
             input = merged;
             this._resampleRemainder = new Float32Array(0);
         }
-        const downsampled = downsample(input, this._sourceSampleRate, TARGET_SAMPLE_RATE);
+        const downsampled = downsample(
+            input,
+            this._sourceSampleRate,
+            TARGET_SAMPLE_RATE,
+            this._resampleInputOffset
+        );
         const int16 = downsampled.samples;
         // Save any unconsumed input frames for the next callback (downsampling only).
         if (this._sourceSampleRate > TARGET_SAMPLE_RATE) {
+            this._resampleInputOffset = downsampled.consumedOffset;
             if (downsampled.consumedInput < input.length) {
                 this._resampleRemainder = input.slice(downsampled.consumedInput);
             }
@@ -326,6 +336,7 @@ class PcmCaptureClass {
         this._bufferChunks = [];
         this._totalSamples = 0;
         this._resampleRemainder = new Float32Array(0);
+        this._resampleInputOffset = 0;
     }
 
     /**
@@ -412,6 +423,7 @@ class PcmCaptureClass {
         this._bufferChunks = [];
         this._totalSamples = 0;
         this._resampleRemainder = new Float32Array(0);
+        this._resampleInputOffset = 0;
     }
 }
 
