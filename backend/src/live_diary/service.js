@@ -362,9 +362,13 @@ async function pushAudio(
     );
 
     // Accumulate word count since the last time questions were asked.
-    // This means even sparse fragments will eventually trigger question generation
-    // once enough words have been spoken cumulatively.
-    const fragmentWordCount = newWindowTranscript.split(/\s+/).filter(Boolean).length;
+    // Count only newly added words (not the full overlap window) so overlap
+    // does not double-count previously spoken content.
+    const newTranscriptPortion =
+        runningTranscript && updatedRunningTranscript.startsWith(runningTranscript)
+            ? updatedRunningTranscript.slice(runningTranscript.length)
+            : merged;
+    const fragmentWordCount = newTranscriptPortion.split(/\s+/).filter(Boolean).length;
     const storedWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
     const cumulativeWordCount = (parseInt(storedWordCount, 10) || 0) + fragmentWordCount;
 

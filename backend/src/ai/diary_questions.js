@@ -46,7 +46,7 @@ function isAIDiaryQuestionsError(object) {
 
 const DIARY_QUESTIONS_MODEL = "gpt-5.4-mini";
 const TARGET_QUESTION_COUNT = 5;
-const MIN_QUESTION_COUNT = 1;
+const MIN_QUESTION_COUNT = 0;
 
 const SYSTEM_PROMPT = `You are a warm, kind diary companion.
 Your job is to propose short optional questions a person may reflect on while speaking.
@@ -97,7 +97,13 @@ function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions, maxQuestions) 
         ? "- 1 question (any intent)"
         : maxQuestions <= 2
         ? "- 1 warm reflective\n- 1 clarifying/useful"
-        : `- ${Math.ceil(maxQuestions / 2)} warm reflective\n- ${Math.floor(maxQuestions / 2)} clarifying/useful\n- 1 gentle forward-looking (if quota allows)`;
+        : (() => {
+            const forwardCount = 1;
+            const remaining = maxQuestions - forwardCount;
+            const warmCount = Math.max(1, Math.ceil(remaining / 2));
+            const clarCount = remaining - warmCount;
+            return `- ${warmCount} warm reflective\n- ${clarCount} clarifying/useful\n- ${forwardCount} gentle forward-looking (if quota allows)`;
+        })();
 
     return [
         "TRANSCRIPTION_SO_FAR:",
@@ -109,7 +115,7 @@ function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions, maxQuestions) 
         `TASK:`,
         `Generate at most ${maxQuestions} NEW question(s) based on the full transcription so far.`,
         "Do not repeat or closely paraphrase any previously asked question.",
-        "If the transcription is short or uninteresting, output fewer questions (even zero).",
+        "If the transcription is short or uninteresting, you may output fewer than the requested number of questions.",
         "Balance warmth and usefulness:",
         distribution,
     ].join("\n");
@@ -219,13 +225,6 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
         if (isDiaryQuestion(item)) {
             questions.push({ text: item.text, intent: item.intent });
         }
-    }
-
-    if (questions.length === 0) {
-        throw new AIDiaryQuestionsError(
-            "Diary questions response contained no valid questions",
-            parsed
-        );
     }
 
     return questions;

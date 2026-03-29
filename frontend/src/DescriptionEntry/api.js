@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../api_base_url.js";
+import { DateTime } from "luxon";
 import { logger } from "./logger.js";
 import {
     makeEntrySubmissionError,
@@ -10,6 +11,18 @@ import {
  * Must match `SORTED_EVENTS_CACHE_SIZE` in the backend constants.
  */
 const SORTED_EVENTS_CACHE_SIZE = 100;
+
+/**
+ * Build an ISO datetime string in local time with explicit offset.
+ * @returns {string}
+ */
+function makeClientDate() {
+    const iso = DateTime.local().toISO();
+    if (!iso) {
+        throw makeEntrySubmissionError("Failed to create client date");
+    }
+    return iso;
+}
 
 /**
  * @typedef {Object} Entry
@@ -50,7 +63,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
 
     // Capture the client's local date *before* the async submission so it
     // reflects the moment the user triggered the entry, not the server time.
-    const clientDate = new Date().toISOString();
+    const clientDate = makeClientDate();
 
     let response;
     

@@ -88,15 +88,15 @@ export default function LiveQuestionsPanel({
     // Track the most recently added question ID for fade-in animation.
     /** @type {import('react').MutableRefObject<string | null>} */
     const latestQuestionIdRef = useRef(null);
-    const [newQuestionId, setNewQuestionId] = useState(/** @type {string | null} */ (null));
+    const [newQuestionId, setNewQuestionId] = useState("");
 
-    const newestId = displayedQuestions[0]?.questionId ?? pinnedQuestions[0]?.questionId ?? null;
+    const newestId = displayedQuestions[0]?.questionId ?? pinnedQuestions[0]?.questionId ?? "";
 
     useEffect(() => {
-        if (newestId !== null && newestId !== latestQuestionIdRef.current) {
+        if (newestId && newestId !== latestQuestionIdRef.current) {
             latestQuestionIdRef.current = newestId;
             setNewQuestionId(newestId);
-            const timer = setTimeout(() => setNewQuestionId(null), 300);
+            const timer = setTimeout(() => setNewQuestionId(""), 300);
             return () => clearTimeout(timer);
         }
         return undefined;

@@ -27,6 +27,13 @@ function makeResponse(status, data) {
     };
 }
 
+function isIsoDateTimeWithOffset(value) {
+    return (
+        typeof value === "string" &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    );
+}
+
 describe("submitEntry", () => {
     beforeEach(() => {
         global.fetch = jest.fn();
@@ -57,8 +64,7 @@ describe("submitEntry", () => {
             const body = JSON.parse(options.body);
             expect(body.rawInput).toBe("food pizza");
             expect(typeof body.clientDate).toBe("string");
-            // Verify it's a valid ISO date string.
-            expect(new Date(body.clientDate).toISOString()).toBe(body.clientDate);
+            expect(isIsoDateTimeWithOffset(body.clientDate)).toBe(true);
         });
 
         it("includes request_identifier query param when provided", async () => {
@@ -181,7 +187,7 @@ describe("submitEntry", () => {
             );
             const clientDate = options.body.get("clientDate");
             expect(typeof clientDate).toBe("string");
-            expect(new Date(clientDate).toISOString()).toBe(clientDate);
+            expect(isIsoDateTimeWithOffset(clientDate)).toBe(true);
         });
 
         it("puts uploaded files in FormData under field 'files'", async () => {

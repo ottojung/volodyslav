@@ -297,12 +297,29 @@ describe("pushAudio", () => {
                 responseId: null,
                 structured: { transcript: "this is the new overlap sentence that ends with word", coverage: "full", warnings: [], unclearAudio: false },
                 rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "another overlap sentence adding more words for generation",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "another overlap sentence adding more words for generation", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
             });
-        caps.aiTranscriptRecombination.recombineOverlap = jest.fn().mockResolvedValue("   ");
+        caps.aiTranscriptRecombination.recombineOverlap = jest
+            .fn()
+            .mockResolvedValueOnce("   ")
+            .mockImplementation(async (_existing, newer) => newer);
 
         await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 1);
         await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 2);
         await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 3);
+        await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 4);
 
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
             expect.stringContaining("word"),
@@ -355,28 +372,6 @@ describe("pushAudio", () => {
         );
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("degraded_transcription");
-    });
-
-    it("returns empty questions when transcription returns empty string (silence)", async () => {
-        const caps = makeCapabilities();
-        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
-            text: "",
-            provider: "Google",
-            model: "mocked",
-            finishReason: "STOP",
-            finishMessage: null,
-            candidateTokenCount: 0,
-            usageMetadata: null,
-            modelVersion: null,
-            responseId: null,
-            structured: { transcript: "", coverage: "full", warnings: [], unclearAudio: false },
-            rawResponse: null,
-        });
-
-        await pushAudio(caps, "sess-silent", buildTestPcmInfo(), 1);
-        const result = await pushAudio(caps, "sess-silent", buildTestPcmInfo(), 2);
-        expect(result.questions).toEqual([]);
-        expect(result.status).toBe("ok");
     });
 
     it("returns empty questions when transcription returns empty string (silence)", async () => {
@@ -706,6 +701,44 @@ describe("getPendingQuestions", () => {
 
     it("accumulates questions from multiple fragments before they are fetched", async () => {
         const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "one two three four five six seven eight nine ten",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: {
+                    transcript: "one two three four five six seven eight nine ten",
+                    coverage: "full",
+                    warnings: [],
+                    unclearAudio: false,
+                },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: {
+                    transcript: "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+                    coverage: "full",
+                    warnings: [],
+                    unclearAudio: false,
+                },
+                rawResponse: null,
+            });
         // Return distinct questions for each generation to avoid deduplication.
         caps.aiDiaryQuestions.generateQuestions = jest
             .fn()

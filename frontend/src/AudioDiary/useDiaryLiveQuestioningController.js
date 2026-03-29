@@ -77,17 +77,21 @@ export function useDiaryLiveQuestioningController() {
      * current list without closing over stale state.
      * @type {import('react').MutableRefObject<DisplayedQuestion[]>}
      */
-    const displayedQuestionsRef = useRef(/** @type {DisplayedQuestion[]} */ ([]));
+    const displayedQuestionsRef = useRef([]);
 
     /** @type {[string[], import('react').Dispatch<import('react').SetStateAction<string[]>>]} */
     const [pinnedQuestionIds, setPinnedQuestionIds] = useState(
         /** @returns {string[]} */ () => []
     );
+    /** @type {import('react').MutableRefObject<string[]>} */
+    const pinnedQuestionIdsRef = useRef([]);
 
     /** @type {[DisplayedQuestion[], import('react').Dispatch<import('react').SetStateAction<DisplayedQuestion[]>>]} */
     const [pinnedQuestions, setPinnedQuestions] = useState(
         /** @returns {DisplayedQuestion[]} */ () => []
     );
+    /** @type {import('react').MutableRefObject<DisplayedQuestion[]>} */
+    const pinnedQuestionsRef = useRef([]);
 
     /** @type {import('react').MutableRefObject<boolean>} */
     const isRunningRef = useRef(false);
@@ -105,13 +109,19 @@ export function useDiaryLiveQuestioningController() {
      * setState calls after the recording ends.
      * @type {import('react').MutableRefObject<ReturnType<typeof setTimeout>[]>}
      */
-    const newFlagTimeoutsRef = useRef(/** @type {ReturnType<typeof setTimeout>[]} */ ([]));
+    const newFlagTimeoutsRef = useRef([]);
 
     // Keep displayedQuestionsRef in sync with state so callbacks always have
     // the current list without closing over a stale value.
     useEffect(() => {
         displayedQuestionsRef.current = displayedQuestions;
     }, [displayedQuestions]);
+    useEffect(() => {
+        pinnedQuestionIdsRef.current = pinnedQuestionIds;
+    }, [pinnedQuestionIds]);
+    useEffect(() => {
+        pinnedQuestionsRef.current = pinnedQuestions;
+    }, [pinnedQuestions]);
 
     /**
      * Cancel and clear all pending isNew-clear timeouts.
@@ -177,35 +187,40 @@ export function useDiaryLiveQuestioningController() {
      */
     const togglePin = useCallback(
         (/** @type {string} */ questionId) => {
-            setPinnedQuestionIds((/** @type {string[]} */ prevPinned) => {
-                const alreadyPinned = prevPinned.includes(questionId);
-                if (alreadyPinned) {
-                    // Unpin: remove from pinned list.
-                    const newPinned = prevPinned.filter((/** @type {string} */ id) => id !== questionId);
-                    setPinnedQuestions((/** @type {DisplayedQuestion[]} */ prevPinnedQ) =>
-                        prevPinnedQ.filter((/** @type {DisplayedQuestion} */ q) => q.questionId !== questionId)
-                    );
-                    // Also remove from unpinned list (question disappears entirely).
-                    setDisplayedQuestions((/** @type {DisplayedQuestion[]} */ prevUnpinned) =>
-                        prevUnpinned.filter((/** @type {DisplayedQuestion} */ q) => q.questionId !== questionId)
-                    );
-                    return newPinned;
-                } else {
-                    // Pin: move from unpinned to pinned.
-                    // Derive question from the ref mirror to avoid stale closures.
-                    const question = displayedQuestionsRef.current.find(
-                        (/** @type {DisplayedQuestion} */ q) => q.questionId === questionId
-                    );
-                    if (!question) {
-                        return prevPinned;
-                    }
-                    setPinnedQuestions((/** @type {DisplayedQuestion[]} */ prevPinnedQ) => [question, ...prevPinnedQ]);
-                    setDisplayedQuestions((/** @type {DisplayedQuestion[]} */ prevUnpinned) =>
-                        prevUnpinned.filter((/** @type {DisplayedQuestion} */ q) => q.questionId !== questionId)
-                    );
-                    return [questionId, ...prevPinned];
-                }
-            });
+            const currentlyPinnedIds = pinnedQuestionIdsRef.current;
+            const currentlyPinnedQuestions = pinnedQuestionsRef.current;
+            const currentlyDisplayed = displayedQuestionsRef.current;
+            const alreadyPinned = currentlyPinnedIds.includes(questionId);
+
+            if (alreadyPinned) {
+                const newPinnedIds = currentlyPinnedIds.filter((id) => id !== questionId);
+                const newPinnedQuestions = currentlyPinnedQuestions.filter(
+                    (q) => q.questionId !== questionId
+                );
+                const newDisplayedQuestions = currentlyDisplayed.filter(
+                    (q) => q.questionId !== questionId
+                );
+
+                setPinnedQuestionIds(newPinnedIds);
+                setPinnedQuestions(newPinnedQuestions);
+                setDisplayedQuestions(newDisplayedQuestions);
+                return;
+            }
+
+            const question = currentlyDisplayed.find((q) => q.questionId === questionId);
+            if (!question) {
+                return;
+            }
+
+            const newPinnedIds = [questionId, ...currentlyPinnedIds];
+            const newPinnedQuestions = [question, ...currentlyPinnedQuestions];
+            const newDisplayedQuestions = currentlyDisplayed.filter(
+                (q) => q.questionId !== questionId
+            );
+
+            setPinnedQuestionIds(newPinnedIds);
+            setPinnedQuestions(newPinnedQuestions);
+            setDisplayedQuestions(newDisplayedQuestions);
         },
         []
     );
@@ -221,6 +236,8 @@ export function useDiaryLiveQuestioningController() {
             isRunningRef.current = true;
             currentSessionIdRef.current = sessionId;
             displayedQuestionsRef.current = [];
+            pinnedQuestionIdsRef.current = [];
+            pinnedQuestionsRef.current = [];
             setDisplayedQuestions([]);
             setPinnedQuestionIds([]);
             setPinnedQuestions([]);
