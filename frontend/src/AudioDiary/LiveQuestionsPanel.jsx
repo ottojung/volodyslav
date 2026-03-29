@@ -86,7 +86,7 @@ export default function LiveQuestionsPanel({
         errorMessage;
 
     // Track the most recently added question ID for fade-in animation.
-    /** @type {React.MutableRefObject<string | null>} */
+    /** @type {import('react').MutableRefObject<string | null>} */
     const latestQuestionIdRef = useRef(null);
     const [newQuestionId, setNewQuestionId] = useState(/** @type {string | null} */ (null));
 
