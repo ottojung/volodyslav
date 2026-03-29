@@ -9,7 +9,7 @@
  */
 
 import React from "react";
-import { Box, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, Text, VStack } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 
 /** @typedef {import('./useDiaryLiveQuestioningController.js').DisplayedQuestion} DisplayedQuestion */
@@ -30,19 +30,9 @@ const fadeIn = keyframes`
  * @returns {React.JSX.Element}
  */
 function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
-    /**
-     * @param {import('react').KeyboardEvent<HTMLElement>} event
-     */
-    const onKeyDown = (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onTogglePin(question.questionId);
-        }
-    };
-
     return (
-        <Box
-            as="button"
+        <Button
+            type="button"
             borderRadius="md"
             p={3}
             mb={2}
@@ -50,11 +40,14 @@ function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
             borderLeft={isPinned ? "3px solid" : "none"}
             borderColor={isPinned ? "blue.400" : undefined}
             cursor="pointer"
+            height="auto"
+            minHeight="unset"
+            justifyContent="flex-start"
+            fontWeight="normal"
             _hover={{ bg: isPinned ? "blue.100" : "gray.100" }}
             onClick={() => onTogglePin(question.questionId)}
-            onKeyDown={onKeyDown}
             aria-pressed={isPinned}
-            aria-label={isPinned ? "Unpin question" : "Pin question"}
+            aria-label={isPinned ? `Unpin question: ${question.text}` : `Pin question: ${question.text}`}
             textAlign="left"
             width="100%"
             style={
@@ -73,7 +66,7 @@ function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
             >
                 {question.text}
             </Text>
-        </Box>
+        </Button>
     );
 }
 

@@ -25,6 +25,7 @@ import { getLiveQuestions } from "./session_api.js";
  * How often (in ms) to poll the backend for newly generated diary questions.
  */
 const POLLING_INTERVAL_MS = 5000;
+const NEW_FLAG_DURATION_MS = 300;
 
 /**
  * Maximum number of unpinned questions to keep visible at once.
@@ -152,13 +153,26 @@ export function useDiaryLiveQuestioningController() {
                 questionId: makeQuestionId(),
                 text: q.text,
                 intent: q.intent,
-                isNew: false,
+                isNew: true,
             }));
 
             setDisplayedQuestions((/** @type {DisplayedQuestion[]} */ prev) => {
                 const updated = [...newItems, ...prev];
                 return updated.slice(0, MAX_VISIBLE_UNPINNED);
             });
+
+            const timeoutId = setTimeout(() => {
+                const newItemIds = new Set(newItems.map((ni) => ni.questionId));
+                setDisplayedQuestions((/** @type {DisplayedQuestion[]} */ prev) =>
+                    prev.map((q) =>
+                        newItemIds.has(q.questionId)
+                            ? { ...q, isNew: false }
+                            : q
+                    )
+                );
+                newFlagTimeoutsRef.current = newFlagTimeoutsRef.current.filter((id) => id !== timeoutId);
+            }, NEW_FLAG_DURATION_MS);
+            newFlagTimeoutsRef.current.push(timeoutId);
         },
         []
     );
@@ -178,12 +192,12 @@ export function useDiaryLiveQuestioningController() {
 
             if (alreadyPinned) {
                 const newPinnedIds = currentlyPinnedIds.filter((id) => id !== questionId);
-                const newPinnedQuestions = currentlyPinnedQuestions.filter(
-                    (q) => q.questionId !== questionId
-                );
-                const newDisplayedQuestions = currentlyDisplayed.filter(
-                    (q) => q.questionId !== questionId
-                );
+                const newPinnedQuestions = currentlyPinnedQuestions.filter((q) => q.questionId !== questionId);
+                const newDisplayedQuestions = currentlyDisplayed.filter((q) => q.questionId !== questionId);
+
+                pinnedQuestionIdsRef.current = newPinnedIds;
+                pinnedQuestionsRef.current = newPinnedQuestions;
+                displayedQuestionsRef.current = newDisplayedQuestions;
 
                 setPinnedQuestionIds(newPinnedIds);
                 setPinnedQuestions(newPinnedQuestions);
@@ -198,9 +212,11 @@ export function useDiaryLiveQuestioningController() {
 
             const newPinnedIds = [questionId, ...currentlyPinnedIds];
             const newPinnedQuestions = [question, ...currentlyPinnedQuestions];
-            const newDisplayedQuestions = currentlyDisplayed.filter(
-                (q) => q.questionId !== questionId
-            );
+            const newDisplayedQuestions = currentlyDisplayed.filter((q) => q.questionId !== questionId);
+
+            pinnedQuestionIdsRef.current = newPinnedIds;
+            pinnedQuestionsRef.current = newPinnedQuestions;
+            displayedQuestionsRef.current = newDisplayedQuestions;
 
             setPinnedQuestionIds(newPinnedIds);
             setPinnedQuestions(newPinnedQuestions);

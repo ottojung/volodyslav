@@ -436,15 +436,17 @@ async function pushAudio(
         "Live diary question generation result"
     );
 
-    // Reset the cumulative word counter now that questions have been generated.
-    await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, "0");
-
     if (newQuestions.length > 0) {
         await writeAskedQuestions(temporary, sessionId, [
             ...askedQuestions,
             ...newQuestions.map((q) => q.text),
         ]);
         await appendPendingQuestions(temporary, sessionId, newQuestions);
+        // Reset counter only when at least one new question is accepted/enqueued.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, "0");
+    } else {
+        // No new question asked (e.g. duplicates only) — preserve cumulative words.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
     }
 
     return { questions: newQuestions, status: "ok" };

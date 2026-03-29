@@ -93,7 +93,9 @@ function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions, maxQuestions) 
             ? "[]"
             : JSON.stringify(askedQuestions, null, 2);
 
-    const distribution = maxQuestions <= 1
+    const distribution = maxQuestions <= 0
+        ? "- 0 questions"
+        : maxQuestions <= 1
         ? "- 1 question (any intent)"
         : maxQuestions <= 2
         ? "- 1 warm reflective\n- 1 clarifying/useful"

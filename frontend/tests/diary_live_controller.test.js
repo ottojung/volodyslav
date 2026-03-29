@@ -14,7 +14,7 @@ describe("startLive", () => {
     it("resets displayedQuestions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-start"));
 
         expect(result.current.displayedQuestions).toEqual([]);
     });
@@ -24,7 +24,7 @@ describe("stopLive", () => {
     it("ignores questions sent after stopLive is called", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-stop"));
         act(() => result.current.stopLive());
 
         act(() => {
@@ -42,7 +42,7 @@ describe("stopLive", () => {
 describe("onQuestions", () => {
     it("adds individual questions (not grouped) when called with questions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-onquestions-1"));
 
         act(() => {
             result.current.onQuestions([
@@ -59,7 +59,7 @@ describe("onQuestions", () => {
 
     it("each question gets a unique questionId", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-onquestions-2"));
 
         act(() => {
             result.current.onQuestions([
@@ -74,7 +74,7 @@ describe("onQuestions", () => {
 
     it("does not add questions when called with empty array", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-onquestions-3"));
 
         act(() => {
             result.current.onQuestions([], 1);
@@ -85,7 +85,7 @@ describe("onQuestions", () => {
 
     it("adds newer questions at the front (newest first)", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-onquestions-4"));
 
         act(() => {
             result.current.onQuestions([{ text: "Q1", intent: "clarifying" }], 1);
@@ -100,7 +100,7 @@ describe("onQuestions", () => {
 
     it("trims displayedQuestions to MAX_VISIBLE_UNPINNED (8)", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-onquestions-5"));
 
         for (let i = 0; i < 10; i++) {
             act(() => {
@@ -127,7 +127,7 @@ describe("onQuestions", () => {
 describe("togglePin", () => {
     it("pins a question: moves it from displayedQuestions to pinnedQuestions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-pin-1"));
 
         act(() => {
             result.current.onQuestions([{ text: "Pin me", intent: "warm_reflective" }], 1);
@@ -147,7 +147,7 @@ describe("togglePin", () => {
 
     it("unpins a question: removes it from pinnedQuestions and displayedQuestions entirely", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-pin-2"));
 
         act(() => {
             result.current.onQuestions([{ text: "Toggle me", intent: "clarifying" }], 1);
@@ -173,7 +173,7 @@ describe("togglePin", () => {
 
     it("startLive resets all pinned questions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
-        act(() => result.current.startLive());
+        act(() => result.current.startLive("session-pin-3"));
 
         act(() => {
             result.current.onQuestions([{ text: "Pinned Q", intent: "clarifying" }], 1);

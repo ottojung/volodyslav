@@ -205,11 +205,12 @@ describe("LiveQuestionsPanel", () => {
                 errorMessage={null}
             />
         );
-        const button = screen.getByRole("button", { name: "Pin question" });
+        const button = screen.getByRole("button", { name: "Pin question: Accessible Q" });
         expect(button).toHaveAttribute("aria-pressed", "false");
+        expect(button).toHaveAttribute("type", "button");
     });
 
-    it("supports keyboard toggling via Enter and Space", () => {
+    it("does not toggle on keyDown alone (avoids custom key double-handling)", () => {
         const onToggle = jest.fn();
         const q = makeQuestion("Keyboard Q", "kbd-q");
         renderPanel(
@@ -221,11 +222,13 @@ describe("LiveQuestionsPanel", () => {
                 errorMessage={null}
             />
         );
-        const button = screen.getByRole("button", { name: "Pin question" });
+        const button = screen.getByRole("button", { name: "Pin question: Keyboard Q" });
         fireEvent.keyDown(button, { key: "Enter" });
         fireEvent.keyDown(button, { key: " " });
-        expect(onToggle).toHaveBeenCalledTimes(2);
-        expect(onToggle).toHaveBeenNthCalledWith(1, "kbd-q");
-        expect(onToggle).toHaveBeenNthCalledWith(2, "kbd-q");
+        expect(onToggle).toHaveBeenCalledTimes(0);
+
+        fireEvent.click(button);
+        expect(onToggle).toHaveBeenCalledTimes(1);
+        expect(onToggle).toHaveBeenCalledWith("kbd-q");
     });
 });
