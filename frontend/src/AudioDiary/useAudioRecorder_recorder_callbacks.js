@@ -129,7 +129,7 @@ export function createRecorderCallbacks(params) {
             const offsetMs = restoredOffsetMsRef.current;
             pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
-            if (!pcmChunk && !chunk.size) return;
+            if (!pcmChunk && chunk.size === 0) return;
 
             const seq = sequenceRef.current + 1;
             sequenceRef.current = seq;

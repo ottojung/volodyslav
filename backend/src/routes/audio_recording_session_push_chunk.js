@@ -1,3 +1,5 @@
+const { UINT_RE, UFLOAT_RE, POSINT_RE } = require("../audio_recording_session");
+
 /**
  * @typedef {import('../logger').Logger} Logger
  * @typedef {object} AudioRouterCapabilities
@@ -24,7 +26,7 @@ function registerPushChunkRoute(router, capabilities, upload, pushAudioFragment,
      * @param {import('express').Response} res
      */
     async function handlePushChunk(req, res) {
-        const { sessionId } = req.params;
+        const sessionId = req.params["sessionId"];
         if (!sessionId) {
             return res.status(400).json({ success: false, error: "Missing session ID" });
         }
@@ -41,9 +43,6 @@ function registerPushChunkRoute(router, capabilities, upload, pushAudioFragment,
             return res.status(400).json({ success: false, error: "At least one of pcm or media must be provided" });
         }
 
-        const UINT_RE = /^\d{1,6}$/;
-        const UFLOAT_RE = /^\d+(\.\d+)?$/;
-
         if (
             typeof startMs !== "string" ||
             typeof endMs !== "string" ||
@@ -54,8 +53,6 @@ function registerPushChunkRoute(router, capabilities, upload, pushAudioFragment,
         ) {
             return res.status(400).json({ success: false, error: "Invalid startMs, endMs, or sequence" });
         }
-
-        const POSINT_RE = /^[1-9]\d{0,5}$/;
 
         if (hasPcm) {
             if (

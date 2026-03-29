@@ -104,4 +104,10 @@ module.exports = {
     parseAudioMimeType,
     validatePcmParams,
     validateUploadChunkParams,
+    /** Matches unsigned integers 0–999999 (for sequence numbers). */
+    UINT_RE: /^\d{1,6}$/,
+    /** Matches unsigned floats (for startMs/endMs). */
+    UFLOAT_RE: /^\d+(\.\d+)?$/,
+    /** Matches positive integers 1–999999 (for sampleRateHz, channels, bitDepth). */
+    POSINT_RE: /^[1-9]\d{0,5}$/,
 };

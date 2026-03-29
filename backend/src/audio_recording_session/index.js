@@ -16,4 +16,7 @@ module.exports = {
     ...keys,
     parseAudioMimeType: helpers.parseAudioMimeType,
     validatePcmParams: helpers.validatePcmParams,
+    UINT_RE: helpers.UINT_RE,
+    UFLOAT_RE: helpers.UFLOAT_RE,
+    POSINT_RE: helpers.POSINT_RE,
 };

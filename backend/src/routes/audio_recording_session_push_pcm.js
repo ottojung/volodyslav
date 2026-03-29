@@ -1,3 +1,5 @@
+const { UINT_RE, UFLOAT_RE, POSINT_RE } = require("../audio_recording_session");
+
 /**
  * @typedef {import('../logger').Logger} Logger
  * @typedef {object} AudioRouterCapabilities
@@ -54,10 +56,6 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, e
             if (!pcmFile) {
                 return res.status(400).json({ success: false, error: "Missing pcm file" });
             }
-
-            const UINT_RE = /^\d{1,6}$/;
-            const UFLOAT_RE = /^\d+(\.\d+)?$/;
-            const POSINT_RE = /^[1-9]\d{0,5}$/;
 
             if (
                 typeof startMs !== "string" ||
