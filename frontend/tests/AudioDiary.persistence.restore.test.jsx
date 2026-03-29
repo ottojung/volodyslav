@@ -25,7 +25,7 @@ describe("AudioDiary persistence: restore states", () => {
         expect(screen.getByText(/idle/i)).toBeInTheDocument();
     });
 
-    it("restores stopped session with audio preview and submit button", async () => {
+    it("restores stopped session in stopped state without audio preview", async () => {
         injectSnapshot({
             recorderState: "stopped",
             elapsedSeconds: 30,
@@ -37,10 +37,9 @@ describe("AudioDiary persistence: restore states", () => {
         await waitFor(() => {
             expect(screen.getByTestId("restored-session-banner")).toBeInTheDocument();
         });
-        await waitFor(() => {
-            expect(screen.getByTestId("audio-preview")).toBeInTheDocument();
-        });
-        expect(screen.getByTestId("submit-button")).toBeInTheDocument();
+        expect(screen.queryByTestId("audio-preview")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("submit-button")).not.toBeInTheDocument();
+        expect(screen.getByText(/■ Stopped/i)).toBeInTheDocument();
     });
 
     it("restores recording/paused snapshot into paused state and timer", async () => {
@@ -60,7 +59,7 @@ describe("AudioDiary persistence: restore states", () => {
         expect(screen.getByTestId("discard-button")).toBeInTheDocument();
     });
 
-    it("stop from restored paused shows preview", async () => {
+    it("stop from restored paused sets stopped state without audio preview", async () => {
         injectSnapshot({
             recorderState: "paused",
             elapsedSeconds: 50,
@@ -76,8 +75,10 @@ describe("AudioDiary persistence: restore states", () => {
             fireEvent.click(screen.getByTestId("stop-button"));
         });
         await waitFor(() => {
-            expect(screen.getByTestId("audio-preview")).toBeInTheDocument();
+            expect(screen.getByText(/■ Stopped/i)).toBeInTheDocument();
         });
+        expect(screen.queryByTestId("audio-preview")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("submit-button")).not.toBeInTheDocument();
     });
 
     it("resume from restored paused transitions to recording and keeps timer base", async () => {

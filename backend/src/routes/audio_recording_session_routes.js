@@ -6,7 +6,8 @@
  *   POST   /audio-recording-session/:sessionId/push-pcm
  *   GET    /audio-recording-session/:sessionId
  *   POST   /audio-recording-session/:sessionId/stop
- *   GET    /audio-recording-session/:sessionId/final-audio
+ *   GET    /audio-recording-session/:sessionId/restore
+ *   GET    /audio-recording-session/:sessionId/live-questions
  *   DELETE /audio-recording-session/:sessionId
  *
  * @module routes/audio_recording_session
@@ -19,12 +20,10 @@ const {
     uploadChunk: pushAudioFragment,
     getSession,
     stopSession,
-    fetchFinalAudio,
     discardSession,
     isAudioSessionNotFoundError,
     isAudioSessionChunkValidationError,
     isAudioSessionConflictError,
-    isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
 const { getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
 const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_analysis_queue");
@@ -151,42 +150,9 @@ function makeRouter(capabilities) {
             if (isAudioSessionNotFoundError(error)) {
                 return res.status(404).json({ success: false, error: error.message });
             }
-            if (isAudioSessionFinalizeError(error)) {
-                return res.status(500).json({ success: false, error: error.message });
-            }
             capabilities.logger.logError(
                 { error: error instanceof Error ? error.message : String(error) },
                 "Failed to stop audio session"
-            );
-            return res.status(500).json({ success: false, error: "Internal error" });
-        }
-    });
-
-    // GET /audio-recording-session/:sessionId/final-audio
-    router.get("/audio-recording-session/:sessionId/final-audio", async (req, res) => {
-        const { sessionId } = req.params;
-
-        try {
-            const { buffer, mimeType } = await fetchFinalAudio(capabilities, sessionId);
-            res.setHeader("Content-Type", mimeType || "audio/webm");
-            res.setHeader("Content-Length", buffer.length);
-            return res.send(buffer);
-        } catch (error) {
-            if (isAudioSessionChunkValidationError(error)) {
-                return res.status(400).json({ success: false, error: error.message });
-            }
-            if (isAudioSessionNotFoundError(error)) {
-                return res.status(404).json({ success: false, error: error.message });
-            }
-            if (isAudioSessionConflictError(error)) {
-                return res.status(409).json({ success: false, error: "Session not yet finalized" });
-            }
-            if (isAudioSessionFinalizeError(error)) {
-                return res.status(500).json({ success: false, error: error.message });
-            }
-            capabilities.logger.logError(
-                { error: error instanceof Error ? error.message : String(error) },
-                "Failed to fetch final audio"
             );
             return res.status(500).json({ success: false, error: "Internal error" });
         }
@@ -199,17 +165,15 @@ function makeRouter(capabilities) {
 
         try {
             const meta = await getSession(capabilities, sessionId);
-            const hasFinalAudio = meta.status === "stopped";
             return res.json({
                 success: true,
                 restore: {
                     status: meta.status,
                     mimeType: meta.mimeType,
-                    elapsedSeconds: hasFinalAudio
+                    elapsedSeconds: meta.status === "stopped"
                         ? meta.elapsedSeconds
                         : Math.floor(meta.lastEndMs / 1000),
                     lastSequence: meta.lastSequence,
-                    hasFinalAudio,
                 },
             });
         } catch (error) {

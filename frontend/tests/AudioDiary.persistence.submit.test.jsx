@@ -17,7 +17,7 @@ import {
 setupAudioDiaryPersistenceHarness();
 
 describe("AudioDiary persistence: submit lifecycle", () => {
-    it("clears stored session ID after successful submit", async () => {
+    it("restored stopped session does not show submit button", async () => {
         injectSnapshot({
             recorderState: "stopped",
             elapsedSeconds: 30,
@@ -27,34 +27,15 @@ describe("AudioDiary persistence: submit lifecycle", () => {
         });
         renderAudioDiary();
         await waitFor(() => {
-            expect(screen.getByTestId("submit-button")).toBeInTheDocument();
-        });
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("submit-button"));
-        });
-        await waitFor(() => {
-            expect(mockNavigate).toHaveBeenCalledWith("/entry/entry-123");
+            expect(screen.getByTestId("restored-session-banner")).toBeInTheDocument();
         });
         await act(async () => { await passThread(); });
-        expect(currentStore().has("audioDiarySessionId")).toBe(false);
+        expect(screen.queryByTestId("submit-button")).not.toBeInTheDocument();
+        expect(screen.getByText(/■ Stopped/i)).toBeInTheDocument();
+        expect(currentStore().has("audioDiarySessionId")).toBe(true);
     });
 
-    it("keeps session ID when submit fails", async () => {
-        // Override the fetch mock to fail for diary-audio
-        const originalFetch = global.fetch;
-        global.fetch = jest.fn().mockImplementation((url, options) => {
-            const urlStr = String(url);
-            if (options && options.method === "POST" && urlStr.includes("/entries/diary-audio")) {
-                return Promise.resolve({
-                    ok: false,
-                    status: 500,
-                    json: () => Promise.resolve({ error: "network fail" }),
-                    blob: () => Promise.resolve(new Blob()),
-                });
-            }
-            return originalFetch(url, options);
-        });
-
+    it("restored stopped session: session ID persists until new recording starts", async () => {
         injectSnapshot({
             recorderState: "stopped",
             elapsedSeconds: 30,
@@ -64,14 +45,9 @@ describe("AudioDiary persistence: submit lifecycle", () => {
         });
         renderAudioDiary();
         await waitFor(() => {
-            expect(screen.getByTestId("submit-button")).toBeInTheDocument();
+            expect(screen.getByText(/■ Stopped/i)).toBeInTheDocument();
         });
-        await act(async () => {
-            fireEvent.click(screen.getByTestId("submit-button"));
-        });
-        await waitFor(() => {
-            expect(screen.getByText(/Submission failed/i)).toBeInTheDocument();
-        });
+        // Session ID remains in localStorage since user hasn't re-recorded or submitted
         expect(currentStore().has("audioDiarySessionId")).toBe(true);
     });
 });

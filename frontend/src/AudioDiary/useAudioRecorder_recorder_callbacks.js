@@ -5,7 +5,6 @@
 import { clearSessionId } from "./recording_storage.js";
 import {
     stopSession as stopBackendSession,
-    fetchFinalAudio,
     discardSession,
     pushPcmWithSessionRetry as pushBackendPcm,
 } from "./session_api.js";
@@ -86,13 +85,11 @@ export function createRecorderCallbacks(params) {
                         return;
                     }
 
-                    await stopBackendSession(sessionId);
-                    const backendBlob = await fetchFinalAudio(sessionId);
-                    if (!isMountedRef.current) return;
-                    mimeTypeRef.current = backendBlob.type;
-                    audioBlobRef.current = backendBlob;
-                    setAudioBlob(backendBlob);
-                    setAudioUrl(URL.createObjectURL(backendBlob));
+                    try {
+                        await stopBackendSession(sessionId);
+                    } catch {
+                        // Non-blocking: backend stop failure does not affect local blob
+                    }
                 } catch {
                     // keep local fallback
                 }

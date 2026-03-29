@@ -7,7 +7,6 @@ import { generateSessionId } from "./audio_helpers.js";
 import {
     startSession as startBackendSession,
     stopSession as stopBackendSession,
-    fetchFinalAudio,
     discardSession,
 } from "./session_api.js";
 import { saveSessionId, clearSessionId } from "./recording_storage.js";
@@ -22,10 +21,8 @@ import { saveSessionId, clearSessionId } from "./recording_storage.js";
  * @property {import('react').MutableRefObject<number>} pcmUploadedCountRef
  * @property {import('react').MutableRefObject<Promise<void>>} uploadQueueRef
  * @property {import('react').MutableRefObject<Blob | null>} audioBlobRef
- * @property {import('react').MutableRefObject<string>} mimeTypeRef
  * @property {import('react').MutableRefObject<number>} elapsedSecondsRef
  * @property {import('react').MutableRefObject<string>} sessionIdRef
- * @property {import('react').MutableRefObject<boolean>} isMountedRef
  * @property {import('react').Dispatch<import('react').SetStateAction<boolean>>} setHasRestoredSession
  * @property {import('react').Dispatch<import('react').SetStateAction<string>>} setErrorMessage
  * @property {import('react').Dispatch<import('react').SetStateAction<number>>} setElapsedSeconds
@@ -51,10 +48,8 @@ export function createAudioRecorderActionHandlers(params) {
         pcmUploadedCountRef,
         uploadQueueRef,
         audioBlobRef,
-        mimeTypeRef,
         elapsedSecondsRef,
         sessionIdRef,
-        isMountedRef,
         setHasRestoredSession,
         setErrorMessage,
         setElapsedSeconds,
@@ -126,17 +121,8 @@ export function createAudioRecorderActionHandlers(params) {
                 if (sessionId) {
                     try {
                         await stopBackendSession(sessionId);
-                        const blob = await fetchFinalAudio(sessionId);
-                        if (isMountedRef.current) {
-                            mimeTypeRef.current = blob.type;
-                            audioBlobRef.current = blob;
-                            setAudioBlob(blob);
-                            setAudioUrl(URL.createObjectURL(blob));
-                            recorderStateRef.current = "stopped";
-                            setRecorderState("stopped");
-                        }
                     } catch {
-                        // Backend finalize failed; keep local fallback
+                        // Backend stop failure is non-blocking
                     }
                 }
                 return;

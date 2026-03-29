@@ -16,20 +16,16 @@ const {
     AudioSessionNotFoundError,
     AudioSessionChunkValidationError,
     AudioSessionConflictError,
-    AudioSessionFinalizeError,
 } = require("./errors");
 const {
     isValidSessionId,
     validateUploadChunkParams,
 } = require("./helpers");
-const { buildWav } = require("../build_wav");
 const {
     CURRENT_SESSION_KEY,
     indexSublevel,
-    sessionSublevel,
     chunksSublevel,
     chunkKey,
-    finalKey,
     markSessionExists,
     unmarkSessionExists,
     listKnownSessionIds,
@@ -265,12 +261,12 @@ async function getSession(capabilities, sessionId) {
 }
 
 /**
- * Stop and finalize a session: concatenate all chunks into a final audio file.
+ * Stop a session: update status and elapsed time.
  * Elapsed duration is computed from the stored chunk timeline (lastEndMs).
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @returns {Promise<{ status: 'stopped', finalAudioKey: string, size: number }>}
+ * @returns {Promise<{ status: 'stopped', elapsedSeconds: number }>}
  */
 async function stopSession(capabilities, sessionId) {
     if (!isValidSessionId(sessionId)) {
@@ -286,49 +282,7 @@ async function stopSession(capabilities, sessionId) {
     }
 
     if (meta.status === "stopped") {
-        const finalEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
-        const size =
-            finalEntry !== undefined && finalEntry.type === "blob"
-                ? Buffer.from(finalEntry.data, "base64").length
-                : 0;
-        return { status: "stopped", finalAudioKey: "final", size };
-    }
-
-    const sessionChunks = chunksSublevel(temporary, sessionId);
-    const chunkKeys = await sessionChunks.listKeys();
-    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
-
-    /** @type {Buffer[]} */
-    const pcmBuffers = [];
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined && entry.type === "blob") {
-            pcmBuffers.push(Buffer.from(entry.data, "base64"));
-        }
-    }
-
-    // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
-    // PCM sample-level concatenation is always safe: no container format concerns.
-    const concatenatedPcm = Buffer.concat(pcmBuffers);
-
-    // Use PCM format stored in session metadata.  If no chunks were uploaded yet
-    // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
-    const sampleRateHz = meta.sampleRateHz || 16000;
-    const channels = meta.channels || 1;
-    const bitDepth = meta.bitDepth || 16;
-    const finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
-
-    try {
-        await sessionSublevel(temporary, sessionId).put(finalKey(), {
-            type: "blob",
-            data: finalBuffer.toString("base64"),
-        });
-    } catch (error) {
-        throw new AudioSessionFinalizeError(
-            `Failed to store final audio for session ${sessionId}: ${error}`,
-            sessionId,
-            error
-        );
+        return { status: "stopped", elapsedSeconds: meta.elapsedSeconds };
     }
 
     // Derive elapsed seconds from chunk timeline (canonical backend timing).
@@ -343,48 +297,7 @@ async function stopSession(capabilities, sessionId) {
     };
     await writeMeta(temporary, updatedMeta);
 
-    return { status: "stopped", finalAudioKey: "final", size: finalBuffer.length };
-}
-
-/**
- * Fetch the final combined audio for a stopped session.
- * Returns the audio buffer and mime type.
- *
- * @param {Capabilities} capabilities
- * @param {string} sessionId
- * @returns {Promise<{ buffer: Buffer, mimeType: string }>}
- */
-async function fetchFinalAudio(capabilities, sessionId) {
-    if (!isValidSessionId(sessionId)) {
-        throw new AudioSessionChunkValidationError(
-            `Invalid session ID: "${sessionId}"`
-        );
-    }
-
-    const { temporary } = capabilities;
-    const meta = await readMeta(temporary, sessionId);
-    if (meta === null) {
-        throw new AudioSessionNotFoundError(sessionId);
-    }
-    if (meta.status !== "stopped") {
-        throw new AudioSessionConflictError(
-            `Session ${sessionId} has not been finalized yet`,
-            sessionId
-        );
-    }
-
-    const finalEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
-    if (finalEntry === undefined || finalEntry.type !== "blob") {
-        throw new AudioSessionFinalizeError(
-            `Final audio not found for session ${sessionId}`,
-            sessionId
-        );
-    }
-
-    return {
-        buffer: Buffer.from(finalEntry.data, "base64"),
-        mimeType: meta.mimeType,
-    };
+    return { status: "stopped", elapsedSeconds };
 }
 
 /**
@@ -416,6 +329,5 @@ module.exports = {
     uploadChunk,
     getSession,
     stopSession,
-    fetchFinalAudio,
     discardSession,
 };

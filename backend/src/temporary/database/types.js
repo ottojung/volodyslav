@@ -106,7 +106,7 @@ function tempKeyToString(key) {
  * @property {string} createdAt - ISO timestamp
  * @property {string} updatedAt - ISO timestamp
  * @property {'recording'|'stopped'} status
- * @property {string} mimeType - always "audio/wav" for PCM-native sessions
+ * @property {string} mimeType - MIME type for PCM-native sessions; always "audio/wav". Legacy field, not used for final audio upload.
  * @property {number} fragmentCount
  * @property {number} lastSequence
  * @property {number} lastEndMs

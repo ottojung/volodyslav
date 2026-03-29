@@ -9,7 +9,7 @@
 
 import { useEffect } from "react";
 import { loadSessionId, clearSessionId } from "./recording_storage.js";
-import { getSessionRestore, fetchFinalAudio } from "./session_api.js";
+import { getSessionRestore } from "./session_api.js";
 
 /**
  * @typedef {import('./audio_helpers.js').RecorderState} RecorderState
@@ -23,7 +23,6 @@ import { getSessionRestore, fetchFinalAudio } from "./session_api.js";
  * @property {import("react").MutableRefObject<boolean>} isMountedRef
  * @property {import("react").MutableRefObject<string>} sessionIdRef
  * @property {import("react").MutableRefObject<boolean>} isRestoredPauseRef
- * @property {import("react").MutableRefObject<Blob | null>} audioBlobRef
  * @property {import("react").MutableRefObject<number>} sequenceRef
  */
 
@@ -32,8 +31,6 @@ import { getSessionRestore, fetchFinalAudio } from "./session_api.js";
  * @property {import("react").Dispatch<import("react").SetStateAction<RecorderState>>} setRecorderState
  * @property {import("react").Dispatch<import("react").SetStateAction<number>>} setElapsedSeconds
  * @property {import("react").Dispatch<import("react").SetStateAction<boolean>>} setHasRestoredSession
- * @property {import("react").Dispatch<import("react").SetStateAction<Blob | null>>} setAudioBlob
- * @property {import("react").Dispatch<import("react").SetStateAction<string>>} setAudioUrl
  */
 
 /**
@@ -51,13 +48,10 @@ export function useAudioRecorderPersistence(args) {
         isMountedRef,
         sessionIdRef,
         isRestoredPauseRef,
-        audioBlobRef,
         sequenceRef,
         setRecorderState,
         setElapsedSeconds,
         setHasRestoredSession,
-        setAudioBlob,
-        setAudioUrl,
     } = args;
 
     useEffect(() => {
@@ -94,20 +88,8 @@ export function useAudioRecorderPersistence(args) {
             if (restore.status === "stopped") {
                 recorderStateRef.current = "stopped";
                 setRecorderState("stopped");
-
-                // Fetch final audio for preview if available
-                if (restore.hasFinalAudio) {
-                    try {
-                        const blob = await fetchFinalAudio(sessionId);
-                        if (!isMountedRef.current) return;
-                        mimeTypeRef.current = blob.type;
-                        audioBlobRef.current = blob;
-                        setAudioBlob(blob);
-                        setAudioUrl(URL.createObjectURL(blob));
-                    } catch {
-                        // Can't restore audio; user will need to re-record
-                    }
-                }
+                // Audio blob is not restored after page reload: preview is unavailable.
+                // User must re-record to get a new submission.
             } else {
                 recorderStateRef.current = "paused";
                 setRecorderState("paused");
@@ -130,12 +112,9 @@ export function useAudioRecorderPersistence(args) {
         recorderStateRef,
         elapsedSecondsRef,
         isRestoredPauseRef,
-        audioBlobRef,
         sequenceRef,
         setRecorderState,
         setElapsedSeconds,
         setHasRestoredSession,
-        setAudioBlob,
-        setAudioUrl,
     ]);
 }

@@ -51,17 +51,13 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  * @typedef {'calories' | 'transcription' | 'basic_context'} AdditionalPropertyName
  */
 
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"]);
+const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba", ".webm"]);
 
 /**
  * @param {string} filename
  * @returns {boolean}
  */
 function isAudioFilename(filename) {
-    const basename = path.basename(filename).toLocaleLowerCase();
-    if (basename === "diary-audio.webm") {
-        return true;
-    }
     if (AUDIO_EXTENSIONS.has(path.extname(filename).toLowerCase())) {
         return true;
     }

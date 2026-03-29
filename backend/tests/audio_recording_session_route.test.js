@@ -183,4 +183,37 @@ describe("audio recording session route", () => {
             expect.stringContaining("push-pcm: multipart parse error")
         );
     });
+
+    it("returns 404 for removed /final-audio route", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "sess-route-final-audio" });
+
+        const res = await request(app)
+            .get("/api/audio-recording-session/sess-route-final-audio/final-audio");
+
+        expect(res.statusCode).toBe(404);
+    });
+
+    it("restore payload does not include hasFinalAudio", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+
+        await request(app)
+            .post("/api/audio-recording-session/start")
+            .send({ sessionId: "sess-route-restore" });
+
+        const res = await request(app)
+            .get("/api/audio-recording-session/sess-route-restore/restore");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.restore).not.toHaveProperty("hasFinalAudio");
+        expect(res.body.restore).toHaveProperty("status");
+        expect(res.body.restore).toHaveProperty("elapsedSeconds");
+        expect(res.body.restore).toHaveProperty("lastSequence");
+    });
 });

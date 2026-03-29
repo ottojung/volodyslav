@@ -5,13 +5,11 @@ const {
     uploadChunk,
     getSession,
     stopSession,
-    fetchFinalAudio,
     discardSession,
     isAudioSessionNotFoundError,
     isAudioSessionChunkValidationError,
     isAudioSessionConflictError,
 } = require("../src/audio_recording_session");
-const { parseWav } = require("../src/live_diary/wav_utils");
 
 function getCapabilities() {
     const caps = getMockedRootCapabilities();
@@ -365,35 +363,27 @@ describe("audio_recording_session", () => {
         });
     });
     describe("stopSession", () => {
-        it("concatenates PCM chunks and stores final WAV audio", async () => {
+        it("updates status to stopped and computes elapsedSeconds", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID);
-            // Upload two PCM fragments (silent 8-sample buffers each)
-            const pcm1 = Buffer.from(new Int16Array(8).buffer);
-            const pcm2 = Buffer.from(new Int16Array(8).buffer);
             await uploadChunk(caps, TEST_SESSION_ID, {
-                pcm: pcm1,
-                sampleRateHz: 16000,
-                channels: 1,
-                bitDepth: 16,
+                ...TEST_PCM_PARAMS,
                 startMs: 0,
-                endMs: 10000,
-                sequence: 0,
-            });
-            await uploadChunk(caps, TEST_SESSION_ID, {
-                pcm: pcm2,
-                sampleRateHz: 16000,
-                channels: 1,
-                bitDepth: 16,
-                startMs: 10000,
                 endMs: 20000,
-                sequence: 1,
+                sequence: 0,
             });
 
             const result = await stopSession(caps, TEST_SESSION_ID);
             expect(result.status).toBe("stopped");
-            // Final buffer is WAV: 44-byte header + concatenated PCM
-            expect(result.size).toBe(44 + pcm1.length + pcm2.length);
+            expect(result.elapsedSeconds).toBe(20);
+        });
+
+        it("is idempotent when called twice", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID);
+            await stopSession(caps, TEST_SESSION_ID);
+            const result = await stopSession(caps, TEST_SESSION_ID);
+            expect(result.status).toBe("stopped");
         });
 
         it("derives elapsedSeconds from lastEndMs in session metadata", async () => {
@@ -410,55 +400,10 @@ describe("audio_recording_session", () => {
             expect(meta.elapsedSeconds).toBe(42);
             expect(meta.status).toBe("stopped");
         });
-    });
 
-    describe("fetchFinalAudio", () => {
-        it("returns WAV final audio after stop", async () => {
-            const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID);
-            const pcmSamples = Buffer.from(new Int16Array(8).buffer);
-            await uploadChunk(caps, TEST_SESSION_ID, {
-                pcm: pcmSamples,
-                sampleRateHz: 16000,
-                channels: 1,
-                bitDepth: 16,
-                startMs: 0,
-                endMs: 10000,
-                sequence: 0,
-            });
-            await stopSession(caps, TEST_SESSION_ID);
-            const { buffer, mimeType } = await fetchFinalAudio(caps, TEST_SESSION_ID);
-            expect(mimeType).toBe("audio/wav");
-            // Verify it parses as a valid WAV file containing the uploaded PCM
-            const wavInfo = parseWav(buffer);
-            expect(wavInfo).not.toBeNull();
-            expect(wavInfo.sampleRate).toBe(16000);
-            expect(wavInfo.channels).toBe(1);
-            expect(wavInfo.bitDepth).toBe(16);
-            expect(wavInfo.pcm).toEqual(pcmSamples);
-        });
-
-        it("throws on not-yet-finalized session", async () => {
-            const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID);
-            let err = null;
-            try {
-                await fetchFinalAudio(caps, TEST_SESSION_ID);
-            } catch (e) {
-                err = e;
-            }
-            expect(isAudioSessionConflictError(err)).toBe(true);
-        });
-
-        it("throws for missing session", async () => {
-            const caps = getCapabilities();
-            let err = null;
-            try {
-                await fetchFinalAudio(caps, "nonexistent");
-            } catch (e) {
-                err = e;
-            }
-            expect(isAudioSessionNotFoundError(err)).toBe(true);
+        it("does not export fetchFinalAudio", () => {
+            const mod = require("../src/audio_recording_session");
+            expect(mod.fetchFinalAudio).toBeUndefined();
         });
     });
 

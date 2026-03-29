@@ -104,13 +104,10 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         isMountedRef,
         sessionIdRef,
         isRestoredPauseRef,
-        audioBlobRef,
         sequenceRef,
         setRecorderState,
         setElapsedSeconds,
         setHasRestoredSession,
-        setAudioBlob,
-        setAudioUrl,
     });
 
     useEffect(() => {
@@ -193,10 +190,8 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         pcmUploadedCountRef,
         uploadQueueRef,
         audioBlobRef,
-        mimeTypeRef,
         elapsedSecondsRef,
         sessionIdRef,
-        isMountedRef,
         setHasRestoredSession,
         setErrorMessage,
         setElapsedSeconds,

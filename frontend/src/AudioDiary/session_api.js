@@ -211,7 +211,6 @@ export async function stopSession(sessionId) {
  * @property {string} mimeType
  * @property {number} elapsedSeconds
  * @property {number} lastSequence
- * @property {boolean} hasFinalAudio
  */
 
 /**
@@ -233,19 +232,6 @@ export async function getSessionRestore(sessionId) {
         throw new Error(data.error || "Failed to get session restore");
     }
     return data.restore;
-}
-
-/**
- * Download the final combined audio for a stopped session as a Blob.
- * @param {string} sessionId
- * @returns {Promise<Blob>}
- */
-export async function fetchFinalAudio(sessionId) {
-    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/final-audio`);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch final audio: ${response.status}`);
-    }
-    return response.blob();
 }
 
 /**
