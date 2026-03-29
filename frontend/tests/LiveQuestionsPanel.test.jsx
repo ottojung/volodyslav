@@ -3,13 +3,13 @@
  */
 
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 import LiveQuestionsPanel from "../src/AudioDiary/LiveQuestionsPanel.jsx";
 
-/** @typedef {import('../src/AudioDiary/useDiaryLiveQuestioningController.js').QuestionGeneration} QuestionGeneration */
+/** @typedef {import('../src/AudioDiary/useDiaryLiveQuestioningController.js').DisplayedQuestion} DisplayedQuestion */
 
 /**
  * @param {React.ReactElement} ui
@@ -19,33 +19,42 @@ function renderPanel(ui) {
 }
 
 /**
- * @param {number} n
- * @param {number} [milestone]
- * @returns {QuestionGeneration}
+ * @param {string} text
+ * @param {string} [id]
+ * @returns {DisplayedQuestion}
  */
-function makeGeneration(n, milestone = 1) {
+function makeQuestion(text, id = undefined) {
     return {
-        generationId: `gen-${n}`,
-        milestoneNumber: milestone,
-        questions: [
-            { text: `Question ${n}-1`, intent: "warm_reflective" },
-            { text: `Question ${n}-2`, intent: "clarifying" },
-        ],
+        questionId: id ?? `q-${text}`,
+        text,
+        intent: "warm_reflective",
+        isNew: false,
     };
 }
 
+const noopToggle = () => {};
+
 describe("LiveQuestionsPanel", () => {
-    it("renders nothing when there are no generations and no error", () => {
+    it("renders nothing when there are no questions and no error", () => {
         const { container } = renderPanel(
-            <LiveQuestionsPanel displayedGenerations={[]} errorMessage={null} />
+            <LiveQuestionsPanel
+                displayedQuestions={[]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
+                errorMessage={null}
+            />
         );
         expect(container.firstChild).toBeNull();
     });
 
-    it("renders the panel when there are generations", () => {
+    it("renders the panel when there are questions", () => {
         renderPanel(
             <LiveQuestionsPanel
-                displayedGenerations={[makeGeneration(1)]}
+                displayedQuestions={[makeQuestion("First question")]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
                 errorMessage={null}
             />
         );
@@ -55,7 +64,10 @@ describe("LiveQuestionsPanel", () => {
     it("renders the panel when there is only an error message", () => {
         renderPanel(
             <LiveQuestionsPanel
-                displayedGenerations={[]}
+                displayedQuestions={[]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
                 errorMessage="Live prompts are catching up…"
             />
         );
@@ -63,75 +75,122 @@ describe("LiveQuestionsPanel", () => {
         expect(screen.getByTestId("live-questions-error")).toBeInTheDocument();
     });
 
-    it("renders all question texts from the generation", () => {
+    it("renders all question texts", () => {
         renderPanel(
             <LiveQuestionsPanel
-                displayedGenerations={[makeGeneration(1)]}
+                displayedQuestions={[
+                    makeQuestion("Question A"),
+                    makeQuestion("Question B"),
+                ]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
                 errorMessage={null}
             />
         );
-        expect(screen.getByText("Question 1-1")).toBeInTheDocument();
-        expect(screen.getByText("Question 1-2")).toBeInTheDocument();
+        expect(screen.getByText("Question A")).toBeInTheDocument();
+        expect(screen.getByText("Question B")).toBeInTheDocument();
     });
 
-    it("renders newest generation first", () => {
+    it("renders questions newest first (unpinned)", () => {
         renderPanel(
             <LiveQuestionsPanel
-                displayedGenerations={[makeGeneration(3), makeGeneration(2), makeGeneration(1)]}
+                displayedQuestions={[
+                    makeQuestion("Newest Q", "q3"),
+                    makeQuestion("Middle Q", "q2"),
+                    makeQuestion("Oldest Q", "q1"),
+                ]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
                 errorMessage={null}
             />
         );
-        const cards = screen.getAllByText(/Question \d-1/);
-        expect(cards[0].textContent).toBe("Question 3-1");
-        expect(cards[1].textContent).toBe("Question 2-1");
-        expect(cards[2].textContent).toBe("Question 1-1");
+        const items = screen.getAllByTestId(/question-item-/);
+        expect(items[0].textContent).toContain("Newest Q");
+        expect(items[1].textContent).toContain("Middle Q");
+        expect(items[2].textContent).toContain("Oldest Q");
     });
 
-    it("renders all generations up to the visible limit", () => {
-        const generations = [
-            makeGeneration(4, 4),
-            makeGeneration(3, 3),
-            makeGeneration(2, 2),
-            makeGeneration(1, 1),
-        ];
-        renderPanel(
-            <LiveQuestionsPanel displayedGenerations={generations} errorMessage={null} />
-        );
-        expect(screen.getByTestId("question-generation-gen-4")).toBeInTheDocument();
-        expect(screen.getByTestId("question-generation-gen-1")).toBeInTheDocument();
-    });
-
-    it("shows error message alongside existing generations", () => {
+    it("shows pinned questions before unpinned questions", () => {
+        const pinned = makeQuestion("Pinned Q", "pinned-q");
+        const unpinned = makeQuestion("Unpinned Q", "unpinned-q");
         renderPanel(
             <LiveQuestionsPanel
-                displayedGenerations={[makeGeneration(1)]}
+                displayedQuestions={[unpinned]}
+                pinnedQuestions={[pinned]}
+                pinnedQuestionIds={["pinned-q"]}
+                onTogglePin={noopToggle}
+                errorMessage={null}
+            />
+        );
+        const items = screen.getAllByTestId(/question-item-/);
+        expect(items[0].textContent).toContain("Pinned Q");
+        expect(items[1].textContent).toContain("Unpinned Q");
+    });
+
+    it("calls onTogglePin with the question id when a question is clicked", () => {
+        const onToggle = jest.fn();
+        const q = makeQuestion("Clickable Q", "click-q");
+        renderPanel(
+            <LiveQuestionsPanel
+                displayedQuestions={[q]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={onToggle}
+                errorMessage={null}
+            />
+        );
+        fireEvent.click(screen.getByTestId("question-item-click-q"));
+        expect(onToggle).toHaveBeenCalledWith("click-q");
+    });
+
+    it("shows error message alongside existing questions", () => {
+        renderPanel(
+            <LiveQuestionsPanel
+                displayedQuestions={[makeQuestion("Q1")]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
                 errorMessage="Catching up..."
             />
         );
         expect(screen.getByTestId("live-questions-error")).toHaveTextContent("Catching up...");
-        expect(screen.getByText("Question 1-1")).toBeInTheDocument();
+        expect(screen.getByText("Q1")).toBeInTheDocument();
     });
 
-    it("adds fade-in animation class when a new generation arrives", async () => {
+    it("adds fade-in animation when a new question arrives", async () => {
         const { rerender } = renderPanel(
-            <LiveQuestionsPanel displayedGenerations={[makeGeneration(1)]} errorMessage={null} />
+            <LiveQuestionsPanel
+                displayedQuestions={[makeQuestion("Old Q", "old-q")]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
+                errorMessage={null}
+            />
         );
 
-        // Add a new generation
+        // Add a newer question at the front.
         await act(async () => {
             rerender(
                 <ChakraProvider value={defaultSystem}>
                     <LiveQuestionsPanel
-                        displayedGenerations={[makeGeneration(2), makeGeneration(1)]}
+                        displayedQuestions={[
+                            { ...makeQuestion("New Q", "new-q"), isNew: true },
+                            makeQuestion("Old Q", "old-q"),
+                        ]}
+                        pinnedQuestions={[]}
+                        pinnedQuestionIds={[]}
+                        onTogglePin={noopToggle}
                         errorMessage={null}
                     />
                 </ChakraProvider>
             );
         });
 
-        // The newest generation card should have an animation style applied
-        const newestCard = screen.getByTestId("question-generation-gen-2");
-        const style = newestCard.getAttribute("style") ?? "";
+        // The newest question item should have an animation style applied.
+        const newestItem = screen.getByTestId("question-item-new-q");
+        const style = newestItem.getAttribute("style") ?? "";
         expect(style).toMatch(/animation/i);
     });
 });

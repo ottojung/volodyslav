@@ -239,7 +239,7 @@ describe("pushAudio", () => {
                 rawResponse: null,
             })
             .mockResolvedValueOnce({
-                text: "to the park for fresh air",
+                text: "going to the park for some very fresh morning air",
                 provider: "Google",
                 model: "mocked",
                 finishReason: "STOP",
@@ -248,7 +248,7 @@ describe("pushAudio", () => {
                 usageMetadata: null,
                 modelVersion: null,
                 responseId: null,
-                structured: { transcript: "to the park for fresh air", coverage: "full", warnings: [], unclearAudio: false },
+                structured: { transcript: "going to the park for some very fresh morning air", coverage: "full", warnings: [], unclearAudio: false },
                 rawResponse: null,
             });
         caps.aiTranscriptRecombination.recombineOverlap = jest
@@ -262,7 +262,8 @@ describe("pushAudio", () => {
         // Running transcript generated at fragment 3 should include the appended boundary word.
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
             expect.stringContaining("walking to the park for fresh air"),
-            expect.any(Array)
+            expect.any(Array),
+            expect.any(Number)
         );
         expect(result.status).toBe("ok");
     });
@@ -285,7 +286,7 @@ describe("pushAudio", () => {
                 rawResponse: null,
             })
             .mockResolvedValueOnce({
-                text: "new overlap sentence ending word",
+                text: "this is the new overlap sentence that ends with word",
                 provider: "Google",
                 model: "mocked",
                 finishReason: "STOP",
@@ -294,7 +295,7 @@ describe("pushAudio", () => {
                 usageMetadata: null,
                 modelVersion: null,
                 responseId: null,
-                structured: { transcript: "new overlap sentence ending word", coverage: "full", warnings: [], unclearAudio: false },
+                structured: { transcript: "this is the new overlap sentence that ends with word", coverage: "full", warnings: [], unclearAudio: false },
                 rawResponse: null,
             });
         caps.aiTranscriptRecombination.recombineOverlap = jest.fn().mockResolvedValue("   ");
@@ -305,7 +306,8 @@ describe("pushAudio", () => {
 
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
             expect.stringContaining("word"),
-            expect.any(Array)
+            expect.any(Array),
+            expect.any(Number)
         );
     });
 
@@ -377,7 +379,106 @@ describe("pushAudio", () => {
         expect(result.status).toBe("ok");
     });
 
-    it("deduplicates repeated questions across consecutive calls", async () => {
+    it("returns empty questions when transcription returns empty string (silence)", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: "",
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: { transcript: "", coverage: "full", warnings: [], unclearAudio: false },
+            rawResponse: null,
+        });
+
+        await pushAudio(caps, "sess-silent", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-silent", buildTestPcmInfo(), 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("ok");
+    });
+
+    it("skips question generation when transcript has fewer than 10 words", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: "only nine words in this very sparse",
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: { transcript: "only nine words in this very sparse", coverage: "full", warnings: [], unclearAudio: false },
+            rawResponse: null,
+        });
+
+        await pushAudio(caps, "sess-sparse", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-sparse", buildTestPcmInfo(), 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("ok");
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+    });
+
+    it("requests maxQuestions=1 when transcript has 10–29 words", async () => {
+        const caps = makeCapabilities();
+        // Exactly 15 words.
+        const transcript = "this is a transcript with exactly fifteen words to test the limit now";
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: transcript,
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: { transcript, coverage: "full", warnings: [], unclearAudio: false },
+            rawResponse: null,
+        });
+
+        await pushAudio(caps, "sess-short-q", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-short-q", buildTestPcmInfo(), 2);
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.any(Array),
+            1
+        );
+    });
+
+    it("requests maxQuestions=5 when transcript has 60 or more words", async () => {
+        const caps = makeCapabilities();
+        // Build a transcript with >= 60 words.
+        const words = Array.from({ length: 65 }, (_, i) => `word${i}`).join(" ");
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: words,
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: { transcript: words, coverage: "full", warnings: [], unclearAudio: false },
+            rawResponse: null,
+        });
+
+        await pushAudio(caps, "sess-rich-q", buildTestPcmInfo(), 1);
+        await pushAudio(caps, "sess-rich-q", buildTestPcmInfo(), 2);
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.any(Array),
+            5
+        );
+    });
+
+
         const caps = makeCapabilities();
         caps.aiDiaryQuestions.generateQuestions = jest
             .fn()
@@ -400,7 +501,7 @@ describe("pushAudio", () => {
     it("returns degraded_question_generation if question generation takes too long", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
-            text: "steady transcript",
+            text: "this is a steady and reliable transcript for testing time limits",
             provider: "Google",
             model: "mocked",
             finishReason: "STOP",
@@ -409,7 +510,7 @@ describe("pushAudio", () => {
             usageMetadata: null,
             modelVersion: null,
             responseId: null,
-            structured: { transcript: "steady transcript", coverage: "full", warnings: [], unclearAudio: false },
+            structured: { transcript: "this is a steady and reliable transcript for testing time limits", coverage: "full", warnings: [], unclearAudio: false },
             rawResponse: null,
         });
         caps.aiDiaryQuestions.generateQuestions = jest

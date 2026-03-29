@@ -360,6 +360,33 @@ async function pushAudio(
         "Live diary running transcript updated (532-char suffix shown)"
     );
 
+    // Compute how many questions to request based on transcript word count.
+    // Default is 1 question (one per ~10-second fragment). Allow up to 5 for
+    // content-rich fragments to give the user more reflection prompts.
+    // If the window transcript has very few words the user is likely silent — skip.
+    const wordCount = newWindowTranscript.split(/\s+/).filter(Boolean).length;
+    /** @type {number} */
+    let maxQuestions;
+    if (wordCount < 10) {
+        // Very sparse speech — skip question generation.
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber, wordCount },
+            "Live diary transcript too short for questions; skipping"
+        );
+        return { questions: [], status: "ok" };
+    } else if (wordCount < 30) {
+        maxQuestions = 1;
+    } else if (wordCount < 60) {
+        maxQuestions = 2;
+    } else {
+        maxQuestions = 5;
+    }
+
+    capabilities.logger.logDebug(
+        { sessionId, fragmentNumber, wordCount, maxQuestions },
+        "Live diary question count determined from word count"
+    );
+
     // Generate questions.
     const askedQuestions = await readAskedQuestions(temporary, sessionId);
     let allQuestions;
@@ -368,7 +395,8 @@ async function pushAudio(
             "question_generation",
             () => capabilities.aiDiaryQuestions.generateQuestions(
                 updatedRunningTranscript,
-                askedQuestions
+                askedQuestions,
+                maxQuestions
             ),
             stepTimeoutMs
         );

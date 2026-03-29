@@ -89,11 +89,11 @@ function stubLogger(capabilities) {
 function stubAiTranscriber(capabilities) {
     capabilities.aiTranscription.transcribeStream = jest
         .fn()
-        .mockResolvedValue("mocked transcription result");
+        .mockResolvedValue("This is a mocked transcription result for automated testing purposes");
     capabilities.aiTranscription.transcribeStreamDetailed = jest
         .fn()
         .mockResolvedValue({
-            text: "mocked transcription result",
+            text: "This is a mocked transcription result for automated testing purposes",
             provider: "Google",
             model: "mocked-transcriber",
             finishReason: "STOP",
@@ -103,7 +103,7 @@ function stubAiTranscriber(capabilities) {
             modelVersion: null,
             responseId: null,
             structured: {
-                transcript: "mocked transcription result",
+                transcript: "This is a mocked transcription result for automated testing purposes",
                 coverage: "full",
                 warnings: [],
                 unclearAudio: false,
@@ -112,11 +112,11 @@ function stubAiTranscriber(capabilities) {
         });
     capabilities.aiTranscription.transcribeStreamPrecise = jest
         .fn()
-        .mockResolvedValue("mocked transcription result");
+        .mockResolvedValue("This is a mocked transcription result for automated testing purposes");
     capabilities.aiTranscription.transcribeStreamPreciseDetailed = jest
         .fn()
         .mockResolvedValue({
-            text: "mocked transcription result",
+            text: "This is a mocked transcription result for automated testing purposes",
             provider: "OpenAI",
             model: "whisper-1",
             finishReason: null,
@@ -126,7 +126,7 @@ function stubAiTranscriber(capabilities) {
             modelVersion: null,
             responseId: null,
             structured: {
-                transcript: "mocked transcription result",
+                transcript: "This is a mocked transcription result for automated testing purposes",
                 coverage: "full",
                 warnings: [],
                 unclearAudio: false,

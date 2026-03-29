@@ -74,6 +74,7 @@ function isEntryValidationError(object) {
  * @typedef {object} EntryData
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
+ * @property {import('./datetime').DateTime} [clientDate] - Optional date provided by the client.
  */
 
 /**
@@ -87,7 +88,7 @@ function isEntryValidationError(object) {
 async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
-    const date = capabilities.datetime.now();
+    const date = entryData.clientDate ?? capabilities.datetime.now();
 
     /** @type {import('./event/structure').Event} */
     const event = {

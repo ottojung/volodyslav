@@ -9,6 +9,10 @@
  * Questions are retrieved by polling GET /audio-recording-session/:sessionId/live-questions
  * every POLLING_INTERVAL_MS milliseconds while recording is active.
  *
+ * Each question is shown as an independent item.  Clicking a question pins
+ * it to the top of the list; clicking again removes the pin (and the question
+ * disappears from the display).
+ *
  * @module useDiaryLiveQuestioningController
  */
 
@@ -23,42 +27,66 @@ import { getLiveQuestions } from "./session_api.js";
 const POLLING_INTERVAL_MS = 5000;
 
 /**
- * @typedef {object} QuestionGeneration
- * @property {string} generationId - Unique identifier for this generation.
- * @property {number} milestoneNumber - Chunk sequence number that produced this generation.
- * @property {DiaryQuestion[]} questions - List of questions in this generation.
+ * Maximum number of unpinned questions to keep visible at once.
+ */
+const MAX_VISIBLE_UNPINNED = 8;
+
+/**
+ * @typedef {object} DisplayedQuestion
+ * @property {string} questionId - Unique identifier for this displayed question.
+ * @property {string} text - Question text.
+ * @property {"warm_reflective" | "clarifying" | "forward"} intent - Question intent.
+ * @property {boolean} isNew - Whether this question just arrived (for animation).
  */
 
 /**
  * @typedef {object} UseDiaryLiveQuestioningControllerResult
- * @property {QuestionGeneration[]} displayedGenerations - Question generations, newest first.
+ * @property {DisplayedQuestion[]} displayedQuestions - Non-pinned questions, newest first.
+ * @property {string[]} pinnedQuestionIds - IDs of pinned questions, in pinning order.
+ * @property {DisplayedQuestion[]} pinnedQuestions - Pinned questions, in pinning order.
  * @property {(questions: DiaryQuestion[], milestoneNumber: number) => void} onQuestions - Call with questions from each push-audio response and its fragment sequence number.
+ * @property {(questionId: string) => void} togglePin - Toggle the pinned state of a question. Pinned questions are promoted to the top; un-pinning removes the question entirely.
  * @property {(sessionId: string) => void} startLive - Reset display state and begin polling for a new recording session.
  * @property {() => void} stopLive - Stop accepting new questions and stop polling.
  */
 
-const MAX_VISIBLE_GENERATIONS = 4;
-
 /**
- * Monotonically increasing counter for unique generation IDs.
+ * Monotonically increasing counter for unique question IDs.
  * Module-level so it persists across hook instances within the same page load.
  */
-let _generationCounter = 0;
+let _questionCounter = 0;
 
 /**
- * Generate a simple unique ID for a generation.
- * @param {number} milestoneNumber
+ * Generate a simple unique ID for a displayed question.
  * @returns {string}
  */
-function makeGenerationId(milestoneNumber) {
-    _generationCounter += 1;
-    return `gen-${milestoneNumber}-${_generationCounter}`;
+function makeQuestionId() {
+    _questionCounter += 1;
+    return `q-${_questionCounter}`;
 }
 
 /** @returns {UseDiaryLiveQuestioningControllerResult} */
 export function useDiaryLiveQuestioningController() {
-    const [displayedGenerations, setDisplayedGenerations] = useState(
-        /** @returns {QuestionGeneration[]} */ () => []
+    /** @type {[DisplayedQuestion[], React.Dispatch<React.SetStateAction<DisplayedQuestion[]>>]} */
+    const [displayedQuestions, setDisplayedQuestions] = useState(
+        /** @returns {DisplayedQuestion[]} */ () => []
+    );
+
+    /**
+     * Map from questionId to DisplayedQuestion for O(1) lookup when pinning.
+     * Kept in sync with displayedQuestions state.
+     * @type {React.MutableRefObject<Map<string, DisplayedQuestion>>}
+     */
+    const questionMapRef = useRef(/** @type {Map<string, DisplayedQuestion>} */ (new Map()));
+
+    /** @type {[string[], React.Dispatch<React.SetStateAction<string[]>>]} */
+    const [pinnedQuestionIds, setPinnedQuestionIds] = useState(
+        /** @returns {string[]} */ () => []
+    );
+
+    /** @type {[DisplayedQuestion[], React.Dispatch<React.SetStateAction<DisplayedQuestion[]>>]} */
+    const [pinnedQuestions, setPinnedQuestions] = useState(
+        /** @returns {DisplayedQuestion[]} */ () => []
     );
 
     /** @type {React.MutableRefObject<boolean>} */
@@ -74,27 +102,82 @@ export function useDiaryLiveQuestioningController() {
 
     /**
      * Called with questions returned from push-audio or from polling.
-     * Adds a new generation to the display (newest first, max 4).
+     * Adds each individual question to the flat display list (newest first).
      */
     const onQuestions = useCallback(
         /**
          * @param {DiaryQuestion[]} questions
-         * @param {number} milestoneNumber
+         * @param {number} _milestoneNumber
          */
-        (questions, milestoneNumber) => {
+        (questions, _milestoneNumber) => {
             if (!isRunningRef.current || !questions || questions.length === 0) {
                 return;
             }
 
-            const generation = {
-                generationId: makeGenerationId(milestoneNumber),
-                milestoneNumber,
-                questions,
-            };
+            /** @type {DisplayedQuestion[]} */
+            const newItems = questions.map((q) => ({
+                questionId: makeQuestionId(),
+                text: q.text,
+                intent: q.intent,
+                isNew: true,
+            }));
 
-            setDisplayedGenerations((prev) => {
-                const updated = [generation, ...prev];
-                return updated.slice(0, MAX_VISIBLE_GENERATIONS);
+            for (const item of newItems) {
+                questionMapRef.current.set(item.questionId, item);
+            }
+
+            setDisplayedQuestions((prev) => {
+                const updated = [...newItems, ...prev];
+                return updated.slice(0, MAX_VISIBLE_UNPINNED);
+            });
+
+            // Clear isNew flag after animation (300 ms).
+            setTimeout(() => {
+                setDisplayedQuestions((prev) =>
+                    prev.map((q) =>
+                        newItems.some((ni) => ni.questionId === q.questionId)
+                            ? { ...q, isNew: false }
+                            : q
+                    )
+                );
+            }, 300);
+        },
+        []
+    );
+
+    /**
+     * Toggle pin state for a question.
+     * - If not pinned: move to pinnedQuestions at the front, remove from unpinned.
+     * - If already pinned: remove from pinnedQuestions entirely.
+     * @param {string} questionId
+     */
+    const togglePin = useCallback(
+        (questionId) => {
+            setPinnedQuestionIds((prevPinned) => {
+                const alreadyPinned = prevPinned.includes(questionId);
+                if (alreadyPinned) {
+                    // Unpin: remove from pinned list.
+                    const newPinned = prevPinned.filter((id) => id !== questionId);
+                    setPinnedQuestions((prevPinnedQ) =>
+                        prevPinnedQ.filter((q) => q.questionId !== questionId)
+                    );
+                    // Also remove from unpinned list if present (question disappears).
+                    setDisplayedQuestions((prevUnpinned) =>
+                        prevUnpinned.filter((q) => q.questionId !== questionId)
+                    );
+                    return newPinned;
+                } else {
+                    // Pin: move from unpinned to pinned.
+                    const question = questionMapRef.current.get(questionId);
+                    if (!question) {
+                        return prevPinned;
+                    }
+                    setPinnedQuestions((prevPinnedQ) => [question, ...prevPinnedQ]);
+                    setDisplayedQuestions((prevUnpinned) =>
+                        prevUnpinned.filter((q) => q.questionId !== questionId)
+                    );
+                    return [questionId, ...prevPinned];
+                }
             });
         },
         []
@@ -110,7 +193,10 @@ export function useDiaryLiveQuestioningController() {
         (sessionId) => {
             isRunningRef.current = true;
             currentSessionIdRef.current = sessionId;
-            setDisplayedGenerations([]);
+            questionMapRef.current.clear();
+            setDisplayedQuestions([]);
+            setPinnedQuestionIds([]);
+            setPinnedQuestions([]);
 
             // Start polling for questions generated by background AI processing.
             if (pollingIntervalRef.current !== null) {
@@ -163,8 +249,11 @@ export function useDiaryLiveQuestioningController() {
     }, []);
 
     return {
-        displayedGenerations,
+        displayedQuestions,
+        pinnedQuestionIds,
+        pinnedQuestions,
         onQuestions,
+        togglePin,
         startLive,
         stopLive,
     };

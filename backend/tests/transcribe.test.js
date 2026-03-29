@@ -81,7 +81,7 @@ describe("GET /api/transcribe", () => {
         expect(buffer).not.toBeNull();
         const content = JSON.parse(buffer.toString());
         expect(content).toEqual({
-            text: "mocked transcription result",
+            text: "This is a mocked transcription result for automated testing purposes",
             transcriber: {
                 creator: "Mocked Creator",
                 name: "mocked-transcriber",
