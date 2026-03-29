@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useLocation, useNavigate } from "react-router-dom";
+import { useParams, useLocation, useNavigate, Link } from "react-router-dom";
 import { Container, VStack, Card, HStack, Text, Spinner, Box, Badge, Button } from "@chakra-ui/react";
 import { fetchEntryById, deleteEntryById, fetchAdditionalProperties, fetchEntryAssets } from "../Search/api.js";
 import { getEntryParsed } from "../DescriptionEntry/entry.js";
+import { formatRelativeDate } from "../DescriptionEntry/utils.js";
 import {
     SPACING,
     SIZES,
@@ -291,11 +292,34 @@ export default function EntryDetail() {
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : (
                             <VStack gap={SPACING.sm} align="stretch">
-                                {basicContextItems.map((item, index) => (
-                                    <Box key={index} {...CARD_STYLES.entry}>
-                                        <Text {...TEXT_STYLES.entryText} wordBreak="normal">{item.input}</Text>
-                                    </Box>
-                                ))}
+                                {basicContextItems.map((item) => {
+                                    const { type: itemType, description: itemDescription } = getEntryParsed({ input: item.input });
+                                    return (
+                                        <Link
+                                            key={item.id}
+                                            to={`/entry/${item.id}`}
+                                            style={{ textDecoration: "none", color: "inherit", display: "block" }}
+                                        >
+                                            <Box
+                                                {...CARD_STYLES.entry}
+                                                cursor="pointer"
+                                                _hover={{ bg: "gray.100" }}
+                                            >
+                                                <HStack justify="space-between" align="flex-start">
+                                                    <VStack align="flex-start" gap={1} flex={1}>
+                                                        <HStack gap={2}>
+                                                            <Badge colorPalette="blue" variant="subtle">{itemType}</Badge>
+                                                            <Text {...TEXT_STYLES.entryMeta}>
+                                                                {formatRelativeDate(item.date)}
+                                                            </Text>
+                                                        </HStack>
+                                                        <Text {...TEXT_STYLES.entryText}>{itemDescription}</Text>
+                                                    </VStack>
+                                                </HStack>
+                                            </Box>
+                                        </Link>
+                                    );
+                                })}
                             </VStack>
                         )}
                     </Card.Body>

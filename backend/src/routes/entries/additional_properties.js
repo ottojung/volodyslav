@@ -305,8 +305,8 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
                 "Pulled basic_context entry for additional properties",
             );
 
-            // Returns objects with both input and date so callers have full context about each event.
-            properties.basic_context = basicContextEntry.events.map((e) => ({ input: e.input, date: e.date }));
+            // Returns objects with id, input and date so callers have full context about each event.
+            properties.basic_context = basicContextEntry.events.map((e) => ({ id: e.id, input: e.input, date: e.date }));
         } catch (error) {
             if (!isEventNotFoundError(error)) {
                 const message = error instanceof Error ? error.message : String(error);
