@@ -101,6 +101,18 @@ function makeRouter(capabilities) {
         isAudioSessionConflictError
     );
 
+    const { registerPushChunkRoute } = require("./audio_recording_session_push_chunk");
+    registerPushChunkRoute(
+        router,
+        capabilities,
+        upload,
+        pushAudioFragment,
+        enqueueAnalysis,
+        isAudioSessionChunkValidationError,
+        isAudioSessionNotFoundError,
+        isAudioSessionConflictError
+    );
+
     // GET /audio-recording-session/:sessionId
     router.get("/audio-recording-session/:sessionId", async (req, res) => {
         const { sessionId } = req.params;

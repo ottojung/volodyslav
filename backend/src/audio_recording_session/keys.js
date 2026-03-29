@@ -14,6 +14,7 @@ const SESSION_NAMESPACE = "audio_session";
 const INDEX_SUBLEVEL = "index";
 const SESSIONS_SUBLEVEL = "sessions";
 const CHUNKS_SUBLEVEL = "chunk";
+const MEDIA_CHUNKS_SUBLEVEL = "media";
 const CURRENT_SESSION_KEY = stringToTempKey("current_session_id");
 const SESSION_INDEX_KEY_PREFIX = "session/";
 const META_KEY = stringToTempKey("meta");
@@ -62,6 +63,15 @@ function chunksSublevel(temporary, sessionId) {
 }
 
 /**
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {TemporarySublevel}
+ */
+function mediaChunksSublevel(temporary, sessionId) {
+    return sessionSublevel(temporary, sessionId).getSublevel(MEDIA_CHUNKS_SUBLEVEL);
+}
+
+/**
  * @returns {TempKey}
  */
 function metaKey() {
@@ -73,6 +83,15 @@ function metaKey() {
  * @returns {TempKey}
  */
 function chunkKey(sequence) {
+    const seqPadded = String(sequence).padStart(6, "0");
+    return stringToTempKey(seqPadded);
+}
+
+/**
+ * @param {number} sequence
+ * @returns {TempKey}
+ */
+function mediaChunkKey(sequence) {
     const seqPadded = String(sequence).padStart(6, "0");
     return stringToTempKey(seqPadded);
 }
@@ -160,8 +179,10 @@ module.exports = {
     sessionsSublevel,
     sessionSublevel,
     chunksSublevel,
+    mediaChunksSublevel,
     metaKey,
     chunkKey,
+    mediaChunkKey,
     finalKey,
     sessionMarkerKey,
     sessionIdFromMarkerKey,

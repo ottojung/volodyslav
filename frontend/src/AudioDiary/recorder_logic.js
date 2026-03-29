@@ -13,7 +13,7 @@ export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment coll
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob, startMs: number, endMs: number, pcmChunk: { pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number } | null) => void} [onChunk] - called with each fragment, its relative timestamps (authoritative), and raw PCM bytes with format metadata (null when PCM capture unavailable)
+ * @property {(chunk: Blob, startMs: number, endMs: number, pcmChunk: { pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number } | null, captureId: string) => void} [onChunk] - called with each fragment, its relative timestamps (authoritative), raw PCM bytes with format metadata (null when PCM capture unavailable), and the captureId for the current MediaRecorder run
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -40,6 +40,8 @@ class RecorderClass {
     _stream = null;
     /** @type {Array<() => void>} */
     _requestDataResolvers = [];
+    /** @type {string} */
+    _captureId = "";
     // Active-recording ms counter (FRAGMENT_MS per regular timeslice event).
     /** @type {number} */
     _activeRecordedMs = 0;
@@ -130,6 +132,10 @@ class RecorderClass {
         this._recordingStartMs = performance.now();
         this._totalPausedMs = 0;
         this._pauseStartMs = 0;
+        // Generate a new capture ID for this MediaRecorder run.
+        this._captureId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+            ? crypto.randomUUID()
+            : `${Math.floor(performance.now())}-${Math.random().toString(36).slice(2)}`;
         try {
             const options = this._mimeType ? { mimeType: this._mimeType } : {};
             this._mediaRecorder = new MediaRecorder(stream, options);
@@ -175,7 +181,7 @@ class RecorderClass {
                     const pcmChunk = this._pcmCapture
                         ? this._pcmCapture.drainPcm(fragEnd - fragStart)
                         : null;
-                    this._callbacks.onChunk(e.data, fragStart, fragEnd, pcmChunk);
+                    this._callbacks.onChunk(e.data, fragStart, fragEnd, pcmChunk, this._captureId);
                 }
             }
         };

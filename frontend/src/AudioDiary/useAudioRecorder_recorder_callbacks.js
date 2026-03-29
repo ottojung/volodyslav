@@ -7,7 +7,7 @@ import {
     stopSession as stopBackendSession,
     fetchFinalAudio,
     discardSession,
-    pushPcmWithSessionRetry as pushBackendPcm,
+    pushChunkWithSessionRetry as pushBackendChunk,
 } from "./session_api.js";
 
 /**
@@ -26,6 +26,7 @@ import {
  * @property {import('react').MutableRefObject<string>} mimeTypeRef
  * @property {import('react').MutableRefObject<number>} restoredOffsetMsRef
  * @property {import('react').MutableRefObject<number>} sequenceRef
+ * @property {import('react').MutableRefObject<boolean>} restoredBoundaryRef
  * @property {(chunk: Blob, startMs: number, endMs: number) => void} pushChunk
  */
 
@@ -48,6 +49,7 @@ export function createRecorderCallbacks(params) {
         mimeTypeRef,
         restoredOffsetMsRef,
         sequenceRef,
+        restoredBoundaryRef,
         pushChunk,
     } = params;
 
@@ -116,36 +118,54 @@ export function createRecorderCallbacks(params) {
          * @param {number} startMs
          * @param {number} endMs
          * @param {{ pcmBytes: ArrayBuffer; sampleRateHz: number; channels: number; bitDepth: number } | null} pcmChunk
+         * @param {string} captureId
          */
-        onChunk(chunk, startMs, endMs, pcmChunk) {
+        onChunk(chunk, startMs, endMs, pcmChunk, captureId) {
             if (!isMountedRef.current) return;
+            const chunkMimeType = chunk.type || mimeTypeRef.current;
             if (chunk.type) {
                 mimeTypeRef.current = chunk.type;
             }
             const offsetMs = restoredOffsetMsRef.current;
             pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
 
-            if (!pcmChunk) return;
+            if (!pcmChunk && !chunk.size) return;
+
             const seq = sequenceRef.current + 1;
             sequenceRef.current = seq;
             const sessionId = sessionIdRef.current;
             if (!sessionId) return;
 
+            const hasRestoreBoundary = restoredBoundaryRef ? restoredBoundaryRef.current : false;
+
+            // Build chunk params: always include media; include PCM when available
+            /** @type {{ startMs: number, endMs: number, sequence: number, captureId: string, hasRestoreBoundary: boolean, mediaBlob?: Blob, mediaMimeType?: string, pcmBytes?: ArrayBuffer, sampleRateHz?: number, channels?: number, bitDepth?: number }} */
+            const chunkParams = {
+                startMs: startMs + offsetMs,
+                endMs: endMs + offsetMs,
+                sequence: seq,
+                captureId,
+                hasRestoreBoundary,
+                mediaBlob: chunk.size > 0 ? chunk : undefined,
+                mediaMimeType: chunkMimeType || undefined,
+            };
+
+            if (pcmChunk) {
+                chunkParams.pcmBytes = pcmChunk.pcmBytes;
+                chunkParams.sampleRateHz = pcmChunk.sampleRateHz;
+                chunkParams.channels = pcmChunk.channels;
+                chunkParams.bitDepth = pcmChunk.bitDepth;
+            }
+
             uploadQueueRef.current = uploadQueueRef.current.then(async () => {
                 if (sessionId !== sessionIdRef.current) return;
                 try {
-                    await pushBackendPcm(sessionId, {
-                        pcmBytes: pcmChunk.pcmBytes,
-                        sampleRateHz: pcmChunk.sampleRateHz,
-                        channels: pcmChunk.channels,
-                        bitDepth: pcmChunk.bitDepth,
-                        startMs: startMs + offsetMs,
-                        endMs: endMs + offsetMs,
-                        sequence: seq,
-                    });
-                    pcmUploadedCountRef.current += 1;
+                    await pushBackendChunk(sessionId, chunkParams);
+                    if (pcmChunk) {
+                        pcmUploadedCountRef.current += 1;
+                    }
                 } catch {
-                    // push-PCM failure: local recording continues
+                    // push-chunk failure: local recording continues
                 }
             });
         },

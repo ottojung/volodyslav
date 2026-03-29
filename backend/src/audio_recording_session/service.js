@@ -20,7 +20,6 @@ const {
 } = require("./errors");
 const {
     isValidSessionId,
-    validateUploadChunkParams,
 } = require("./helpers");
 const { buildWav } = require("../build_wav");
 const {
@@ -28,7 +27,7 @@ const {
     indexSublevel,
     sessionSublevel,
     chunksSublevel,
-    chunkKey,
+    mediaChunksSublevel,
     finalKey,
     markSessionExists,
     unmarkSessionExists,
@@ -41,6 +40,7 @@ const {
     readCurrentSessionId,
     writeCurrentSessionId,
 } = require("./db_helpers");
+const { uploadChunk } = require("./upload_chunk");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
@@ -135,112 +135,18 @@ async function startSession(capabilities, sessionId) {
         sampleRateHz: 0,
         channels: 0,
         bitDepth: 0,
+        finalizationMode: "pcm_wav",
+        mediaMimeType: "",
+        mediaFragmentCount: 0,
+        hasRestoreBoundary: false,
+        mediaCaptureId: "",
+        mediaContiguousEligible: true,
     };
     await writeMeta(temporary, meta);
     await writeCurrentSessionId(temporary, sessionId);
     await markSessionExists(temporary, sessionId);
 
     return meta;
-}
-
-/**
- * Upload a single raw PCM chunk for a session.
- *
- * @param {Capabilities} capabilities
- * @param {string} sessionId
- * @param {{ pcm: Buffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
- * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number } }>}
- */
-async function uploadChunk(capabilities, sessionId, params) {
-    const { pcm, sampleRateHz, channels, bitDepth, endMs, sequence } = params;
-    const { temporary } = capabilities;
-
-    if (!isValidSessionId(sessionId)) {
-        throw new AudioSessionChunkValidationError(
-            `Invalid session ID: "${sessionId}"`
-        );
-    }
-    const uploadError = validateUploadChunkParams(params);
-    if (uploadError !== null) {
-        throw new AudioSessionChunkValidationError(uploadError);
-    }
-
-    capabilities.logger.logDebug(
-        { sessionId, sequence, sampleRateHz, channels, bitDepth, pcmBytes: pcm.length },
-        "uploadChunk: reading session metadata"
-    );
-
-    const meta = await readMeta(temporary, sessionId);
-    if (meta === null) {
-        throw new AudioSessionNotFoundError(sessionId);
-    }
-    if (meta.status === "stopped") {
-        throw new AudioSessionConflictError(
-            `Cannot upload chunk to finalized session: ${sessionId}`,
-            sessionId
-        );
-    }
-
-    // Validate PCM format consistency across fragments.
-    // On first chunk (sampleRateHz === 0), accept any valid format.
-    const formatMismatch = meta.sampleRateHz !== 0 && (
-        meta.sampleRateHz !== sampleRateHz || meta.channels !== channels || meta.bitDepth !== bitDepth
-    );
-    if (formatMismatch) {
-        throw new AudioSessionChunkValidationError(
-            `PCM format mismatch: expected ${meta.sampleRateHz}Hz/${meta.channels}ch/${meta.bitDepth}bit, ` +
-            `got ${sampleRateHz}Hz/${channels}ch/${bitDepth}bit`
-        );
-    }
-
-    const seqPadded = String(sequence).padStart(6, "0");
-    const sessionChunks = chunksSublevel(temporary, sessionId);
-    const chunkTempKey = chunkKey(sequence);
-    const existingChunk = await sessionChunks.get(chunkTempKey);
-
-    const isNewChunk = existingChunk === undefined;
-
-    await sessionChunks.put(chunkTempKey, {
-        type: "blob",
-        data: pcm.toString("base64"),
-    });
-
-    const shouldUpdateLastSequence = isNewChunk && sequence > meta.lastSequence;
-    // Also update lastEndMs when overwriting the current latest chunk,
-    // so session metadata stays accurate if the client retries with a different endMs.
-    const isOverwriteOfLatestChunk = !isNewChunk && sequence === meta.lastSequence;
-    const updatedMeta = {
-        ...meta,
-        updatedAt: toISOString(capabilities.datetime.now()),
-        fragmentCount: isNewChunk ? meta.fragmentCount + 1 : meta.fragmentCount,
-        lastSequence: shouldUpdateLastSequence ? sequence : meta.lastSequence,
-        lastEndMs: shouldUpdateLastSequence || isOverwriteOfLatestChunk ? endMs : meta.lastEndMs,
-        // Store format info from first chunk (subsequent chunks must match).
-        sampleRateHz: meta.sampleRateHz !== 0 ? meta.sampleRateHz : sampleRateHz,
-        channels: meta.channels !== 0 ? meta.channels : channels,
-        bitDepth: meta.bitDepth !== 0 ? meta.bitDepth : bitDepth,
-    };
-    await writeMeta(temporary, updatedMeta);
-
-    capabilities.logger.logDebug(
-        {
-            sessionId,
-            sequence,
-            isNewChunk,
-            fragmentCount: updatedMeta.fragmentCount,
-            lastEndMs: updatedMeta.lastEndMs,
-        },
-        "uploadChunk: PCM fragment stored"
-    );
-
-    const filename = `${seqPadded}.pcm`;
-    return {
-        stored: { sequence, filename },
-        session: {
-            fragmentCount: updatedMeta.fragmentCount,
-            lastEndMs: updatedMeta.lastEndMs,
-        },
-    };
 }
 
 /**
@@ -298,25 +204,54 @@ async function stopSession(capabilities, sessionId) {
     const chunkKeys = await sessionChunks.listKeys();
     chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
 
-    /** @type {Buffer[]} */
-    const pcmBuffers = [];
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined && entry.type === "blob") {
-            pcmBuffers.push(Buffer.from(entry.data, "base64"));
+    // Determine finalization mode
+    const useMediaNative =
+        meta.mediaFragmentCount > 0 &&
+        meta.mediaContiguousEligible === true &&
+        meta.hasRestoreBoundary === false;
+
+    let finalBuffer;
+    let finalMimeType;
+
+    if (useMediaNative) {
+        // Media-native finalization: concatenate media chunks in sequence order
+        const mediaChunksLevel = mediaChunksSublevel(temporary, sessionId);
+        const mediaKeys = await mediaChunksLevel.listKeys();
+        mediaKeys.sort((a, b) => String(a).localeCompare(String(b)));
+
+        /** @type {Buffer[]} */
+        const mediaBuffers = [];
+        for (const key of mediaKeys) {
+            const entry = await mediaChunksLevel.get(key);
+            if (entry !== undefined && entry.type === "blob") {
+                mediaBuffers.push(Buffer.from(entry.data, "base64"));
+            }
         }
+        finalBuffer = Buffer.concat(mediaBuffers);
+        finalMimeType = meta.mediaMimeType || "audio/webm";
+    } else {
+        // PCM→WAV finalization (existing path)
+        /** @type {Buffer[]} */
+        const pcmBuffers = [];
+        for (const key of chunkKeys) {
+            const entry = await sessionChunks.get(key);
+            if (entry !== undefined && entry.type === "blob") {
+                pcmBuffers.push(Buffer.from(entry.data, "base64"));
+            }
+        }
+
+        // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
+        // PCM sample-level concatenation is always safe: no container format concerns.
+        const concatenatedPcm = Buffer.concat(pcmBuffers);
+
+        // Use PCM format stored in session metadata.  If no chunks were uploaded yet
+        // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
+        const sampleRateHz = meta.sampleRateHz || 16000;
+        const channels = meta.channels || 1;
+        const bitDepth = meta.bitDepth || 16;
+        finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
+        finalMimeType = "audio/wav";
     }
-
-    // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
-    // PCM sample-level concatenation is always safe: no container format concerns.
-    const concatenatedPcm = Buffer.concat(pcmBuffers);
-
-    // Use PCM format stored in session metadata.  If no chunks were uploaded yet
-    // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
-    const sampleRateHz = meta.sampleRateHz || 16000;
-    const channels = meta.channels || 1;
-    const bitDepth = meta.bitDepth || 16;
-    const finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
 
     try {
         await sessionSublevel(temporary, sessionId).put(finalKey(), {
@@ -340,6 +275,8 @@ async function stopSession(capabilities, sessionId) {
         status: "stopped",
         elapsedSeconds,
         updatedAt: toISOString(capabilities.datetime.now()),
+        mimeType: finalMimeType,
+        finalizationMode: useMediaNative ? "media_native" : "pcm_wav",
     };
     await writeMeta(temporary, updatedMeta);
 

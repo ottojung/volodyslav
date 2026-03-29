@@ -8,6 +8,8 @@ const { CURRENT_SESSION_KEY, indexSublevel, sessionSublevel, metaKey } = require
 /**
  * Read session metadata from the database.
  * Returns null if not found.
+ * Applies defaults for new fields added in the hybrid finalization update
+ * to ensure backward compatibility with sessions created before the update.
  * @param {Temporary} temporary
  * @param {string} sessionId
  * @returns {Promise<AudioSessionMeta | null>}
@@ -17,7 +19,17 @@ async function readMeta(temporary, sessionId) {
     if (entry === undefined || entry.type !== "audio_session_meta") {
         return null;
     }
-    return entry.data;
+    const data = entry.data;
+    // Apply defaults for fields introduced in the hybrid finalization update.
+    return {
+        ...data,
+        finalizationMode: data.finalizationMode ?? "pcm_wav",
+        mediaMimeType: data.mediaMimeType ?? "",
+        mediaFragmentCount: data.mediaFragmentCount ?? 0,
+        hasRestoreBoundary: data.hasRestoreBoundary ?? false,
+        mediaCaptureId: data.mediaCaptureId ?? "",
+        mediaContiguousEligible: data.mediaContiguousEligible ?? true,
+    };
 }
 
 /**

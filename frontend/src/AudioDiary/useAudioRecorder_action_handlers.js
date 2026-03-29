@@ -26,6 +26,7 @@ import { saveSessionId, clearSessionId } from "./recording_storage.js";
  * @property {import('react').MutableRefObject<number>} elapsedSecondsRef
  * @property {import('react').MutableRefObject<string>} sessionIdRef
  * @property {import('react').MutableRefObject<boolean>} isMountedRef
+ * @property {import('react').MutableRefObject<boolean>} restoredBoundaryRef
  * @property {import('react').Dispatch<import('react').SetStateAction<boolean>>} setHasRestoredSession
  * @property {import('react').Dispatch<import('react').SetStateAction<string>>} setErrorMessage
  * @property {import('react').Dispatch<import('react').SetStateAction<number>>} setElapsedSeconds
@@ -55,6 +56,7 @@ export function createAudioRecorderActionHandlers(params) {
         elapsedSecondsRef,
         sessionIdRef,
         isMountedRef,
+        restoredBoundaryRef,
         setHasRestoredSession,
         setErrorMessage,
         setElapsedSeconds,
@@ -110,6 +112,10 @@ export function createAudioRecorderActionHandlers(params) {
                 if (isRestoredPauseRef.current) {
                     restoredOffsetMsRef.current = elapsedSecondsRef.current * 1000;
                     isRestoredPauseRef.current = false;
+                    // Starting a new MediaRecorder run after restore: mark boundary
+                    if (restoredBoundaryRef) {
+                        restoredBoundaryRef.current = true;
+                    }
                     await recorderRef.current.start();
                 } else {
                     recorderRef.current.resume();

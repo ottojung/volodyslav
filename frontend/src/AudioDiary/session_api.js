@@ -54,6 +54,33 @@ export class PushPcmServerError extends Error {
 }
 
 /**
+ * Thrown by pushChunk when the backend returns 404 (session not found).
+ * Callers can detect this to lazily (re-)create the session.
+ */
+export class PushChunkSessionNotFoundError extends Error {
+    /** @param {string} sessionId */
+    constructor(sessionId) {
+        super(`Session not found during push chunk: ${sessionId}`);
+        this.name = "PushChunkSessionNotFoundError";
+        this.sessionId = sessionId;
+    }
+}
+
+/**
+ * Thrown by pushChunk when the backend returns a 5xx server error.
+ * This typically indicates a transient proxy or infrastructure issue
+ * (e.g., nginx body-buffering failure) and is safe to retry.
+ */
+export class PushChunkServerError extends Error {
+    /** @param {number} status */
+    constructor(status) {
+        super(`Server error pushing chunk: ${status}`);
+        this.name = "PushChunkServerError";
+        this.status = status;
+    }
+}
+
+/**
  * Initialize or touch a recording session.
  * @param {string} sessionId
  * @returns {Promise<SessionInfo>}
@@ -162,6 +189,107 @@ export async function pushPcmWithSessionRetry(sessionId, params) {
     }
     // Unreachable: the final iteration always throws or returns.
     throw new PushPcmServerError(500);
+}
+
+/**
+ * @typedef {'accepted'} PushChunkStatus
+ */
+
+/**
+ * Push a single chunk (media + optional PCM) to the session via push-chunk endpoint.
+ * @param {string} sessionId
+ * @param {{ mediaBlob?: Blob, mediaMimeType?: string, pcmBytes?: ArrayBuffer, sampleRateHz?: number, channels?: number, bitDepth?: number, startMs: number, endMs: number, sequence: number, captureId?: string, hasRestoreBoundary?: boolean }} params
+ * @returns {Promise<{ stored: { sequence: number, filename: string }, session: { fragmentCount: number, lastEndMs: number }, status: PushChunkStatus, hasPcm: boolean, hasMedia: boolean, mediaContiguousEligible: boolean }>}
+ */
+export async function pushChunk(sessionId, { mediaBlob, mediaMimeType, pcmBytes, sampleRateHz, channels, bitDepth, startMs, endMs, sequence, captureId, hasRestoreBoundary }) {
+    const formData = new FormData();
+    formData.append("startMs", String(startMs));
+    formData.append("endMs", String(endMs));
+    formData.append("sequence", String(sequence));
+
+    if (mediaBlob) {
+        formData.append("media", mediaBlob, "fragment.media");
+        if (mediaMimeType) {
+            formData.append("mediaMimeType", mediaMimeType);
+        }
+    }
+
+    if (pcmBytes != null) {
+        formData.append("pcm", new Blob([pcmBytes], { type: "application/octet-stream" }), "fragment.pcm");
+        formData.append("sampleRateHz", String(sampleRateHz));
+        formData.append("channels", String(channels));
+        formData.append("bitDepth", String(bitDepth));
+    }
+
+    if (captureId) {
+        formData.append("captureId", captureId);
+    }
+
+    if (hasRestoreBoundary) {
+        formData.append("hasRestoreBoundary", "true");
+    }
+
+    const response = await fetch(`${SESSION_BASE}/${encodeURIComponent(sessionId)}/push-chunk`, {
+        method: "POST",
+        body: formData,
+    });
+    if (response.status === 404) {
+        throw new PushChunkSessionNotFoundError(sessionId);
+    }
+    if (response.status >= 500) {
+        throw new PushChunkServerError(response.status);
+    }
+    if (!response.ok) {
+        throw new Error(`Failed to push chunk: ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.error || "Failed to push chunk");
+    }
+    return {
+        stored: data.stored,
+        session: data.session,
+        status: data.status,
+        hasPcm: data.hasPcm,
+        hasMedia: data.hasMedia,
+        mediaContiguousEligible: data.mediaContiguousEligible,
+    };
+}
+
+/**
+ * Push a chunk, recreating the session on 404 and retrying up to
+ * MAX_SERVER_RETRIES times on transient server errors (5xx).
+ *
+ * @param {string} sessionId
+ * @param {{ mediaBlob?: Blob, mediaMimeType?: string, pcmBytes?: ArrayBuffer, sampleRateHz?: number, channels?: number, bitDepth?: number, startMs: number, endMs: number, sequence: number, captureId?: string, hasRestoreBoundary?: boolean }} params
+ * @returns {Promise<{ status: PushChunkStatus }>}
+ */
+export async function pushChunkWithSessionRetry(sessionId, params) {
+    const MAX_SERVER_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_SERVER_RETRIES; attempt++) {
+        if (attempt > 0) {
+            // Brief wait before retrying after a server error.
+            await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        }
+        let result;
+        try {
+            result = await pushChunk(sessionId, params);
+        } catch (err) {
+            if (err instanceof PushChunkSessionNotFoundError) {
+                // Session missing (startSession failed earlier) — recreate then retry once.
+                await startSession(sessionId);
+                result = await pushChunk(sessionId, params);
+            } else if (err instanceof PushChunkServerError && attempt < MAX_SERVER_RETRIES) {
+                // Transient server error (e.g., nginx proxy issue) — retry with backoff.
+                continue;
+            } else {
+                throw err;
+            }
+        }
+        return { status: result.status };
+    }
+    // Unreachable: the final iteration always throws or returns.
+    throw new PushChunkServerError(500);
 }
 
 /**

@@ -106,7 +106,7 @@ function tempKeyToString(key) {
  * @property {string} createdAt - ISO timestamp
  * @property {string} updatedAt - ISO timestamp
  * @property {'recording'|'stopped'} status
- * @property {string} mimeType - always "audio/wav" for PCM-native sessions
+ * @property {string} mimeType - final mime type; "audio/wav" for PCM path, mediaMimeType for media-native path
  * @property {number} fragmentCount
  * @property {number} lastSequence
  * @property {number} lastEndMs
@@ -114,6 +114,12 @@ function tempKeyToString(key) {
  * @property {number} sampleRateHz - PCM sample rate; 0 when no chunks uploaded yet
  * @property {number} channels - PCM channel count; 0 when no chunks uploaded yet
  * @property {number} bitDepth - PCM bit depth; 0 when no chunks uploaded yet
+ * @property {'pcm_wav'|'media_native'} finalizationMode - resolved at stop
+ * @property {string} mediaMimeType - MIME type of media chunks; empty string before first media chunk
+ * @property {number} mediaFragmentCount - number of media chunks stored
+ * @property {boolean} hasRestoreBoundary - true when a restore-resume causes a new MediaRecorder run
+ * @property {string} mediaCaptureId - capture ID currently active for incoming media chunks; empty string initially
+ * @property {boolean} mediaContiguousEligible - starts true; flips to false on contiguity/mime/capture mismatch
  */
 
 /**

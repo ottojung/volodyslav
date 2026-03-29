@@ -86,6 +86,8 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
     const pcmUploadedCountRef = useRef(0);
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
+    /** @type {import("react").MutableRefObject<boolean>} */
+    const restoredBoundaryRef = useRef(false);
 
     const { pushChunk, resetCollector } =
         useAudioChunkCollector();
@@ -132,6 +134,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 mimeTypeRef,
                 restoredOffsetMsRef,
                 sequenceRef,
+                restoredBoundaryRef,
                 pushChunk,
             })
         );
@@ -197,6 +200,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         elapsedSecondsRef,
         sessionIdRef,
         isMountedRef,
+        restoredBoundaryRef,
         setHasRestoredSession,
         setErrorMessage,
         setElapsedSeconds,
