@@ -176,10 +176,14 @@ function isDiaryQuestion(raw) {
  * @returns {Promise<DiaryQuestion[]>}
  */
 async function generateQuestions(makeClient, capabilities, transcriptSoFar, askedQuestions, maxQuestions = TARGET_QUESTION_COUNT) {
+    const clampedMax = Math.max(MIN_QUESTION_COUNT, Math.min(TARGET_QUESTION_COUNT, maxQuestions));
+    if (clampedMax === 0) {
+        return [];
+    }
+
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
-    const clampedMax = Math.max(MIN_QUESTION_COUNT, Math.min(TARGET_QUESTION_COUNT, maxQuestions));
     const messages = makeQuestionsMessages(transcriptSoFar, askedQuestions, clampedMax);
 
     let rawText;
@@ -229,7 +233,7 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
         }
     }
 
-    return questions;
+    return questions.slice(0, clampedMax);
 }
 
 /**

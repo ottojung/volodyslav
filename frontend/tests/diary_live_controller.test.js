@@ -7,16 +7,68 @@
 
 import { renderHook, act } from "@testing-library/react";
 import { useDiaryLiveQuestioningController } from "../src/AudioDiary/useDiaryLiveQuestioningController.js";
+import * as sessionApi from "../src/AudioDiary/session_api.js";
+
+jest.mock("../src/AudioDiary/session_api.js", () => ({
+    getLiveQuestions: jest.fn(),
+}));
 
 // ─── startLive / stopLive ─────────────────────────────────────────────────────
 
 describe("startLive", () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+        sessionApi.getLiveQuestions.mockReset();
+    });
+
+    afterEach(() => {
+        act(() => {
+            jest.runOnlyPendingTimers();
+        });
+        jest.useRealTimers();
+    });
+
     it("resets displayedQuestions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
 
         act(() => result.current.startLive("session-start"));
 
         expect(result.current.displayedQuestions).toEqual([]);
+    });
+
+    it("ignores stale poll responses from a previous session after stop/start", async () => {
+        /** @type {(value: Array<{text: string, intent: "warm_reflective" | "clarifying" | "forward"}>) => void} */
+        let resolveFirstPoll;
+        const firstPollPromise = new Promise((resolve) => {
+            resolveFirstPoll = resolve;
+        });
+        sessionApi.getLiveQuestions
+            .mockImplementationOnce(() => firstPollPromise)
+            .mockResolvedValueOnce([{ text: "Fresh session question", intent: "clarifying" }]);
+
+        const { result } = renderHook(() => useDiaryLiveQuestioningController());
+
+        act(() => result.current.startLive("session-old"));
+        await act(async () => {
+            jest.advanceTimersByTime(5000);
+        });
+        expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-old");
+
+        act(() => result.current.stopLive());
+        act(() => result.current.startLive("session-new"));
+
+        await act(async () => {
+            resolveFirstPoll([{ text: "Stale old question", intent: "clarifying" }]);
+            await firstPollPromise;
+        });
+        expect(result.current.displayedQuestions).toHaveLength(0);
+
+        await act(async () => {
+            jest.advanceTimersByTime(5000);
+        });
+        expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-new");
+        expect(result.current.displayedQuestions).toHaveLength(1);
+        expect(result.current.displayedQuestions[0].text).toBe("Fresh session question");
     });
 });
 
@@ -125,6 +177,17 @@ describe("onQuestions", () => {
 // ─── togglePin ────────────────────────────────────────────────────────────────
 
 describe("togglePin", () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        act(() => {
+            jest.runOnlyPendingTimers();
+        });
+        jest.useRealTimers();
+    });
+
     it("pins a question: moves it from displayedQuestions to pinnedQuestions", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
         act(() => result.current.startLive("session-pin-1"));
@@ -141,6 +204,7 @@ describe("togglePin", () => {
 
         expect(result.current.pinnedQuestions).toHaveLength(1);
         expect(result.current.pinnedQuestions[0].text).toBe("Pin me");
+        expect(result.current.pinnedQuestions[0].isNew).toBe(false);
         expect(result.current.displayedQuestions).toHaveLength(0);
         expect(result.current.pinnedQuestionIds).toContain(questionId);
     });
