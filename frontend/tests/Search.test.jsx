@@ -1001,4 +1001,41 @@ describe("Search page", () => {
             expect(screen.getByText("Failed to copy to clipboard.")).toBeInTheDocument();
         });
     });
+
+    it("resets copy status when search pattern changes", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+        fetchAdditionalProperties.mockResolvedValue({ basic_context: [] });
+
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText: mockWriteText } });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+
+        // Copy successfully
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /copy as json/i }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Copied to clipboard!")).toBeInTheDocument();
+        });
+
+        // Change the search pattern — success message should disappear
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "sleep" } });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Copied to clipboard!")).not.toBeInTheDocument();
+        });
+    });
 });

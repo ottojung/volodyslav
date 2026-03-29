@@ -103,6 +103,7 @@ export default function Search() {
 
     useEffect(() => {
         setError(null);
+        setCopyStatus(COPY_STATUS_IDLE);
 
         if (isStateRestoredRef.current) {
             isStateRestoredRef.current = false;
