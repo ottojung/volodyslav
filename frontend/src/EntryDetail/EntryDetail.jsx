@@ -165,7 +165,7 @@ export default function EntryDetail() {
         Object.entries(allErrors).filter(([key]) => key !== "basic_context")
     );
 
-    const basicContextInputs = additionalProperties.basic_context;
+    const basicContextItems = additionalProperties.basic_context;
     const isLoadingBasicContext = loadingAdditionalProperties.includes("basic_context");
     const loadingComputedProperties = loadingAdditionalProperties.filter((name) => name !== "basic_context");
 
@@ -287,11 +287,11 @@ export default function EntryDetail() {
                                 </Text>
                                 <Text fontSize="sm" color="red.700">{basicContextError}</Text>
                             </Box>
-                        ) : !basicContextInputs || basicContextInputs.length === 0 ? (
+                        ) : !basicContextItems || basicContextItems.length === 0 ? (
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : (
                             <VStack gap={SPACING.sm} align="stretch">
-                                {basicContextInputs.map((item, index) => (
+                                {basicContextItems.map((item, index) => (
                                     <Box key={index} {...CARD_STYLES.entry}>
                                         <Text {...TEXT_STYLES.entryText} wordBreak="normal">{item.input}</Text>
                                     </Box>

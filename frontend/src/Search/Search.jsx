@@ -88,6 +88,7 @@ export default function Search() {
     const [copyStatus, setCopyStatus] = useState(COPY_STATUS_IDLE);
     const inputRef = useRef(null);
     const searchSequenceRef = useRef(0);
+    const copySequenceRef = useRef(0);
     // Tracks whether the initial fetch should be skipped because state was restored.
     const isStateRestoredRef = useRef(restoredState !== null);
 
@@ -104,6 +105,8 @@ export default function Search() {
     useEffect(() => {
         setError(null);
         setCopyStatus(COPY_STATUS_IDLE);
+        setIsCopying(false);
+        ++copySequenceRef.current;
 
         if (isStateRestoredRef.current) {
             isStateRestoredRef.current = false;
@@ -149,6 +152,7 @@ export default function Search() {
     }
 
     async function handleCopy() {
+        const copySequence = ++copySequenceRef.current;
         setIsCopying(true);
         setCopyStatus(COPY_STATUS_IDLE);
         try {
@@ -166,11 +170,14 @@ export default function Search() {
                 })
             );
             await navigator.clipboard.writeText(JSON.stringify(items, null, 2));
+            if (copySequence !== copySequenceRef.current) return;
             setCopyStatus(COPY_STATUS_SUCCESS);
         } catch (err) {
             logger.error("Failed to copy entries to clipboard:", err);
+            if (copySequence !== copySequenceRef.current) return;
             setCopyStatus(COPY_STATUS_ERROR);
         }
+        if (copySequence !== copySequenceRef.current) return;
         setIsCopying(false);
     }
 
