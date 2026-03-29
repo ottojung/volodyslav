@@ -444,9 +444,6 @@ async function pushAudio(
         await appendPendingQuestions(temporary, sessionId, newQuestions);
         // Reset counter only when at least one new question is accepted/enqueued.
         await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, "0");
-    } else {
-        // No new question asked (e.g. duplicates only) — preserve cumulative words.
-        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
     }
 
     return { questions: newQuestions, status: "ok" };
