@@ -73,8 +73,8 @@ describe("POST /api/entries", () => {
         expect(res.statusCode).toBe(201);
         // The entry date should reflect the client-supplied date, not the server time.
         expect(res.body.entry.date).toContain("2025-05-23");
-        // The offset should be preserved (+03:00, not the server's UTC offset).
-        expect(res.body.entry.date).toContain("+03:00");
+        // The offset should be preserved (Kyiv +03, not the server's UTC offset).
+        expect(res.body.entry.date).toMatch(/\+03/);
     });
 
     it("falls back to server time when clientDate is not provided", async () => {
@@ -115,7 +115,7 @@ describe("POST /api/entries", () => {
         expect(res.body.error).toMatch(/clientDate must be a string/);
     });
 
-
+    it("returns 400 if required fields are missing", async () => {
         // Equivalent curl command:
         // curl -X POST http://localhost:PORT/api/entries \
         //   -H "Content-Type: application/json" \

@@ -24,6 +24,7 @@ const LAST_WINDOW_TRANSCRIPT_KEY = stringToTempKey("last_window_transcript");
 const RUNNING_TRANSCRIPT_KEY = stringToTempKey("running_transcript");
 const ASKED_QUESTIONS_KEY = stringToTempKey("asked_questions");
 const PENDING_QUESTIONS_KEY = stringToTempKey("pending_questions");
+const WORDS_SINCE_LAST_QUESTION_KEY = stringToTempKey("words_since_last_question");
 
 /**
  * @param {Temporary} temporary
@@ -202,6 +203,7 @@ module.exports = {
     RUNNING_TRANSCRIPT_KEY,
     ASKED_QUESTIONS_KEY,
     PENDING_QUESTIONS_KEY,
+    WORDS_SINCE_LAST_QUESTION_KEY,
     readCurrentSessionId,
     writeCurrentSessionId,
     readLastFragment,

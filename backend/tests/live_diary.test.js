@@ -401,7 +401,7 @@ describe("pushAudio", () => {
         expect(result.status).toBe("ok");
     });
 
-    it("skips question generation when transcript has fewer than 10 words", async () => {
+    it("skips question generation when cumulative word count since last question is below 10", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
             text: "only nine words in this very sparse",
@@ -417,68 +417,53 @@ describe("pushAudio", () => {
             rawResponse: null,
         });
 
-        await pushAudio(caps, "sess-sparse", buildTestPcmInfo(), 1);
-        const result = await pushAudio(caps, "sess-sparse", buildTestPcmInfo(), 2);
+        await pushAudio(caps, "sess-sparse-cumulative", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-sparse-cumulative", buildTestPcmInfo(), 2);
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("ok");
         expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
     });
 
-    it("requests maxQuestions=1 when transcript has 10–29 words", async () => {
+    it("generates questions once cumulative word count across fragments reaches 10", async () => {
         const caps = makeCapabilities();
-        // Exactly 15 words.
-        const transcript = "this is a transcript with exactly fifteen words to test the limit now";
-        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
-            text: transcript,
-            provider: "Google",
-            model: "mocked",
-            finishReason: "STOP",
-            finishMessage: null,
-            candidateTokenCount: 0,
-            usageMetadata: null,
-            modelVersion: null,
-            responseId: null,
-            structured: { transcript, coverage: "full", warnings: [], unclearAudio: false },
-            rawResponse: null,
+        let callCount = 0;
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockImplementation(async () => {
+            callCount += 1;
+            // First two windows: 3 words each (cumulative 3, then 6, then 9 — never hits 10 alone).
+            // Third window: 4 words → cumulative becomes 13 ≥ 10.
+            const transcripts = ["one two three", "four five six", "seven eight nine ten"];
+            const t = transcripts[Math.min(callCount - 1, transcripts.length - 1)];
+            return {
+                text: t,
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: t, coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            };
         });
 
-        await pushAudio(caps, "sess-short-q", buildTestPcmInfo(), 1);
-        await pushAudio(caps, "sess-short-q", buildTestPcmInfo(), 2);
-        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledWith(
-            expect.any(String),
-            expect.any(Array),
-            1
-        );
+        await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 1);
+        // Fragment 2: 3 words cumulative — no questions.
+        const r2 = await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 2);
+        expect(r2.questions).toHaveLength(0);
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+        // Fragment 3: 3+3=6 cumulative — still no questions.
+        const r3 = await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 3);
+        expect(r3.questions).toHaveLength(0);
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+        // Fragment 4: 6+4=10 cumulative — questions generated.
+        const r4 = await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 4);
+        expect(r4.status).toBe("ok");
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
     });
 
-    it("requests maxQuestions=5 when transcript has 60 or more words", async () => {
-        const caps = makeCapabilities();
-        // Build a transcript with >= 60 words.
-        const words = Array.from({ length: 65 }, (_, i) => `word${i}`).join(" ");
-        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
-            text: words,
-            provider: "Google",
-            model: "mocked",
-            finishReason: "STOP",
-            finishMessage: null,
-            candidateTokenCount: 0,
-            usageMetadata: null,
-            modelVersion: null,
-            responseId: null,
-            structured: { transcript: words, coverage: "full", warnings: [], unclearAudio: false },
-            rawResponse: null,
-        });
-
-        await pushAudio(caps, "sess-rich-q", buildTestPcmInfo(), 1);
-        await pushAudio(caps, "sess-rich-q", buildTestPcmInfo(), 2);
-        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledWith(
-            expect.any(String),
-            expect.any(Array),
-            5
-        );
-    });
-
-
+    it("deduplicates repeated questions across consecutive calls", async () => {
         const caps = makeCapabilities();
         caps.aiDiaryQuestions.generateQuestions = jest
             .fn()
