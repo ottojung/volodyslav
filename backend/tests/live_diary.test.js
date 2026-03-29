@@ -72,7 +72,7 @@ describe("pushAudio", () => {
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
 
-    it("transcribes the 20s window on the second fragment", async () => {
+    it("transcribes the overlap window on the second fragment", async () => {
         const caps = makeCapabilities();
         await pushAudio(caps, "sess-2", buildTestPcmInfo(), 1);
         await pushAudio(caps, "sess-2", buildTestPcmInfo(), 2);
@@ -476,7 +476,7 @@ describe("pushAudio", () => {
                 currentFragmentBytes: pcmByteLength,
                 combinedBytes: pcmByteLength * 2,
             }),
-            expect.stringContaining("forming 20s PCM overlap window")
+            expect.stringContaining("forming PCM overlap window")
         );
     });
 });

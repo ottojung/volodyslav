@@ -251,7 +251,7 @@ async function pushAudio(
             currentFragmentBytes: pcm.length,
             combinedBytes: combinedPcm.length,
         },
-        "Live diary forming 20s PCM overlap window for transcription"
+        "Live diary forming PCM overlap window for transcription"
     );
 
     // Advance the stored fragment to the current one for the next call.

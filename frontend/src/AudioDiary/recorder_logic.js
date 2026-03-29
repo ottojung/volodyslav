@@ -6,7 +6,7 @@ import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./reco
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 import { makePcmCapture, isPcmCapture } from "./pcm_capture.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
-export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment collection
+export const FRAGMENT_MS = 3 * 1000; // nominal 3s timeslice for fragment collection
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange

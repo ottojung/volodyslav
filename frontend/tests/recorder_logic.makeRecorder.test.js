@@ -175,7 +175,7 @@ describe("makeRecorder: requestData() flush timestamps", () => {
     it("clamps requestData() endMs to fragStart when wall-clock is behind", async () => {
         // First fire a regular timeslice to advance the counter to FRAGMENT_MS
         const recorder = await startRecorder();
-        fireData(instance, new Blob(["ts1"])); // counter → FRAGMENT_MS (10 000)
+        fireData(instance, new Blob(["ts1"])); // counter → FRAGMENT_MS (3 000)
         // Wall clock is only 5 s but counter is at 10 s
         mockNow = 5000;
         instance.requestData.mockImplementationOnce(() => {

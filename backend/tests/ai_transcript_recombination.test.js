@@ -143,14 +143,14 @@ describe("programmaticRecombination", () => {
         expect(result).toBe("walked to the store");
     });
 
-    it("falls back to [10-second overlap] marker when no overlap found", () => {
+    it("falls back to [overlap] marker when no overlap found", () => {
         const result = programmaticRecombination("first part", "second part");
-        expect(result).toBe("first part [10-second overlap] second part");
+        expect(result).toBe("first part [overlap] second part");
     });
 
-    it("falls back to [10-second overlap] marker for completely unrelated segments", () => {
+    it("falls back to [overlap] marker for completely unrelated segments", () => {
         const result = programmaticRecombination("hello", "world");
-        expect(result).toBe("hello [10-second overlap] world");
+        expect(result).toBe("hello [overlap] world");
     });
 
     it("returns segment2 when segment1 is empty", () => {
@@ -176,12 +176,12 @@ describe("programmaticRecombination", () => {
     it("does not match on pure-punctuation tokens", () => {
         // "." normalises to "", so it should not be used as an overlap match
         const result = programmaticRecombination("end.", ". start");
-        expect(result).toBe("end. [10-second overlap] . start");
+        expect(result).toBe("end. [overlap] . start");
     });
 
-    it("includes the literal [10-second overlap] marker when no overlap", () => {
+    it("includes the literal [overlap] marker when no overlap", () => {
         const result = programmaticRecombination("a", "b");
-        expect(result).toContain("[10-second overlap]");
+        expect(result).toContain("[overlap]");
     });
 
     it("handles hyphenated words in overlap detection", () => {
@@ -372,7 +372,7 @@ describe("recombineOverlap", () => {
         const result = await ai.recombineOverlap("existing", "new content");
 
         expect(mockCreate).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
-        expect(result).toBe("existing [10-second overlap] new content");
+        expect(result).toBe("existing [overlap] new content");
     });
 
     it("succeeds on second attempt after one failure", async () => {
@@ -424,7 +424,7 @@ describe("recombineOverlap", () => {
         const result = await ai.recombineOverlap("existing", "new content");
 
         expect(mockCreate).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
-        expect(result).toBe("existing [10-second overlap] new content");
+        expect(result).toBe("existing [overlap] new content");
     });
 
     it("calls LLM for the full input and falls back to programmatic when output fails validation", async () => {

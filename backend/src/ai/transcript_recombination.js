@@ -2,11 +2,11 @@
  * @module ai_transcript_recombination
  *
  * Purpose:
- *   This module provides LLM-based recombination of two partially overlapping 20-second
- *   transcript segments.  The expected inputs are:
- *     - existingOverlapText: transcription of [T-30s, T-10s]
- *     - newWindowText:       transcription of [T-20s, T]
- *   These share a 10-second overlap region [T-20s, T-10s].
+ *   This module provides LLM-based recombination of two partially overlapping
+ *   transcript segments from consecutive audio windows.  The expected inputs are:
+ *     - existingOverlapText: transcription of the previous window
+ *     - newWindowText:       transcription of the current window
+ *   These share an overlap region equal to the previous audio fragment.
  *
  * Validation:
  *   After the LLM returns a merged fragment it is validated with validateCombination,
@@ -21,7 +21,7 @@
  *   MAX_RETRY_ATTEMPTS times.  After exhaustion, programmaticRecombination is used:
  *   it finds the longest exact word-sequence overlap (modulo capitalisation and
  *   punctuation) between the end of segment1 and the start of segment2 and deduplicates
- *   it.  If no overlap sequence is found, it falls back to the "[10-second overlap]"
+ *   it.  If no overlap sequence is found, it falls back to the "[overlap]"
  *   concatenation marker.
  */
 
@@ -175,7 +175,7 @@ function normalizedWords(text) {
  * result keeps all original words of segment1 and appends the words of segment2
  * from just after the matched prefix.
  *
- * Falls back to `"segment1 [10-second overlap] segment2"` when no matching
+ * Falls back to `"segment1 [overlap] segment2"` when no matching
  * sequence is found.
  *
  * @param {string} segment1
@@ -212,7 +212,7 @@ function programmaticRecombination(segment1, segment2) {
         }
     }
 
-    return `${segment1} [10-second overlap] ${segment2}`;
+    return `${segment1} [overlap] ${segment2}`;
 }
 
 /**
@@ -339,10 +339,10 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
 /**
  * Recombine two overlapping transcript segments using an LLM with retry logic.
  *
- * The expected inputs are exact transcriptions of two 20-second audio windows:
- *   existingOverlapText: transcription of [T-30s, T-10s]
- *   newWindowText:       transcription of [T-20s, T]
- * which share a 10-second overlap in [T-20s, T-10s].
+ * The expected inputs are exact transcriptions of two consecutive audio windows:
+ *   existingOverlapText: transcription of the previous window
+ *   newWindowText:       transcription of the current window
+ * which share an overlap region equal to the previous audio fragment.
  *
  * The LLM attempts to merge both inputs into a single clean transcript (with up
  * to MAX_RETRY_ATTEMPTS retries and a programmatic fallback on exhaustion).
