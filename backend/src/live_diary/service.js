@@ -354,10 +354,10 @@ async function pushAudio(
 
     await writeStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY, updatedRunningTranscript);
 
-    const transcriptSuffix = updatedRunningTranscript.slice(-200);
+    const transcriptSuffix = updatedRunningTranscript.slice(-532);
     capabilities.logger.logDebug(
         { sessionId, fragmentNumber, runningTranscriptLength: updatedRunningTranscript.length, suffix: transcriptSuffix },
-        "Live diary running transcript updated (200-char suffix shown)"
+        "Live diary running transcript updated (532-char suffix shown)"
     );
 
     // Generate questions.
