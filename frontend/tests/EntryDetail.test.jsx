@@ -583,7 +583,7 @@ describe("EntryDetail page", () => {
                 return Promise.resolve({ errors: { transcription: "Transcription failed" } });
             }
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: ["food - Ate pizza"] });
+                return Promise.resolve({ basic_context: [{ input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
             }
             return Promise.resolve({});
         });
@@ -683,7 +683,10 @@ describe("EntryDetail page", () => {
     it("renders basic context inputs as a list", async () => {
         fetchAdditionalProperties.mockImplementation((id, propertyName) => {
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: ["text some context event", "text another context event"] });
+                return Promise.resolve({ basic_context: [
+                    { input: "text some context event", date: "2024-01-01T00:00:00.000Z" },
+                    { input: "text another context event", date: "2024-01-02T00:00:00.000Z" },
+                ] });
             }
             return Promise.resolve({});
         });
@@ -699,7 +702,7 @@ describe("EntryDetail page", () => {
     it("does not show basic context inputs in the Computed Properties section", async () => {
         fetchAdditionalProperties.mockImplementation((id, propertyName) => {
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: ["food - Ate pizza"] });
+                return Promise.resolve({ basic_context: [{ input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
             }
             return Promise.resolve({});
         });
@@ -761,7 +764,7 @@ describe("EntryDetail page", () => {
                 return Promise.resolve({ errors: { calories: "Calories service unavailable" } });
             }
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: ["text some event"] });
+                return Promise.resolve({ basic_context: [{ input: "text some event", date: "2024-01-01T00:00:00.000Z" }] });
             }
             return Promise.resolve({});
         });
@@ -934,7 +937,7 @@ describe("EntryDetail page", () => {
     });
 
     it("does not show 'None' when only other-type assets are present", async () => {
-        fetchAdditionalProperties.mockResolvedValue({ calories: 100, basic_context: ["food - Ate pizza"] });
+        fetchAdditionalProperties.mockResolvedValue({ calories: 100, basic_context: [{ input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
         fetchEntryAssets.mockResolvedValue([
             { filename: "document.pdf", url: "/assets/2024-01/01/entry-123/document.pdf", mediaType: "other" },
         ]);

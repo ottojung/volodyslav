@@ -445,7 +445,23 @@ describe("GET /api/entries/:id/additional-properties", () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body).toHaveProperty("basic_context");
-            expect(res.body.basic_context).toContain("ran 5km");
+            expect(res.body.basic_context.map((item) => item.input)).toContain("ran 5km");
+        });
+
+        it("returns basic_context items with input and date fields", async () => {
+            const { app, capabilities } = await makeInitializedApp("N/A");
+
+            await writeEventsToStore(capabilities, [makeEvent("entry-ctx-date-1", "ran 5km")]);
+
+            const res = await request(app)
+                .get("/api/entries/entry-ctx-date-1/additional-properties?property=basic_context");
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toHaveProperty("basic_context");
+            expect(res.body.basic_context).toHaveLength(1);
+            expect(res.body.basic_context[0]).toHaveProperty("input", "ran 5km");
+            expect(res.body.basic_context[0]).toHaveProperty("date");
+            expect(typeof res.body.basic_context[0].date).toBe("string");
         });
 
         it("returns only the requested basic_context property", async () => {
@@ -458,7 +474,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body).toHaveProperty("basic_context");
-            expect(res.body.basic_context).toContain("ran 5km");
+            expect(res.body.basic_context.map((item) => item.input)).toContain("ran 5km");
             expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
             expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
         });
@@ -476,9 +492,10 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/ctx-a/additional-properties?property=basic_context");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body.basic_context).toContain("text went to the gym #fitness");
-            expect(res.body.basic_context).toContain("text ran 10km #fitness");
-            expect(res.body.basic_context).not.toContain("text had a pizza");
+            const inputs = res.body.basic_context.map((item) => item.input);
+            expect(inputs).toContain("text went to the gym #fitness");
+            expect(inputs).toContain("text ran 10km #fitness");
+            expect(inputs).not.toContain("text had a pizza");
         });
 
         it("does not return basic_context for an unknown entry id", async () => {

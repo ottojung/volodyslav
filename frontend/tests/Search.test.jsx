@@ -16,6 +16,7 @@ jest.mock("react-router-dom", () => {
 jest.mock("../src/Search/api", () => ({
     searchEntries: jest.fn(),
     fetchEntryById: jest.fn(),
+    fetchAdditionalProperties: jest.fn(),
 }));
 
 // Mock the logger module
@@ -29,7 +30,7 @@ jest.mock("../src/DescriptionEntry/logger", () => ({
 }));
 
 import Search from "../src/Search/Search.jsx";
-import { searchEntries } from "../src/Search/api";
+import { searchEntries, fetchAdditionalProperties } from "../src/Search/api";
 
 const mockEntry = (overrides = {}) => ({
     id: "entry-1",
@@ -43,7 +44,9 @@ const mockEntry = (overrides = {}) => ({
 describe("Search page", () => {
     beforeEach(() => {
         searchEntries.mockClear();
+        fetchAdditionalProperties.mockClear();
         searchEntries.mockResolvedValue({ results: [] });
+        fetchAdditionalProperties.mockResolvedValue({});
         jest.useFakeTimers();
         sessionStorage.clear();
         useNavigationType.mockReturnValue("POP");
@@ -824,5 +827,215 @@ describe("Search page", () => {
 
         expect(focusSpy).toHaveBeenCalled();
         focusSpy.mockRestore();
+    });
+
+    // --- Copy as JSON button ---
+
+    it("shows 'Copy as JSON' button when results are present", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+    });
+
+    it("does not show 'Copy as JSON' button when there are no results", async () => {
+        searchEntries.mockResolvedValue({ results: [], hasMore: false });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "food" } });
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.queryByRole("button", { name: /copy as json/i })).not.toBeInTheDocument();
+        });
+    });
+
+    it("clicking 'Copy as JSON' calls fetchAdditionalProperties for each result", async () => {
+        const entries = [
+            mockEntry({ id: "e1", input: "food - Pizza" }),
+            mockEntry({ id: "e2", input: "food - Salad" }),
+        ];
+        searchEntries.mockResolvedValue({ results: entries, hasMore: false });
+        fetchAdditionalProperties.mockResolvedValue({ basic_context: [] });
+
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText: mockWriteText } });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /copy as json/i }));
+        });
+
+        await waitFor(() => {
+            expect(fetchAdditionalProperties).toHaveBeenCalledWith("e1", "basic_context");
+            expect(fetchAdditionalProperties).toHaveBeenCalledWith("e2", "basic_context");
+        });
+    });
+
+    it("clicking 'Copy as JSON' writes correct JSON to clipboard", async () => {
+        const entry = mockEntry({
+            id: "e1",
+            input: "food - Pizza",
+            date: "2023-01-01T10:00:00.000Z",
+        });
+        searchEntries.mockResolvedValue({ results: [entry], hasMore: false });
+        fetchAdditionalProperties.mockResolvedValue({
+            basic_context: [
+                { input: "text #lunch notes", date: "2023-01-01T09:00:00.000Z" },
+            ],
+        });
+
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText: mockWriteText } });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /copy as json/i }));
+        });
+
+        await waitFor(() => {
+            expect(mockWriteText).toHaveBeenCalled();
+        });
+
+        const written = JSON.parse(mockWriteText.mock.calls[0][0]);
+        expect(written).toHaveLength(1);
+        expect(written[0]).toMatchObject({
+            input: "food - Pizza",
+            date: "2023-01-01T10:00:00.000Z",
+            basicContext: [
+                { input: "text #lunch notes", date: "2023-01-01T09:00:00.000Z" },
+            ],
+        });
+    });
+
+    it("shows success message after copying", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+        fetchAdditionalProperties.mockResolvedValue({ basic_context: [] });
+
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText: mockWriteText } });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /copy as json/i }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Copied to clipboard!")).toBeInTheDocument();
+        });
+    });
+
+    it("shows error message when clipboard write fails", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+        fetchAdditionalProperties.mockResolvedValue({ basic_context: [] });
+
+        const mockWriteText = jest.fn().mockRejectedValue(new Error("Clipboard not available"));
+        Object.assign(navigator, { clipboard: { writeText: mockWriteText } });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /copy as json/i }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Failed to copy to clipboard.")).toBeInTheDocument();
+        });
+    });
+
+    it("resets copy status when search pattern changes", async () => {
+        searchEntries.mockResolvedValue({ results: [mockEntry()], hasMore: false });
+        fetchAdditionalProperties.mockResolvedValue({ basic_context: [] });
+
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText: mockWriteText } });
+
+        renderWithProviders(
+            <MemoryRouter>
+                <Search />
+            </MemoryRouter>
+        );
+
+        await act(async () => { jest.runAllTimers(); });
+
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /copy as json/i })).toBeInTheDocument();
+        });
+
+        // Copy successfully
+        await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: /copy as json/i }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Copied to clipboard!")).toBeInTheDocument();
+        });
+
+        // Change the search pattern — success message should disappear
+        const input = screen.getByPlaceholderText("Search entries by regex...");
+        fireEvent.change(input, { target: { value: "sleep" } });
+
+        await waitFor(() => {
+            expect(screen.queryByText("Copied to clipboard!")).not.toBeInTheDocument();
+        });
     });
 });
