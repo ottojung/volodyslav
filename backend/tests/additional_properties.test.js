@@ -278,7 +278,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/diary-1/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toMatchObject({ transcription: "mocked transcription result" });
+            expect(res.body).toMatchObject({ transcription: "This is a mocked transcription result for automated testing purposes" });
             expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
         });
 
@@ -291,7 +291,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/diary-transcription/additional-properties?property=transcription");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toEqual({ transcription: "mocked transcription result" });
+            expect(res.body).toEqual({ transcription: "This is a mocked transcription result for automated testing purposes" });
             expect(capabilities.aiCalories.estimateCalories).not.toHaveBeenCalled();
         });
 
@@ -304,7 +304,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
                 .get("/api/entries/diary-2/additional-properties");
 
             expect(res.statusCode).toBe(200);
-            expect(res.body.transcription).toBe("mocked transcription result");
+            expect(res.body.transcription).toBe("This is a mocked transcription result for automated testing purposes");
         });
 
         it("ignores non-audio assets when looking for transcription", async () => {
@@ -354,7 +354,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(res.statusCode).toBe(200);
             expect(res.body).toMatchObject({
                 calories: 300,
-                transcription: "mocked transcription result",
+                transcription: "This is a mocked transcription result for automated testing purposes",
             });
         });
 

@@ -1,18 +1,18 @@
 /**
  * Live prompts panel for the diary recording page.
  *
- * Displays the most recent question generations in a stacked list,
- * newest generation at the top.  Older generations shift downward with
- * a gentle spring animation when a new generation arrives.
+ * Displays individual live diary questions as independent items.
+ * Clicking a question pins it to the top of the list (and highlights it).
+ * Clicking a pinned question removes it from the display entirely.
  *
  * @module LiveQuestionsPanel
  */
 
-import React, { useRef, useEffect, useState } from "react";
-import { Box, Text, VStack, List } from "@chakra-ui/react";
+import React from "react";
+import { Box, Button, Text, VStack } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 
-/** @typedef {import('./useDiaryLiveQuestioningController.js').QuestionGeneration} QuestionGeneration */
+/** @typedef {import('./useDiaryLiveQuestioningController.js').DisplayedQuestion} DisplayedQuestion */
 
 const fadeIn = keyframes`
     from { opacity: 0; transform: translateY(-8px); }
@@ -20,53 +20,53 @@ const fadeIn = keyframes`
 `;
 
 /**
- * Opacity for each generation slot, indexed from newest (0) to oldest.
- * @type {number[]}
- */
-const GENERATION_OPACITIES = [1.0, 0.88, 0.72, 0.56];
-
-/**
- * Renders a single generation card.
+ * Renders a single question item.
  * @param {{
- *   generation: QuestionGeneration,
- *   index: number,
+ *   question: DisplayedQuestion,
+ *   isPinned: boolean,
  *   isNew: boolean,
+ *   onTogglePin: (id: string) => void,
  * }} props
  * @returns {React.JSX.Element}
  */
-function GenerationCard({ generation, index, isNew }) {
-    const opacity = GENERATION_OPACITIES[index] ?? 0.5;
-
+function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
     return (
-        <Box
+        <Button
+            type="button"
             borderRadius="md"
             p={3}
             mb={2}
-            bg={index === 0 ? "blue.50" : "gray.50"}
-            opacity={opacity}
+            bg={isPinned ? "blue.50" : "gray.50"}
+            borderLeft={isPinned ? "3px solid" : "none"}
+            borderColor={isPinned ? "blue.400" : undefined}
+            cursor="pointer"
+            height="auto"
+            minHeight="unset"
+            justifyContent="flex-start"
+            fontWeight="normal"
+            _hover={{ bg: isPinned ? "blue.100" : "gray.100" }}
+            onClick={() => onTogglePin(question.questionId)}
+            aria-pressed={isPinned}
+            aria-label={isPinned ? `Unpin question: ${question.text}` : `Pin question: ${question.text}`}
+            textAlign="left"
+            width="100%"
             style={
                 isNew
-                    ? {
-                          animation: `${fadeIn} 300ms ease-out`,
-                      }
+                    ? { animation: `${fadeIn} 300ms ease-out` }
                     : undefined
             }
-            data-testid={`question-generation-${generation.generationId}`}
+            data-testid={`question-item-${question.questionId}`}
+            title={isPinned ? "Click to unpin (removes from display)" : "Click to pin to top"}
         >
-            <List.Root gap={1} ps={4}>
-                {generation.questions.map((q, qi) => (
-                    <List.Item
-                        key={`${generation.generationId}-${qi}`}
-                        fontSize="sm"
-                        lineHeight="1.5"
-                        color="gray.700"
-                        style={{ maxWidth: "70ch" }}
-                    >
-                        {q.text}
-                    </List.Item>
-                ))}
-            </List.Root>
-        </Box>
+            <Text
+                fontSize="sm"
+                lineHeight="1.5"
+                color="gray.700"
+                style={{ maxWidth: "70ch" }}
+            >
+                {question.text}
+            </Text>
+        </Button>
     );
 }
 
@@ -74,36 +74,31 @@ function GenerationCard({ generation, index, isNew }) {
  * The live prompts panel shown during recording.
  *
  * @param {{
- *   displayedGenerations: QuestionGeneration[],
+ *   displayedQuestions: DisplayedQuestion[],
+ *   pinnedQuestions: DisplayedQuestion[],
+ *   pinnedQuestionIds: string[],
+ *   onTogglePin: (id: string) => void,
  *   errorMessage: string | null,
  * }} props
  * @returns {React.JSX.Element | null}
  */
-export default function LiveQuestionsPanel({ displayedGenerations, errorMessage }) {
-    const hasContent = displayedGenerations.length > 0 || errorMessage;
-
-    // Track which generation ID was last committed to the DOM via useEffect,
-    // so the "isNew" fade-in flag is derived from committed state (not render).
-    /** @type {React.MutableRefObject<string | null>} */
-    const latestGenerationIdRef = useRef(null);
-    const [isNewGeneration, setIsNewGeneration] = useState(false);
-
-    const newestId = displayedGenerations[0]?.generationId ?? null;
-
-    useEffect(() => {
-        if (newestId !== null && newestId !== latestGenerationIdRef.current) {
-            latestGenerationIdRef.current = newestId;
-            setIsNewGeneration(true);
-            // Clear the "new" flag after the animation completes (300 ms).
-            const timer = setTimeout(() => setIsNewGeneration(false), 300);
-            return () => clearTimeout(timer);
-        }
-        return undefined;
-    }, [newestId]);
+export default function LiveQuestionsPanel({
+    displayedQuestions,
+    pinnedQuestions,
+    pinnedQuestionIds,
+    onTogglePin,
+    errorMessage,
+}) {
+    const hasContent =
+        displayedQuestions.length > 0 ||
+        pinnedQuestions.length > 0 ||
+        errorMessage;
 
     if (!hasContent) {
         return null;
     }
+
+    const pinnedIdSet = new Set(pinnedQuestionIds);
 
     return (
         <Box
@@ -124,14 +119,26 @@ export default function LiveQuestionsPanel({ displayedGenerations, errorMessage 
             )}
 
             <VStack gap={0} align="stretch">
-                {displayedGenerations.map((gen, idx) => (
-                    <GenerationCard
-                        key={gen.generationId}
-                        generation={gen}
-                        index={idx}
-                        isNew={idx === 0 && isNewGeneration}
+                {pinnedQuestions.map((q) => (
+                    <QuestionItem
+                        key={q.questionId}
+                        question={q}
+                        isPinned={true}
+                        isNew={q.isNew}
+                        onTogglePin={onTogglePin}
                     />
                 ))}
+                {displayedQuestions
+                    .filter((q) => !pinnedIdSet.has(q.questionId))
+                    .map((q) => (
+                        <QuestionItem
+                            key={q.questionId}
+                            question={q}
+                            isPinned={false}
+                            isNew={q.isNew}
+                            onTogglePin={onTogglePin}
+                        />
+                    ))}
             </VStack>
         </Box>
     );

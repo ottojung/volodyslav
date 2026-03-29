@@ -46,6 +46,7 @@ function isAIDiaryQuestionsError(object) {
 
 const DIARY_QUESTIONS_MODEL = "gpt-5.4-mini";
 const TARGET_QUESTION_COUNT = 5;
+const MIN_QUESTION_COUNT = 0;
 
 const SYSTEM_PROMPT = `You are a warm, kind diary companion.
 Your job is to propose short optional questions a person may reflect on while speaking.
@@ -56,7 +57,7 @@ Priorities:
 3) Avoid repetition with previously asked questions.
 
 Style constraints:
-- Output exactly ${TARGET_QUESTION_COUNT} questions.
+- Output AT MOST the requested number of questions (see TASK).
 - Each question must be one sentence.
 - Each question should be concise (8-22 words).
 - Use plain, friendly language.
@@ -83,13 +84,28 @@ Return JSON only matching this schema:
 /**
  * @param {string} transcriptSoFar
  * @param {string[]} askedQuestions
+ * @param {number} maxQuestions
  * @returns {string}
  */
-function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions) {
+function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions, maxQuestions) {
     const askedBlock =
         askedQuestions.length === 0
             ? "[]"
             : JSON.stringify(askedQuestions, null, 2);
+
+    const distribution = maxQuestions <= 0
+        ? "- 0 questions"
+        : maxQuestions <= 1
+        ? "- 1 question (any intent)"
+        : maxQuestions <= 2
+        ? "- 1 warm reflective\n- 1 clarifying/useful"
+        : (() => {
+            const forwardCount = 1;
+            const remaining = maxQuestions - forwardCount;
+            const warmCount = Math.max(1, Math.ceil(remaining / 2));
+            const clarCount = remaining - warmCount;
+            return `- ${warmCount} warm reflective\n- ${clarCount} clarifying/useful\n- ${forwardCount} gentle forward-looking (if quota allows)`;
+        })();
 
     return [
         "TRANSCRIPTION_SO_FAR:",
@@ -99,12 +115,11 @@ function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions) {
         askedBlock,
         "",
         `TASK:`,
-        `Generate exactly ${TARGET_QUESTION_COUNT} NEW questions based on the full transcription so far.`,
+        `Generate at most ${maxQuestions} NEW question(s) based on the full transcription so far.`,
         "Do not repeat or closely paraphrase any previously asked question.",
+        "If the transcription is short or uninteresting, you may output fewer than the requested number of questions.",
         "Balance warmth and usefulness:",
-        "- 2 warm reflective",
-        "- 2 clarifying/useful",
-        "- 1 gentle forward-looking",
+        distribution,
     ].join("\n");
 }
 
@@ -117,18 +132,19 @@ function makeQuestionsUserPrompt(transcriptSoFar, askedQuestions) {
 /**
  * @param {string} transcriptSoFar
  * @param {string[]} askedQuestions
+ * @param {number} maxQuestions
  * @returns {Array<{role: "system" | "user", content: string}>}
  */
-function makeQuestionsMessages(transcriptSoFar, askedQuestions) {
+function makeQuestionsMessages(transcriptSoFar, askedQuestions, maxQuestions) {
     return [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: makeQuestionsUserPrompt(transcriptSoFar, askedQuestions) },
+        { role: "user", content: makeQuestionsUserPrompt(transcriptSoFar, askedQuestions, maxQuestions) },
     ];
 }
 
 /**
  * @typedef {object} AIDiaryQuestions
- * @property {(transcriptSoFar: string, askedQuestions: string[]) => Promise<DiaryQuestion[]>} generateQuestions
+ * @property {(transcriptSoFar: string, askedQuestions: string[], maxQuestions?: number) => Promise<DiaryQuestion[]>} generateQuestions
  */
 
 const VALID_INTENTS = new Set(["warm_reflective", "clarifying", "forward"]);
@@ -156,13 +172,19 @@ function isDiaryQuestion(raw) {
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {string} transcriptSoFar - The merged transcript text so far.
  * @param {string[]} askedQuestions - All previously asked question texts.
+ * @param {number} [maxQuestions] - Maximum number of questions to generate (defaults to TARGET_QUESTION_COUNT).
  * @returns {Promise<DiaryQuestion[]>}
  */
-async function generateQuestions(makeClient, capabilities, transcriptSoFar, askedQuestions) {
+async function generateQuestions(makeClient, capabilities, transcriptSoFar, askedQuestions, maxQuestions = TARGET_QUESTION_COUNT) {
+    const clampedMax = Math.max(MIN_QUESTION_COUNT, Math.min(TARGET_QUESTION_COUNT, maxQuestions));
+    if (clampedMax === 0) {
+        return [];
+    }
+
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
-    const messages = makeQuestionsMessages(transcriptSoFar, askedQuestions);
+    const messages = makeQuestionsMessages(transcriptSoFar, askedQuestions, clampedMax);
 
     let rawText;
     try {
@@ -211,14 +233,7 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
         }
     }
 
-    if (questions.length === 0) {
-        throw new AIDiaryQuestionsError(
-            "Diary questions response contained no valid questions",
-            parsed
-        );
-    }
-
-    return questions;
+    return questions.slice(0, clampedMax);
 }
 
 /**
@@ -230,8 +245,8 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
     const makeClient = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        generateQuestions: (transcriptSoFar, askedQuestions) =>
-            generateQuestions(makeClient, getCapabilitiesMemo(), transcriptSoFar, askedQuestions),
+        generateQuestions: (transcriptSoFar, askedQuestions, maxQuestions) =>
+            generateQuestions(makeClient, getCapabilitiesMemo(), transcriptSoFar, askedQuestions, maxQuestions),
     };
 }
 
@@ -240,6 +255,7 @@ module.exports = {
     isAIDiaryQuestionsError,
     DIARY_QUESTIONS_MODEL,
     TARGET_QUESTION_COUNT,
+    MIN_QUESTION_COUNT,
     SYSTEM_PROMPT,
     makeQuestionsUserPrompt,
 };

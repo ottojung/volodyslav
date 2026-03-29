@@ -57,6 +57,64 @@ describe("POST /api/entries", () => {
         );
     });
 
+    it("uses clientDate from the request body as the entry date", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const serverTime = fromISOString("2025-05-23T12:00:00.000Z");
+        capabilities.datetime.now.mockReturnValue(serverTime);
+
+        // Client supplies a date from a different timezone (Kyiv UTC+3).
+        const clientDate = "2025-05-23T15:00:00.000+03:00";
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza", clientDate })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        // The entry date should reflect the client-supplied date, not the server time.
+        expect(res.body.entry.date).toContain("2025-05-23");
+        // The offset should be preserved (Kyiv +03, not the server's UTC offset).
+        expect(res.body.entry.date).toMatch(/\+03/);
+    });
+
+    it("falls back to server time when clientDate is not provided", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const serverTime = fromISOString("2025-06-01T10:00:00.000+02:00");
+        capabilities.datetime.now.mockReturnValue(serverTime);
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza" })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.entry.date).toContain("2025-06-01");
+    });
+
+    it("returns 400 when clientDate is not a valid ISO string", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza", clientDate: "not-a-date" })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/Invalid clientDate/);
+    });
+
+    it("returns 400 when clientDate is not a string", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza", clientDate: 12345 })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/clientDate must be a string/);
+    });
+
     it("returns 400 if required fields are missing", async () => {
         // Equivalent curl command:
         // curl -X POST http://localhost:PORT/api/entries \

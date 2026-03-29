@@ -32,15 +32,15 @@ const {
     LAST_FRAGMENT_FORMAT_KEY,
     LAST_WINDOW_TRANSCRIPT_KEY,
     RUNNING_TRANSCRIPT_KEY,
+    WORDS_SINCE_LAST_QUESTION_KEY,
     readLastFragment,
     writeLastFragment,
     readStringField,
     writeStringField,
     readAskedQuestions,
-    writeAskedQuestions,
     readPendingQuestions,
-    appendPendingQuestions,
     clearPendingQuestions,
+    commitQuestionGenerationResult,
 } = require("./session_state");
 const { buildWav, extensionForMime } = require("./wav_utils");
 const {
@@ -360,6 +360,43 @@ async function pushAudio(
         "Live diary running transcript updated (532-char suffix shown)"
     );
 
+    // Accumulate word count since the last time questions were asked.
+    // Count only newly added words (not the full overlap window) so overlap
+    // does not double-count previously spoken content.
+    const newTranscriptPortion =
+        runningTranscript && updatedRunningTranscript.startsWith(runningTranscript)
+            ? updatedRunningTranscript.slice(runningTranscript.length)
+            : merged;
+    const fragmentWordCount = newTranscriptPortion.split(/\s+/).filter(Boolean).length;
+    const storedWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
+    const cumulativeWordCount = (parseInt(storedWordCount, 10) || 0) + fragmentWordCount;
+
+    if (cumulativeWordCount < 10) {
+        // Not enough words spoken since last question — skip question generation.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber, fragmentWordCount, cumulativeWordCount },
+            "Live diary cumulative word count below threshold; skipping question generation"
+        );
+        return { questions: [], status: "ok" };
+    }
+
+    // Enough words accumulated — determine how many questions to ask.
+    /** @type {number} */
+    let maxQuestions;
+    if (cumulativeWordCount < 30) {
+        maxQuestions = 1;
+    } else if (cumulativeWordCount < 60) {
+        maxQuestions = 2;
+    } else {
+        maxQuestions = 5;
+    }
+
+    capabilities.logger.logDebug(
+        { sessionId, fragmentNumber, fragmentWordCount, cumulativeWordCount, maxQuestions },
+        "Live diary question count determined from cumulative word count"
+    );
+
     // Generate questions.
     const askedQuestions = await readAskedQuestions(temporary, sessionId);
     let allQuestions;
@@ -368,11 +405,15 @@ async function pushAudio(
             "question_generation",
             () => capabilities.aiDiaryQuestions.generateQuestions(
                 updatedRunningTranscript,
-                askedQuestions
+                askedQuestions,
+                maxQuestions
             ),
             stepTimeoutMs
         );
     } catch (error) {
+        // Preserve current gating state even when generation fails so words
+        // spoken in this fragment are not lost for subsequent attempts.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
         if (isLiveDiaryStepTimeoutError(error)) {
             capabilities.logger.logWarning(
                 { sessionId, fragmentNumber, timeoutMs: error.timeoutMs, step: error.step },
@@ -394,13 +435,13 @@ async function pushAudio(
         "Live diary question generation result"
     );
 
-    if (newQuestions.length > 0) {
-        await writeAskedQuestions(temporary, sessionId, [
-            ...askedQuestions,
-            ...newQuestions.map((q) => q.text),
-        ]);
-        await appendPendingQuestions(temporary, sessionId, newQuestions);
-    }
+    await commitQuestionGenerationResult(
+        temporary,
+        sessionId,
+        askedQuestions,
+        newQuestions,
+        cumulativeWordCount
+    );
 
     return { questions: newQuestions, status: "ok" };
 }

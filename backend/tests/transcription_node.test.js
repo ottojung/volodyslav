@@ -96,7 +96,7 @@ describe("transcription(a) node", () => {
         expect(result).toMatchObject({
             type: "transcription",
             value: {
-                text: "mocked transcription result",
+                text: "This is a mocked transcription result for automated testing purposes",
                 transcriber: {
                     name: "mocked-transcriber",
                     creator: "Mocked Creator",
@@ -163,7 +163,7 @@ describe("event_transcription(e, a) node", () => {
                 id: expect.any(Object),
             }),
             transcription: expect.objectContaining({
-                text: "mocked transcription result",
+                text: "This is a mocked transcription result for automated testing purposes",
             }),
         });
         expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);

@@ -41,8 +41,11 @@ export default function AudioDiary() {
     const navigate = useNavigate();
 
     const {
-        displayedGenerations,
+        displayedQuestions,
+        pinnedQuestions,
+        pinnedQuestionIds,
         onQuestions: liveOnQuestions,
+        togglePin,
         startLive,
         stopLive,
     } = useDiaryLiveQuestioningController();
@@ -300,7 +303,10 @@ export default function AudioDiary() {
 
                 {(isRecording || isPaused) && (
                     <LiveQuestionsPanel
-                        displayedGenerations={displayedGenerations}
+                        displayedQuestions={displayedQuestions}
+                        pinnedQuestions={pinnedQuestions}
+                        pinnedQuestionIds={pinnedQuestionIds}
+                        onTogglePin={togglePin}
                         errorMessage={null}
                     />
                 )}

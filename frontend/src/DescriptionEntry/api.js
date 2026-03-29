@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../api_base_url.js";
+import { DateTime } from "luxon";
 import { logger } from "./logger.js";
 import {
     makeEntrySubmissionError,
@@ -10,6 +11,18 @@ import {
  * Must match `SORTED_EVENTS_CACHE_SIZE` in the backend constants.
  */
 const SORTED_EVENTS_CACHE_SIZE = 100;
+
+/**
+ * Build an ISO datetime string in local time with explicit offset.
+ * @returns {string}
+ */
+function makeClientDate() {
+    const iso = DateTime.local().toISO();
+    if (!iso) {
+        throw makeEntrySubmissionError("Failed to create client date");
+    }
+    return iso;
+}
 
 /**
  * @typedef {Object} Entry
@@ -48,6 +61,10 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
         url += `?request_identifier=${encodeURIComponent(requestIdentifier)}`;
     }
 
+    // Capture the client's local date *before* the async submission so it
+    // reflects the moment the user triggered the entry, not the server time.
+    const clientDate = makeClientDate();
+
     let response;
     
     try {
@@ -55,6 +72,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
             // If we have files, use FormData
             const formData = new FormData();
             formData.append('rawInput', rawInput);
+            formData.append('clientDate', clientDate);
             files.forEach(file => {
                 formData.append('files', file);  // Changed from 'photos' to 'files' to match backend expectation
             });
@@ -65,7 +83,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
             });
         } else {
             // No files, use JSON
-            const requestBody = { rawInput };
+            const requestBody = { rawInput, clientDate };
             
             response = await fetch(url, {
                 method: "POST",

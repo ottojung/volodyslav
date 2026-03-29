@@ -239,7 +239,7 @@ describe("pushAudio", () => {
                 rawResponse: null,
             })
             .mockResolvedValueOnce({
-                text: "to the park for fresh air",
+                text: "going to the park for some very fresh morning air",
                 provider: "Google",
                 model: "mocked",
                 finishReason: "STOP",
@@ -248,7 +248,7 @@ describe("pushAudio", () => {
                 usageMetadata: null,
                 modelVersion: null,
                 responseId: null,
-                structured: { transcript: "to the park for fresh air", coverage: "full", warnings: [], unclearAudio: false },
+                structured: { transcript: "going to the park for some very fresh morning air", coverage: "full", warnings: [], unclearAudio: false },
                 rawResponse: null,
             });
         caps.aiTranscriptRecombination.recombineOverlap = jest
@@ -262,7 +262,8 @@ describe("pushAudio", () => {
         // Running transcript generated at fragment 3 should include the appended boundary word.
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
             expect.stringContaining("walking to the park for fresh air"),
-            expect.any(Array)
+            expect.any(Array),
+            expect.any(Number)
         );
         expect(result.status).toBe("ok");
     });
@@ -285,7 +286,7 @@ describe("pushAudio", () => {
                 rawResponse: null,
             })
             .mockResolvedValueOnce({
-                text: "new overlap sentence ending word",
+                text: "this is the new overlap sentence that ends with word",
                 provider: "Google",
                 model: "mocked",
                 finishReason: "STOP",
@@ -294,18 +295,36 @@ describe("pushAudio", () => {
                 usageMetadata: null,
                 modelVersion: null,
                 responseId: null,
-                structured: { transcript: "new overlap sentence ending word", coverage: "full", warnings: [], unclearAudio: false },
+                structured: { transcript: "this is the new overlap sentence that ends with word", coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "another overlap sentence adding more words for generation",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: "another overlap sentence adding more words for generation", coverage: "full", warnings: [], unclearAudio: false },
                 rawResponse: null,
             });
-        caps.aiTranscriptRecombination.recombineOverlap = jest.fn().mockResolvedValue("   ");
+        caps.aiTranscriptRecombination.recombineOverlap = jest
+            .fn()
+            .mockResolvedValueOnce("   ")
+            .mockImplementation(async (_existing, newer) => newer);
 
         await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 1);
         await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 2);
         await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 3);
+        await pushAudio(caps, "sess-empty-merge", buildTestPcmInfo(), 4);
 
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenLastCalledWith(
             expect.stringContaining("word"),
-            expect.any(Array)
+            expect.any(Array),
+            expect.any(Number)
         );
     });
 
@@ -377,6 +396,68 @@ describe("pushAudio", () => {
         expect(result.status).toBe("ok");
     });
 
+    it("skips question generation when cumulative word count since last question is below 10", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: "only nine words in this very sparse",
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: { transcript: "only nine words in this very sparse", coverage: "full", warnings: [], unclearAudio: false },
+            rawResponse: null,
+        });
+
+        await pushAudio(caps, "sess-sparse-cumulative", buildTestPcmInfo(), 1);
+        const result = await pushAudio(caps, "sess-sparse-cumulative", buildTestPcmInfo(), 2);
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("ok");
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+    });
+
+    it("generates questions once cumulative word count across fragments reaches 10", async () => {
+        const caps = makeCapabilities();
+        let callCount = 0;
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockImplementation(async () => {
+            callCount += 1;
+            // First two windows: 3 words each (cumulative 3, then 6, then 9 — never hits 10 alone).
+            // Third window: 4 words → cumulative becomes 13 ≥ 10.
+            const transcripts = ["one two three", "four five six", "seven eight nine ten"];
+            const t = transcripts[Math.min(callCount - 1, transcripts.length - 1)];
+            return {
+                text: t,
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: t, coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            };
+        });
+
+        await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 1);
+        // Fragment 2: 3 words cumulative — no questions.
+        const r2 = await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 2);
+        expect(r2.questions).toHaveLength(0);
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+        // Fragment 3: 3+3=6 cumulative — still no questions.
+        const r3 = await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 3);
+        expect(r3.questions).toHaveLength(0);
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+        // Fragment 4: 6+4=10 cumulative — questions generated.
+        const r4 = await pushAudio(caps, "sess-cumulative-trigger", buildTestPcmInfo(), 4);
+        expect(r4.status).toBe("ok");
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
+    });
+
     it("deduplicates repeated questions across consecutive calls", async () => {
         const caps = makeCapabilities();
         caps.aiDiaryQuestions.generateQuestions = jest
@@ -400,7 +481,7 @@ describe("pushAudio", () => {
     it("returns degraded_question_generation if question generation takes too long", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
-            text: "steady transcript",
+            text: "this is a steady and reliable transcript for testing time limits",
             provider: "Google",
             model: "mocked",
             finishReason: "STOP",
@@ -409,7 +490,7 @@ describe("pushAudio", () => {
             usageMetadata: null,
             modelVersion: null,
             responseId: null,
-            structured: { transcript: "steady transcript", coverage: "full", warnings: [], unclearAudio: false },
+            structured: { transcript: "this is a steady and reliable transcript for testing time limits", coverage: "full", warnings: [], unclearAudio: false },
             rawResponse: null,
         });
         caps.aiDiaryQuestions.generateQuestions = jest
@@ -431,6 +512,105 @@ describe("pushAudio", () => {
 
         expect(result.questions).toEqual([]);
         expect(result.status).toBe("degraded_question_generation");
+    });
+
+    it("persists cumulative words when question generation degrades", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: "this transcript has enough words to trigger question generation threshold",
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: {
+                transcript: "this transcript has enough words to trigger question generation threshold",
+                coverage: "full",
+                warnings: [],
+                unclearAudio: false,
+            },
+            rawResponse: null,
+        });
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockRejectedValue(new Error("question generation failed"));
+
+        await pushAudio(caps, "sess-persist-cumulative-on-degrade", buildTestPcmInfo(), 1);
+        const result = await pushAudio(
+            caps,
+            "sess-persist-cumulative-on-degrade",
+            buildTestPcmInfo(),
+            2
+        );
+
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("degraded_question_generation");
+
+        // Next fragment should trigger generation again because previous cumulative
+        // count is preserved instead of lost.
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockResolvedValue([{ text: "Recovered question?", intent: "warm_reflective" }]);
+        const next = await pushAudio(
+            caps,
+            "sess-persist-cumulative-on-degrade",
+            buildTestPcmInfo(),
+            3
+        );
+        expect(next.status).toBe("ok");
+        expect(next.questions).toHaveLength(1);
+        expect(next.questions[0].text).toBe("Recovered question?");
+    });
+
+    it("persists cumulative words when generation returns zero new questions", async () => {
+        const caps = makeCapabilities();
+        const transcripts = [
+            "one two three", // fragment 2 -> +3 (below threshold)
+            "four five six seven eight nine ten", // fragment 3 -> +7 (reaches 10)
+            "eleven", // fragment 4 -> should still trigger generation if 10 was preserved
+        ];
+        let transcribeCallCount = 0;
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockImplementation(async () => {
+            const text = transcripts[Math.min(transcribeCallCount, transcripts.length - 1)];
+            transcribeCallCount += 1;
+            return {
+                text,
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: text, coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            };
+        });
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ text: "Follow-up after zero result?", intent: "clarifying" }]);
+
+        await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 1);
+        const second = await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 2);
+        expect(second.status).toBe("ok");
+        expect(second.questions).toEqual([]);
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+
+        const third = await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 3);
+        expect(third.status).toBe("ok");
+        expect(third.questions).toEqual([]);
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
+
+        const fourth = await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 4);
+        expect(fourth.status).toBe("ok");
+        expect(fourth.questions).toHaveLength(1);
+        expect(fourth.questions[0].text).toBe("Follow-up after zero result?");
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(2);
     });
 
     it("deduplicates non-ASCII (Cyrillic) questions using Unicode-aware normalization", async () => {
@@ -620,6 +800,44 @@ describe("getPendingQuestions", () => {
 
     it("accumulates questions from multiple fragments before they are fetched", async () => {
         const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest
+            .fn()
+            .mockResolvedValueOnce({
+                text: "one two three four five six seven eight nine ten",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: {
+                    transcript: "one two three four five six seven eight nine ten",
+                    coverage: "full",
+                    warnings: [],
+                    unclearAudio: false,
+                },
+                rawResponse: null,
+            })
+            .mockResolvedValueOnce({
+                text: "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: {
+                    transcript: "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+                    coverage: "full",
+                    warnings: [],
+                    unclearAudio: false,
+                },
+                rawResponse: null,
+            });
         // Return distinct questions for each generation to avoid deduplication.
         caps.aiDiaryQuestions.generateQuestions = jest
             .fn()

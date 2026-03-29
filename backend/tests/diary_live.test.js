@@ -285,7 +285,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
                     return new Promise((resolve) => {
                         setTimeout(() => {
                             resolve({
-                                text: "late transcript",
+                                text: "late transcript that came in after a long delay now",
                                 provider: "Google",
                                 model: "mocked",
                                 finishReason: "STOP",
@@ -294,14 +294,15 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
                                 usageMetadata: null,
                                 modelVersion: null,
                                 responseId: null,
-                                structured: { transcript: "late transcript", coverage: "full", warnings: [], unclearAudio: false },
+                                structured: { transcript: "late transcript that came in after a long delay now", coverage: "full", warnings: [], unclearAudio: false },
                                 rawResponse: null,
                             });
                         }, LONG_TRANSCRIPTION_DELAY_MS);
                     });
                 }
+                const t = `this is a good and valid transcript number ${transcribeCallCount} from the recording`;
                 return {
-                    text: `transcript-${transcribeCallCount}`,
+                    text: t,
                     provider: "Google",
                     model: "mocked",
                     finishReason: "STOP",
@@ -310,7 +311,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
                     usageMetadata: null,
                     modelVersion: null,
                     responseId: null,
-                    structured: { transcript: `transcript-${transcribeCallCount}`, coverage: "full", warnings: [], unclearAudio: false },
+                    structured: { transcript: t, coverage: "full", warnings: [], unclearAudio: false },
                     rawResponse: null,
                 };
             });
