@@ -583,7 +583,7 @@ describe("EntryDetail page", () => {
                 return Promise.resolve({ errors: { transcription: "Transcription failed" } });
             }
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: [{ input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
+                return Promise.resolve({ basic_context: [{ id: "ctx-food-1", input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
             }
             return Promise.resolve({});
         });
@@ -680,12 +680,12 @@ describe("EntryDetail page", () => {
         expect(allNones.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("renders basic context inputs as a list", async () => {
+    it("renders basic context items as clickable entry cards", async () => {
         fetchAdditionalProperties.mockImplementation((id, propertyName) => {
             if (propertyName === "basic_context") {
                 return Promise.resolve({ basic_context: [
-                    { input: "text some context event", date: "2024-01-01T00:00:00.000Z" },
-                    { input: "text another context event", date: "2024-01-02T00:00:00.000Z" },
+                    { id: "ctx-event-1", input: "text some context event", date: "2024-01-01T00:00:00.000Z" },
+                    { id: "ctx-event-2", input: "text another context event", date: "2024-01-02T00:00:00.000Z" },
                 ] });
             }
             return Promise.resolve({});
@@ -694,15 +694,22 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await waitFor(() => {
-            expect(screen.getByText("text some context event")).toBeInTheDocument();
-            expect(screen.getByText("text another context event")).toBeInTheDocument();
+            expect(screen.getByText("some context event")).toBeInTheDocument();
+            expect(screen.getByText("another context event")).toBeInTheDocument();
         });
+
+        // Each item should be rendered as a link to its entry detail page
+        const links = screen.getAllByRole("link");
+        const contextLinks = links.filter((link) => link.getAttribute("href")?.startsWith("/entry/ctx-event"));
+        expect(contextLinks).toHaveLength(2);
+        expect(contextLinks[0]).toHaveAttribute("href", "/entry/ctx-event-1");
+        expect(contextLinks[1]).toHaveAttribute("href", "/entry/ctx-event-2");
     });
 
     it("does not show basic context inputs in the Computed Properties section", async () => {
         fetchAdditionalProperties.mockImplementation((id, propertyName) => {
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: [{ input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
+                return Promise.resolve({ basic_context: [{ id: "ctx-food-1", input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
             }
             return Promise.resolve({});
         });
@@ -710,7 +717,7 @@ describe("EntryDetail page", () => {
         renderWithRoute("/entry/entry-123", { entry: mockEntry });
 
         await waitFor(() => {
-            expect(screen.getByText("food - Ate pizza")).toBeInTheDocument();
+            expect(screen.getByText("- Ate pizza")).toBeInTheDocument();
         });
 
         // basic_context key should not appear as a field row label in Computed Properties
@@ -764,7 +771,7 @@ describe("EntryDetail page", () => {
                 return Promise.resolve({ errors: { calories: "Calories service unavailable" } });
             }
             if (propertyName === "basic_context") {
-                return Promise.resolve({ basic_context: [{ input: "text some event", date: "2024-01-01T00:00:00.000Z" }] });
+                return Promise.resolve({ basic_context: [{ id: "ctx-text-1", input: "text some event", date: "2024-01-01T00:00:00.000Z" }] });
             }
             return Promise.resolve({});
         });
@@ -773,7 +780,7 @@ describe("EntryDetail page", () => {
 
         await waitFor(() => {
             expect(screen.getByText(/calories error/i)).toBeInTheDocument();
-            expect(screen.getByText("text some event")).toBeInTheDocument();
+            expect(screen.getByText("some event")).toBeInTheDocument();
         });
 
         // calories error appears in Computed Properties, not Basic Context
@@ -937,7 +944,7 @@ describe("EntryDetail page", () => {
     });
 
     it("does not show 'None' when only other-type assets are present", async () => {
-        fetchAdditionalProperties.mockResolvedValue({ calories: 100, basic_context: [{ input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
+        fetchAdditionalProperties.mockResolvedValue({ calories: 100, basic_context: [{ id: "ctx-food-1", input: "food - Ate pizza", date: "2024-01-01T00:00:00.000Z" }] });
         fetchEntryAssets.mockResolvedValue([
             { filename: "document.pdf", url: "/assets/2024-01/01/entry-123/document.pdf", mediaType: "other" },
         ]);

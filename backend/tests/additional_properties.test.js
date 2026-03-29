@@ -448,7 +448,7 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(res.body.basic_context.map((item) => item.input)).toContain("ran 5km");
         });
 
-        it("returns basic_context items with input and date fields", async () => {
+        it("returns basic_context items with id, input and date fields", async () => {
             const { app, capabilities } = await makeInitializedApp("N/A");
 
             await writeEventsToStore(capabilities, [makeEvent("entry-ctx-date-1", "ran 5km")]);
@@ -459,6 +459,8 @@ describe("GET /api/entries/:id/additional-properties", () => {
             expect(res.statusCode).toBe(200);
             expect(res.body).toHaveProperty("basic_context");
             expect(res.body.basic_context).toHaveLength(1);
+            expect(res.body.basic_context[0]).toHaveProperty("id");
+            expect(typeof res.body.basic_context[0].id).toBe("string");
             expect(res.body.basic_context[0]).toHaveProperty("input", "ran 5km");
             expect(res.body.basic_context[0]).toHaveProperty("date");
             expect(typeof res.body.basic_context[0].date).toBe("string");

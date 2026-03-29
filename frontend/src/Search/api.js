@@ -55,6 +55,7 @@ export async function searchEntries(pattern, page = 1, limit = 50) {
 
 /**
  * @typedef {object} BasicContextItem
+ * @property {string} id - The id of the context event.
  * @property {string} input - The input field of the context event.
  * @property {string} date - The date of the context event.
  */
