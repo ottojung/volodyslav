@@ -40,6 +40,20 @@ export class PushPcmSessionNotFoundError extends Error {
 }
 
 /**
+ * Thrown by pushPcm when the backend returns a 5xx server error.
+ * This typically indicates a transient proxy or infrastructure issue
+ * (e.g., nginx body-buffering failure) and is safe to retry.
+ */
+export class PushPcmServerError extends Error {
+    /** @param {number} status */
+    constructor(status) {
+        super(`Server error pushing PCM: ${status}`);
+        this.name = "PushPcmServerError";
+        this.status = status;
+    }
+}
+
+/**
  * Initialize or touch a recording session.
  * @param {string} sessionId
  * @returns {Promise<SessionInfo>}
@@ -93,6 +107,9 @@ export async function pushPcm(sessionId, { pcmBytes, sampleRateHz, channels, bit
     if (response.status === 404) {
         throw new PushPcmSessionNotFoundError(sessionId);
     }
+    if (response.status >= 500) {
+        throw new PushPcmServerError(response.status);
+    }
     if (!response.ok) {
         throw new Error(`Failed to push PCM: ${response.status}`);
     }
@@ -108,28 +125,43 @@ export async function pushPcm(sessionId, { pcmBytes, sampleRateHz, channels, bit
 }
 
 /**
- * Push PCM, recreating the session on 404 and retrying once.
- * This ensures the backend workflow recovers when the initial `startSession`
- * call failed transiently.
+ * Push PCM, recreating the session on 404 and retrying up to
+ * MAX_SERVER_RETRIES times on transient server errors (5xx).
+ *
+ * Session recreation handles the case where the initial `startSession`
+ * call failed transiently.  Server-error retries handle transient proxy
+ * issues such as nginx failing to buffer the request body to disk.
  *
  * @param {string} sessionId
  * @param {{ pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number, startMs: number, endMs: number, sequence: number }} params
  * @returns {Promise<{ status: PushPcmStatus }>}
  */
 export async function pushPcmWithSessionRetry(sessionId, params) {
-    let result;
-    try {
-        result = await pushPcm(sessionId, params);
-    } catch (err) {
-        if (err instanceof PushPcmSessionNotFoundError) {
-            // Session missing (startSession failed earlier) — recreate then retry once.
-            await startSession(sessionId);
-            result = await pushPcm(sessionId, params);
-        } else {
-            throw err;
+    const MAX_SERVER_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_SERVER_RETRIES; attempt++) {
+        if (attempt > 0) {
+            // Brief wait before retrying after a server error.
+            await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
         }
+        let result;
+        try {
+            result = await pushPcm(sessionId, params);
+        } catch (err) {
+            if (err instanceof PushPcmSessionNotFoundError) {
+                // Session missing (startSession failed earlier) — recreate then retry once.
+                await startSession(sessionId);
+                result = await pushPcm(sessionId, params);
+            } else if (err instanceof PushPcmServerError && attempt < MAX_SERVER_RETRIES) {
+                // Transient server error (e.g., nginx proxy issue) — retry with backoff.
+                continue;
+            } else {
+                throw err;
+            }
+        }
+        return { status: result.status };
     }
-    return { status: result.status };
+    // Unreachable: the final iteration always throws or returns.
+    throw new PushPcmServerError(500);
 }
 
 /**
