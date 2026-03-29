@@ -461,6 +461,24 @@ describe("pushAudio", () => {
         expect(result.status).toBe("invalid_pcm");
         expect(caps.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
     });
+
+    it("logs lastFragmentBytes, currentFragmentBytes, and combinedBytes when forming the overlap window", async () => {
+        const caps = makeCapabilities();
+        const pcmInfo = buildTestPcmInfo();
+        const pcmByteLength = pcmInfo.pcm.length; // 16 bytes (8 Int16 samples)
+
+        await pushAudio(caps, "sess-logbytes", pcmInfo, 1);
+        await pushAudio(caps, "sess-logbytes", pcmInfo, 2);
+
+        expect(caps.logger.logDebug).toHaveBeenCalledWith(
+            expect.objectContaining({
+                lastFragmentBytes: pcmByteLength,
+                currentFragmentBytes: pcmByteLength,
+                combinedBytes: pcmByteLength * 2,
+            }),
+            expect.stringContaining("forming 20s PCM overlap window")
+        );
+    });
 });
 
 // ─── Session cleanup ─────────────────────────────────────────────────────────

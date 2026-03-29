@@ -244,7 +244,13 @@ async function pushAudio(
     const window20s = buildWav(combinedPcm, sampleRateHz, channels, bitDepth);
 
     capabilities.logger.logDebug(
-        { sessionId, fragmentNumber },
+        {
+            sessionId,
+            fragmentNumber,
+            lastFragmentBytes: lastFragmentBuffer.length,
+            currentFragmentBytes: pcm.length,
+            combinedBytes: combinedPcm.length,
+        },
         "Live diary forming 20s PCM overlap window for transcription"
     );
 

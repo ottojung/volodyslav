@@ -170,21 +170,21 @@ function makeRouter(capabilities) {
                 return res.status(400).json({ success: false, error: "bitDepth must be 16" });
             }
 
-            capabilities.logger.logDebug(
-                {
-                    sessionId,
-                    sequence: sequenceNum,
-                    sampleRateHz: sampleRateHzNum,
-                    channels: channelsNum,
-                    bitDepth: bitDepthNum,
-                    pcmBytes: pcmFile.buffer.length,
-                    startMs: startMsNum,
-                    endMs: endMsNum,
-                },
-                "push-pcm: validated, storing PCM fragment"
-            );
-
             try {
+                capabilities.logger.logDebug(
+                    {
+                        sessionId,
+                        sequence: sequenceNum,
+                        sampleRateHz: sampleRateHzNum,
+                        channels: channelsNum,
+                        bitDepth: bitDepthNum,
+                        pcmBytes: pcmFile.buffer.length,
+                        startMs: startMsNum,
+                        endMs: endMsNum,
+                    },
+                    "push-pcm: validated, storing PCM fragment"
+                );
+
                 const result = await pushAudioFragment(capabilities, sessionId, {
                     pcm: pcmFile.buffer,
                     sampleRateHz: sampleRateHzNum,
