@@ -8,7 +8,7 @@
  * @module LiveQuestionsPanel
  */
 
-import React, { useRef, useEffect, useState } from "react";
+import React from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 
@@ -30,8 +30,19 @@ const fadeIn = keyframes`
  * @returns {React.JSX.Element}
  */
 function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
+    /**
+     * @param {import('react').KeyboardEvent<HTMLElement>} event
+     */
+    const onKeyDown = (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onTogglePin(question.questionId);
+        }
+    };
+
     return (
         <Box
+            as="button"
             borderRadius="md"
             p={3}
             mb={2}
@@ -41,6 +52,11 @@ function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
             cursor="pointer"
             _hover={{ bg: isPinned ? "blue.100" : "gray.100" }}
             onClick={() => onTogglePin(question.questionId)}
+            onKeyDown={onKeyDown}
+            aria-pressed={isPinned}
+            aria-label={isPinned ? "Unpin question" : "Pin question"}
+            textAlign="left"
+            width="100%"
             style={
                 isNew
                     ? { animation: `${fadeIn} 300ms ease-out` }
@@ -85,23 +101,6 @@ export default function LiveQuestionsPanel({
         pinnedQuestions.length > 0 ||
         errorMessage;
 
-    // Track the most recently added question ID for fade-in animation.
-    /** @type {import('react').MutableRefObject<string | null>} */
-    const latestQuestionIdRef = useRef(null);
-    const [newQuestionId, setNewQuestionId] = useState("");
-
-    const newestId = displayedQuestions[0]?.questionId ?? pinnedQuestions[0]?.questionId ?? "";
-
-    useEffect(() => {
-        if (newestId && newestId !== latestQuestionIdRef.current) {
-            latestQuestionIdRef.current = newestId;
-            setNewQuestionId(newestId);
-            const timer = setTimeout(() => setNewQuestionId(""), 300);
-            return () => clearTimeout(timer);
-        }
-        return undefined;
-    }, [newestId]);
-
     if (!hasContent) {
         return null;
     }
@@ -132,7 +131,7 @@ export default function LiveQuestionsPanel({
                         key={q.questionId}
                         question={q}
                         isPinned={true}
-                        isNew={q.questionId === newQuestionId}
+                        isNew={q.isNew}
                         onTogglePin={onTogglePin}
                     />
                 ))}
@@ -143,7 +142,7 @@ export default function LiveQuestionsPanel({
                             key={q.questionId}
                             question={q}
                             isPinned={false}
-                            isNew={q.questionId === newQuestionId}
+                            isNew={q.isNew}
                             onTogglePin={onTogglePin}
                         />
                     ))}

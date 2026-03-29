@@ -152,31 +152,15 @@ export function useDiaryLiveQuestioningController() {
                 questionId: makeQuestionId(),
                 text: q.text,
                 intent: q.intent,
-                isNew: true,
+                isNew: false,
             }));
 
             setDisplayedQuestions((/** @type {DisplayedQuestion[]} */ prev) => {
                 const updated = [...newItems, ...prev];
                 return updated.slice(0, MAX_VISIBLE_UNPINNED);
             });
-
-            // Clear isNew flag after animation (300 ms).
-            const timeoutId = setTimeout(() => {
-                setDisplayedQuestions((/** @type {DisplayedQuestion[]} */ prev) =>
-                    prev.map((/** @type {DisplayedQuestion} */ q) =>
-                        newItems.some((ni) => ni.questionId === q.questionId)
-                            ? { ...q, isNew: false }
-                            : q
-                    )
-                );
-                // Remove this id from the tracking array.
-                newFlagTimeoutsRef.current = newFlagTimeoutsRef.current.filter(
-                    (/** @type {ReturnType<typeof setTimeout>} */ id) => id !== timeoutId
-                );
-            }, 300);
-            newFlagTimeoutsRef.current.push(timeoutId);
         },
-        [clearNewFlagTimeouts]
+        []
     );
 
     /**
@@ -233,6 +217,7 @@ export function useDiaryLiveQuestioningController() {
     const startLive = useCallback(
         /** @param {string} sessionId */
         (sessionId) => {
+            clearNewFlagTimeouts();
             isRunningRef.current = true;
             currentSessionIdRef.current = sessionId;
             displayedQuestionsRef.current = [];
@@ -268,7 +253,7 @@ export function useDiaryLiveQuestioningController() {
                 }
             }, POLLING_INTERVAL_MS);
         },
-        [onQuestions]
+        [clearNewFlagTimeouts, onQuestions]
     );
 
     /**

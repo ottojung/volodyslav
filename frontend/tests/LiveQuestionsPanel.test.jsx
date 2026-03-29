@@ -177,7 +177,7 @@ describe("LiveQuestionsPanel", () => {
                     <LiveQuestionsPanel
                         displayedQuestions={[
                             { ...makeQuestion("New Q", "new-q"), isNew: true },
-                            makeQuestion("Old Q", "old-q"),
+                            { ...makeQuestion("Old Q", "old-q"), isNew: false },
                         ]}
                         pinnedQuestions={[]}
                         pinnedQuestionIds={[]}
@@ -192,5 +192,40 @@ describe("LiveQuestionsPanel", () => {
         const newestItem = screen.getByTestId("question-item-new-q");
         const style = newestItem.getAttribute("style") ?? "";
         expect(style).toMatch(/animation/i);
+    });
+
+    it("renders question items as accessible toggle buttons", () => {
+        const q = makeQuestion("Accessible Q", "acc-q");
+        renderPanel(
+            <LiveQuestionsPanel
+                displayedQuestions={[q]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={noopToggle}
+                errorMessage={null}
+            />
+        );
+        const button = screen.getByRole("button", { name: "Pin question" });
+        expect(button).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("supports keyboard toggling via Enter and Space", () => {
+        const onToggle = jest.fn();
+        const q = makeQuestion("Keyboard Q", "kbd-q");
+        renderPanel(
+            <LiveQuestionsPanel
+                displayedQuestions={[q]}
+                pinnedQuestions={[]}
+                pinnedQuestionIds={[]}
+                onTogglePin={onToggle}
+                errorMessage={null}
+            />
+        );
+        const button = screen.getByRole("button", { name: "Pin question" });
+        fireEvent.keyDown(button, { key: "Enter" });
+        fireEvent.keyDown(button, { key: " " });
+        expect(onToggle).toHaveBeenCalledTimes(2);
+        expect(onToggle).toHaveBeenNthCalledWith(1, "kbd-q");
+        expect(onToggle).toHaveBeenNthCalledWith(2, "kbd-q");
     });
 });

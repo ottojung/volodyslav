@@ -412,6 +412,9 @@ async function pushAudio(
             stepTimeoutMs
         );
     } catch (error) {
+        // Preserve current gating state even when generation fails so words
+        // spoken in this fragment are not lost for subsequent attempts.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
         if (isLiveDiaryStepTimeoutError(error)) {
             capabilities.logger.logWarning(
                 { sessionId, fragmentNumber, timeoutMs: error.timeoutMs, step: error.step },

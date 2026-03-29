@@ -514,6 +514,57 @@ describe("pushAudio", () => {
         expect(result.status).toBe("degraded_question_generation");
     });
 
+    it("persists cumulative words when question generation degrades", async () => {
+        const caps = makeCapabilities();
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
+            text: "this transcript has enough words to trigger question generation threshold",
+            provider: "Google",
+            model: "mocked",
+            finishReason: "STOP",
+            finishMessage: null,
+            candidateTokenCount: 0,
+            usageMetadata: null,
+            modelVersion: null,
+            responseId: null,
+            structured: {
+                transcript: "this transcript has enough words to trigger question generation threshold",
+                coverage: "full",
+                warnings: [],
+                unclearAudio: false,
+            },
+            rawResponse: null,
+        });
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockRejectedValue(new Error("question generation failed"));
+
+        await pushAudio(caps, "sess-persist-cumulative-on-degrade", buildTestPcmInfo(), 1);
+        const result = await pushAudio(
+            caps,
+            "sess-persist-cumulative-on-degrade",
+            buildTestPcmInfo(),
+            2
+        );
+
+        expect(result.questions).toEqual([]);
+        expect(result.status).toBe("degraded_question_generation");
+
+        // Next fragment should trigger generation again because previous cumulative
+        // count is preserved instead of lost.
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockResolvedValue([{ text: "Recovered question?", intent: "warm_reflective" }]);
+        const next = await pushAudio(
+            caps,
+            "sess-persist-cumulative-on-degrade",
+            buildTestPcmInfo(),
+            3
+        );
+        expect(next.status).toBe("ok");
+        expect(next.questions).toHaveLength(1);
+        expect(next.questions[0].text).toBe("Recovered question?");
+    });
+
     it("deduplicates non-ASCII (Cyrillic) questions using Unicode-aware normalization", async () => {
         const caps = makeCapabilities();
         // Simulate an AI returning the same Ukrainian question twice.
