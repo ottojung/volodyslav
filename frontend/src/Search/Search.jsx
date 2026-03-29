@@ -169,6 +169,7 @@ export default function Search() {
                     };
                 })
             );
+            if (copySequence !== copySequenceRef.current) return;
             await navigator.clipboard.writeText(JSON.stringify(items, null, 2));
             if (copySequence !== copySequenceRef.current) return;
             setCopyStatus(COPY_STATUS_SUCCESS);
