@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigationType } from "react-router-dom";
 import { Container, VStack, Card, Input, Text, Box, HStack, Badge, Spinner, Button } from "@chakra-ui/react";
-import { searchEntries } from "./api.js";
+import { searchEntries, fetchAdditionalProperties } from "./api.js";
 import { formatRelativeDate } from "../DescriptionEntry/utils.js";
 import { getEntryParsed } from "../DescriptionEntry/entry.js";
+import { logger } from "../DescriptionEntry/logger.js";
 import {
     SPACING,
     SIZES,
@@ -13,6 +14,10 @@ import {
 } from "../DescriptionEntry/styles.js";
 
 const SEARCH_STATE_KEY = "volodyslav_search_state";
+
+const COPY_STATUS_IDLE = 'idle';
+const COPY_STATUS_SUCCESS = 'success';
+const COPY_STATUS_ERROR = 'error';
 
 /**
  * @typedef {import('../DescriptionEntry/entry.js').Entry} Entry
@@ -79,6 +84,8 @@ export default function Search() {
     const [error, setError] = useState(restoredState?.error ?? NO_ERROR);
     const [page, setPage] = useState(restoredState?.page ?? 1);
     const [hasMore, setHasMore] = useState(restoredState?.hasMore ?? false);
+    const [isCopying, setIsCopying] = useState(false);
+    const [copyStatus, setCopyStatus] = useState(COPY_STATUS_IDLE);
     const inputRef = useRef(null);
     const searchSequenceRef = useRef(0);
     // Tracks whether the initial fetch should be skipped because state was restored.
@@ -138,6 +145,32 @@ export default function Search() {
             setError(err);
         }
         setIsLoadingMore(false);
+    }
+
+    async function handleCopy() {
+        setIsCopying(true);
+        setCopyStatus(COPY_STATUS_IDLE);
+        try {
+            const items = await Promise.all(
+                results.map(async (entry) => {
+                    const props = await fetchAdditionalProperties(entry.id, "basic_context");
+                    return {
+                        input: entry.input,
+                        date: entry.date,
+                        basicContext: (props.basic_context ?? []).map((item) => ({
+                            input: item.input,
+                            date: item.date,
+                        })),
+                    };
+                })
+            );
+            await navigator.clipboard.writeText(JSON.stringify(items, null, 2));
+            setCopyStatus(COPY_STATUS_SUCCESS);
+        } catch (err) {
+            logger.error("Failed to copy entries to clipboard:", err);
+            setCopyStatus(COPY_STATUS_ERROR);
+        }
+        setIsCopying(false);
     }
 
     return (
@@ -240,6 +273,32 @@ export default function Search() {
                             </Text>
                         </Card.Body>
                     </Card.Root>
+                )}
+
+                {!isLoading && !isLoadingMore && error === null && results.length > 0 && (
+                    <Box textAlign="center">
+                        <Button
+                            colorPalette="teal"
+                            size="md"
+                            px={8}
+                            borderRadius="xl"
+                            onClick={handleCopy}
+                            loading={isCopying}
+                            loadingText="Copying..."
+                        >
+                            Copy as JSON
+                        </Button>
+                        {copyStatus === COPY_STATUS_SUCCESS && (
+                            <Text fontSize="sm" color="teal.600" mt={2}>
+                                Copied to clipboard!
+                            </Text>
+                        )}
+                        {copyStatus === COPY_STATUS_ERROR && (
+                            <Text fontSize="sm" color="red.500" mt={2}>
+                                Failed to copy to clipboard.
+                            </Text>
+                        )}
+                    </Box>
                 )}
             </VStack>
         </Container>

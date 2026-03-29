@@ -34,10 +34,16 @@ const { isDirScannerError } = require("../../filesystem").dirscanner;
  */
 
 /**
+ * @typedef {object} BasicContextItem
+ * @property {string} input - The input field of the context event.
+ * @property {string} date - The date of the context event.
+ */
+
+/**
  * @typedef {object} AdditionalProperties
  * @property {number} [calories] - Estimated calorie count; omitted when N/A (non-food entry) or unknown.
  * @property {string} [transcription] - Transcription text; omitted when unavailable.
- * @property {string[]} [basic_context] - Input fields from the basic context events.
+ * @property {BasicContextItem[]} [basic_context] - Input and date fields from the basic context events.
  * @property {Object<string, string>} [errors] - Per-property error messages; omitted when no errors.
  */
 
@@ -299,7 +305,8 @@ async function handleAdditionalProperties(req, res, capabilities, reqId) {
                 "Pulled basic_context entry for additional properties",
             );
 
-            properties.basic_context = basicContextEntry.events.map((e) => e.input);
+            // Returns objects with both input and date so callers have full context about each event.
+            properties.basic_context = basicContextEntry.events.map((e) => ({ input: e.input, date: e.date }));
         } catch (error) {
             if (!isEventNotFoundError(error)) {
                 const message = error instanceof Error ? error.message : String(error);

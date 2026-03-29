@@ -291,9 +291,9 @@ export default function EntryDetail() {
                             <Text {...TEXT_STYLES.helper}>None</Text>
                         ) : (
                             <VStack gap={SPACING.sm} align="stretch">
-                                {basicContextInputs.map((input, index) => (
+                                {basicContextInputs.map((item, index) => (
                                     <Box key={index} {...CARD_STYLES.entry}>
-                                        <Text {...TEXT_STYLES.entryText} wordBreak="normal">{input}</Text>
+                                        <Text {...TEXT_STYLES.entryText} wordBreak="normal">{item.input}</Text>
                                     </Box>
                                 ))}
                             </VStack>
