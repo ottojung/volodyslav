@@ -81,10 +81,13 @@ function enqueueAnalysis(capabilities, sessionId, pcmInfo, sequenceNum) {
             processingQueues.delete(sessionId);
         }
     }).catch(() => {
-        // Silence any rejection that propagates through the finally chain.
-        // `next` should never reject because the then-callback above catches all
+        // This `next` should never reject because the then-callback above catches all
         // errors internally, but if the logger itself throws the rejection must
         // not become an unhandled promise rejection that could crash the process.
+        capabilities.logger.logError(
+            { sessionId, sequence: sequenceNum },
+            "Unexpected error in live diary AI processing queue"
+        );
     });
 }
 
