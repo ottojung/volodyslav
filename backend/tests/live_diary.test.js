@@ -565,6 +565,54 @@ describe("pushAudio", () => {
         expect(next.questions[0].text).toBe("Recovered question?");
     });
 
+    it("persists cumulative words when generation returns zero new questions", async () => {
+        const caps = makeCapabilities();
+        const transcripts = [
+            "one two three", // fragment 2 -> +3 (below threshold)
+            "four five six seven eight nine ten", // fragment 3 -> +7 (reaches 10)
+            "eleven", // fragment 4 -> should still trigger generation if 10 was preserved
+        ];
+        let transcribeCallCount = 0;
+        caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockImplementation(async () => {
+            const text = transcripts[Math.min(transcribeCallCount, transcripts.length - 1)];
+            transcribeCallCount += 1;
+            return {
+                text,
+                provider: "Google",
+                model: "mocked",
+                finishReason: "STOP",
+                finishMessage: null,
+                candidateTokenCount: 0,
+                usageMetadata: null,
+                modelVersion: null,
+                responseId: null,
+                structured: { transcript: text, coverage: "full", warnings: [], unclearAudio: false },
+                rawResponse: null,
+            };
+        });
+        caps.aiDiaryQuestions.generateQuestions = jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ text: "Follow-up after zero result?", intent: "clarifying" }]);
+
+        await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 1);
+        const second = await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 2);
+        expect(second.status).toBe("ok");
+        expect(second.questions).toEqual([]);
+        expect(caps.aiDiaryQuestions.generateQuestions).not.toHaveBeenCalled();
+
+        const third = await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 3);
+        expect(third.status).toBe("ok");
+        expect(third.questions).toEqual([]);
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
+
+        const fourth = await pushAudio(caps, "sess-persist-cumulative-on-zero", buildTestPcmInfo(), 4);
+        expect(fourth.status).toBe("ok");
+        expect(fourth.questions).toHaveLength(1);
+        expect(fourth.questions[0].text).toBe("Follow-up after zero result?");
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(2);
+    });
+
     it("deduplicates non-ASCII (Cyrillic) questions using Unicode-aware normalization", async () => {
         const caps = makeCapabilities();
         // Simulate an AI returning the same Ukrainian question twice.

@@ -197,6 +197,66 @@ async function clearPendingQuestions(temporary, sessionId) {
     });
 }
 
+/**
+ * Commit question-generation side effects for a session.
+ * Uses a single batch write so asked/pending/counter changes stay consistent.
+ * The pending read-modify-write remains safe because live-diary processing is
+ * serialized per session by the route-level processing queue.
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @param {string[]} askedQuestions
+ * @param {Array<{text: string, intent: string}>} newQuestions
+ * @param {number} cumulativeWordCount
+ * @returns {Promise<void>}
+ */
+async function commitQuestionGenerationResult(
+    temporary,
+    sessionId,
+    askedQuestions,
+    newQuestions,
+    cumulativeWordCount
+) {
+    const sublevel = liveDiarySessionSublevel(temporary, sessionId);
+    if (newQuestions.length === 0) {
+        await sublevel.put(WORDS_SINCE_LAST_QUESTION_KEY, {
+            type: "live_diary_string",
+            value: String(cumulativeWordCount),
+        });
+        return;
+    }
+
+    const existingPending = await readPendingQuestions(temporary, sessionId);
+    await sublevel.batch([
+        {
+            type: "put",
+            key: ASKED_QUESTIONS_KEY,
+            value: {
+                type: "live_diary_questions",
+                questions: [
+                    ...askedQuestions.map((text) => ({ text, intent: "" })),
+                    ...newQuestions.map((q) => ({ text: q.text, intent: "" })),
+                ],
+            },
+        },
+        {
+            type: "put",
+            key: PENDING_QUESTIONS_KEY,
+            value: {
+                type: "live_diary_questions",
+                questions: [...existingPending, ...newQuestions],
+            },
+        },
+        {
+            type: "put",
+            key: WORDS_SINCE_LAST_QUESTION_KEY,
+            value: {
+                type: "live_diary_string",
+                value: "0",
+            },
+        },
+    ]);
+}
+
 module.exports = {
     LAST_FRAGMENT_FORMAT_KEY,
     LAST_WINDOW_TRANSCRIPT_KEY,
@@ -215,4 +275,5 @@ module.exports = {
     readPendingQuestions,
     appendPendingQuestions,
     clearPendingQuestions,
+    commitQuestionGenerationResult,
 };

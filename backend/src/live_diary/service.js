@@ -38,10 +38,9 @@ const {
     readStringField,
     writeStringField,
     readAskedQuestions,
-    writeAskedQuestions,
     readPendingQuestions,
-    appendPendingQuestions,
     clearPendingQuestions,
+    commitQuestionGenerationResult,
 } = require("./session_state");
 const { buildWav, extensionForMime } = require("./wav_utils");
 const {
@@ -436,15 +435,13 @@ async function pushAudio(
         "Live diary question generation result"
     );
 
-    if (newQuestions.length > 0) {
-        await writeAskedQuestions(temporary, sessionId, [
-            ...askedQuestions,
-            ...newQuestions.map((q) => q.text),
-        ]);
-        await appendPendingQuestions(temporary, sessionId, newQuestions);
-        // Reset counter only when at least one new question is accepted/enqueued.
-        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, "0");
-    }
+    await commitQuestionGenerationResult(
+        temporary,
+        sessionId,
+        askedQuestions,
+        newQuestions,
+        cumulativeWordCount
+    );
 
     return { questions: newQuestions, status: "ok" };
 }
