@@ -217,13 +217,22 @@ export function SyncSection() {
         </Alert.Root>
       )}
       {syncState === 'error' && syncError.message !== '' && (
-        <Alert.Root status="error" borderRadius="md" alignItems="flex-start" w="200px">
+        <Alert.Root
+          status="error"
+          borderRadius="md"
+          alignItems="flex-start"
+          w="full"
+          maxW="min(1000px, calc(100vw - 2rem))">
           <Alert.Indicator mt={1} />
-          <Box>
+          <Box w="full" minW={0}>
             <Alert.Title>Sync failed</Alert.Title>
             <Alert.Description>
               <VStack gap={3} align="stretch" mt={2}>
-                <Text whiteSpace="pre-wrap">{syncError.message}</Text>
+                <Box overflowX="auto" w="full">
+                  <Text as="pre" whiteSpace="pre" m={0}>
+                    {syncError.message}
+                  </Text>
+                </Box>
                 {syncError.details.length > 0 && (
                   <Box>
                     <Text fontWeight="semibold" mb={2}>Details</Text>
@@ -231,11 +240,17 @@ export function SyncSection() {
                       {syncError.details.map((detail, index) => (
                         <List.Item key={`${detail.name}-${index}`}>
                           <Text fontWeight="medium">{detail.name}</Text>
-                          <Text>{detail.message}</Text>
+                          <Box overflowX="auto" w="full">
+                            <Text as="pre" whiteSpace="pre" m={0}>
+                              {detail.message}
+                            </Text>
+                          </Box>
                           {detail.causes.length > 0 && (
-                            <Code display="block" mt={2} whiteSpace="pre-wrap">
-                              {detail.causes.join('\n')}
-                            </Code>
+                            <Box overflowX="auto" w="full">
+                              <Code display="block" mt={2} whiteSpace="pre">
+                                {detail.causes.join('\n')}
+                              </Code>
+                            </Box>
                           )}
                         </List.Item>
                       ))}
