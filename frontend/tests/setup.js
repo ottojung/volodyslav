@@ -1,5 +1,5 @@
 // Setup file for Jest tests
-require('@testing-library/jest-dom/extend-expect');
+require("@testing-library/jest-dom");
 
 // Define __BASE_PATH__ global used by api_base_url.js
 global.__BASE_PATH__ = "/";
