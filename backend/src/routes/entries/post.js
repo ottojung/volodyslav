@@ -62,7 +62,7 @@ class FileValidationError extends Error {
 /**
  * @typedef {object} EntryRequestBody
  * @property {string} rawInput - The raw user input to parse
- * @property {string} [clientTimezone] - Optional IANA timezone name from the client (e.g. "Europe/Kyiv")
+ * @property {string} clientTimezone - Required IANA timezone name from the client (e.g. "Europe/Kyiv")
  */
 
 /**
@@ -215,14 +215,15 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             return res.status(400).json({ error: "Missing required field: rawInput" });
         }
 
-        // Validate optional client-supplied timezone. Reject invalid values with 400.
-        if (clientTimezone !== undefined) {
-            if (typeof clientTimezone !== "string") {
-                return res.status(400).json({ error: "clientTimezone must be a string" });
-            }
-            if (!isValidIANATimezone(clientTimezone)) {
-                return res.status(400).json({ error: `Invalid clientTimezone: ${clientTimezone}` });
-            }
+        // Validate required clientTimezone field.
+        if (clientTimezone === undefined || clientTimezone === null) {
+            return res.status(400).json({ error: "Missing required field: clientTimezone" });
+        }
+        if (typeof clientTimezone !== "string") {
+            return res.status(400).json({ error: "clientTimezone must be a string" });
+        }
+        if (!isValidIANATimezone(clientTimezone)) {
+            return res.status(400).json({ error: `Invalid clientTimezone: ${clientTimezone}` });
         }
 
         let processed;
