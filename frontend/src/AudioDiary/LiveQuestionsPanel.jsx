@@ -50,6 +50,7 @@ function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
             aria-label={isPinned ? `Unpin question: ${question.text}` : `Pin question: ${question.text}`}
             textAlign="left"
             width="100%"
+            whiteSpace="normal"
             style={
                 isNew
                     ? { animation: `${fadeIn} 300ms ease-out` }
@@ -62,6 +63,9 @@ function QuestionItem({ question, isPinned, isNew, onTogglePin }) {
                 fontSize="sm"
                 lineHeight="1.5"
                 color="gray.700"
+                whiteSpace="normal"
+                wordBreak="break-word"
+                overflowWrap="anywhere"
                 style={{ maxWidth: "70ch" }}
             >
                 {question.text}
