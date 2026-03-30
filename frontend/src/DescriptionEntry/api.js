@@ -13,15 +13,15 @@ import {
 const SORTED_EVENTS_CACHE_SIZE = 100;
 
 /**
- * Build an ISO datetime string in local time with explicit offset.
+ * Get the client's local IANA timezone name.
  * @returns {string}
  */
-function makeClientDate() {
-    const iso = DateTime.local().toISO();
-    if (!iso) {
-        throw makeEntrySubmissionError("Failed to create client date");
+function makeClientTimezone() {
+    const tz = DateTime.local().zoneName;
+    if (!tz) {
+        throw makeEntrySubmissionError("Failed to determine client timezone");
     }
-    return iso;
+    return tz;
 }
 
 /**
@@ -61,9 +61,8 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
         url += `?request_identifier=${encodeURIComponent(requestIdentifier)}`;
     }
 
-    // Capture the client's local date *before* the async submission so it
-    // reflects the moment the user triggered the entry, not the server time.
-    const clientDate = makeClientDate();
+    // Capture the client's local timezone *before* the async submission.
+    const clientTimezone = makeClientTimezone();
 
     let response;
     
@@ -72,7 +71,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
             // If we have files, use FormData
             const formData = new FormData();
             formData.append('rawInput', rawInput);
-            formData.append('clientDate', clientDate);
+            formData.append('clientTimezone', clientTimezone);
             files.forEach(file => {
                 formData.append('files', file);  // Changed from 'photos' to 'files' to match backend expectation
             });
@@ -83,7 +82,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
             });
         } else {
             // No files, use JSON
-            const requestBody = { rawInput, clientDate };
+            const requestBody = { rawInput, clientTimezone };
             
             response = await fetch(url, {
                 method: "POST",

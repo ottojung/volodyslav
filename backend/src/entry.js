@@ -4,6 +4,7 @@ const eventId = event.id;
 const asset = event.asset;
 const { getParsed } = require("./event");
 const creatorMake = require("./creator");
+const { setZone } = require("./datetime");
 
 /**
  * Error thrown when entry data validation fails due to user input issues.
@@ -74,7 +75,7 @@ function isEntryValidationError(object) {
  * @typedef {object} EntryData
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
- * @property {import('./datetime').DateTime} [clientDate] - Optional date provided by the client.
+ * @property {string} [clientTimezone] - Optional IANA timezone name from the client (e.g. "Europe/Kyiv").
  */
 
 /**
@@ -88,7 +89,10 @@ function isEntryValidationError(object) {
 async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
-    const date = entryData.clientDate ?? capabilities.datetime.now();
+    const serverDate = capabilities.datetime.now();
+    const date = entryData.clientTimezone
+        ? setZone(serverDate, entryData.clientTimezone)
+        : serverDate;
 
     /** @type {import('./event/structure').Event} */
     const event = {

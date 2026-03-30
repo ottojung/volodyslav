@@ -27,10 +27,12 @@ function makeResponse(status, data) {
     };
 }
 
-function isIsoDateTimeWithOffset(value) {
+function isIANATimezone(value) {
+    // Basic IANA timezone format: one or more components separated by '/',
+    // each starting with a letter (e.g. "UTC", "Europe/Kyiv", "America/New_York").
     return (
         typeof value === "string" &&
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+        /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z][A-Za-z0-9_+-]*)*$/.test(value)
     );
 }
 
@@ -44,7 +46,7 @@ describe("submitEntry", () => {
     });
 
     describe("without files", () => {
-        it("sends a POST to /api/entries with JSON body containing rawInput and clientDate", async () => {
+        it("sends a POST to /api/entries with JSON body containing rawInput and clientTimezone", async () => {
             global.fetch.mockResolvedValueOnce(
                 makeResponse(201, { success: true, entry: { id: "abc" } })
             );
@@ -63,8 +65,7 @@ describe("submitEntry", () => {
             const [, options] = global.fetch.mock.calls[0];
             const body = JSON.parse(options.body);
             expect(body.rawInput).toBe("food pizza");
-            expect(typeof body.clientDate).toBe("string");
-            expect(isIsoDateTimeWithOffset(body.clientDate)).toBe(true);
+            expect(isIANATimezone(body.clientTimezone)).toBe(true);
         });
 
         it("includes request_identifier query param when provided", async () => {
@@ -169,7 +170,7 @@ describe("submitEntry", () => {
             expect(options.headers).toBeUndefined();
         });
 
-        it("puts rawInput and clientDate in the FormData", async () => {
+        it("puts rawInput and clientTimezone in the FormData", async () => {
             global.fetch.mockResolvedValueOnce(
                 makeResponse(201, { success: true, entry: { id: "abc" } })
             );
@@ -185,9 +186,8 @@ describe("submitEntry", () => {
             expect(options.body.get("rawInput")).toBe(
                 "diary [audiorecording] morning"
             );
-            const clientDate = options.body.get("clientDate");
-            expect(typeof clientDate).toBe("string");
-            expect(isIsoDateTimeWithOffset(clientDate)).toBe(true);
+            const clientTimezone = options.body.get("clientTimezone");
+            expect(isIANATimezone(clientTimezone)).toBe(true);
         });
 
         it("puts uploaded files in FormData under field 'files'", async () => {
@@ -294,7 +294,7 @@ describe("submitEntry", () => {
             );
             const body = JSON.parse(options.body);
             expect(body.rawInput).toBe("work [loc home] Remote day");
-            expect(typeof body.clientDate).toBe("string");
+            expect(isIANATimezone(body.clientTimezone)).toBe(true);
         });
     });
 });

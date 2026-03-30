@@ -1,5 +1,5 @@
 
-const { fromISOString, toISOString, mtime, tryDeserialize, DateTimeTryDeserializeError, isDateTimeTryDeserializeError } = require('./conversions');
+const { fromISOString, toISOString, mtime, tryDeserialize, DateTimeTryDeserializeError, isDateTimeTryDeserializeError, isValidIANATimezone } = require('./conversions');
 const { make } = require('./capability');
 const { weekdayNameToCronNumber, cronNumberToWeekdayName, isWeekdayName, getAllWeekdayNames } = require('./weekday');
 const { isDateTime } = require('./structure');
@@ -21,6 +21,7 @@ module.exports = {
     tryDeserialize,
     DateTimeTryDeserializeError,
     isDateTimeTryDeserializeError,
+    isValidIANATimezone,
     weekdayNameToCronNumber,
     cronNumberToWeekdayName,
     isWeekdayName,
