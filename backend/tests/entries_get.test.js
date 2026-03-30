@@ -44,6 +44,7 @@ describe("GET /api/entries", () => {
         // Create a test entry first
         const requestBody = {
             rawInput: "testtype - Test description",
+            clientTimezone: "UTC",
         };
         await request(app)
             .post("/api/entries")
@@ -68,9 +69,9 @@ describe("GET /api/entries", () => {
 
         // Create multiple test entries
         const entries = [
-            { rawInput: "type1 - Description 1" },
-            { rawInput: "type2 - Description 2" },
-            { rawInput: "type3 - Description 3" },
+            { rawInput: "type1 - Description 1", clientTimezone: "UTC" },
+            { rawInput: "type2 - Description 2", clientTimezone: "UTC" },
+            { rawInput: "type3 - Description 3", clientTimezone: "UTC" },
         ];
 
         for (const entry of entries) {
@@ -96,9 +97,9 @@ describe("GET /api/entries", () => {
 
         // Create multiple test entries
         const entries = [
-            { rawInput: "type1 - Description 1" },
-            { rawInput: "type2 - Description 2" },
-            { rawInput: "type3 - Description 3" },
+            { rawInput: "type1 - Description 1", clientTimezone: "UTC" },
+            { rawInput: "type2 - Description 2", clientTimezone: "UTC" },
+            { rawInput: "type3 - Description 3", clientTimezone: "UTC" },
         ];
 
         for (const entry of entries) {
@@ -124,6 +125,7 @@ describe("GET /api/entries", () => {
         // Create a test entry
         const requestBody = {
             rawInput: "testtype - Test description",
+            clientTimezone: "UTC",
         };
         await request(app)
             .post("/api/entries")
@@ -146,6 +148,7 @@ describe("GET /api/entries", () => {
         // Create a test entry
         const requestBody = {
             rawInput: "testtype - Test description",
+            clientTimezone: "UTC",
         };
         await request(app)
             .post("/api/entries")
@@ -166,9 +169,9 @@ describe("GET /api/entries with ordering", () => {
 
         // Create entries with different dates by controlling datetime.now()
         const entries = [
-            { rawInput: "type1 - Description 1" },
-            { rawInput: "type2 - Description 3" },
-            { rawInput: "type3 - Description 2" },
+            { rawInput: "type1 - Description 1", clientTimezone: "UTC" },
+            { rawInput: "type2 - Description 3", clientTimezone: "UTC" },
+            { rawInput: "type3 - Description 2", clientTimezone: "UTC" },
         ];
 
         // Mock datetime to return different times for each entry
@@ -212,8 +215,8 @@ describe("GET /api/entries with ordering", () => {
 
         // Create test entries
         const entries = [
-            { rawInput: "type1 - Description 1" },
-            { rawInput: "type2 - Description 2" },
+            { rawInput: "type1 - Description 1", clientTimezone: "UTC" },
+            { rawInput: "type2 - Description 2", clientTimezone: "UTC" },
         ];
 
         for (const entry of entries) {
@@ -235,8 +238,8 @@ describe("GET /api/entries with ordering", () => {
 
         // Create test entries
         const entries = [
-            { rawInput: "type1 - Description 1" },
-            { rawInput: "type2 - Description 2" },
+            { rawInput: "type1 - Description 1", clientTimezone: "UTC" },
+            { rawInput: "type2 - Description 2", clientTimezone: "UTC" },
         ];
 
         for (const entry of entries) {
@@ -258,6 +261,7 @@ describe("GET /api/entries with ordering", () => {
         // Create a test entry
         const requestBody = {
             rawInput: "testtype - Test description",
+            clientTimezone: "UTC",
         };
         await request(app)
             .post("/api/entries")
@@ -275,9 +279,9 @@ describe("GET /api/entries with ordering", () => {
 
         // Create multiple test entries
         const entries = [
-            { rawInput: "type1 - Description 1" },
-            { rawInput: "type2 - Description 2" },
-            { rawInput: "type3 - Description 3" },
+            { rawInput: "type1 - Description 1", clientTimezone: "UTC" },
+            { rawInput: "type2 - Description 2", clientTimezone: "UTC" },
+            { rawInput: "type3 - Description 3", clientTimezone: "UTC" },
         ];
 
         for (const entry of entries) {

@@ -27,7 +27,7 @@ describe("DELETE /api/entries", () => {
 
         const createRes = await request(app)
             .post("/api/entries")
-            .send({ rawInput: "testtype - desc" })
+            .send({ rawInput: "testtype - desc", clientTimezone: "UTC" })
             .set("Content-Type", "application/json");
         expect(createRes.statusCode).toBe(201);
         const id = createRes.body.entry.id;
@@ -76,7 +76,7 @@ describe("DELETE /api/entries", () => {
         const { app, capabilities } = await makeTestApp();
         const createRes = await request(app)
             .post("/api/entries")
-            .send({ rawInput: "testtype - desc" })
+            .send({ rawInput: "testtype - desc", clientTimezone: "UTC" })
             .set("Content-Type", "application/json");
         expect(createRes.statusCode).toBe(201);
         const id = createRes.body.entry.id;

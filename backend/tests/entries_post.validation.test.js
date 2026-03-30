@@ -38,7 +38,7 @@ describe("POST /api/entries", () => {
             for (const test of userErrorTests) {
                 const res = await request(app)
                     .post("/api/entries")
-                    .send({ rawInput: test.rawInput })
+                    .send({ rawInput: test.rawInput, clientTimezone: "UTC" })
                     .set("Content-Type", "application/json");
 
                 expect(res.statusCode).toBe(400);
@@ -51,7 +51,7 @@ describe("POST /api/entries", () => {
 
             const res = await request(app)
                 .post("/api/entries")
-                .send({ rawInput: "123invalid" })
+                .send({ rawInput: "123invalid", clientTimezone: "UTC" })
                 .set("Content-Type", "application/json");
 
             expect(res.statusCode).toBe(400);
@@ -69,6 +69,7 @@ describe("POST /api/entries", () => {
             const longDescription = "A".repeat(1000);
             const requestBody = {
                 rawInput: `work [loc office] ${longDescription}`,
+                clientTimezone: "UTC",
             };
 
             const res = await request(app)
@@ -87,6 +88,7 @@ describe("POST /api/entries", () => {
             const specialChars = "Special chars: @#$%^&*()_+-={}[]|\\:;\"'<>,.?/~`";
             const requestBody = {
                 rawInput: `work [loc office] ${specialChars}`,
+                clientTimezone: "UTC",
             };
 
             const res = await request(app)
@@ -105,6 +107,7 @@ describe("POST /api/entries", () => {
             const unicode = "测试 🚀 Ñoño café résumé";
             const requestBody = {
                 rawInput: `work [loc home] ${unicode}`,
+                clientTimezone: "UTC",
             };
 
             const res = await request(app)
@@ -152,6 +155,7 @@ describe("POST /api/entries", () => {
 
             const requestBody = {
                 rawInput: "work", // Just type, no description - should now be valid
+                clientTimezone: "UTC",
             };
 
             const res = await request(app)
@@ -170,6 +174,7 @@ describe("POST /api/entries", () => {
 
             const requestBody = {
                 rawInput: "work ", // Type with space but no description
+                clientTimezone: "UTC",
             };
 
             const res = await request(app)
@@ -188,6 +193,7 @@ describe("POST /api/entries", () => {
 
             const requestBody = {
                 rawInput: "work [loc office]", // Type and modifier but no description
+                clientTimezone: "UTC",
             };
 
             const res = await request(app)

@@ -9,9 +9,9 @@ describe("API Ordering Integration Tests", () => {
 
             // Create multiple entries
             const entries = [
-                { rawInput: "test1 - Entry 1" },
-                { rawInput: "test2 - Entry 2" },
-                { rawInput: "test3 - Entry 3" },
+                { rawInput: "test1 - Entry 1", clientTimezone: "UTC" },
+                { rawInput: "test2 - Entry 2", clientTimezone: "UTC" },
+                { rawInput: "test3 - Entry 3", clientTimezone: "UTC" },
             ];
 
             for (const entry of entries) {
@@ -39,10 +39,10 @@ describe("API Ordering Integration Tests", () => {
             // Create entries with different dates by controlling datetime.now()
             const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
-                { rawInput: "test - Entry 1" },
-                { rawInput: "test - Entry 2" },
-                { rawInput: "test - Entry 3" },
-                { rawInput: "test - Entry 4" },
+                { rawInput: "test - Entry 1", clientTimezone: "UTC" },
+                { rawInput: "test - Entry 2", clientTimezone: "UTC" },
+                { rawInput: "test - Entry 3", clientTimezone: "UTC" },
+                { rawInput: "test - Entry 4", clientTimezone: "UTC" },
             ];
 
             // Create entries with incrementing timestamps
@@ -81,6 +81,7 @@ describe("API Ordering Integration Tests", () => {
             // Create a test entry
             const requestBody = {
                 rawInput: "test - Frontend compatibility test",
+                clientTimezone: "UTC",
             };
             await request(app)
                 .post("/api/entries")
@@ -110,6 +111,7 @@ describe("API Ordering Integration Tests", () => {
             // Create a test entry
             const requestBody = {
                 rawInput: "test - Phone script compatibility test",
+                clientTimezone: "UTC",
             };
             await request(app)
                 .post("/api/entries")
@@ -139,6 +141,7 @@ describe("API Ordering Integration Tests", () => {
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with when modifier",
+                clientTimezone: "UTC",
             };
 
             const createRes = await request(app)
@@ -163,7 +166,8 @@ describe("API Ordering Integration Tests", () => {
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with both dates",
-                date: "2023-07-01T10:00:00Z"
+                date: "2023-07-01T10:00:00Z",
+                clientTimezone: "UTC",
             };
 
             const createRes = await request(app)

@@ -39,6 +39,7 @@ describe("POST /api/entries", () => {
 
         const requestBody = {
             rawInput: "httptype [foo bar] HTTP description",
+            clientTimezone: "UTC",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -78,18 +79,16 @@ describe("POST /api/entries", () => {
         expect(res.body.entry.date).toMatch(/\+03/);
     });
 
-    it("falls back to server time when clientTimezone is not provided", async () => {
-        const { app, capabilities } = await makeTestApp();
-        const serverTime = fromISOString("2025-06-01T10:00:00.000+02:00");
-        capabilities.datetime.now.mockReturnValue(serverTime);
+    it("returns 400 when clientTimezone is not provided", async () => {
+        const { app } = await makeTestApp();
 
         const res = await request(app)
             .post("/api/entries")
             .send({ rawInput: "food pizza" })
             .set("Content-Type", "application/json");
 
-        expect(res.statusCode).toBe(201);
-        expect(res.body.entry.date).toContain("2025-06-01");
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/Missing required field: clientTimezone/);
     });
 
     it("returns 400 when clientTimezone is not a valid IANA timezone", async () => {
@@ -136,6 +135,7 @@ describe("POST /api/entries", () => {
         const requestBody = {
             rawInput: "badmods bad",
             modifiers: "notanobject",
+            clientTimezone: "UTC",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -158,6 +158,7 @@ describe("POST /api/entries", () => {
         }; const res = await request(app)
             .post("/api/entries")
             .field("rawInput", requestBody.rawInput)
+            .field("clientTimezone", "UTC")
             .attach("files", tmpFilePath);
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
@@ -186,6 +187,7 @@ describe("POST /api/entries", () => {
         const res = await request(app)
             .post("/api/entries")
             .field("rawInput", requestBody.rawInput)
+            .field("clientTimezone", "UTC")
             .attach("files", tmpFilePath1)
             .attach("files", tmpFilePath2);
 
@@ -237,6 +239,7 @@ describe("POST /api/entries", () => {
 
         const requestBody = {
             rawInput: "123invalid", // Invalid format - type cannot start with number
+            clientTimezone: "UTC",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -252,6 +255,7 @@ describe("POST /api/entries", () => {
 
         const requestBody = {
             rawInput: "work [invalid modifier format here [nested]", // Invalid modifier syntax
+            clientTimezone: "UTC",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -267,6 +271,7 @@ describe("POST /api/entries", () => {
 
         const requestBody = {
             rawInput: " [loc office] description without type", // No type at start
+            clientTimezone: "UTC",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -297,6 +302,7 @@ describe("POST /api/entries", () => {
 
         const requestBody = {
             rawInput: "work [unclosed bracket description", // Unclosed bracket
+            clientTimezone: "UTC",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -329,6 +335,7 @@ describe("POST /api/entries", () => {
             const res = await request(app)
                 .post("/api/entries")
                 .field("rawInput", "test [loc home] Test with valid file")
+                .field("clientTimezone", "UTC")
                 .attach("files", tmpFilePath)
                 .expect(201);
 

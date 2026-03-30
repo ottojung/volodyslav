@@ -27,6 +27,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "w [loc o] - Fixed the parser",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -62,6 +63,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "wo - Fixed bug",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -95,6 +97,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "working on project", // Should NOT be transformed to "WORKing"
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -130,6 +133,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "m [loc hq] [with j] - Weekly standup",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -152,6 +156,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "    WORK   [loc    office]    -    Description with  extra   spaces  ",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -183,6 +188,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "badtype - Description",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)

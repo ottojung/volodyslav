@@ -10,6 +10,7 @@ describe("API Ordering Integration Tests", () => {
             // Create a test entry
             const requestBody = {
                 rawInput: "test - Phone script bug fix test",
+                clientTimezone: "UTC",
             };
             await request(app)
                 .post("/api/entries")
@@ -34,14 +35,17 @@ describe("API Ordering Integration Tests", () => {
                 {
                     rawInput: "test - Oldest entry",
                     date: fromISOString("2023-01-01T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
                 {
                     rawInput: "test - Newest entry",
                     date: fromISOString("2023-01-03T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
                 {
                     rawInput: "test - Middle entry",
                     date: fromISOString("2023-01-02T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
             ];
 
@@ -85,10 +89,12 @@ describe("API Ordering Integration Tests", () => {
                 {
                     rawInput: "test - First",
                     date: fromISOString("2023-01-01T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
                 {
                     rawInput: "test - Second",
                     date: fromISOString("2023-01-02T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
             ];
 
@@ -124,10 +130,12 @@ describe("API Ordering Integration Tests", () => {
                 {
                     rawInput: "test - Second",
                     date: fromISOString("2023-01-02T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
                 {
                     rawInput: "test - First",
                     date: fromISOString("2023-01-01T10:00:00Z"),
+                    clientTimezone: "UTC",
                 },
             ];
 
@@ -161,6 +169,7 @@ describe("API Ordering Integration Tests", () => {
             // Create a test entry
             const requestBody = {
                 rawInput: "test - Invalid order test",
+                clientTimezone: "UTC",
             };
             await request(app)
                 .post("/api/entries")

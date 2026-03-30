@@ -66,7 +66,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         for (const testCase of testCases) {
             const res = await request(app)
                 .post("/api/entries")
-                .send({ rawInput: testCase.rawInput })
+                .send({ rawInput: testCase.rawInput, clientTimezone: "UTC" })
                 .set("Content-Type", "application/json");
 
             expect(res.statusCode).toBe(201);
@@ -93,7 +93,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         });
 
         // Test the transformation
-        const requestBody = { rawInput: "test - This should be transformed" };
+        const requestBody = { rawInput: "test - This should be transformed", clientTimezone: "UTC" };
 
         const res = await request(app)
             .post("/api/entries")

@@ -26,7 +26,7 @@ async function makeTestApp() {
 async function createTestEntry(app, rawInput) {
     const res = await request(app)
         .post("/api/entries")
-        .send({ rawInput })
+        .send({ rawInput, clientTimezone: "UTC" })
         .set("Content-Type", "application/json");
     return res;
 }
