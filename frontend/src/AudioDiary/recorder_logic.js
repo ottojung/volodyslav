@@ -199,7 +199,9 @@ class RecorderClass {
         this._mediaRecorder.resume();
         this._pcmCapture?.resume();
         this._setState("recording");
-        this._startPcmScheduler();
+        if (this._callbacks.onPcmFragment) {
+            this._startPcmScheduler();
+        }
     }
     /** @returns {Promise<void>} */
     requestData() {
