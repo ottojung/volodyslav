@@ -164,6 +164,16 @@ function makeFetchMock() {
             });
         }
 
+        // GET /audio-recording-session/:id/live-questions
+        if (!options && urlStr.includes("/live-questions")) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ success: true, questions: [] }),
+                blob: () => Promise.resolve(new Blob()),
+            });
+        }
+
         // GET /audio-recording-session/:id/restore
         if (!options && urlStr.includes("/restore")) {
             if (mockSessionData) {

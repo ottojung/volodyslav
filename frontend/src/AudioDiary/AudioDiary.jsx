@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Alert,
@@ -70,6 +70,14 @@ export default function AudioDiary() {
         handleDiscard: handleDiscardBase,
         clearPersistedSession,
     } = useAudioRecorder({ onQuestions: liveOnQuestions });
+
+    // When a session is restored in paused state, start live questioning polling so
+    // that live questions appear when the user resumes the restored recording.
+    useEffect(() => {
+        if (hasRestoredSession && recorderState === "paused") {
+            startLive(sessionIdRef.current);
+        }
+    }, [hasRestoredSession, recorderState, startLive]);
 
     // Wrap handleStart to also start live questioning.
     const handleStart = useCallback(async () => {
