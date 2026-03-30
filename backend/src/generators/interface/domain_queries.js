@@ -113,6 +113,22 @@ async function internalGetConfig(interfaceInstance) {
 }
 
 /**
+ * Returns the current diary summary from the incremental graph.
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @returns {Promise<import('../incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry>}
+ */
+async function internalGetDiarySummary(interfaceInstance) {
+    await interfaceInstance.ensureInitialized();
+    const result = await interfaceInstance
+        ._requireInitializedGraph()
+        .pull("diary_most_important_info_summary");
+    if (result.type !== "diary_most_important_info_summary") {
+        throw new Error(`Expected diary_most_important_info_summary entry but got type: ${result.type}`);
+    }
+    return result;
+}
+
+/**
  * Returns an async iterator over events in sorted date order.
  *
  * ## Two-phase iteration for speed
@@ -280,6 +296,7 @@ module.exports = {
     internalGetBasicContextForEventId,
     internalGetCaloriesForEventId,
     internalGetConfig,
+    internalGetDiarySummary,
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,

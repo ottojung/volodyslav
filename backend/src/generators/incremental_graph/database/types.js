@@ -210,8 +210,22 @@ function versionToString(Version) {
  */
 
 /**
+ * The rolling diary summary node. Stores the current structured markdown summary,
+ * the max diary entry date incorporated, and a map of processed transcription paths
+ * with their last-processed modification timestamps.
+ * @typedef {object} DiaryMostImportantInfoSummaryEntry
+ * @property {'diary_most_important_info_summary'} type - The type of the entry
+ * @property {string} markdown - The current summary markdown
+ * @property {string} summaryDate - ISO date of the max entry date incorporated
+ * @property {Record<string, string>} processedTranscriptions - Map of relativeAssetPath to lastProcessedModificationTimeISO
+ * @property {string} updatedAt - ISO timestamp of when this summary was last updated
+ * @property {string} model - The model used for the last update
+ * @property {string} version - Version string for the summary format
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
  */
 
 /**

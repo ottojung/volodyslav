@@ -26,6 +26,7 @@ const {
     internalInvalidateGraphNode,
     internalPullGraphNode,
     internalSetConfig,
+    internalSetDiarySummary,
     internalUpdate,
 } = require("./graph_api");
 const {
@@ -35,6 +36,7 @@ const {
     internalGetBasicContextForEventId,
     internalGetCaloriesForEventId,
     internalGetConfig,
+    internalGetDiarySummary,
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
@@ -73,6 +75,12 @@ class InterfaceClass {
     _configBox;
 
     /**
+     * Boxed diary summary.
+     * @type {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox | null}
+     */
+    _diarySummaryBox;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
@@ -82,6 +90,7 @@ class InterfaceClass {
         this._database = null;
         this._allEventsBox = null;
         this._configBox = null;
+        this._diarySummaryBox = null;
     }
 
     /**
@@ -120,6 +129,21 @@ class InterfaceClass {
      */
     async setConfig(config) {
         await internalSetConfig(this, config);
+    }
+
+    /**
+     * @param {import('../incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} value
+     * @returns {Promise<void>}
+     */
+    async setDiarySummary(value) {
+        await internalSetDiarySummary(this, value);
+    }
+
+    /**
+     * @returns {Promise<import('../incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry>}
+     */
+    async getDiarySummary() {
+        return await internalGetDiarySummary(this);
     }
 
     /**

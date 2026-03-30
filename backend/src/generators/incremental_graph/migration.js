@@ -68,6 +68,7 @@ function migrationCallback(capabilities) {
         await keepNodeType("calories", storage);
         await keepNodeType("event_transcription", storage);
         await keepNodeType("transcription", storage);
+        await keepNodeType("diary_most_important_info_summary", storage);
     };
 }
 

@@ -8,6 +8,7 @@
  * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
  * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
  * @property {import('../individual/config/wrapper').ConfigBox | null} _configBox
+ * @property {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox | null} _diarySummaryBox
  */
 
 /**
@@ -42,6 +43,22 @@ async function internalSetConfig(interfaceInstance, config) {
     await interfaceInstance._requireInitializedGraph().invalidate("config");
     // Immediately pull to persist the new value to the database so it survives restarts.
     await interfaceInstance._requireInitializedGraph().pull("config");
+}
+
+/**
+ * @param {InterfaceGraphAccess} interfaceInstance
+ * @param {import('../../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} value
+ * @returns {Promise<void>}
+ */
+async function internalSetDiarySummary(interfaceInstance, value) {
+    await interfaceInstance.ensureInitialized();
+    if (interfaceInstance._diarySummaryBox === null) {
+        throw new Error("Impossible: expected diary summary box to be initialized");
+    }
+    interfaceInstance._diarySummaryBox.value = value;
+    await interfaceInstance._requireInitializedGraph().invalidate("diary_most_important_info_summary");
+    // Immediately pull to persist the new value to the database so it survives restarts.
+    await interfaceInstance._requireInitializedGraph().pull("diary_most_important_info_summary");
 }
 
 /**
@@ -155,5 +172,6 @@ module.exports = {
     internalInvalidateGraphNode,
     internalPullGraphNode,
     internalSetConfig,
+    internalSetDiarySummary,
     internalUpdate,
 };

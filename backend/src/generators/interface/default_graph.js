@@ -14,6 +14,7 @@ const {
     calories,
     transcription,
     eventTranscription,
+    diarySummary,
 } = require("../individual");
 
 /**
@@ -63,9 +64,10 @@ const {
  * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @param {import('../individual/config/wrapper').ConfigBox} configBox
  * @param {import('../individual/all_events/wrapper').AllEventsBox} allEventsBox
+ * @param {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox} diarySummaryBox
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(capabilities, configBox, allEventsBox) {
+function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, diarySummaryBox) {
     return [
         {
             output: "config",
@@ -192,6 +194,13 @@ function createDefaultGraphDefinition(capabilities, configBox, allEventsBox) {
             inputs: ["event(e)", "transcription(a)"],
             computor: eventTranscription.makeComputor(capabilities),
             isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "diary_most_important_info_summary",
+            inputs: [],
+            computor: diarySummary.makeComputor(diarySummaryBox),
+            isDeterministic: false,
             hasSideEffects: false,
         },
     ];

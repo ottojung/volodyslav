@@ -1,5 +1,6 @@
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
+const { runDiarySummaryPipeline } = require("./diary_summary");
 const { fromObject: Duration } = require("../datetime");
 const { synchronizeAll, isSynchronizeAllError, isAssetsSyncError, isGeneratorsSyncError } = require("../sync");
 
@@ -34,6 +35,10 @@ async function everyHour(capabilities) {
                 capabilities.logger.logError({ error: e }, "Error during synchronization");
             }
         }
+    });
+
+    await runDiarySummaryPipeline(capabilities).catch((error) => {
+        capabilities.logger.logError({ error }, "Error in diary summary pipeline");
     });
 }
 
