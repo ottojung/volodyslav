@@ -365,7 +365,7 @@ describe("audio_recording_session", () => {
         });
     });
     describe("stopSession", () => {
-        it("concatenates PCM chunks and stores final WAV audio", async () => {
+        it("marks session as stopped (WAV assembly deferred to fetchFinalAudio)", async () => {
             const caps = getCapabilities();
             await startSession(caps, TEST_SESSION_ID);
             // Upload two PCM fragments (silent 8-sample buffers each)
@@ -392,8 +392,11 @@ describe("audio_recording_session", () => {
 
             const result = await stopSession(caps, TEST_SESSION_ID);
             expect(result.status).toBe("stopped");
-            // Final buffer is WAV: 44-byte header + concatenated PCM
-            expect(result.size).toBe(44 + pcm1.length + pcm2.length);
+            // WAV is assembled lazily on fetchFinalAudio; size is 0 at stop time.
+            expect(result.size).toBe(0);
+            // Verify the WAV is assembled correctly when fetched.
+            const { buffer } = await fetchFinalAudio(caps, TEST_SESSION_ID);
+            expect(buffer.length).toBe(44 + pcm1.length + pcm2.length);
         });
 
         it("derives elapsedSeconds from lastEndMs in session metadata", async () => {
@@ -436,6 +439,27 @@ describe("audio_recording_session", () => {
             expect(wavInfo.channels).toBe(1);
             expect(wavInfo.bitDepth).toBe(16);
             expect(wavInfo.pcm).toEqual(pcmSamples);
+        });
+
+        it("returns the same WAV on repeated calls (lazy cache hit)", async () => {
+            const caps = getCapabilities();
+            await startSession(caps, TEST_SESSION_ID);
+            const pcmSamples = Buffer.from(new Int16Array(8).buffer);
+            await uploadChunk(caps, TEST_SESSION_ID, {
+                pcm: pcmSamples,
+                sampleRateHz: 16000,
+                channels: 1,
+                bitDepth: 16,
+                startMs: 0,
+                endMs: 10000,
+                sequence: 0,
+            });
+            await stopSession(caps, TEST_SESSION_ID);
+            const first = await fetchFinalAudio(caps, TEST_SESSION_ID);
+            const second = await fetchFinalAudio(caps, TEST_SESSION_ID);
+            // Both calls must return identically-sized, valid WAV data.
+            expect(first.buffer.length).toBe(second.buffer.length);
+            expect(first.buffer).toEqual(second.buffer);
         });
 
         it("throws on not-yet-finalized session", async () => {

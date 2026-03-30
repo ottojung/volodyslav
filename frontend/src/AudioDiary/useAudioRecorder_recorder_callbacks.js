@@ -27,6 +27,7 @@ import {
  * @property {import('react').MutableRefObject<number>} restoredOffsetMsRef
  * @property {import('react').MutableRefObject<number>} sequenceRef
  * @property {(chunk: Blob, startMs: number, endMs: number) => void} pushChunk
+ * @property {import('react').MutableRefObject<boolean>} hasRestoredSessionRef
  */
 
 /**
@@ -49,6 +50,7 @@ export function createRecorderCallbacks(params) {
         restoredOffsetMsRef,
         sequenceRef,
         pushChunk,
+        hasRestoredSessionRef,
     } = params;
 
     return {
@@ -87,12 +89,19 @@ export function createRecorderCallbacks(params) {
                     }
 
                     await stopBackendSession(sessionId);
-                    const backendBlob = await fetchFinalAudio(sessionId);
-                    if (!isMountedRef.current) return;
-                    mimeTypeRef.current = backendBlob.type;
-                    audioBlobRef.current = backendBlob;
-                    setAudioBlob(backendBlob);
-                    setAudioUrl(URL.createObjectURL(backendBlob));
+
+                    // For restored/interrupted sessions the local MediaRecorder blob covers only
+                    // the resumed portion, so fall back to the backend WAV which spans all chunks.
+                    // For uninterrupted fresh recordings the local blob is complete and preferred.
+                    const mustUseBackendFinalAudio = hasRestoredSessionRef.current || !blob;
+                    if (mustUseBackendFinalAudio) {
+                        const backendBlob = await fetchFinalAudio(sessionId);
+                        if (!isMountedRef.current) return;
+                        mimeTypeRef.current = backendBlob.type;
+                        audioBlobRef.current = backendBlob;
+                        setAudioBlob(backendBlob);
+                        setAudioUrl(URL.createObjectURL(backendBlob));
+                    }
                 } catch {
                     // keep local fallback
                 }
