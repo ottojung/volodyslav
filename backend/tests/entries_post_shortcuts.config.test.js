@@ -10,6 +10,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "WORK [loc office] - No shortcuts here",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -41,6 +42,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "EXERCISE [loc gym] - Weightlifting session",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -65,6 +67,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const requestBody = {
             rawInput: "MEETING [with John] - Project discussion",
+            clientTimezone: "UTC",
         };
 
         const res = await request(app)
@@ -86,7 +89,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         await capabilities.interface.setConfig(null);
 
-        const requestBody = { rawInput: "w [loc o] - Should not be transformed" };
+        const requestBody = { rawInput: "w [loc o] - Should not be transformed", clientTimezone: "UTC" };
 
         const res = await request(app)
             .post("/api/entries")
