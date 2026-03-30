@@ -87,7 +87,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
 
-    const { pushChunk, resetCollector } =
+    const { resetCollector } =
         useAudioChunkCollector();
 
     const {
@@ -133,7 +133,6 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 mimeTypeRef,
                 restoredOffsetMsRef,
                 sequenceRef,
-                pushChunk,
                 hasRestoredSessionRef,
             })
         );

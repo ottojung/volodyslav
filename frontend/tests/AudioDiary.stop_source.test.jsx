@@ -90,7 +90,6 @@ function makeParams(overrides = {}) {
             mimeTypeRef,
             restoredOffsetMsRef: { current: 0 },
             sequenceRef: { current: 0 },
-            pushChunk: jest.fn(),
             hasRestoredSessionRef: { current: hasRestoredSession },
         },
         localBlob: new Blob(["local-audio"], { type: "audio/webm" }),

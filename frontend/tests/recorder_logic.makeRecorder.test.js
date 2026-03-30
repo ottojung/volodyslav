@@ -1,12 +1,11 @@
 /**
- * Unit tests for makeRecorder timestamp logic.
+ * Unit tests for makeRecorder PCM scheduler logic.
  *
- * Covers: regular timeslice, requestData() flush, stop() flush, and
- * pause/resume wall-clock accounting.
+ * Covers: PCM scheduler tick timing, pause/resume accounting,
+ * final PCM drain on stop(), and ondataavailable blob collection.
  */
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
 
 /** Build a fake MediaStream whose tracks can be stopped. */
 function makeFakeStream() {
@@ -50,11 +49,13 @@ let mockNow;
 let nowSpy;
 let instance;
 let MockMR;
-let onChunkSpy;
+let onPcmFragmentSpy;
 
 import { makeRecorder, FRAGMENT_MS } from "../src/AudioDiary/recorder_logic.js";
 
 beforeEach(() => {
+    jest.useFakeTimers();
+
     mockNow = 0;
     // Spy on the real performance.now() so that recorder_logic.js uses our value
     nowSpy = jest.spyOn(performance, "now").mockImplementation(() => mockNow);
@@ -81,10 +82,11 @@ beforeEach(() => {
         writable: true,
     });
 
-    onChunkSpy = jest.fn();
+    onPcmFragmentSpy = jest.fn();
 });
 
 afterEach(() => {
+    jest.useRealTimers();
     nowSpy.mockRestore();
     Object.defineProperty(global, "navigator", {
         value: origNavigator,
@@ -104,35 +106,47 @@ async function startRecorder() {
         onStop: jest.fn(),
         onError: jest.fn(),
         onAnalyser: jest.fn(),
-        onChunk: onChunkSpy,
+        onPcmFragment: onPcmFragmentSpy,
     });
     await recorder.start();
     return recorder;
 }
 
-// ─── Tests: regular timeslice events ─────────────────────────────────────────
+// ─── Tests: MediaRecorder started without timeslice ──────────────────────────
 
-describe("makeRecorder: regular timeslice timestamps", () => {
-    it("first fragment has startMs=0 and endMs=FRAGMENT_MS", async () => {
+describe("makeRecorder: no-timeslice MediaRecorder start", () => {
+    it("calls MediaRecorder.start() with no arguments", async () => {
         const recorder = await startRecorder();
-        fireData(instance, new Blob(["a"]));
-        expect(onChunkSpy).toHaveBeenCalledTimes(1);
-        expect(onChunkSpy).toHaveBeenCalledWith(
-            expect.any(Blob),
-            0,
-            FRAGMENT_MS,
-            null
-        );
+        expect(instance.start).toHaveBeenCalledWith();
+        recorder.discard();
+    });
+});
+
+// ─── Tests: PCM scheduler tick timing ────────────────────────────────────────
+
+describe("makeRecorder: PCM scheduler tick timing", () => {
+    it("fires onPcmFragment after FRAGMENT_MS of active time", async () => {
+        const recorder = await startRecorder();
+        // Advance both the fake clock and the mocked performance.now
+        mockNow = FRAGMENT_MS;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(1);
+        expect(onPcmFragmentSpy).toHaveBeenCalledWith(0, FRAGMENT_MS, null);
         recorder.discard();
     });
 
-    it("second fragment starts where first ended", async () => {
+    it("second tick starts where the first ended", async () => {
         const recorder = await startRecorder();
-        fireData(instance, new Blob(["a"]));
-        fireData(instance, new Blob(["b"]));
-        expect(onChunkSpy).toHaveBeenNthCalledWith(
+        mockNow = FRAGMENT_MS;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+
+        mockNow = FRAGMENT_MS * 2;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(2);
+        expect(onPcmFragmentSpy).toHaveBeenNthCalledWith(
             2,
-            expect.any(Blob),
             FRAGMENT_MS,
             FRAGMENT_MS * 2,
             null
@@ -140,127 +154,155 @@ describe("makeRecorder: regular timeslice timestamps", () => {
         recorder.discard();
     });
 
+    it("does not fire onPcmFragment before FRAGMENT_MS elapses", async () => {
+        const recorder = await startRecorder();
+        mockNow = FRAGMENT_MS - 1;
+        jest.advanceTimersByTime(FRAGMENT_MS - 1);
+        expect(onPcmFragmentSpy).not.toHaveBeenCalled();
+        recorder.discard();
+    });
+});
+
+// ─── Tests: PCM scheduler pause/resume ───────────────────────────────────────
+
+describe("makeRecorder: PCM scheduler pauses during pause()", () => {
+    it("does not fire ticks while paused", async () => {
+        const recorder = await startRecorder();
+        // 2 s active → pause
+        mockNow = 2000;
+        recorder.pause();
+        // Advance wall clock another FRAGMENT_MS while paused — should not fire
+        mockNow = 2000 + FRAGMENT_MS;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+        expect(onPcmFragmentSpy).not.toHaveBeenCalled();
+        recorder.discard();
+    });
+
+    it("resumes ticks from the correct active-time position after resume()", async () => {
+        const recorder = await startRecorder();
+        // 5 s active → pause
+        mockNow = 5000;
+        recorder.pause();
+        // 3 s paused
+        mockNow = 8000;
+        recorder.resume();
+        // Fire first scheduler tick: 10 s more of active time → total active = 15 s
+        mockNow = 8000 + FRAGMENT_MS;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+
+        // After 5 s active before pause + FRAGMENT_MS active after resume:
+        // fragStart = 0, fragEnd = 5000 + FRAGMENT_MS = 15000
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(1);
+        expect(onPcmFragmentSpy).toHaveBeenCalledWith(0, 5000 + FRAGMENT_MS, null);
+        recorder.discard();
+    });
+});
+
+// ─── Tests: final PCM drain on stop() ────────────────────────────────────────
+
+describe("makeRecorder: final PCM drain on stop()", () => {
+    it("drains trailing partial window when stop() is called", async () => {
+        const recorder = await startRecorder();
+        // 7 s active — less than one full FRAGMENT_MS
+        mockNow = 7000;
+        recorder.stop();
+
+        // The final drain should cover [0, 7000]
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(1);
+        expect(onPcmFragmentSpy).toHaveBeenCalledWith(0, 7000, null);
+    });
+
+    it("drains the window after the last scheduler tick on stop()", async () => {
+        const recorder = await startRecorder();
+        // One full scheduler tick fires at 10 s
+        mockNow = FRAGMENT_MS;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(1);
+
+        // 3 more seconds pass, then stop
+        mockNow = FRAGMENT_MS + 3000;
+        recorder.stop();
+
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(2);
+        expect(onPcmFragmentSpy).toHaveBeenNthCalledWith(
+            2,
+            FRAGMENT_MS,
+            FRAGMENT_MS + 3000,
+            null
+        );
+    });
+
+    it("does not drain if no active time has elapsed since last tick", async () => {
+        const recorder = await startRecorder();
+        // Tick fires exactly at FRAGMENT_MS
+        mockNow = FRAGMENT_MS;
+        jest.advanceTimersByTime(FRAGMENT_MS);
+        // Immediately stop at same active timestamp (no new active time)
+        recorder.stop();
+        // Only the one tick should have fired; stop() drain is a no-op
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("final drain on stop() while paused uses active time at pause", async () => {
+        const recorder = await startRecorder();
+        // 5 s active → pause
+        mockNow = 5000;
+        recorder.pause();
+        // Time continues but recorder is paused; stop is called 3 s later (paused)
+        mockNow = 8000;
+        recorder.stop();
+
+        // Active time at stop = 5000 ms (paused time excluded)
+        expect(onPcmFragmentSpy).toHaveBeenCalledTimes(1);
+        expect(onPcmFragmentSpy).toHaveBeenCalledWith(0, 5000, null);
+    });
+});
+
+// ─── Tests: ondataavailable blob collection ───────────────────────────────────
+
+describe("makeRecorder: ondataavailable collects blobs only", () => {
+    it("pushes non-empty blobs to _chunks without calling onPcmFragment", async () => {
+        const recorder = await startRecorder();
+        // Simulate a dataavailable event (e.g. from requestData or stop)
+        fireData(instance, new Blob(["audio"]));
+        // onPcmFragment should NOT be triggered by ondataavailable
+        expect(onPcmFragmentSpy).not.toHaveBeenCalled();
+        recorder.discard();
+    });
+
     it("ignores empty blobs", async () => {
         const recorder = await startRecorder();
-        fireData(instance, new Blob([])); // empty — size 0
-        fireData(instance, new Blob(["a"]));
-        expect(onChunkSpy).toHaveBeenCalledTimes(1);
-        expect(onChunkSpy).toHaveBeenCalledWith(expect.any(Blob), 0, FRAGMENT_MS, null);
+        fireData(instance, new Blob([]));
+        // No assertion needed beyond no error; just verify it doesn't crash
+        expect(onPcmFragmentSpy).not.toHaveBeenCalled();
         recorder.discard();
     });
 });
 
-// ─── Tests: requestData() forced flush ───────────────────────────────────────
+// ─── Tests: requestData() as durability hint ─────────────────────────────────
 
-describe("makeRecorder: requestData() flush timestamps", () => {
-    it("uses wall-clock elapsed time for requestData() flush", async () => {
-        // Recording starts at t=0
+describe("makeRecorder: requestData() is a fire-and-forget durability hint", () => {
+    it("returns a resolved promise", async () => {
         const recorder = await startRecorder();
-        // Advance clock to 3 s, then trigger a requestData() flush
-        mockNow = 3000;
+        await expect(recorder.requestData()).resolves.toBeUndefined();
+        recorder.discard();
+    });
+
+    it("calls mediaRecorder.requestData()", async () => {
+        const recorder = await startRecorder();
+        await recorder.requestData();
+        expect(instance.requestData).toHaveBeenCalled();
+        recorder.discard();
+    });
+
+    it("does not trigger onPcmFragment", async () => {
+        const recorder = await startRecorder();
         instance.requestData.mockImplementationOnce(() => {
-            fireData(instance, new Blob(["flush"]));
+            fireData(instance, new Blob(["partial"]));
         });
         await recorder.requestData();
-        // endMs should reflect 3 s of wall-clock elapsed time
-        expect(onChunkSpy).toHaveBeenCalledWith(
-            expect.any(Blob),
-            0,   // fragStart (counter not yet incremented)
-            3000, // wall-clock elapsed (3000 - 0)
-            null
-        );
-        recorder.discard();
-    });
-
-    it("clamps requestData() endMs to fragStart when wall-clock is behind", async () => {
-        // First fire a regular timeslice to advance the counter to FRAGMENT_MS
-        const recorder = await startRecorder();
-        fireData(instance, new Blob(["ts1"])); // counter → FRAGMENT_MS (10 000)
-        // Wall clock is only 5 s but counter is at 10 s
-        mockNow = 5000;
-        instance.requestData.mockImplementationOnce(() => {
-            fireData(instance, new Blob(["flush"]));
-        });
-        await recorder.requestData();
-        // endMs must be clamped to ≥ startMs (= FRAGMENT_MS)
-        const [, startMs, endMs] = onChunkSpy.mock.calls[1];
-        expect(endMs).toBeGreaterThanOrEqual(startMs);
+        expect(onPcmFragmentSpy).not.toHaveBeenCalled();
         recorder.discard();
     });
 });
 
-// ─── Tests: stop() flush timestamps ──────────────────────────────────────────
-
-describe("makeRecorder: stop() flush timestamps", () => {
-    it("uses wall-clock for stop()-triggered dataavailable", async () => {
-        // Recording starts at t=0; 7 s elapses before stop fires
-        const recorder = await startRecorder();
-        mockNow = 7000;
-        // MediaRecorder.state becomes "inactive" before ondataavailable fires
-        instance.state = "inactive";
-        fireData(instance, new Blob(["stop-data"]));
-        expect(onChunkSpy).toHaveBeenCalledWith(
-            expect.any(Blob),
-            0,    // fragStart
-            7000, // wall-clock elapsed
-            null
-        );
-        recorder.discard();
-    });
-
-    it("stop() flush after regular timeslice advances correctly", async () => {
-        // Regular timeslice at t=10 s
-        const recorder = await startRecorder();
-        mockNow = 10000;
-        fireData(instance, new Blob(["ts"]));
-        expect(onChunkSpy).toHaveBeenNthCalledWith(
-            1, expect.any(Blob), 0, FRAGMENT_MS, null
-        );
-        // Partial stop fragment at t=13 s
-        mockNow = 13000;
-        instance.state = "inactive";
-        fireData(instance, new Blob(["stop"]));
-        expect(onChunkSpy).toHaveBeenNthCalledWith(
-            2, expect.any(Blob), FRAGMENT_MS, 13000, null
-        );
-        recorder.discard();
-    });
-});
-
-// ─── Tests: pause / resume wall-clock accounting ─────────────────────────────
-
-describe("makeRecorder: pause/resume wall-clock accounting", () => {
-    it("excludes paused duration from requestData() wall-clock", async () => {
-        // 5 s active → 3 s paused → 2 s active = 7 s total active
-        const recorder = await startRecorder();
-        mockNow = 5000;
-        recorder.pause();          // paused at 5 s
-        mockNow = 8000;
-        recorder.resume();         // resumed at 8 s → 3 s paused accumulated
-        mockNow = 10000;
-        instance.requestData.mockImplementationOnce(() => {
-            fireData(instance, new Blob(["p"]));
-        });
-        await recorder.requestData();
-        // Active = 10 000 - 0 - 3 000 (paused) = 7 000 ms
-        expect(onChunkSpy).toHaveBeenCalledWith(expect.any(Blob), 0, 7000, null);
-        recorder.discard();
-    });
-
-    it("regular timeslices are counter-based even after pause/resume", async () => {
-        const recorder = await startRecorder();
-        // Timeslice while recording
-        fireData(instance, new Blob(["r"]));
-        expect(onChunkSpy).toHaveBeenCalledWith(
-            expect.any(Blob), 0, FRAGMENT_MS, null
-        );
-        // Pause, then fire another regular timeslice
-        recorder.pause();
-        instance.state = "paused";
-        fireData(instance, new Blob(["p"]));
-        expect(onChunkSpy).toHaveBeenNthCalledWith(
-            2, expect.any(Blob), FRAGMENT_MS, FRAGMENT_MS * 2, null
-        );
-        recorder.discard();
-    });
-});

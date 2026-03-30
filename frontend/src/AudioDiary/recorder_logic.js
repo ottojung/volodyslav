@@ -6,14 +6,14 @@ import { chooseMimeType, combineChunks, mediaRecorderErrorMessage } from "./reco
 import { stopStream, stopAudioGraph } from "./recorder_cleanup_helpers.js";
 import { makePcmCapture, isPcmCapture } from "./pcm_capture.js";
 /** @typedef {import("./audio_helpers.js").RecorderState} RecorderState */
-export const FRAGMENT_MS = 10 * 1000; // nominal 10s timeslice for fragment collection
+export const FRAGMENT_MS = 10 * 1000; // PCM scheduler interval (10 s)
 /**
  * @typedef {object} RecorderCallbacks
  * @property {(state: RecorderState) => void} onStateChange
  * @property {(blob: Blob) => void} onStop
  * @property {(message: string) => void} onError
  * @property {(analyser: AnalyserNode | null) => void} onAnalyser
- * @property {(chunk: Blob, startMs: number, endMs: number, pcmChunk: { pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number } | null) => void} [onChunk] - called with each fragment, its relative timestamps (authoritative), and raw PCM bytes with format metadata (null when PCM capture unavailable)
+ * @property {(startMs: number, endMs: number, pcmChunk: { pcmBytes: ArrayBuffer, sampleRateHz: number, channels: number, bitDepth: number } | null) => void} [onPcmFragment] - called on each PCM scheduler tick and on final drain at stop, with the active-timeline window and raw PCM bytes (null when PCM capture unavailable)
  */
 class RecorderClass {
     /** @type {undefined} */
@@ -38,17 +38,18 @@ class RecorderClass {
     _pcmCapture = null;
     /** @type {MediaStream | null} */
     _stream = null;
-    /** @type {Array<() => void>} */
-    _requestDataResolvers = [];
-    // Active-recording ms counter (FRAGMENT_MS per regular timeslice event).
-    /** @type {number} */
-    _activeRecordedMs = 0;
+    // Active-recording time tracking.
     /** @type {number} */
     _recordingStartMs = 0;
     /** @type {number} */
     _totalPausedMs = 0;
     /** @type {number} */
     _pauseStartMs = 0;
+    // PCM upload scheduler.
+    /** @type {ReturnType<typeof setInterval> | null} */
+    _pcmSchedulerTimerId = null;
+    /** @type {number} */
+    _lastPcmDrainMs = 0;
     /** @param {RecorderCallbacks} callbacks */
     constructor(callbacks) {
         if (this.__brand !== undefined) {
@@ -126,7 +127,7 @@ class RecorderClass {
         }
         this._mimeType = chooseMimeType();
         this._chunks = [];
-        this._activeRecordedMs = 0;
+        this._lastPcmDrainMs = 0;
         this._recordingStartMs = performance.now();
         this._totalPausedMs = 0;
         this._pauseStartMs = 0;
@@ -145,38 +146,8 @@ class RecorderClass {
             return;
         }
         this._mediaRecorder.ondataavailable = (e) => {
-            const isRequestDataFlush = this._requestDataResolvers.length > 0;
-            if (this._requestDataResolvers.length > 0) {
-                const resolvers = this._requestDataResolvers;
-                this._requestDataResolvers = [];
-                resolvers.forEach((resolve) => resolve());
-            }
             if (e.data && e.data.size > 0) {
-                const fragStart = this._activeRecordedMs;
-                // A stop()-triggered dataavailable fires with state "inactive"
-                // (before onstop). Use wall-clock elapsed time for it too, since
-                // the final fragment is often shorter than FRAGMENT_MS.
-                const isStopFlush = this._mediaRecorder?.state === "inactive";
-                if (isRequestDataFlush || isStopFlush) {
-                    // Forced flush: compute actual active elapsed time via wall-clock.
-                    const now = performance.now();
-                    const ongoingPausedMs =
-                        this._state === "paused" ? now - this._pauseStartMs : 0;
-                    const wallClockMs =
-                        now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
-                    // Clamp to fragStart so that endMs is never less than startMs.
-                    this._activeRecordedMs = Math.max(fragStart, wallClockMs);
-                } else {
-                    this._activeRecordedMs += FRAGMENT_MS; // nominal timeslice increment
-                }
-                const fragEnd = this._activeRecordedMs;
                 this._chunks.push(e.data);
-                if (this._callbacks.onChunk) {
-                    const pcmChunk = this._pcmCapture
-                        ? this._pcmCapture.drainPcm(fragEnd - fragStart)
-                        : null;
-                    this._callbacks.onChunk(e.data, fragStart, fragEnd, pcmChunk);
-                }
             }
         };
         this._mediaRecorder.onstop = () => {
@@ -184,11 +155,6 @@ class RecorderClass {
             const blob = combineChunks(this._chunks, this._mimeType);
             this._chunks = [];
             this._mediaRecorder = null;
-            if (this._requestDataResolvers.length > 0) {
-                const resolvers = this._requestDataResolvers;
-                this._requestDataResolvers = [];
-                resolvers.forEach((resolve) => resolve());
-            }
             this._stopAudioGraph();
             this._callbacks.onAnalyser(null);
             if (this._state === "recording" || this._state === "paused") {
@@ -205,20 +171,18 @@ class RecorderClass {
                 this._mediaRecorder.onerror = null;
                 this._mediaRecorder = null;
             }
-            if (this._requestDataResolvers.length > 0) {
-                const resolvers = this._requestDataResolvers;
-                this._requestDataResolvers = [];
-                resolvers.forEach((resolve) => resolve());
-            }
+            this._stopPcmScheduler();
             this._cleanupResources();
         };
-        this._mediaRecorder.start(FRAGMENT_MS);
+        this._mediaRecorder.start();
         this._setState("recording");
+        this._startPcmScheduler();
     }
     pause() {
         if (this._state !== "recording" || !this._mediaRecorder) {
             return;
         }
+        this._stopPcmScheduler();
         this._pauseStartMs = performance.now();
         this._mediaRecorder.pause();
         this._pcmCapture?.pause();
@@ -235,6 +199,7 @@ class RecorderClass {
         this._mediaRecorder.resume();
         this._pcmCapture?.resume();
         this._setState("recording");
+        this._startPcmScheduler();
     }
     /** @returns {Promise<void>} */
     requestData() {
@@ -242,17 +207,11 @@ class RecorderClass {
             this._mediaRecorder &&
             (this._state === "recording" || this._state === "paused")
         ) {
-            const mediaRecorder = this._mediaRecorder;
-            return new Promise((resolve) => {
-                this._requestDataResolvers.push(resolve);
-                try {
-                    mediaRecorder.requestData();
-                } catch {
-                    const resolvers = this._requestDataResolvers;
-                    this._requestDataResolvers = [];
-                    resolvers.forEach((nextResolve) => nextResolve());
-                }
-            });
+            try {
+                this._mediaRecorder.requestData();
+            } catch {
+                // best-effort local-blob durability hint; ignore failures
+            }
         }
         return Promise.resolve();
     }
@@ -263,9 +222,13 @@ class RecorderClass {
         ) {
             return;
         }
+        this._stopPcmScheduler();
+        // Force a final PCM drain for the trailing partial window.
+        this._drainAndEmitPcmFragment();
         this._mediaRecorder.stop();
     }
     discard() {
+        this._stopPcmScheduler();
         if (this._mediaRecorder) {
             this._mediaRecorder.ondataavailable = null;
             this._mediaRecorder.onstop = null;
@@ -282,12 +245,48 @@ class RecorderClass {
             }
             this._mediaRecorder = null;
         }
-        if (this._requestDataResolvers.length > 0) {
-            const resolvers = this._requestDataResolvers;
-            this._requestDataResolvers = [];
-            resolvers.forEach((resolve) => resolve());
-        }
         this._cleanupResources();
+    }
+    /**
+     * Returns the number of active-recording milliseconds elapsed so far.
+     * Excludes any time spent paused.
+     * @returns {number}
+     */
+    _getActiveMs() {
+        const now = performance.now();
+        const ongoingPausedMs =
+            this._state === "paused" ? now - this._pauseStartMs : 0;
+        return now - this._recordingStartMs - this._totalPausedMs - ongoingPausedMs;
+    }
+    /**
+     * Drain PCM for the window [_lastPcmDrainMs, currentActiveMs] and invoke
+     * the onPcmFragment callback. No-ops if the window duration is ≤ 0.
+     */
+    _drainAndEmitPcmFragment() {
+        const fragStart = this._lastPcmDrainMs;
+        const fragEnd = this._getActiveMs();
+        if (fragEnd <= fragStart) return;
+        this._lastPcmDrainMs = fragEnd;
+        if (this._callbacks.onPcmFragment) {
+            const pcmChunk = this._pcmCapture
+                ? this._pcmCapture.drainPcm(fragEnd - fragStart)
+                : null;
+            this._callbacks.onPcmFragment(fragStart, fragEnd, pcmChunk);
+        }
+    }
+    /** Start the periodic PCM upload scheduler. */
+    _startPcmScheduler() {
+        this._stopPcmScheduler();
+        this._pcmSchedulerTimerId = setInterval(() => {
+            this._drainAndEmitPcmFragment();
+        }, FRAGMENT_MS);
+    }
+    /** Stop the periodic PCM upload scheduler. */
+    _stopPcmScheduler() {
+        if (this._pcmSchedulerTimerId !== null) {
+            clearInterval(this._pcmSchedulerTimerId);
+            this._pcmSchedulerTimerId = null;
+        }
     }
     _cleanupResources() {
         this._stopStream();
