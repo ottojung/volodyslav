@@ -104,4 +104,45 @@ describe("AudioDiary persistence: restore states", () => {
         });
         expect(screen.getByTestId("timer")).toHaveTextContent("00:30");
     });
+
+    it("starts live-questions polling after restoring a paused session", async () => {
+        jest.useFakeTimers();
+        try {
+            injectSnapshot({
+                recorderState: "paused",
+                elapsedSeconds: 30,
+                note: "",
+                mimeType: "audio/webm",
+                audioBuffer: new ArrayBuffer(0),
+            });
+
+            renderAudioDiary();
+
+            // Wait for restore to complete (uses real async, so flush pending promises).
+            await act(async () => {
+                jest.runAllTimers();
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId("restored-session-banner")).toBeInTheDocument();
+            });
+
+            // Advance past the polling interval to trigger the first live-questions poll.
+            await act(async () => {
+                jest.advanceTimersByTime(6000);
+                await Promise.resolve();
+            });
+
+            // Verify the live-questions endpoint was polled for the restored session.
+            const liveQuestionsCalls = global.fetch.mock.calls.filter(([url]) =>
+                String(url).includes("/live-questions")
+            );
+            expect(liveQuestionsCalls.length).toBeGreaterThan(0);
+            expect(String(liveQuestionsCalls[0][0])).toContain("restored-session-id");
+        } finally {
+            jest.useRealTimers();
+        }
+    });
 });
