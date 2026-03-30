@@ -265,7 +265,8 @@ async function getSession(capabilities, sessionId) {
 }
 
 /**
- * Stop and finalize a session: concatenate all chunks into a final audio file.
+ * Stop a session: mark it as stopped so that no further chunks can be uploaded.
+ * WAV assembly is deferred to fetchFinalAudio (lazy generation).
  * Elapsed duration is computed from the stored chunk timeline (lastEndMs).
  *
  * @param {Capabilities} capabilities
@@ -286,49 +287,7 @@ async function stopSession(capabilities, sessionId) {
     }
 
     if (meta.status === "stopped") {
-        const finalEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
-        const size =
-            finalEntry !== undefined && finalEntry.type === "blob"
-                ? Buffer.from(finalEntry.data, "base64").length
-                : 0;
-        return { status: "stopped", finalAudioKey: "final", size };
-    }
-
-    const sessionChunks = chunksSublevel(temporary, sessionId);
-    const chunkKeys = await sessionChunks.listKeys();
-    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
-
-    /** @type {Buffer[]} */
-    const pcmBuffers = [];
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined && entry.type === "blob") {
-            pcmBuffers.push(Buffer.from(entry.data, "base64"));
-        }
-    }
-
-    // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
-    // PCM sample-level concatenation is always safe: no container format concerns.
-    const concatenatedPcm = Buffer.concat(pcmBuffers);
-
-    // Use PCM format stored in session metadata.  If no chunks were uploaded yet
-    // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
-    const sampleRateHz = meta.sampleRateHz || 16000;
-    const channels = meta.channels || 1;
-    const bitDepth = meta.bitDepth || 16;
-    const finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
-
-    try {
-        await sessionSublevel(temporary, sessionId).put(finalKey(), {
-            type: "blob",
-            data: finalBuffer.toString("base64"),
-        });
-    } catch (error) {
-        throw new AudioSessionFinalizeError(
-            `Failed to store final audio for session ${sessionId}: ${error}`,
-            sessionId,
-            error
-        );
+        return { status: "stopped", finalAudioKey: "final", size: 0 };
     }
 
     // Derive elapsed seconds from chunk timeline (canonical backend timing).
@@ -343,11 +302,12 @@ async function stopSession(capabilities, sessionId) {
     };
     await writeMeta(temporary, updatedMeta);
 
-    return { status: "stopped", finalAudioKey: "final", size: finalBuffer.length };
+    return { status: "stopped", finalAudioKey: "final", size: 0 };
 }
 
 /**
  * Fetch the final combined audio for a stopped session.
+ * Lazily assembles the WAV from PCM chunks on first call and caches the result.
  * Returns the audio buffer and mime type.
  *
  * @param {Capabilities} capabilities
@@ -373,16 +333,75 @@ async function fetchFinalAudio(capabilities, sessionId) {
         );
     }
 
-    const finalEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
-    if (finalEntry === undefined || finalEntry.type !== "blob") {
+    // Return cached WAV if already assembled.
+    const cachedEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
+    if (cachedEntry !== undefined) {
+        if (cachedEntry.type !== "blob" || typeof cachedEntry.data !== "string") {
+            throw new AudioSessionFinalizeError(
+                `Corrupt final audio cache for session ${sessionId}`,
+                sessionId
+            );
+        }
+
+        /** @type {Buffer} */
+        let cachedBuffer;
+        try {
+            cachedBuffer = Buffer.from(cachedEntry.data, "base64");
+        } catch (error) {
+            throw new AudioSessionFinalizeError(
+                `Corrupt final audio cache for session ${sessionId}`,
+                sessionId,
+                error
+            );
+        }
+
+        return {
+            buffer: cachedBuffer,
+            mimeType: meta.mimeType,
+        };
+    }
+
+    // Lazy WAV assembly: read all PCM chunks, concatenate and wrap in a WAV container.
+    const sessionChunks = chunksSublevel(temporary, sessionId);
+    const chunkKeys = await sessionChunks.listKeys();
+    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
+
+    /** @type {Buffer[]} */
+    const pcmBuffers = [];
+    for (const key of chunkKeys) {
+        const entry = await sessionChunks.get(key);
+        if (entry !== undefined && entry.type === "blob") {
+            pcmBuffers.push(Buffer.from(entry.data, "base64"));
+        }
+    }
+
+    // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
+    // PCM sample-level concatenation is always safe: no container format concerns.
+    const concatenatedPcm = Buffer.concat(pcmBuffers);
+
+    // Use PCM format stored in session metadata.  If no chunks were uploaded yet
+    // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
+    const sampleRateHz = meta.sampleRateHz || 16000;
+    const channels = meta.channels || 1;
+    const bitDepth = meta.bitDepth || 16;
+    const finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
+
+    // Cache the assembled WAV so subsequent calls can skip assembly.
+    try {
+        await sessionSublevel(temporary, sessionId).put(finalKey(), {
+            type: "blob",
+            data: finalBuffer.toString("base64"),
+        });
+    } catch (error) {
         throw new AudioSessionFinalizeError(
-            `Final audio not found for session ${sessionId}`,
-            sessionId
+            `Failed to store final audio for session ${sessionId}: ${error}`,
+            sessionId,
+            error
         );
     }
 
     return {
-        buffer: Buffer.from(finalEntry.data, "base64"),
+        buffer: finalBuffer,
         mimeType: meta.mimeType,
     };
 }

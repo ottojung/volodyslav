@@ -95,7 +95,8 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         isRestoredPauseRef,
         recorderStateRef,
         elapsedSecondsRef,
-    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds);
+        hasRestoredSessionRef,
+    } = useAudioRecorderStateRefs(recorderState, elapsedSeconds, hasRestoredSession);
 
     useAudioRecorderPersistence({
         recorderStateRef,
@@ -133,6 +134,7 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
                 restoredOffsetMsRef,
                 sequenceRef,
                 pushChunk,
+                hasRestoredSessionRef,
             })
         );
 
