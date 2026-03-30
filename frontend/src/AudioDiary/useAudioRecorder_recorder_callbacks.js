@@ -26,7 +26,6 @@ import {
  * @property {import('react').MutableRefObject<string>} mimeTypeRef
  * @property {import('react').MutableRefObject<number>} restoredOffsetMsRef
  * @property {import('react').MutableRefObject<number>} sequenceRef
- * @property {(chunk: Blob, startMs: number, endMs: number) => void} pushChunk
  * @property {import('react').MutableRefObject<boolean>} hasRestoredSessionRef
  */
 
@@ -49,7 +48,6 @@ export function createRecorderCallbacks(params) {
         mimeTypeRef,
         restoredOffsetMsRef,
         sequenceRef,
-        pushChunk,
         hasRestoredSessionRef,
     } = params;
 
@@ -123,20 +121,14 @@ export function createRecorderCallbacks(params) {
         },
 
         /**
-         * @param {Blob} chunk
          * @param {number} startMs
          * @param {number} endMs
          * @param {{ pcmBytes: ArrayBuffer; sampleRateHz: number; channels: number; bitDepth: number } | null} pcmChunk
          */
-        onChunk(chunk, startMs, endMs, pcmChunk) {
+        onPcmFragment(startMs, endMs, pcmChunk) {
             if (!isMountedRef.current) return;
-            if (chunk.type) {
-                mimeTypeRef.current = chunk.type;
-            }
-            const offsetMs = restoredOffsetMsRef.current;
-            pushChunk(chunk, startMs + offsetMs, endMs + offsetMs);
-
             if (!pcmChunk) return;
+            const offsetMs = restoredOffsetMsRef.current;
             const seq = sequenceRef.current + 1;
             sequenceRef.current = seq;
             const sessionId = sessionIdRef.current;
