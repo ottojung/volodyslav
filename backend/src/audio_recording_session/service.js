@@ -336,14 +336,27 @@ async function fetchFinalAudio(capabilities, sessionId) {
     // Return cached WAV if already assembled.
     const cachedEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
     if (cachedEntry !== undefined) {
-        if (cachedEntry.type !== "blob") {
+        if (cachedEntry.type !== "blob" || typeof cachedEntry.data !== "string") {
             throw new AudioSessionFinalizeError(
                 `Corrupt final audio cache for session ${sessionId}`,
                 sessionId
             );
         }
+
+        /** @type {Buffer} */
+        let cachedBuffer;
+        try {
+            cachedBuffer = Buffer.from(cachedEntry.data, "base64");
+        } catch (error) {
+            throw new AudioSessionFinalizeError(
+                `Corrupt final audio cache for session ${sessionId}`,
+                sessionId,
+                error
+            );
+        }
+
         return {
-            buffer: Buffer.from(cachedEntry.data, "base64"),
+            buffer: cachedBuffer,
             mimeType: meta.mimeType,
         };
     }

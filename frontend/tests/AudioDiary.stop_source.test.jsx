@@ -33,8 +33,14 @@ const flushAsync = () => new Promise((resolve) => setTimeout(resolve, 20));
 let mockCreateObjectURL;
 /** @type {jest.Mock} */
 let mockRevokeObjectURL;
+/** @type {typeof URL.createObjectURL} */
+let originalCreateObjectURL;
+/** @type {typeof URL.revokeObjectURL} */
+let originalRevokeObjectURL;
 
 beforeAll(() => {
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
     mockCreateObjectURL = jest.fn().mockReturnValue("blob:mock-url");
     mockRevokeObjectURL = jest.fn();
     global.URL.createObjectURL = mockCreateObjectURL;
@@ -43,6 +49,8 @@ beforeAll(() => {
 
 afterAll(() => {
     jest.restoreAllMocks();
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
 });
 
 beforeEach(() => {
@@ -161,5 +169,16 @@ describe("createRecorderCallbacks: stop source selection", () => {
         expect(discardSession).toHaveBeenCalledWith("test-session-id");
         expect(stopSession).not.toHaveBeenCalled();
         expect(fetchFinalAudio).not.toHaveBeenCalled();
+    });
+
+    it("uninterrupted stop with empty (size=0) blob forces backend fallback", async () => {
+        const { params } = makeParams({ hasRestoredSession: false });
+        const emptyBlob = new Blob([], { type: "audio/webm" });
+        const { onStop } = createRecorderCallbacks(params);
+
+        onStop(emptyBlob);
+        await flushAsync();
+
+        expect(fetchFinalAudio).toHaveBeenCalledWith("test-session-id");
     });
 });

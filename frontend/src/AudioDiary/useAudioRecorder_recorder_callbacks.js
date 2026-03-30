@@ -92,8 +92,10 @@ export function createRecorderCallbacks(params) {
 
                     // For restored/interrupted sessions the local MediaRecorder blob covers only
                     // the resumed portion, so fall back to the backend WAV which spans all chunks.
-                    // For uninterrupted fresh recordings the local blob is complete and preferred.
-                    const mustUseBackendFinalAudio = hasRestoredSessionRef.current || !blob;
+                    // For uninterrupted fresh recordings the local blob is complete and preferred,
+                    // unless the blob is empty, in which case we also fall back to the backend.
+                    const mustUseBackendFinalAudio =
+                        hasRestoredSessionRef.current || blob.size === 0;
                     if (mustUseBackendFinalAudio) {
                         const backendBlob = await fetchFinalAudio(sessionId);
                         if (!isMountedRef.current) return;
