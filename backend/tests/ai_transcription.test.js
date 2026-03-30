@@ -993,7 +993,7 @@ describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
         jest.clearAllMocks();
     });
 
-    test("uses whisper-1 for precise detailed transcription", async () => {
+    test("uses gpt-4o-transcribe for precise detailed transcription", async () => {
         const { createTranscription } = setupMockOpenAIClient({
             text: "precise transcript",
             language: "en",
@@ -1007,7 +1007,7 @@ describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
         expect(createTranscription).toHaveBeenCalledWith({
             file: fileStream,
             model: PRECISE_TRANSCRIBER_MODEL,
-            response_format: "verbose_json",
+            response_format: "json",
         });
         expect(result.provider).toBe("OpenAI");
         expect(result.model).toBe(PRECISE_TRANSCRIBER_MODEL);

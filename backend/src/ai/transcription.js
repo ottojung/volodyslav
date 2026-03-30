@@ -72,7 +72,7 @@ const {
 /** @typedef {import('./transcription_gemini').UploadedGeminiFile} UploadedGeminiFile */
 
 const TRANSCRIBER_MODEL = "gemini-3-flash-preview";
-const PRECISE_TRANSCRIBER_MODEL = "whisper-1";
+const PRECISE_TRANSCRIBER_MODEL = "gpt-4o-transcribe";
 const MAX_OUTPUT_TOKENS = 65536;
 const TEMPERATURE = 0.0;
 const THINKING_LEVEL = ThinkingLevel.LOW;
@@ -151,7 +151,7 @@ async function transcribeStreamPreciseDetailed(makeClient, capabilities, fileStr
         rawResponse = await client.audio.transcriptions.create({
             file: fileStream,
             model: PRECISE_TRANSCRIBER_MODEL,
-            response_format: "verbose_json",
+            response_format: "json",
         });
     } catch (error) {
         throw new AITranscriptionError(
