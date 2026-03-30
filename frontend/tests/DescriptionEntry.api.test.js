@@ -15,7 +15,6 @@ import {
     submitEntry,
     fetchConfig,
     updateConfig,
-    triggerLastEntriesPrefetch,
 } from "../src/DescriptionEntry/api.js";
 
 function makeResponse(status, data) {
@@ -296,25 +295,6 @@ describe("submitEntry", () => {
             expect(body.rawInput).toBe("work [loc home] Remote day");
             expect(isIANATimezone(body.clientTimezone)).toBe(true);
         });
-    });
-});
-
-describe("triggerLastEntriesPrefetch", () => {
-    beforeEach(() => {
-        global.fetch = jest.fn().mockResolvedValue({ ok: true });
-    });
-
-    afterEach(() => {
-        delete global.fetch;
-    });
-
-    it("sends a POST to the last_entries graph node URL", () => {
-        triggerLastEntriesPrefetch();
-
-        expect(global.fetch).toHaveBeenCalledWith(
-            expect.stringContaining("/api/graph/nodes/last_entries/"),
-            expect.objectContaining({ method: "POST" })
-        );
     });
 });
 

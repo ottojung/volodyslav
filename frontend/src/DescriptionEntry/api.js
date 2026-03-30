@@ -7,12 +7,6 @@ import {
 } from "./errors.js";
 
 /**
- * Number of events pre-cached in the `last_entries(n)` graph node.
- * Must match `SORTED_EVENTS_CACHE_SIZE` in the backend constants.
- */
-const SORTED_EVENTS_CACHE_SIZE = 100;
-
-/**
  * Get the client's local IANA timezone name.
  * @returns {string}
  */
@@ -189,22 +183,3 @@ export const updateConfig = async (config) => {
         return null;
     }
 };
-
-/**
- * Triggers a background pull of the `last_entries(SORTED_EVENTS_CACHE_SIZE)`
- * graph node to warm the cache after a new entry is created.
- *
- * This is a fire-and-forget operation: the caller does not await the result.
- * Errors are logged but not propagated.
- *
- * The `~` prefix encodes the numeric binding per the graph URL convention
- * (mirrors the filesystem encoding in `database/render.js`).
- *
- * @returns {void}
- */
-export function triggerLastEntriesPrefetch() {
-    const url = `${API_BASE_URL}/graph/nodes/last_entries/~${SORTED_EVENTS_CACHE_SIZE}`;
-    fetch(url, { method: "POST" }).catch((error) => {
-        logger.warn("Failed to prefetch last_entries:", error);
-    });
-}
