@@ -3,7 +3,7 @@
 /** @typedef {import('./structure').DateTime} DateTime */
 
 const { fromLuxon, isDateTime } = require('./structure');
-const { DateTime: LuxonDateTime } = require("luxon");
+const { DateTime: LuxonDateTime, IANAZone } = require("luxon");
 
 /**
  * @param {string} iso
@@ -139,6 +139,18 @@ function tryDeserialize(value) {
     );
 }
 
+/**
+ * Check if a string is a valid IANA timezone identifier.
+ * @param {string} tz
+ * @returns {boolean}
+ */
+function isValidIANATimezone(tz) {
+    if (typeof tz !== "string" || tz.length === 0) {
+        return false;
+    }
+    return IANAZone.isValidZone(tz);
+}
+
 module.exports = {    
     fromISOString,
     toISOString,
@@ -146,4 +158,5 @@ module.exports = {
     tryDeserialize,
     DateTimeTryDeserializeError,
     isDateTimeTryDeserializeError,
+    isValidIANATimezone,
 };

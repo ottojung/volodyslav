@@ -57,27 +57,28 @@ describe("POST /api/entries", () => {
         );
     });
 
-    it("uses clientDate from the request body as the entry date", async () => {
+    it("uses clientTimezone to express entry date in client's timezone", async () => {
         const { app, capabilities } = await makeTestApp();
+        // Server time is UTC (noon on May 23rd)
         const serverTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(serverTime);
 
-        // Client supplies a date from a different timezone (Kyiv UTC+3).
-        const clientDate = "2025-05-23T15:00:00.000+03:00";
+        // Client is in Kyiv (UTC+3): the same instant displayed in +03 is 15:00.
+        const clientTimezone = "Europe/Kyiv";
 
         const res = await request(app)
             .post("/api/entries")
-            .send({ rawInput: "food pizza", clientDate })
+            .send({ rawInput: "food pizza", clientTimezone })
             .set("Content-Type", "application/json");
 
         expect(res.statusCode).toBe(201);
-        // The entry date should reflect the client-supplied date, not the server time.
+        // The entry date should use the server's instant expressed in Kyiv's offset.
         expect(res.body.entry.date).toContain("2025-05-23");
-        // The offset should be preserved (Kyiv +03, not the server's UTC offset).
+        // The offset should be Kyiv's (+03), not the server's UTC offset.
         expect(res.body.entry.date).toMatch(/\+03/);
     });
 
-    it("falls back to server time when clientDate is not provided", async () => {
+    it("falls back to server time when clientTimezone is not provided", async () => {
         const { app, capabilities } = await makeTestApp();
         const serverTime = fromISOString("2025-06-01T10:00:00.000+02:00");
         capabilities.datetime.now.mockReturnValue(serverTime);
@@ -91,28 +92,28 @@ describe("POST /api/entries", () => {
         expect(res.body.entry.date).toContain("2025-06-01");
     });
 
-    it("returns 400 when clientDate is not a valid ISO string", async () => {
+    it("returns 400 when clientTimezone is not a valid IANA timezone", async () => {
         const { app } = await makeTestApp();
 
         const res = await request(app)
             .post("/api/entries")
-            .send({ rawInput: "food pizza", clientDate: "not-a-date" })
+            .send({ rawInput: "food pizza", clientTimezone: "Not/ATimezone" })
             .set("Content-Type", "application/json");
 
         expect(res.statusCode).toBe(400);
-        expect(res.body.error).toMatch(/Invalid clientDate/);
+        expect(res.body.error).toMatch(/Invalid clientTimezone/);
     });
 
-    it("returns 400 when clientDate is not a string", async () => {
+    it("returns 400 when clientTimezone is not a string", async () => {
         const { app } = await makeTestApp();
 
         const res = await request(app)
             .post("/api/entries")
-            .send({ rawInput: "food pizza", clientDate: 12345 })
+            .send({ rawInput: "food pizza", clientTimezone: 12345 })
             .set("Content-Type", "application/json");
 
         expect(res.statusCode).toBe(400);
-        expect(res.body.error).toMatch(/clientDate must be a string/);
+        expect(res.body.error).toMatch(/clientTimezone must be a string/);
     });
 
     it("returns 400 if required fields are missing", async () => {

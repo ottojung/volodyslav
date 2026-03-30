@@ -5,7 +5,7 @@ const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
 const { sanitizeFilename, isFilenameValidationError } = require("../../temporary");
 const { makeFromData } = require("../../filesystem").file_ref;
-const { tryDeserialize, isDateTimeTryDeserializeError } = require("../../datetime");
+const { isValidIANATimezone } = require("../../datetime");
 
 /**
  * @typedef {import('../../environment').Environment} Environment
@@ -62,7 +62,7 @@ class FileValidationError extends Error {
 /**
  * @typedef {object} EntryRequestBody
  * @property {string} rawInput - The raw user input to parse
- * @property {string} [clientDate] - Optional ISO date string from the client's local clock
+ * @property {string} [clientTimezone] - Optional IANA timezone name from the client (e.g. "Europe/Kyiv")
  */
 
 /**
@@ -200,7 +200,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             files = req.files['files'] || [];
         }
 
-        const { rawInput, clientDate } = req.body;
+        const { rawInput, clientTimezone } = req.body;
         if (typeof rawInput !== "string" || rawInput.trim() === "") {
             capabilities.logger.logError(
                 {
@@ -215,18 +215,14 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             return res.status(400).json({ error: "Missing required field: rawInput" });
         }
 
-        // Parse optional client-supplied date. Reject unparseable values with 400.
-        /** @type {import('../../datetime').DateTime | undefined} */
-        let parsedClientDate;
-        if (clientDate !== undefined) {
-            if (typeof clientDate !== "string") {
-                return res.status(400).json({ error: "clientDate must be a string" });
+        // Validate optional client-supplied timezone. Reject invalid values with 400.
+        if (clientTimezone !== undefined) {
+            if (typeof clientTimezone !== "string") {
+                return res.status(400).json({ error: "clientTimezone must be a string" });
             }
-            const dateResult = tryDeserialize(clientDate);
-            if (isDateTimeTryDeserializeError(dateResult)) {
-                return res.status(400).json({ error: `Invalid clientDate: ${dateResult.message}` });
+            if (!isValidIANATimezone(clientTimezone)) {
+                return res.status(400).json({ error: `Invalid clientTimezone: ${clientTimezone}` });
             }
-            parsedClientDate = dateResult;
         }
 
         let processed;
@@ -253,7 +249,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         const entryData = {
             original,
             input,
-            clientDate: parsedClientDate,
+            clientTimezone,
         };
 
         const fileRefs = await prepareFileObjects(capabilities, files, reqId);
