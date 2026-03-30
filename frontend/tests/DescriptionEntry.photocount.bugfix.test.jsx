@@ -14,7 +14,7 @@ jest.mock("../src/toast.jsx", () => ({
 jest.mock("../src/DescriptionEntry/api", () => ({
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
-    triggerLastEntriesPrefetch: jest.fn(),
+    triggerHistoryPrefetch: jest.fn(),
 }));
 
 // Mock the logger module to prevent console output during tests

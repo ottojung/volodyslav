@@ -15,7 +15,7 @@ import {
     submitEntry,
     fetchConfig,
     updateConfig,
-    triggerLastEntriesPrefetch,
+    triggerHistoryPrefetch,
 } from "../src/DescriptionEntry/api.js";
 
 function makeResponse(status, data) {
@@ -299,7 +299,7 @@ describe("submitEntry", () => {
     });
 });
 
-describe("triggerLastEntriesPrefetch", () => {
+describe("triggerHistoryPrefetch", () => {
     beforeEach(() => {
         global.fetch = jest.fn().mockResolvedValue({ ok: true });
     });
@@ -308,12 +308,11 @@ describe("triggerLastEntriesPrefetch", () => {
         delete global.fetch;
     });
 
-    it("sends a POST to the last_entries graph node URL", () => {
-        triggerLastEntriesPrefetch();
+    it("fetches the same history endpoint used by the search page", () => {
+        triggerHistoryPrefetch();
 
         expect(global.fetch).toHaveBeenCalledWith(
-            expect.stringContaining("/api/graph/nodes/last_entries/"),
-            expect.objectContaining({ method: "POST" })
+            "/api/entries?page=1&limit=50&order=dateDescending"
         );
     });
 });

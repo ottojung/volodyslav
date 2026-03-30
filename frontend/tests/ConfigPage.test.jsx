@@ -10,7 +10,7 @@ jest.mock("../src/DescriptionEntry/api", () => ({
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
     updateConfig: jest.fn(),
-    triggerLastEntriesPrefetch: jest.fn(),
+    triggerHistoryPrefetch: jest.fn(),
 }));
 
 // Mock the logger module

@@ -7,7 +7,7 @@ import { renderWithChakra } from "./renderWithChakra.jsx";
 jest.mock("../src/DescriptionEntry/api", () => ({
     submitEntry: jest.fn(),
     fetchConfig: jest.fn(),
-    triggerLastEntriesPrefetch: jest.fn(),
+    triggerHistoryPrefetch: jest.fn(),
 }));
 
 // Mock the logger module to prevent console output during tests
@@ -42,7 +42,7 @@ import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 import {
     submitEntry,
     fetchConfig,
-    triggerLastEntriesPrefetch,
+    triggerHistoryPrefetch,
 } from "../src/DescriptionEntry/api";
 
 // Import the mocked camera functions
@@ -83,7 +83,7 @@ describe("DescriptionEntry", () => {
         submitEntry.mockClear();
         fetchConfig.mockClear();
         mockNavigate.mockClear();
-        triggerLastEntriesPrefetch.mockClear();
+        triggerHistoryPrefetch.mockClear();
 
         // Reset camera mocks - use mockReset to clear all state
         generateRequestIdentifier.mockReset();
@@ -288,7 +288,7 @@ describe("DescriptionEntry", () => {
         expect(mockNavigate).not.toHaveBeenCalled();
     });
 
-    it("triggers last entries prefetch after successful submission", async () => {
+    it("triggers history prefetch after successful submission", async () => {
         renderWithChakra(<DescriptionEntry />);
 
         // Wait for component to settle
@@ -303,11 +303,11 @@ describe("DescriptionEntry", () => {
         fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
-            expect(triggerLastEntriesPrefetch).toHaveBeenCalledTimes(1);
+            expect(triggerHistoryPrefetch).toHaveBeenCalledTimes(1);
         });
     });
 
-    it("does not trigger last entries prefetch when submission fails", async () => {
+    it("does not trigger history prefetch when submission fails", async () => {
         submitEntry.mockRejectedValue(new Error("Network error"));
 
         renderWithChakra(<DescriptionEntry />);
@@ -327,7 +327,7 @@ describe("DescriptionEntry", () => {
             expect(submitEntry).toHaveBeenCalled();
         });
 
-        expect(triggerLastEntriesPrefetch).not.toHaveBeenCalled();
+        expect(triggerHistoryPrefetch).not.toHaveBeenCalled();
     });
 
 });
