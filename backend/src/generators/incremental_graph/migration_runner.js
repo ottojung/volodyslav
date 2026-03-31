@@ -148,7 +148,15 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
             }
             const oldFreshness = await prevStorage.freshness.get(nodeKey);
             if (oldFreshness !== undefined) {
-                ops.push(newStorage.freshness.putOp(nodeKey, oldFreshness));
+                // Guard against a pre-existing inconsistency where freshness is
+                // "up-to-date" but no value is stored (e.g. caused by a crash
+                // during a previous scan). Propagating "up-to-date" without a
+                // value into the new namespace would repeat the bug; reset to
+                // "potentially-outdated" so the graph recomputes on next pull.
+                const effectiveFreshness = (oldFreshness === "up-to-date" && value === undefined)
+                    ? "potentially-outdated"
+                    : oldFreshness;
+                ops.push(newStorage.freshness.putOp(nodeKey, effectiveFreshness));
             }
             const counter = await prevStorage.counters.get(nodeKey);
             if (counter !== undefined) {

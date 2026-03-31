@@ -501,13 +501,85 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
 }
 
 /**
+ * Validates freshness-to-value consistency in a set of raw database entries and
+ * repairs any node that is marked "up-to-date" without a stored value.
+ *
+ * An "up-to-date" node without a corresponding value entry is an inconsistent
+ * state that makes the graph's pull logic throw an "Impossible" error. This
+ * can occur when:
+ *
+ *   1. A process crash interrupted the database restore in the middle of
+ *      writing batches: because LevelDB iterates keys in lexicographic order
+ *      (freshness < values), freshness entries land in earlier batches than
+ *      value entries. A crash between batches leaves freshness written but
+ *      values absent.
+ *
+ *   2. A git merge brought in a remote branch that already had this
+ *      inconsistency, propagating it to the local snapshot.
+ *
+ * For each freshness entry whose value is "up-to-date" but whose corresponding
+ * values entry is absent, this function replaces "up-to-date" with
+ * "potentially-outdated". The graph will then recompute the node on the next
+ * pull, which is the correct recovery path.
+ *
+ * @param {Array<{ key: string, value: any }>} entries - All raw DB entries loaded
+ *   from the filesystem snapshot. Modified in place where repairs are needed.
+ * @param {import('../../../logger').Logger} logger
+ * @returns {number} The number of entries that were repaired.
+ */
+function repairFreshnessConsistency(entries, logger) {
+    // Build a set of raw value keys for O(1) lookup.
+    const valuesKeySet = new Set();
+    for (const { key } of entries) {
+        const parsed = parseRawKey(key);
+        const sublevel = parsed.sublevels[parsed.sublevels.length - 1];
+        if (sublevel === 'values') {
+            valuesKeySet.add(key);
+        }
+    }
+
+    let repairedCount = 0;
+    for (const entry of entries) {
+        const parsed = parseRawKey(entry.key);
+        const sublevel = parsed.sublevels[parsed.sublevels.length - 1];
+        if (sublevel === 'freshness' && entry.value === 'up-to-date') {
+            // Construct the corresponding values key by replacing the deepest
+            // sublevel name "freshness" with "values".
+            const valueSublevels = [
+                ...parsed.sublevels.slice(0, -1),
+                'values',
+            ];
+            const correspondingValuesKey = buildRawKey(valueSublevels, parsed.keyContent);
+            if (!valuesKeySet.has(correspondingValuesKey)) {
+                entry.value = 'potentially-outdated';
+                repairedCount++;
+                logger.logWarning(
+                    { freshnessKey: entry.key },
+                    'Repaired inconsistent freshness entry: "up-to-date" without stored value, reset to "potentially-outdated"'
+                );
+            }
+        }
+    }
+
+    return repairedCount;
+}
+
+/**
  * Reads every file from a directory tree and writes the corresponding
  * key/value pairs into a LevelDB database.
  *
- * This function FIRST clears all existing entries from rootDatabase, then
- * imports the snapshot from inputDir.  This guarantees that keys present in
- * the database but absent from the snapshot (i.e., deleted entries) do not
- * survive, preserving the bijection guarantee.
+ * This function atomically replaces all existing entries in rootDatabase with
+ * the contents of inputDir. The replacement uses a single LevelDB batch that
+ * deletes every existing key and inserts every new entry, so no intermediate
+ * (partially-written) state is ever committed to disk. This prevents the
+ * crash-window inconsistency that arises when a two-step delete-then-put
+ * sequence is interrupted between steps.
+ *
+ * Additionally, after loading the snapshot entries but before writing them,
+ * this function validates freshness-to-value consistency and repairs any node
+ * marked "up-to-date" without a stored value by resetting its freshness to
+ * "potentially-outdated". This handles inconsistencies that may have been
+ * introduced by earlier crashes or propagated from a remote via git merge.
  *
  * For each file found under `inputDir`:
  *   - The path relative to `inputDir` is converted back to a raw LevelDB
@@ -515,7 +587,8 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
  *   - The file content is parsed as JSON and stored at that key.
  *
  * Calling scanFromFilesystem() on a directory produced by renderToFilesystem()
- * restores the database to exactly its original state (bijection guarantee).
+ * restores the database to exactly its original state (bijection guarantee),
+ * provided the snapshot is internally consistent.
  *
  * @param {RenderCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.
@@ -542,9 +615,12 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
         count++;
     }
 
-    // Phase 2: After successful validation, clear and repopulate the database.
-    await rootDatabase._rawDeleteAll();
-    await rootDatabase._rawPutAll(entries);
+    // Phase 1b: Validate and repair freshness-values consistency before writing.
+    repairFreshnessConsistency(entries, capabilities.logger);
+
+    // Phase 2: Atomically replace database contents in a single batch, so
+    // no intermediate (partially-written) state is ever committed to disk.
+    await rootDatabase._rawReplaceAll(entries);
     capabilities.logger.logInfo(
         { inputDir, count },
         'Scanned database from filesystem'

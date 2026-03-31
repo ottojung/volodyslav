@@ -365,6 +365,42 @@ class RootDatabaseClass {
     }
 
     /**
+     * Atomically replaces all raw key/value pairs in the database with the
+     * provided entries. Reads all existing keys, then executes a single LevelDB
+     * batch that deletes every existing key and writes every new entry.
+     *
+     * This is the safe replacement for calling _rawDeleteAll() followed by
+     * _rawPutAll(): the two-call sequence has a crash window between the
+     * delete and put phases that can leave the database in an inconsistent
+     * intermediate state (e.g. freshness entries without corresponding value
+     * entries). By combining both operations into a single atomic batch, no
+     * intermediate state is ever committed to disk.
+     *
+     * @param {Array<{ key: string, value: * }>} entries
+     * @returns {Promise<void>}
+     */
+    async _rawReplaceAll(entries) {
+        /** @type {Array<{ type: 'del', key: NodeKeyString } | { type: 'put', key: NodeKeyString, value: * }>} */
+        const ops = [];
+
+        for await (const key of this.db.keys()) {
+            ops.push({ type: 'del', key });
+        }
+
+        for (const entry of entries) {
+            ops.push({
+                type: 'put',
+                key: stringToNodeKeyString(entry.key),
+                value: entry.value,
+            });
+        }
+
+        if (ops.length > 0) {
+            await this.db.batch(ops);
+        }
+    }
+
+    /**
      * Close the database connection.
      * @returns {Promise<void>}
      */
