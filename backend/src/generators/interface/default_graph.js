@@ -201,7 +201,7 @@ function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, dia
         },
         {
             output: "event_transcription(e, a)",
-            inputs: ["event_audios_list(e)", "transcription(a)"],
+            inputs: ["event(e)", "transcription(a)"],
             computor: eventTranscription.makeComputor(capabilities),
             isDeterministic: true,
             hasSideEffects: false,
