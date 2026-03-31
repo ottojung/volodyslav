@@ -65,6 +65,7 @@ Rules:
 5. Preserve uncertainty; avoid speculative over-claims.
 6. Never add, remove, or rename headings. Keep heading text exactly as given.
 7. Keep the summary focused and concise — prioritize recent and significant information.
+8. Output should be in English, except for names and special terms, which should be in their original language.
 
 Return ONLY the updated markdown, starting with "## Current snapshot".`;
 
