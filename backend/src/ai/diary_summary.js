@@ -82,7 +82,7 @@ Rules:
    - active projects and obligations
    - decisions, intentions, and unresolved open loops
    - notable wins, improvements, and stabilizing factors
-   - durable background context still needed to interpret future entries
+   - important immutable facts
 10. Aggressively avoid:
    - decorative detail
    - low-signal one-off facts
