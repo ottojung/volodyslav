@@ -71,3 +71,26 @@ The `createdBy` field is exposed through the graph inspection REST API alongside
 ```
 
 This makes it easy to see, from outside, which host initially computed each graph node.
+
+---
+
+# VOLODYSLAV_ANALYZER_HOSTNAME
+
+## Purpose
+
+`VOLODYSLAV_ANALYZER_HOSTNAME` designates which host is responsible for running the diary summary pipeline. Only the host whose `VOLODYSLAV_HOSTNAME` matches `VOLODYSLAV_ANALYZER_HOSTNAME` will execute the AI-powered diary summarization.
+
+## Behavior
+
+- **Hourly scheduled job**: If the current host is not the analyzer, the diary summary step is skipped and an info-level log entry is written instead.
+- **Manual trigger (frontend)**: If the current host is not the analyzer, the POST `/diary-summary/run` endpoint returns a 503 response with `{ "error": "not_analyzer", "currentHostname": "...", "analyzerHostname": "..." }`. The frontend displays an error toast with the analyzer hostname.
+
+## Configuration
+
+Set `VOLODYSLAV_ANALYZER_HOSTNAME` to the hostname of the machine that should run diary summaries:
+
+```bash
+export VOLODYSLAV_ANALYZER_HOSTNAME="analyzer-host"
+```
+
+`VOLODYSLAV_ANALYZER_HOSTNAME` is a **required** environment variable. Volodyslav will refuse to start if it is not set (it is checked by `ensureEnvironmentIsInitialized` at startup).

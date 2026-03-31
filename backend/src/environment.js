@@ -101,6 +101,17 @@ function hostname() {
     return value;
 }
 
+function analyzerHostname() {
+    const value = getEnv("VOLODYSLAV_ANALYZER_HOSTNAME");
+    if (!isValidHostname(value)) {
+        throw new EnvironmentError(
+            "VOLODYSLAV_ANALYZER_HOSTNAME",
+            "must match [0-9a-zA-Z_-]+"
+        );
+    }
+    return value;
+}
+
 /**
  * Ensures that the environment is initialized by checking all required variables.
  * @param {Environment} environment - The environment object to check.
@@ -118,6 +129,7 @@ function ensureEnvironmentIsInitialized(environment) {
     environment.generatorsRepository();
     environment.eventLogAssetsRepository();
     environment.hostname();
+    environment.analyzerHostname();
 }
 
 /**
@@ -137,6 +149,7 @@ function make() {
         generatorsRepository,
         eventLogAssetsRepository,
         hostname,
+        analyzerHostname,
     };
 }
 

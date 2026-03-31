@@ -180,6 +180,17 @@ function makeRouter(capabilities) {
             return;
         }
 
+        const currentHostname = capabilities.environment.hostname();
+        const analyzerHostname = capabilities.environment.analyzerHostname();
+        if (currentHostname !== analyzerHostname) {
+            res.status(503).json({
+                error: "not_analyzer",
+                currentHostname,
+                analyzerHostname,
+            });
+            return;
+        }
+
         return sendDiarySummaryRunState(res, controller.start());
     });
 
