@@ -210,6 +210,15 @@ function versionToString(Version) {
  */
 
 /**
+ * The list of audio file paths associated with an event.
+ * Computed by scanning the event's assets directory.
+ * @typedef {object} EventAudiosListEntry
+ * @property {'event_audios_list'} type - The type of the entry
+ * @property {SerializedEvent} event - The serialized event these audio files belong to
+ * @property {string[]} audioPaths - Sorted relative paths (relative to assets root) of audio files
+ */
+
+/**
  * The rolling diary summary node. Stores the current structured markdown summary,
  * the max diary entry date incorporated, and a map of processed transcription paths
  * with their last-processed modification timestamps.
@@ -225,7 +234,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
  */
 
 /**

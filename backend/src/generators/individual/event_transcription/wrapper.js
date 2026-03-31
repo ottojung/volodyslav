@@ -13,9 +13,9 @@ const { computeEventTranscription } = require("./compute");
  * @type {(capabilities: Capabilities) => NodeDefComputor}
  */
 const makeComputor = (capabilities) => async (inputs, _oldValue, bindings) => {
-    const eventEntry = inputs[0];
-    if (!eventEntry || eventEntry.type !== "event") {
-        throw new Error("Expected event input for event_transcription(e, a) computor");
+    const audioListEntry = inputs[0];
+    if (!audioListEntry || audioListEntry.type !== "event_audios_list") {
+        throw new Error("Expected event_audios_list input for event_transcription(e, a) computor");
     }
     const transcriptionEntry = inputs[1];
     if (!transcriptionEntry || transcriptionEntry.type !== "transcription") {
@@ -27,7 +27,7 @@ const makeComputor = (capabilities) => async (inputs, _oldValue, bindings) => {
     }
     return computeEventTranscription(
         capabilities,
-        deserialize(eventEntry.value),
+        deserialize(audioListEntry.event),
         transcriptionEntry.value,
         audioPath,
     );

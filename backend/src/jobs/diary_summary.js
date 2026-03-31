@@ -1,23 +1,20 @@
 /**
  * Diary summary pipeline.
  *
- * Scans all events for materialized transcriptions that have not yet been incorporated
- * into the summary. For each new transcription (in ascending date order), calls the AI
- * summarizer to update the rolling diary summary. Writes the updated summary back to the
- * incremental graph so it survives restarts.
+ * Iterates all diary events via the incremental graph and folds their materialized
+ * transcriptions into the rolling summary. The list of audio files for each event
+ * is obtained by pulling the `event_audios_list(e)` graph node — no direct
+ * filesystem access occurs in this module.
  */
 
-const path = require("path");
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
 const { DIARY_SUMMARY_MODEL } = aiDiarySummaryModule;
 const { fromISOString } = require("../datetime");
 const { makeUniqueFunctor } = require("../unique_functor");
-const { asset: eventAsset, getType: getEventType } = require("../event");
+const { getType: getEventType } = require("../event");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
-
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"]);
 
 /**
  * Mutex key for serializing concurrent diary summary pipeline runs.
@@ -26,30 +23,15 @@ const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac
 const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").instantiate([]);
 
 /**
- * @param {string} filename
- * @returns {boolean}
- */
-function isAudioFilename(filename) {
-    const basename = path.basename(filename).toLowerCase();
-    if (basename === "diary-audio.webm") {
-        return true;
-    }
-    if (AUDIO_EXTENSIONS.has(path.extname(filename).toLowerCase())) {
-        return true;
-    }
-    return false;
-}
-
-/**
  * Runs the diary summary pipeline.
  *
  * Steps:
  *  1. Read current summary from graph.
  *  2. Iterate all diary events in ascending date order.
- *  3. For each event, scan its audio assets and look for materialized transcriptions
- *     whose graph-node modification time is newer than the recorded watermark.
- *  4. For each new transcription, call the AI summarizer and advance the watermarks.
- *  5. Write the updated summary back to the graph after each fold.
+ *  3. For each event, pull `event_audios_list(e)` from the graph to get its audio paths.
+ *  4. For each audio path, check whether a transcription graph node has been materialized.
+ *  5. For each new transcription, call the AI summarizer and advance the watermarks.
+ *  6. Persist the updated summary back to the graph after each fold.
  *
  * Runs are serialized with a mutex so the hourly job and an explicit POST run
  * cannot race and overwrite each other.
@@ -73,8 +55,6 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
 
     const currentSummary = await capabilities.interface.getDiarySummary();
 
-    const assetsDir = capabilities.environment.eventLogAssetsDirectory();
-
     let currentMarkdown = currentSummary.markdown;
     let currentSummaryDate = currentSummary.summaryDate;
     /** @type {Record<string, string>} */
@@ -87,28 +67,33 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
             continue;
         }
 
-        const dirPath = eventAsset.targetDir(capabilities, event);
+        const eventId = event.id.identifier;
 
-        const dirProof = await capabilities.checker.directoryExists(dirPath);
-        if (dirProof === null) {
-            continue;
-        }
-
-        let files;
+        // Pull the audio list from the graph — no filesystem access here.
+        let audioListEntry;
         try {
-            files = await capabilities.scanner.scanDirectory(dirPath);
-        } catch {
+            audioListEntry = await capabilities.interface.pullGraphNode(
+                "event_audios_list",
+                [eventId],
+            );
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            capabilities.logger.logError(
+                { eventId, error, errorMessage },
+                "Diary summary pipeline: failed to pull event_audios_list",
+            );
             continue;
         }
 
-        for (const file of files) {
-            const filename = path.basename(file.path);
-            if (!isAudioFilename(filename)) {
-                continue;
-            }
+        if (audioListEntry.type !== "event_audios_list") {
+            capabilities.logger.logError(
+                { eventId, actualType: audioListEntry.type },
+                "Diary summary pipeline: unexpected node type from event_audios_list pull",
+            );
+            continue;
+        }
 
-            const relativeAssetPath = path.relative(assetsDir, file.path);
-
+        for (const relativeAssetPath of audioListEntry.audioPaths) {
             // Check if a transcription has been materialized for this asset.
             const freshness = await capabilities.interface.debugGetFreshness(
                 "transcription",
@@ -233,3 +218,4 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
 module.exports = {
     runDiarySummaryPipeline,
 };
+
