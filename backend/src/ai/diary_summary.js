@@ -21,6 +21,7 @@ const memoize = require("@emotion/memoize").default;
 /**
  * @typedef {object} Capabilities
  * @property {Environment} environment - An environment instance.
+ * @property {import('../logger').Logger} logger - A logger instance.
  */
 
 class AIDiarySummaryError extends Error {
@@ -168,6 +169,13 @@ function makeUserMessage(input) {
  * @returns {Promise<AIDiarySummaryOutput>}
  */
 async function updateSummary(openai, capabilities, input) {
+    capabilities.logger.logDebug({
+        newEntryDateISO: input.newEntryDateISO,
+        currentSummaryDateISO: input.currentSummaryDateISO,
+        hasTypedText: Boolean(input.newEntryTypedText),
+        hasTranscribedAudio: Boolean(input.newEntryTranscribedAudioRecording),
+    }, "Updating diary summary with new entry");
+
     try {
         const apiKey = capabilities.environment.openaiAPIKey();
         const response = await openai(apiKey).chat.completions.create({
@@ -193,6 +201,13 @@ async function updateSummary(openai, capabilities, input) {
             `Failed to update diary summary: ${error instanceof Error ? error.message : String(error)}`,
             error
         );
+    } finally {
+        capabilities.logger.logDebug({
+            newEntryDateISO: input.newEntryDateISO,
+            currentSummaryDateISO: input.currentSummaryDateISO,
+            hasTypedText: Boolean(input.newEntryTypedText),
+            hasTranscribedAudio: Boolean(input.newEntryTranscribedAudioRecording),
+        }, "Finished attempt to update diary summary");
     }
 }
 
