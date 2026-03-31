@@ -90,11 +90,13 @@ async function synchronizeNoLock(capabilities, options) {
 
         // Step 2: synchronize the rendered repository with the remote.
         try {
+            // Only merge host branches if we're doing a full merge, not a reset-to-hostname.
+            const mergeHostBranches = options?.resetToHostname === undefined;
             await workingRepository.synchronize(
                 capabilities,
                 CHECKPOINT_WORKING_PATH,
                 remoteLocation,
-                { ...options, mergeHostBranches: true }
+                { ...options, mergeHostBranches }
             );
         } catch (error) {
             if (!isMergeHostBranchesError(error)) {
