@@ -147,12 +147,12 @@ async function internalMaybeRecalculate(
             currentInputCounters,
             batch
         );
-        batch.freshness.put(nodeKey, "up-to-date");
 
         const result = await batch.values.get(nodeKey);
         if (result === undefined) {
             throw makeInvalidUnchangedError(nodeKey);
         }
+        batch.freshness.put(nodeKey, "up-to-date");
         return { value: result, status: "unchanged" };
     }
 

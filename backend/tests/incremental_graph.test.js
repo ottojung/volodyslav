@@ -1702,6 +1702,53 @@ describe("generators/incremental_graph", () => {
 
             await db.close();
         });
+
+        test("recovers gracefully when freshness is up-to-date but value is missing (invariant violation)", async () => {
+            // This tests that a node which has freshness="up-to-date" in the database
+            // but no corresponding value (a database invariant violation) is handled
+            // by recomputing the node instead of throwing a fatal error.
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            let computeCount = 0;
+            const computedValue = { type: "all_events", events: [] };
+
+            const graphDef = [
+                {
+                    output: "node1",
+                    inputs: [],
+                    computor: () => {
+                        computeCount++;
+                        return computedValue;
+                    },
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const storage = graph.storage;
+
+            // Manually create the invalid DB state: freshness="up-to-date" but no value.
+            // This simulates a corrupted or inconsistently migrated database.
+            await storage.inputs.put(toJsonKey("node1"), { inputs: [], inputCounters: [] });
+            await storage.freshness.put(toJsonKey("node1"), "up-to-date");
+            // Intentionally do NOT write a value for node1.
+
+            // This should NOT throw; instead it should recompute the node.
+            const result = await graph.pull("node1");
+
+            expect(result).toEqual(computedValue);
+            expect(computeCount).toBe(1); // Recomputed once
+
+            // After recovery, the node should be consistently up-to-date with a value.
+            const freshness = await graph.debugGetFreshness("node1");
+            expect(freshness).toBe("up-to-date");
+            const value = await graph.debugGetValue("node1");
+            expect(value).toEqual(computedValue);
+
+            await db.close();
+        });
     });
 
     describe("Type guards", () => {

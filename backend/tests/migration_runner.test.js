@@ -1424,4 +1424,45 @@ describe("retry after failure", () => {
 
         expect(mock.replaceContentsFromCalled).toBe(true);
     });
+
+    test("keep decision: up-to-date freshness with missing value is downgraded to potentially-outdated", async () => {
+        // Regression test: if a node has freshness="up-to-date" but no value in the
+        // previous storage (an invariant violation), the migration must not propagate
+        // the invalid state.  It must write freshness="potentially-outdated" so the
+        // node is recomputed on the next pull instead of crashing.
+        const capabilities = await getTestCapabilities();
+        const previousStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        // Simulate the invalid DB state: materialized, freshness="up-to-date", no value.
+        await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await previousStorage.freshness.put(nodeKey, "up-to-date");
+        // Intentionally do NOT write a value.
+
+        const yStorage = makeSchemaStorage();
+        const { yDb } = makeYDb(yStorage);
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage: previousStorage,
+            yDb,
+        });
+
+        const nodeDefs = [{
+            output: "A",
+            inputs: [],
+            computor: async () => ({ type: "all_events", events: [] }),
+            isDeterministic: true,
+            hasSideEffects: false,
+        }];
+
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(nodeKey);
+        });
+
+        // Freshness must be downgraded so the node is recomputed rather than
+        // causing "Impossible: up-to-date node has no stored value" on pull.
+        await expect(yStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
+        await expect(yStorage.values.get(nodeKey)).resolves.toBeUndefined();
+    });
 });

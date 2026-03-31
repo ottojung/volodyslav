@@ -17,7 +17,7 @@
  * @property {(nodeDefinition: import('./types').ConcreteNode, batch: BatchBuilder) => Promise<RecomputeResult>} maybeRecalculate
  */
 
-const { nodeKeyStringToString, stringToNodeName } = require("./database");
+const { stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
@@ -151,12 +151,14 @@ async function internalPullByNodeKeyStringWithStatusDuringPull(
 
         if (nodeFreshness === "up-to-date") {
             const result = await batch.values.get(nodeKeyStr);
-            if (result === undefined) {
-                throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${nodeKeyStringToString(nodeKeyStr)}`
-                );
+            if (result !== undefined) {
+                return { value: result, status: "cached" };
             }
-            return { value: result, status: "cached" };
+            // Invariant violation: the node is marked up-to-date but has no
+            // stored value.  This can arise from database corruption or from a
+            // migration that copied the freshness flag without copying the
+            // value.  Recover gracefully by recomputing the node rather than
+            // crashing the entire request.
         }
 
         return await incrementalGraph.maybeRecalculate(

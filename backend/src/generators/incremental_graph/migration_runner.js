@@ -148,7 +148,14 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
             }
             const oldFreshness = await prevStorage.freshness.get(nodeKey);
             if (oldFreshness !== undefined) {
-                ops.push(newStorage.freshness.putOp(nodeKey, oldFreshness));
+                // If the value is absent but the freshness says up-to-date, the
+                // stored state is inconsistent.  Downgrade to potentially-outdated
+                // so the next pull recomputes the node rather than crashing.
+                const newFreshness =
+                    value === undefined && oldFreshness === "up-to-date"
+                        ? "potentially-outdated"
+                        : oldFreshness;
+                ops.push(newStorage.freshness.putOp(nodeKey, newFreshness));
             }
             const counter = await prevStorage.counters.get(nodeKey);
             if (counter !== undefined) {
