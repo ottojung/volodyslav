@@ -4,7 +4,9 @@
  *
  * ## Construction
  *
- * `makeExclusiveProcess({ procedure, conflictor })` where:
+ * `makeExclusiveProcess({ name, procedure, conflictor, owner?, getHostname? })` where:
+ *
+ * - `name` — a human-readable name used in diagnostics and error messages.
  *
  * - `procedure(fanOut, arg)` — the async computation to run.  Must return a
  *   `Promise<T>`.  `fanOut` is a class-managed callback that distributes each
@@ -15,6 +17,14 @@
  *   run is already in progress.  Returns `"queue"` to queue the new call behind
  *   the current run or `"attach"` to coalesce it onto the current run.  Pass
  *   `() => "attach"` to always attach (no queuing).
+ *
+ * - `owner` (optional) — a lazy `() => string | null` callback.  When it
+ *   returns a non-null string, only the host whose hostname equals that string
+ *   is allowed to invoke this process.  A non-owner caller receives a
+ *   `NotProcessOwnerError` instead of a handle.
+ *
+ * - `getHostname` (optional) — a lazy `() => string` callback that returns the
+ *   current hostname.  Required when `owner` is provided.
  *
  * ## Invocation
  *
@@ -39,6 +49,39 @@
  *
  * @module exclusive_process
  */
+
+/**
+ * Thrown by `invoke` when the current host is not the designated owner of an
+ * exclusive process.
+ */
+class NotProcessOwnerError extends Error {
+    /**
+     * @param {string} processName - The name of the exclusive process.
+     * @param {string} allowedOwner - The hostname that is permitted to invoke.
+     * @param {string} actualHostname - The hostname of the current host.
+     */
+    constructor(processName, allowedOwner, actualHostname) {
+        super(
+            `Process "${processName}" can only be invoked by "${allowedOwner}", ` +
+            `but the current host is "${actualHostname}"`
+        );
+        this.name = "NotProcessOwnerError";
+        /** @type {string} */
+        this.processName = processName;
+        /** @type {string} */
+        this.allowedOwner = allowedOwner;
+        /** @type {string} */
+        this.actualHostname = actualHostname;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is NotProcessOwnerError}
+ */
+function isNotProcessOwnerError(object) {
+    return object instanceof NotProcessOwnerError;
+}
 
 /**
  * A handle returned by `invoke`.
@@ -77,17 +120,26 @@ class ExclusiveProcessClass {
     __brand = undefined;
 
     /**
+     * @param {string} name
      * @param {(fanOut: (cbArg: C) => void, arg: A) => Promise<T>} procedure
      * @param {(initiating: A, attaching: A) => "attach" | "queue"} conflictor
+     * @param {(() => string | null) | null} owner
+     * @param {(() => string) | null} getHostname
      */
-    constructor(procedure, conflictor) {
+    constructor(name, procedure, conflictor, owner, getHostname) {
         if (this.__brand !== undefined) {
             throw new Error("ExclusiveProcess is a nominal type");
         }
+        /** @type {string} */
+        this._name = name;
         /** @type {Function} */
         this._procedure = procedure;
         /** @type {(initiating: A, attaching: A) => "attach" | "queue"} */
         this._conflictor = conflictor;
+        /** @type {(() => string | null) | null} */
+        this._owner = owner;
+        /** @type {(() => string) | null} */
+        this._getHostname = getHostname;
         /** @type {Promise<T> | null} */
         this._currentPromise = null;
         /** @type {{ value: A } | null} */
@@ -128,6 +180,24 @@ class ExclusiveProcessClass {
      * @returns {ExclusiveProcessHandleClass<T>}
      */
     invoke(arg, callerCallback) {
+        // Ownership check: if this process has an owner, verify the current
+        // hostname matches before allowing the invocation to proceed.
+        if (this._owner !== null) {
+            const owner = this._owner();
+            if (owner !== null) {
+                const getHostname = this._getHostname;
+                if (getHostname === null) {
+                    throw new Error(
+                        `ExclusiveProcess "${this._name}" has an owner but no getHostname callback was provided`
+                    );
+                }
+                const hostname = getHostname();
+                if (hostname !== owner) {
+                    throw new NotProcessOwnerError(this._name, owner, hostname);
+                }
+            }
+        }
+
         const cb = callerCallback ?? null;
 
         if (this._currentPromise === null) {
@@ -297,13 +367,22 @@ class ExclusiveProcessClass {
  * @template A - Type of the single argument passed to the procedure.
  * @template T - Return type of the procedure.
  * @template [C=never] - Type of each progress event emitted via `fanOut`.
- * @param {{ procedure: (fanOut: (cbArg: C) => void, arg: A) => Promise<T>, conflictor: (initiating: A, attaching: A) => "attach" | "queue" }} options
+ * @param {{
+ *   name: string,
+ *   procedure: (fanOut: (cbArg: C) => void, arg: A) => Promise<T>,
+ *   conflictor: (initiating: A, attaching: A) => "attach" | "queue",
+ *   owner?: (() => string | null) | null,
+ *   getHostname?: (() => string) | null,
+ * }} options
  * @returns {ExclusiveProcessClass<A, T, C>}
  */
 function makeExclusiveProcess(options) {
     return new ExclusiveProcessClass(
+        options.name,
         options.procedure,
-        options.conflictor
+        options.conflictor,
+        options.owner ?? null,
+        options.getHostname ?? null,
     );
 }
 
@@ -327,4 +406,6 @@ module.exports = {
     makeExclusiveProcess,
     isExclusiveProcess,
     isExclusiveProcessHandle,
+    NotProcessOwnerError,
+    isNotProcessOwnerError,
 };

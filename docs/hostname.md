@@ -71,3 +71,56 @@ The `createdBy` field is exposed through the graph inspection REST API alongside
 ```
 
 This makes it easy to see, from outside, which host initially computed each graph node.
+
+---
+
+# VOLODYSLAV_ANALYZER_HOSTNAME
+
+## Purpose
+
+`VOLODYSLAV_ANALYZER_HOSTNAME` designates the single host that is responsible
+for running the **diary summary pipeline**.
+
+Because the diary summary pipeline calls the AI summarizer and writes results
+to the shared graph database, running it concurrently on multiple hosts would
+waste API credits and risk clobbering in-progress summaries.  By setting this
+variable to exactly one hostname, only that host will execute the pipeline;
+all other hosts silently skip it.
+
+## How It Works
+
+The diary summary pipeline is guarded by an owned `ExclusiveProcess` (see
+[exclusive_process.md](exclusive_process.md)).  When `invoke` is called:
+
+1. The process reads `VOLODYSLAV_ANALYZER_HOSTNAME` lazily (at call time).
+2. If it is set, the current host's `VOLODYSLAV_HOSTNAME` is compared against
+   it.
+3. If they differ, a `NotProcessOwnerError` is thrown and the pipeline does
+   not run.
+4. The hourly job (`jobs/all.js`) catches this error and logs it at **debug**
+   level — it is not an error condition, just a confirmation that the work
+   belongs to another host.
+
+## Configuration
+
+```bash
+# On the analyzer host (the one that should run AI summarization):
+export VOLODYSLAV_ANALYZER_HOSTNAME="analyzer-01"
+export VOLODYSLAV_HOSTNAME="analyzer-01"
+
+# On worker hosts (they will skip the diary summary pipeline):
+export VOLODYSLAV_ANALYZER_HOSTNAME="analyzer-01"
+export VOLODYSLAV_HOSTNAME="worker-02"
+```
+
+`VOLODYSLAV_ANALYZER_HOSTNAME` is a **required** environment variable in
+production deployments. Volodyslav will refuse to start if it is not set (it
+is checked by `ensureEnvironmentIsInitialized` at startup).
+
+When the variable is absent (for example in tests or single-host development
+setups), the diary summary pipeline behaves as if it is **unowned**: any host
+may run it. `ensureEnvironmentIsInitialized` ensures this cannot happen in a
+running production instance.
+
+The allowed character set is the same as `VOLODYSLAV_HOSTNAME`:
+`[0-9A-Za-z_-]+`.

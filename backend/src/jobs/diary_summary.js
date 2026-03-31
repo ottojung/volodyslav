@@ -13,6 +13,7 @@ const { DIARY_SUMMARY_MODEL } = aiDiarySummaryModule;
 const { fromISOString } = require("../datetime");
 const { makeExclusiveProcess } = require("../exclusive_process");
 const { getType: getEventType } = require("../event");
+const { make: makeEnvironment, isEnvironmentError } = require("../environment");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
@@ -65,8 +66,27 @@ const { getType: getEventType } = require("../event");
  * progress events.
  *
  * No queuing — all concurrent calls always attach.
+ *
+ * This process is owned by the host identified by `VOLODYSLAV_ANALYZER_HOSTNAME`.
+ * Any host whose `VOLODYSLAV_HOSTNAME` does not match that value will receive a
+ * `NotProcessOwnerError` when it calls `invoke`.
  */
+const _environment = makeEnvironment();
 const diarySummaryExclusiveProcess = makeExclusiveProcess({
+    name: "diary-summary-pipeline",
+    owner: () => {
+        // Return null (unowned) when VOLODYSLAV_ANALYZER_HOSTNAME is absent so
+        // that deployments without it (e.g. in tests or single-host setups) are
+        // not blocked.  In production, ensureEnvironmentIsInitialized guarantees
+        // the variable is set before any requests are served.
+        try {
+            return _environment.analyzerHostname();
+        } catch (e) {
+            if (isEnvironmentError(e)) return null;
+            throw e;
+        }
+    },
+    getHostname: () => _environment.hostname(),
     /**
      * @param {(event: DiarySummaryEvent) => void} fanOut
      * @param {DiarySummaryArg} arg

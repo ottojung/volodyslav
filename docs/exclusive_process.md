@@ -58,9 +58,12 @@ resets to idle, so the next `invoke` starts a fresh run.
 
 ## API
 
-### `makeExclusiveProcess<A, T, C>({ procedure, conflictor }) → ExclusiveProcess<A, T, C>`
+### `makeExclusiveProcess<A, T, C>({ name, procedure, conflictor, owner?, getHostname? }) → ExclusiveProcess<A, T, C>`
 
 Creates a new, idle `ExclusiveProcess`.
+
+**`name: string`** — a human-readable identifier used in diagnostics and
+error messages.  Every `ExclusiveProcess` must have a name.
 
 **`procedure(fanOut, arg)`** — the async computation to run.  Must return a
 `Promise<T>`.
@@ -84,6 +87,17 @@ The procedure is called fresh on each new run.
 
 To always attach (never queue), pass `conflictor: () => "attach"`.
 
+**`owner?: () => string | null`** *(optional)* — a lazy callback called at
+`invoke` time.  When it returns a non-null string, only the host whose
+current hostname equals that string may invoke this process.  A caller
+running on a different host receives a `NotProcessOwnerError` instead of a
+handle.  If the callback returns `null`, or if `owner` is omitted, the
+process is *unowned* and any host may invoke it.
+
+**`getHostname?: () => string`** *(optional, required when `owner` is set)* —
+a lazy callback that returns the current host's hostname.  Called at `invoke`
+time only when `owner` returns a non-null string.
+
 ---
 
 ### `exclusiveProcess.invoke(arg, callerCallback?) → ExclusiveProcessHandle<T>`
@@ -93,6 +107,10 @@ To always attach (never queue), pass `conflictor: () => "attach"`.
 | Idle | — | Starts the run with `arg`; caller is the *initiator* |
 | Running | `"attach"` | Attaches; caller becomes an *attacher* |
 | Running | `"queue"` | Queues behind the current run |
+
+If the process has an owner and the current host is not the owner, `invoke`
+throws `NotProcessOwnerError` **synchronously** before starting or attaching
+to any run.
 
 `callerCallback` is registered in the class-managed fan-out list for the
 current run (or for the queued run, if queuing).  It will be called every
@@ -121,6 +139,43 @@ the thrown error on failure.
 
 ---
 
+### `NotProcessOwnerError`
+
+Thrown synchronously by `invoke` when the current host is not the designated
+owner of the process.
+
+```javascript
+const { NotProcessOwnerError, isNotProcessOwnerError } = require("../exclusive_process");
+
+try {
+    ep.invoke(arg);
+} catch (e) {
+    if (isNotProcessOwnerError(e)) {
+        console.log(e.processName);    // name of the ExclusiveProcess
+        console.log(e.allowedOwner);   // hostname that is allowed to invoke
+        console.log(e.actualHostname); // hostname of the current host
+    }
+}
+```
+
+Callers that should silently skip the work when they are not the owner should
+catch this error specifically and log it at debug level:
+
+```javascript
+await runDiarySummaryPipeline(capabilities).catch((error) => {
+    if (isNotProcessOwnerError(error)) {
+        capabilities.logger.logDebug(
+            { error },
+            "Diary summary pipeline skipped: not our job to run on this host"
+        );
+        return;
+    }
+    capabilities.logger.logError({ error }, "Error in diary summary pipeline");
+});
+```
+
+---
+
 ## Guarantees
 
 ### Progress events reach all concurrent callers
@@ -131,6 +186,7 @@ callbacks registered by attachers that joined after the run started.
 
 ```javascript
 const ep = makeExclusiveProcess({
+    name: "demo",
     procedure: (fanOut, arg) => {
         fanOut("step-1");
         fanOut("step-2");
@@ -160,6 +216,7 @@ the computation.
 
 ```javascript
 const ep = makeExclusiveProcess({
+    name: "demo",
     procedure: (_fanOut, _arg) => Promise.reject(new Error("oops")),
     conflictor: () => "attach",
 });
@@ -181,6 +238,7 @@ fresh computation.
 
 ```javascript
 const ep = makeExclusiveProcess({
+    name: "demo",
     procedure: (_fanOut, _arg) => Promise.reject(new Error("first failure")),
     conflictor: () => "attach",
 });
@@ -207,6 +265,7 @@ queuing and ignore the rest.
 ```javascript
 // backend/src/jobs/diary_summary.js
 const { makeExclusiveProcess } = require("../exclusive_process");
+const { make: makeEnvironment } = require("../environment");
 
 /**
  * @typedef {{ type: "entryQueued", path: string }
@@ -214,7 +273,16 @@ const { makeExclusiveProcess } = require("../exclusive_process");
  * } DiarySummaryEvent
  */
 
+const _environment = makeEnvironment();
 const diarySummaryExclusiveProcess = makeExclusiveProcess({
+    name: "diary-summary-pipeline",
+    // Only the designated analyzer host may run the pipeline.
+    owner: () => {
+        const raw = process.env.VOLODYSLAV_ANALYZER_HOSTNAME;
+        if (raw === undefined) return null;
+        return _environment.analyzerHostname();
+    },
+    getHostname: () => _environment.hostname(),
     // procedure receives fanOut and arg directly
     procedure: (fanOut, { capabilities }) => {
         return _runPipelineUnlocked(capabilities, {
@@ -239,6 +307,25 @@ function runDiarySummaryPipeline(capabilities, callbacks) {
 module.exports = { runDiarySummaryPipeline, diarySummaryExclusiveProcess };
 ```
 
+In the hourly job, catch `NotProcessOwnerError` so non-owner hosts skip the
+pipeline silently:
+
+```javascript
+// backend/src/jobs/all.js
+const { isNotProcessOwnerError } = require("../exclusive_process");
+
+await runDiarySummaryPipeline(capabilities).catch((error) => {
+    if (isNotProcessOwnerError(error)) {
+        capabilities.logger.logDebug(
+            { error },
+            "Diary summary pipeline skipped: not our job to run on this host"
+        );
+        return;
+    }
+    capabilities.logger.logError({ error }, "Error in diary summary pipeline");
+});
+```
+
 ### Options queuing (sync use-case)
 
 When different callers may supply incompatible arguments, use `conflictor` to
@@ -247,6 +334,7 @@ ensure conflicting calls are never silently dropped:
 ```javascript
 // backend/src/sync/index.js
 const synchronizeAllExclusiveProcess = makeExclusiveProcess({
+    name: "synchronize-all",
     procedure: (fanOut, { capabilities, options }) => {
         return _synchronizeAllUnlocked(capabilities, options, fanOut);
     },

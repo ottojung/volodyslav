@@ -110,6 +110,7 @@ function _syncConflictor(initiating, attaching) {
  *   all queued callers' callbacks are composed so everyone receives events.
  */
 const synchronizeAllExclusiveProcess = makeExclusiveProcess({
+    name: "synchronize-all",
     /**
      * @param {(step: SyncStepResult) => void} fanOut
      * @param {SyncArg} arg

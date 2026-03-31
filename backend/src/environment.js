@@ -90,6 +90,17 @@ function eventLogAssetsRepository() {
     return getEnv("VOLODYSLAV_EVENT_LOG_ASSETS_REPOSITORY");
 }
 
+function analyzerHostname() {
+    const value = getEnv("VOLODYSLAV_ANALYZER_HOSTNAME");
+    if (!isValidHostname(value)) {
+        throw new EnvironmentError(
+            "VOLODYSLAV_ANALYZER_HOSTNAME",
+            "must match [0-9a-zA-Z_-]+"
+        );
+    }
+    return value;
+}
+
 function hostname() {
     const value = getEnv("VOLODYSLAV_HOSTNAME");
     if (!isValidHostname(value)) {
@@ -117,6 +128,7 @@ function ensureEnvironmentIsInitialized(environment) {
     environment.eventLogAssetsDirectory();
     environment.generatorsRepository();
     environment.eventLogAssetsRepository();
+    environment.analyzerHostname();
     environment.hostname();
 }
 
@@ -136,6 +148,7 @@ function make() {
         eventLogAssetsDirectory,
         generatorsRepository,
         eventLogAssetsRepository,
+        analyzerHostname,
         hostname,
     };
 }

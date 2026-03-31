@@ -48,6 +48,50 @@ describe("environment.hostname()", () => {
     });
 });
 
+describe("environment.analyzerHostname()", () => {
+    const original = process.env.VOLODYSLAV_ANALYZER_HOSTNAME;
+
+    afterEach(() => {
+        if (original === undefined) {
+            delete process.env.VOLODYSLAV_ANALYZER_HOSTNAME;
+        } else {
+            process.env.VOLODYSLAV_ANALYZER_HOSTNAME = original;
+        }
+    });
+
+    it("returns the value of VOLODYSLAV_ANALYZER_HOSTNAME when set", () => {
+        process.env.VOLODYSLAV_ANALYZER_HOSTNAME = "analyzer-01";
+        const env = make();
+        expect(env.analyzerHostname()).toBe("analyzer-01");
+    });
+
+    it("throws EnvironmentError when VOLODYSLAV_ANALYZER_HOSTNAME is not set", () => {
+        delete process.env.VOLODYSLAV_ANALYZER_HOSTNAME;
+        const env = make();
+        expect(() => env.analyzerHostname()).toThrow("VOLODYSLAV_ANALYZER_HOSTNAME");
+    });
+
+    it("throws EnvironmentError when VOLODYSLAV_ANALYZER_HOSTNAME is empty", () => {
+        process.env.VOLODYSLAV_ANALYZER_HOSTNAME = "";
+        const env = make();
+        expect(() => env.analyzerHostname()).toThrow("[0-9a-zA-Z_-]+");
+    });
+
+    it("throws EnvironmentError when VOLODYSLAV_ANALYZER_HOSTNAME contains unsupported characters", () => {
+        process.env.VOLODYSLAV_ANALYZER_HOSTNAME = "my-analyzer.example.com";
+        const env = make();
+        expect(() => env.analyzerHostname()).toThrow("[0-9a-zA-Z_-]+");
+    });
+
+    it("is independent from VOLODYSLAV_HOSTNAME", () => {
+        process.env.VOLODYSLAV_ANALYZER_HOSTNAME = "analyzer-host";
+        process.env.VOLODYSLAV_HOSTNAME = "worker-host";
+        const env = make();
+        expect(env.analyzerHostname()).toBe("analyzer-host");
+        expect(env.hostname()).toBe("worker-host");
+    });
+});
+
 describe("creator hostname in event tryDeserialize()", () => {
     const baseEvent = {
         id: "abc",

@@ -3,6 +3,7 @@ const { executeDailyTasks } = require("./daily");
 const { runDiarySummaryPipeline } = require("./diary_summary");
 const { fromObject: Duration } = require("../datetime");
 const { synchronizeAll, isSynchronizeAllError, isAssetsSyncError, isGeneratorsSyncError } = require("../sync");
+const { isNotProcessOwnerError } = require("../exclusive_process");
 
 /** @typedef {import('../scheduler').Registration} Registration */
 
@@ -38,6 +39,13 @@ async function everyHour(capabilities) {
     });
 
     await runDiarySummaryPipeline(capabilities).catch((error) => {
+        if (isNotProcessOwnerError(error)) {
+            capabilities.logger.logDebug(
+                { error },
+                "Diary summary pipeline skipped: not our job to run on this host"
+            );
+            return;
+        }
         capabilities.logger.logError({ error }, "Error in diary summary pipeline");
     });
 }

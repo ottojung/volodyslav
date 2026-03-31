@@ -65,6 +65,9 @@ function stubEnvironment(capabilities) {
     capabilities.environment.hostname = jest
         .fn()
         .mockReturnValue("test-host");
+    capabilities.environment.analyzerHostname = jest
+        .fn()
+        .mockReturnValue("test-analyzer-host");
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn();
 }
 
