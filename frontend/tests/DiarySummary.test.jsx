@@ -97,7 +97,7 @@ describe("DiarySummary page", () => {
 
         // Clicking "Update Summary" succeeds.
         const updatedSummary = makeSummary({ summaryDate: "2024-04-01T00:00:00.000Z" });
-        runDiarySummary.mockResolvedValue(updatedSummary);
+        runDiarySummary.mockResolvedValue({ success: true, summary: updatedSummary });
 
         fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
 
@@ -116,7 +116,7 @@ describe("DiarySummary page", () => {
             expect(screen.getByText("Current snapshot")).toBeInTheDocument();
         });
 
-        runDiarySummary.mockResolvedValue(null);
+        runDiarySummary.mockResolvedValue({ success: false, error: "Pipeline failed" });
         fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
 
         await waitFor(() => {
@@ -130,6 +130,27 @@ describe("DiarySummary page", () => {
 
         await waitFor(() => {
             expect(screen.getByText(/Last updated:/)).toBeInTheDocument();
+        });
+    });
+
+    it("shows progress entries while the run is in progress via the onProgress callback", async () => {
+        fetchDiarySummary.mockResolvedValue(makeSummary());
+        renderDiarySummary();
+
+        await waitFor(() => {
+            expect(screen.getByText("Current snapshot")).toBeInTheDocument();
+        });
+
+        const updatedSummary = makeSummary({ summaryDate: "2024-04-01T00:00:00.000Z" });
+        runDiarySummary.mockImplementation((onProgress) => {
+            onProgress?.([{ path: "assets/audio.wav", status: "pending" }]);
+            return Promise.resolve({ success: true, summary: updatedSummary });
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText("audio.wav")).toBeInTheDocument();
         });
     });
 });

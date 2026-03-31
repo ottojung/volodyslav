@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
     Box,
@@ -11,10 +11,12 @@ import {
 import { marked } from "marked";
 import "./markdown.css";
 import { fetchDiarySummary, runDiarySummary } from "./api.js";
+import { DiarySummaryEntryList } from "./DiarySummaryEntryList.jsx";
 import { useToast } from "../toast.jsx";
 
 /**
  * @typedef {import('./api.js').DiarySummaryData} DiarySummaryData
+ * @typedef {import('./api.js').DiarySummaryRunEntry} DiarySummaryRunEntry
  */
 
 /**
@@ -47,6 +49,13 @@ function getInitialLoadState() {
 }
 
 /**
+ * @returns {DiarySummaryRunEntry[]}
+ */
+function getInitialRunEntries() {
+    return [];
+}
+
+/**
  * Diary Summary page component.
  * Shows the current rolling diary summary and allows triggering an update.
  * @returns {React.JSX.Element}
@@ -55,7 +64,16 @@ export default function DiarySummary() {
     const [summary, setSummary] = useState(getInitialSummary());
     const [loadState, setLoadState] = useState(getInitialLoadState());
     const [isRunning, setIsRunning] = useState(false);
+    const [runEntries, setRunEntries] = useState(getInitialRunEntries());
+    /** @type {import('react').MutableRefObject<AbortController | null>} */
+    const runAbortControllerRef = useRef(null);
     const toast = useToast();
+
+    useEffect(() => {
+        return () => {
+            runAbortControllerRef.current?.abort();
+        };
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -79,11 +97,23 @@ export default function DiarySummary() {
     }, []);
 
     async function handleRun() {
+        const abortController = new AbortController();
+        runAbortControllerRef.current?.abort();
+        runAbortControllerRef.current = abortController;
+
         setIsRunning(true);
+        setRunEntries([]);
         try {
-            const data = await runDiarySummary();
-            if (data !== null) {
-                setSummary(data);
+            const result = await runDiarySummary((entries) => {
+                if (!abortController.signal.aborted) {
+                    setRunEntries([...entries]);
+                }
+            }, abortController.signal);
+            if (abortController.signal.aborted) {
+                return;
+            }
+            if (result.success && result.summary) {
+                setSummary(result.summary);
                 setLoadState("ready");
                 toast({ title: "Diary summary updated.", status: "success" });
             } else {
@@ -91,7 +121,9 @@ export default function DiarySummary() {
                 toast({ title: "Failed to run diary summary.", status: "error" });
             }
         } finally {
-            setIsRunning(false);
+            if (!abortController.signal.aborted) {
+                setIsRunning(false);
+            }
         }
     }
 
@@ -115,6 +147,10 @@ export default function DiarySummary() {
                 >
                     Update Summary
                 </Button>
+
+                {(isRunning || runEntries.length > 0) && (
+                    <DiarySummaryEntryList entries={runEntries} isRunning={isRunning} />
+                )}
 
                 {loadState === "loading" && (
                     <Box display="flex" alignItems="center" gap={2}>
