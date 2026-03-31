@@ -121,14 +121,14 @@ describe("runDiarySummaryPipeline", () => {
             fromISOString("2024-03-15T10:00:00.000Z"),
         );
 
-        // Materialize the transcription node by pulling it.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         const result = await runDiarySummaryPipeline(capabilities);
 
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
         const call = capabilities.aiDiarySummary.updateSummary.mock.calls[0][0];
-        expect(call.newEntryTranscriptionText).toContain("mocked transcription");
+        expect(call.newEntryTranscribedAudioRecording).toContain("mocked transcription");
         expect(call.newEntryDateISO).toBeTruthy();
 
         // Watermark should be recorded for this asset.
@@ -145,10 +145,10 @@ describe("runDiarySummaryPipeline", () => {
             ["memo.mp3"],
         );
 
-        // Materialize transcription.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
-        // First run: processes the transcription.
+        // First run: processes the entry.
         const first = await runDiarySummaryPipeline(capabilities);
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
 
@@ -175,9 +175,9 @@ describe("runDiarySummaryPipeline", () => {
             capabilities, "2", ["newer.mp3"], newerDate
         );
 
-        // Materialize both transcriptions.
-        await capabilities.interface.pullGraphNode("transcription", [olderPath]);
-        await capabilities.interface.pullGraphNode("transcription", [newerPath]);
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", olderPath]);
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["2", newerPath]);
 
         const result = await runDiarySummaryPipeline(capabilities);
 
@@ -199,9 +199,9 @@ describe("runDiarySummaryPipeline", () => {
             capabilities, "2", ["b.mp3"], fromISOString("2024-02-01T00:00:00.000Z")
         );
 
-        // Materialize both.
-        await capabilities.interface.pullGraphNode("transcription", [p1]);
-        await capabilities.interface.pullGraphNode("transcription", [p2]);
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", p1]);
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["2", p2]);
 
         const setDiarySummarySpy = jest.spyOn(capabilities.interface, "setDiarySummary");
 
@@ -255,7 +255,8 @@ describe("runDiarySummaryPipeline", () => {
         const [relativeAssetPath] = await writeDiaryEventWithAssets(
             capabilities, "1", ["memo.mp3"], fromISOString("2024-01-01T00:00:00.000Z")
         );
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         // Launch two pipeline runs concurrently.
         const [r1, r2] = await Promise.all([
@@ -268,7 +269,7 @@ describe("runDiarySummaryPipeline", () => {
         expect(r2.type).toBe("diary_most_important_info_summary");
 
         // The AI should be called exactly once total: the second run sees the
-        // transcription already watermarked by the first and skips it.
+        // entry already watermarked by the first and skips it.
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
     });
 });

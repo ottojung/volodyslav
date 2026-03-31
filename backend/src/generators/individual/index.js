@@ -17,6 +17,7 @@ const basicContext = require('./basic_context');
 const calories = require('./calories');
 const transcription = require('./transcription');
 const eventTranscription = require('./event_transcription');
+const entryDiaryContent = require('./entry_diary_content');
 const diarySummary = require('./diary_most_important_info_summary');
 
 const eventAudiosList = require('./event_audios_list');
@@ -36,6 +37,7 @@ module.exports = {
     calories,
     transcription,
     eventTranscription,
+    entryDiaryContent,
     eventAudiosList,
     diarySummary,
 };
