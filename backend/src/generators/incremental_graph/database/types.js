@@ -224,7 +224,7 @@ function versionToString(Version) {
  * Returns "N/A" when the event is not a diary entry.
  * @typedef {object} EntryDiaryContentEntry
  * @property {'entry_diary_content'} type - The type of the entry
- * @property {{ typed_text: string | undefined, transcribed_audio_recording: string | undefined } | 'N/A'} value - The diary content
+ * @property {{ typedText: string | undefined, transcribedAudioRecording: string | undefined } | 'N/A'} value - The diary content
  */
 
 /**

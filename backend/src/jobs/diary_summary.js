@@ -95,21 +95,24 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
         }
 
         for (const relativeAssetPath of audioListEntry.audioPaths) {
-            // Check if an entry_diary_content node has been materialized for this asset.
-            const freshness = await capabilities.interface.debugGetFreshness(
-                "entry_diary_content",
-                [eventId, relativeAssetPath]
+            // Gate on transcription(a) materialization to avoid triggering
+            // new AI transcription calls for un-transcribed audio.
+            const transcriptionFreshness = await capabilities.interface.debugGetFreshness(
+                "transcription",
+                [relativeAssetPath]
             );
-            if (freshness === "missing") {
+            if (transcriptionFreshness === "missing") {
                 continue;
             }
 
-            // Get the modification time of the entry_diary_content graph node.
+            // Get the modification time of the transcription graph node.
+            // This is the stable signal for watermarking — entry_diary_content
+            // is recomputed whenever transcription changes.
             let modTimeISO;
             try {
                 const modTime = await capabilities.interface.getModificationTime(
-                    "entry_diary_content",
-                    [eventId, relativeAssetPath]
+                    "transcription",
+                    [relativeAssetPath]
                 );
                 modTimeISO = modTime.toISOString();
             } catch {
@@ -117,12 +120,16 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
             }
 
             // Check if this entry has already been processed.
-            const lastProcessed = processedTranscriptions[relativeAssetPath];
-            if (lastProcessed !== undefined && lastProcessed >= modTimeISO) {
+            // NOTE: `processedTranscriptions` is a legacy field name; it actually
+            // tracks the last-processed modification time of entry_diary_content nodes
+            // (keyed by the transcription asset path for backwards-compatible storage).
+            const lastProcessedDiaryContent = processedTranscriptions[relativeAssetPath];
+            if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= modTimeISO) {
                 continue;
             }
 
-            // Read the entry_diary_content value.
+            // Pull entry_diary_content unconditionally — this triggers its computation
+            // from the already-cached transcription(a) value without triggering new AI calls.
             let diaryContentValue;
             try {
                 const diaryContentEntry = await capabilities.interface.pullGraphNode(
@@ -140,7 +147,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
                 continue;
             }
 
-            const { typed_text: typedText, transcribed_audio_recording: transcribedAudioRecording } = diaryContentValue;
+            const { typedText, transcribedAudioRecording } = diaryContentValue;
 
             if (!typedText && !transcribedAudioRecording) {
                 continue;

@@ -9,7 +9,7 @@
  * if the respective source has no meaningful text).
  */
 
-const { getType } = require("../../../event");
+const { getType, getDescription } = require("../../../event");
 
 /** @typedef {import('../../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
 /** @typedef {import('../../incremental_graph/database/types').EntryDiaryContentEntry} EntryDiaryContentEntry */
@@ -37,7 +37,7 @@ function computeEntryDiaryContent(eventTranscriptionEntry) {
         return { type: "entry_diary_content", value: "N/A" };
     }
 
-    const typedText = toDefinedText(event.input);
+    const typedText = toDefinedText(getDescription(event));
 
     const transcribedAudioRecording = !("message" in transcription)
         ? toDefinedText(transcription.text)
@@ -45,7 +45,7 @@ function computeEntryDiaryContent(eventTranscriptionEntry) {
 
     return {
         type: "entry_diary_content",
-        value: { typed_text: typedText, transcribed_audio_recording: transcribedAudioRecording },
+        value: { typedText, transcribedAudioRecording },
     };
 }
 

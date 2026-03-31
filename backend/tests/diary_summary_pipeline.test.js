@@ -99,12 +99,12 @@ describe("runDiarySummaryPipeline", () => {
         const capabilities = await getTestCapabilities();
         await capabilities.interface.ensureInitialized();
 
-        // Write event with assets but do NOT pull entry_diary_content (not materialized).
+        // Write event with assets but do NOT pull transcription (not materialized).
         await writeDiaryEventWithAssets(capabilities, "1", ["memo.mp3"]);
 
         const result = await runDiarySummaryPipeline(capabilities);
 
-        // No entry_diary_content materialized → AI not called.
+        // No transcription materialized → AI not called.
         expect(capabilities.aiDiarySummary.updateSummary).not.toHaveBeenCalled();
         // processedTranscriptions should be empty.
         expect(Object.keys(result.processedTranscriptions)).toHaveLength(0);
@@ -121,7 +121,7 @@ describe("runDiarySummaryPipeline", () => {
             fromISOString("2024-03-15T10:00:00.000Z"),
         );
 
-        // Materialize the entry_diary_content node by pulling it.
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
         await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         const result = await runDiarySummaryPipeline(capabilities);
@@ -145,14 +145,14 @@ describe("runDiarySummaryPipeline", () => {
             ["memo.mp3"],
         );
 
-        // Materialize entry_diary_content.
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
         await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         // First run: processes the entry.
         const first = await runDiarySummaryPipeline(capabilities);
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
 
-        // Second run: entry_diary_content mod-time unchanged, should be skipped.
+        // Second run: transcription mod-time unchanged, should be skipped.
         const second = await runDiarySummaryPipeline(capabilities);
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1); // still 1
 
@@ -175,7 +175,7 @@ describe("runDiarySummaryPipeline", () => {
             capabilities, "2", ["newer.mp3"], newerDate
         );
 
-        // Materialize both entry_diary_content nodes.
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
         await capabilities.interface.pullGraphNode("entry_diary_content", ["1", olderPath]);
         await capabilities.interface.pullGraphNode("entry_diary_content", ["2", newerPath]);
 
@@ -199,7 +199,7 @@ describe("runDiarySummaryPipeline", () => {
             capabilities, "2", ["b.mp3"], fromISOString("2024-02-01T00:00:00.000Z")
         );
 
-        // Materialize both.
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
         await capabilities.interface.pullGraphNode("entry_diary_content", ["1", p1]);
         await capabilities.interface.pullGraphNode("entry_diary_content", ["2", p2]);
 
@@ -255,6 +255,7 @@ describe("runDiarySummaryPipeline", () => {
         const [relativeAssetPath] = await writeDiaryEventWithAssets(
             capabilities, "1", ["memo.mp3"], fromISOString("2024-01-01T00:00:00.000Z")
         );
+        // Pulling entry_diary_content also materializes transcription(a) via the graph chain.
         await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         // Launch two pipeline runs concurrently.
