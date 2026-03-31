@@ -11,17 +11,11 @@
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
 const { DIARY_SUMMARY_MODEL } = aiDiarySummaryModule;
 const { fromISOString } = require("../datetime");
-const { makeUniqueFunctor } = require("../unique_functor");
+const { makeExclusiveProcess } = require("../exclusive_process");
 const { getType: getEventType } = require("../event");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
-
-/**
- * Mutex key for serializing concurrent diary summary pipeline runs.
- * Prevents the hourly job and POST /diary-summary/run from racing.
- */
-const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").instantiate([]);
 
 /**
  * @callback OnEntryQueued
@@ -43,6 +37,52 @@ const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").inst
  */
 
 /**
+ * Discriminated union of progress events emitted by the diary summary pipeline.
+ * Used as the callback event type `C` for the ExclusiveProcess.
+ *
+ * @typedef {{ type: "entryQueued", path: string } | { type: "entryProcessed", path: string, status: "success" | "error" }} DiarySummaryEvent
+ */
+
+/**
+ * Argument type for `diarySummaryExclusiveProcess`.
+ * `capabilities` is part of the argument so the procedure can use it directly
+ * without relying on a module-level closure variable.
+ *
+ * @typedef {{ capabilities: Capabilities }} DiarySummaryArg
+ */
+
+/**
+ * Shared ExclusiveProcess for the diary summary pipeline.
+ *
+ * The procedure receives `fanOut` (the class-managed fan-out callback) and
+ * `{ capabilities }` directly.  `capabilities` is passed as part of the
+ * argument so no module-level variable is needed.
+ *
+ * Both the hourly scheduled job and the POST /diary-summary/run route use this
+ * instance.  A second concurrent invocation *attaches* to the already-running
+ * computation instead of starting a new one, and its per-caller callback is
+ * automatically registered in the fan-out set so it receives all subsequent
+ * progress events.
+ *
+ * No queuing — all concurrent calls always attach.
+ */
+const diarySummaryExclusiveProcess = makeExclusiveProcess({
+    /**
+     * @param {(event: DiarySummaryEvent) => void} fanOut
+     * @param {DiarySummaryArg} arg
+     * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
+     */
+    procedure: (fanOut, { capabilities }) => {
+        return _runDiarySummaryPipelineUnlocked(capabilities, {
+            onEntryQueued: (path) => fanOut({ type: "entryQueued", path }),
+            onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
+        });
+    },
+    // All concurrent calls attach to the same run — no queuing needed.
+    conflictor: () => "attach",
+});
+
+/**
  * Runs the diary summary pipeline.
  *
  * Steps:
@@ -53,17 +93,27 @@ const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").inst
  *  5. For each new diary content entry, call the AI summarizer and advance the watermarks.
  *  6. Persist the updated summary back to the graph after each fold.
  *
- * Runs are serialized with a mutex so the hourly job and an explicit POST run
- * cannot race and overwrite each other.
+ * Uses a shared ExclusiveProcess so that a second concurrent invocation attaches
+ * to the already-running computation instead of starting a new one.  Progress
+ * events are forwarded to all concurrent callers via the native fan-out.  Any
+ * error propagates to all callers.
  *
  * @param {Capabilities} capabilities
  * @param {DiarySummaryPipelineCallbacks} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
-async function runDiarySummaryPipeline(capabilities, callbacks) {
-    return capabilities.sleeper.withMutex(DIARY_SUMMARY_MUTEX_KEY, () =>
-        _runDiarySummaryPipelineUnlocked(capabilities, callbacks)
-    );
+function runDiarySummaryPipeline(capabilities, callbacks) {
+    /** @type {((event: DiarySummaryEvent) => void) | undefined} */
+    const callerCallback = callbacks
+        ? (event) => {
+            if (event.type === "entryQueued") {
+                callbacks.onEntryQueued?.(event.path);
+            } else if (event.type === "entryProcessed") {
+                callbacks.onEntryProcessed?.(event.path, event.status);
+            }
+        }
+        : undefined;
+    return diarySummaryExclusiveProcess.invoke({ capabilities }, callerCallback).result;
 }
 
 /**
@@ -243,5 +293,6 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
 
 module.exports = {
     runDiarySummaryPipeline,
+    diarySummaryExclusiveProcess,
 };
 
