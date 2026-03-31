@@ -151,6 +151,59 @@ function isValidIANATimezone(tz) {
     return IANAZone.isValidZone(tz);
 }
 
+/**
+ * Parse a client-provided timezone string into a canonical timezone string
+ * that can be passed to setZone().
+ *
+ * Accepts:
+ *   - Valid IANA timezone names (e.g. "Europe/Kyiv", "UTC")
+ *   - Numeric UTC offsets with optional sign and optional minutes:
+ *       "5", "-7", "+3", "+05:30", "-07:00", "5:30"
+ *
+ * Returns the canonical timezone string on success, or null if the input
+ * is not recognized as a valid timezone or offset.
+ *
+ * @param {unknown} tz
+ * @returns {string | null}
+ */
+function parseClientTimezone(tz) {
+    if (typeof tz !== "string" || tz.length === 0) {
+        return null;
+    }
+
+    // Accept valid IANA timezone names as-is.
+    if (IANAZone.isValidZone(tz)) {
+        return tz;
+    }
+
+    // Accept numeric UTC offsets: optional sign, 1-2 digit hours, optional :MM.
+    // Examples: "5", "-7", "+3", "+05:30", "-07:00", "5:30"
+    const offsetMatch = tz.match(/^([+-]?)(\d{1,2})(?::(\d{2}))?$/);
+    if (offsetMatch) {
+        const [, signStr, hoursStr, minutesStr] = offsetMatch;
+        if (hoursStr === undefined) {
+            return null;
+        }
+        const sign = signStr === "-" ? "-" : "+";
+        const hours = parseInt(hoursStr, 10);
+        const minutes = minutesStr !== undefined ? parseInt(minutesStr, 10) : 0;
+
+        // Validate ranges: hours 0–14 (covers UTC-12 to UTC+14), minutes 0–59.
+        if (hours > 14 || minutes > 59) {
+            return null;
+        }
+
+        if (minutes === 0) {
+            return `UTC${sign}${hours}`;
+        }
+        const paddedHours = String(hours).padStart(2, "0");
+        const paddedMinutes = String(minutes).padStart(2, "0");
+        return `UTC${sign}${paddedHours}:${paddedMinutes}`;
+    }
+
+    return null;
+}
+
 module.exports = {    
     fromISOString,
     toISOString,
@@ -159,4 +212,5 @@ module.exports = {
     DateTimeTryDeserializeError,
     isDateTimeTryDeserializeError,
     isValidIANATimezone,
+    parseClientTimezone,
 };
