@@ -106,8 +106,10 @@ export default function DiarySummary() {
             const data = await runDiarySummary();
             if (data !== null) {
                 setSummary(data);
+                setLoadState("ready");
                 toast({ title: "Diary summary updated.", status: "success" });
             } else {
+                setLoadState("error");
                 toast({ title: "Failed to run diary summary.", status: "error" });
             }
         } finally {

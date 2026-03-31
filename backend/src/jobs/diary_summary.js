@@ -10,6 +10,7 @@
 const path = require("path");
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
 const { DIARY_SUMMARY_MODEL } = aiDiarySummaryModule;
+const { fromISOString } = require("../datetime");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
@@ -21,7 +22,7 @@ const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac
  * @returns {boolean}
  */
 function isAudioFilename(filename) {
-    const basename = path.basename(filename).toLocaleLowerCase();
+    const basename = path.basename(filename).toLowerCase();
     if (basename === "diary-audio.webm") {
         return true;
     }
@@ -161,8 +162,12 @@ async function runDiarySummaryPipeline(capabilities) {
                 currentMarkdown = result.summaryMarkdown;
                 processedTranscriptions[relativeAssetPath] = modTimeISO;
 
-                // Advance summaryDate to max(summaryDate, newEntryDateISO).
-                if (!currentSummaryDate || newEntryDateISO > currentSummaryDate) {
+                // Advance summaryDate to max(summaryDate, newEntryDateISO) using
+                // DateTime comparison to handle mixed timezone offsets correctly.
+                const newEntryTime = fromISOString(newEntryDateISO);
+                const shouldAdvance = !currentSummaryDate ||
+                    newEntryTime.isAfter(fromISOString(currentSummaryDate));
+                if (shouldAdvance) {
                     currentSummaryDate = newEntryDateISO;
                 }
 
@@ -172,6 +177,19 @@ async function runDiarySummaryPipeline(capabilities) {
                     { relativeAssetPath, newEntryDateISO },
                     "Diary summary updated with new transcription"
                 );
+
+                // Persist incrementally so a crash mid-run loses at most one fold.
+                /** @type {DiaryMostImportantInfoSummaryEntry} */
+                const intermediateSummary = {
+                    type: "diary_most_important_info_summary",
+                    markdown: currentMarkdown,
+                    summaryDate: currentSummaryDate,
+                    processedTranscriptions: { ...processedTranscriptions },
+                    updatedAt: capabilities.datetime.now().toISOString(),
+                    model: DIARY_SUMMARY_MODEL,
+                    version: "1",
+                };
+                await capabilities.interface.setDiarySummary(intermediateSummary);
             } catch (error) {
                 const msg = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logError(
@@ -188,25 +206,16 @@ async function runDiarySummaryPipeline(capabilities) {
         return currentSummary;
     }
 
-    /** @type {DiaryMostImportantInfoSummaryEntry} */
-    const newSummary = {
-        type: "diary_most_important_info_summary",
-        markdown: currentMarkdown,
-        summaryDate: currentSummaryDate,
-        processedTranscriptions,
-        updatedAt: capabilities.datetime.now().toISOString(),
-        model: DIARY_SUMMARY_MODEL,
-        version: "1",
-    };
-
-    await capabilities.interface.setDiarySummary(newSummary);
+    // The final state was already persisted incrementally after each fold.
+    // Re-read from the graph to return the authoritative persisted value.
+    const finalSummary = await capabilities.interface.getDiarySummary();
 
     capabilities.logger.logInfo(
-        { summaryDate: newSummary.summaryDate, updatedAt: newSummary.updatedAt },
+        { summaryDate: finalSummary.summaryDate, updatedAt: finalSummary.updatedAt },
         "Diary summary pipeline complete"
     );
 
-    return newSummary;
+    return finalSummary;
 }
 
 module.exports = {
