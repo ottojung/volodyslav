@@ -66,7 +66,7 @@ Rules:
    ## Decisions / commitments / open loops
    ## Recent important changes
    ## Wins / progress / helpful things
-   ## Important immutable facts
+   ## Important long-term facts
 
 2. Output only Markdown, starting with "## Current snapshot".
 3. Use mostly bullets (- ...). Use short paragraphs only when clearly better.
@@ -82,7 +82,7 @@ Rules:
    - active projects and obligations
    - decisions, intentions, and unresolved open loops
    - notable wins, improvements, and stabilizing factors
-   - important immutable facts
+   - important long-term facts
 10. Aggressively avoid:
    - decorative detail
    - low-signal one-off facts
@@ -97,7 +97,7 @@ Rules:
 15. Do minimal edits: preserve unchanged bullets verbatim when possible.
 16. Keep the summary readable, high-signal, and stable across repeated updates.
 17. Output should be in English, except names and special terms, which should stay in their original language.
-18. By "immutable" we mean things that are either impossible or very difficult to change, such user's biological traits, name, or significant footprint from past experience.
+18. By "long-term" we mean things that are either impossible or slow to change, such user's name, their personality, or significant footprint from past experience.
 
 Return ONLY the updated markdown.`;
 
