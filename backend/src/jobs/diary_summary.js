@@ -37,64 +37,52 @@ const { getType: getEventType } = require("../event");
  */
 
 /**
- * Captured capabilities for the current / most-recent diary-summary run.
- * Set by `runDiarySummaryPipeline` before each `invoke` so the fixed
- * procedure can reference it without receiving it as an `invoke` arg.
+ * Discriminated union of progress events emitted by the diary summary pipeline.
+ * Used as the callback event type `C` for the ExclusiveProcess.
+ *
+ * @typedef {{ type: "entryQueued", path: string } | { type: "entryProcessed", path: string, status: "success" | "error" }} DiarySummaryEvent
+ */
+
+/**
+ * Capabilities captured from the last `runDiarySummaryPipeline` call.
+ * Set before each `invoke` so the fixed procedure can reference it.
  * @type {Capabilities | null}
  */
 let _diarySummaryCapabilities = null;
 
 /**
- * Per-run fan-out list of callbacks.  Populated by the procedure on each new
- * run (initiator) and extended by the `onAttach` hook when further callers
- * join an in-progress run.
- * @type {DiarySummaryPipelineCallbacks[]}
- */
-let _activeDiaryCallbacks = [];
-
-/**
  * Shared ExclusiveProcess for the diary summary pipeline.
+ *
+ * The procedure is curried: it first receives the class-managed `fanOut`
+ * callback (which distributes each DiarySummaryEvent to all concurrent
+ * callers), then the invocation argument (unused — `capabilities` is captured
+ * via `_diarySummaryCapabilities`).
  *
  * Both the hourly scheduled job and the POST /diary-summary/run route use this
  * instance.  A second concurrent invocation *attaches* to the already-running
- * computation instead of starting a new one.
- *
- * `invoke` receives only the optional callbacks (the parametric argument).
- * `capabilities` is a non-parametric dependency captured via the module-level
- * `_diarySummaryCapabilities` variable, which is updated by
- * `runDiarySummaryPipeline` before each call.
- *
- * The `onAttach` hook adds the attaching caller's callbacks to the fan-out list
- * so all concurrent callers receive `onEntryQueued`/`onEntryProcessed` events.
+ * computation instead of starting a new one, and its per-caller callback is
+ * automatically registered in the fan-out set so it receives all subsequent
+ * progress events.
  */
 const diarySummaryExclusiveProcess = makeExclusiveProcess(
     /**
-     * @param {DiarySummaryPipelineCallbacks | undefined} callbacks
-     * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
+     * @param {(event: DiarySummaryEvent) => void} fanOut
+     * @returns {(arg: undefined) => Promise<DiaryMostImportantInfoSummaryEntry>}
      */
-    (callbacks) => {
-        // Reset the fan-out list for this run.
-        _activeDiaryCallbacks = callbacks ? [callbacks] : [];
-        /** @type {DiarySummaryPipelineCallbacks} */
-        const fanOut = {
-            onEntryQueued: (path) => {
-                for (const cb of _activeDiaryCallbacks) cb.onEntryQueued?.(path);
-            },
-            onEntryProcessed: (path, status) => {
-                for (const cb of _activeDiaryCallbacks) cb.onEntryProcessed?.(path, status);
-            },
-        };
-        return _runDiarySummaryPipelineUnlocked(
-            /** @type {Capabilities} */ (_diarySummaryCapabilities),
-            fanOut
-        );
-    },
-    {
-        onAttach: (newArgs) => {
-            const callbacks = /** @type {DiarySummaryPipelineCallbacks | undefined} */ (newArgs[0]);
-            if (callbacks) _activeDiaryCallbacks.push(callbacks);
-        },
+    (fanOut) => (_arg) => {
+        const capabilities = _diarySummaryCapabilities;
+        if (capabilities === null) {
+            throw new Error(
+                "No capabilities set for diary summary pipeline. " +
+                "Call runDiarySummaryPipeline instead of invoking the process directly."
+            );
+        }
+        return _runDiarySummaryPipelineUnlocked(capabilities, {
+            onEntryQueued: (path) => fanOut({ type: "entryQueued", path }),
+            onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
+        });
     }
+    // No shouldQueue — all concurrent calls attach to the same run.
 );
 
 /**
@@ -109,8 +97,9 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess(
  *  6. Persist the updated summary back to the graph after each fold.
  *
  * Uses a shared ExclusiveProcess so that a second concurrent invocation attaches
- * to the already-running computation instead of starting a new one.  Callbacks
- * are forwarded to all concurrent callers.  Any error propagates to all callers.
+ * to the already-running computation instead of starting a new one.  Progress
+ * events are forwarded to all concurrent callers via the native fan-out.  Any
+ * error propagates to all callers.
  *
  * @param {Capabilities} capabilities
  * @param {DiarySummaryPipelineCallbacks} [callbacks]
@@ -118,7 +107,17 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess(
  */
 function runDiarySummaryPipeline(capabilities, callbacks) {
     _diarySummaryCapabilities = capabilities;
-    return diarySummaryExclusiveProcess.invoke([callbacks]).result;
+    /** @type {((event: DiarySummaryEvent) => void) | undefined} */
+    const callerCallback = callbacks
+        ? (event) => {
+            if (event.type === "entryQueued") {
+                callbacks.onEntryQueued?.(event.path);
+            } else if (event.type === "entryProcessed") {
+                callbacks.onEntryProcessed?.(event.path, event.status);
+            }
+        }
+        : undefined;
+    return diarySummaryExclusiveProcess.invoke(undefined, callerCallback).result;
 }
 
 /**

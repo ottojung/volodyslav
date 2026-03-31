@@ -95,57 +95,36 @@ function _syncOptionsConflict(current, incoming) {
 let _syncCapabilities = null;
 
 /**
- * Per-run fan-out list of step callbacks.  Populated on each new run
- * (initiator) and extended by the `onAttach` hook when further callers join.
- * @type {((step: SyncStepResult) => void)[]}
- */
-let _activeSyncStepCallbacks = [];
-
-/**
  * Shared ExclusiveProcess for synchronization.
  *
- * Both the hourly scheduled job and the POST /sync route use this instance.
- *
- * `invoke` receives `[options, onStepComplete]` (the parametric arguments).
- * `capabilities` is a non-parametric dependency captured via the module-level
- * `_syncCapabilities` variable, updated by `synchronizeAll` before each call.
+ * The procedure is curried: it first receives the class-managed `fanOut`
+ * callback (which distributes each SyncStepResult to all concurrent callers),
+ * then the options argument.  `capabilities` is captured via `_syncCapabilities`.
  *
  * Behaviour when a second call arrives while a run is active:
- * - **Compatible options** (same `resetToHostname` or none) → attach; the
- *   attacher's `onStepComplete` is added to the fan-out list.
+ * - **Compatible options** (same `resetToHostname` or none) → attaches; the
+ *   attacher's `onStepComplete` is registered in the native fan-out.
  * - **Conflicting options** (wants a reset the current run isn't doing) →
- *   queue: after the current run ends, a fresh run starts with the queued
- *   args; last-write-wins when multiple conflicting calls queue up.
+ *   queued: after the current run ends a fresh run starts with the queued
+ *   options; last-write-wins when multiple conflicting calls queue up.
  */
 const synchronizeAllExclusiveProcess = makeExclusiveProcess(
     /**
-     * @param {{ resetToHostname?: string } | undefined} options
-     * @param {((step: SyncStepResult) => void) | undefined} onStepComplete
-     * @returns {Promise<void>}
+     * @param {(step: SyncStepResult) => void} fanOut
+     * @returns {(options: { resetToHostname?: string } | undefined) => Promise<void>}
      */
-    (options, onStepComplete) => {
-        // Reset the fan-out list for this run.
-        _activeSyncStepCallbacks = onStepComplete ? [onStepComplete] : [];
-        const fanOut = /** @param {SyncStepResult} step */ (step) => {
-            for (const fn of _activeSyncStepCallbacks) fn(step);
-        };
-        return _synchronizeAllUnlocked(
-            /** @type {Capabilities} */ (_syncCapabilities),
-            options,
-            fanOut
-        );
+    (fanOut) => (options) => {
+        const capabilities = _syncCapabilities;
+        if (capabilities === null) {
+            throw new Error(
+                "No capabilities set for the sync process. " +
+                "Call synchronizeAll() instead of invoking synchronizeAllExclusiveProcess directly."
+            );
+        }
+        return _synchronizeAllUnlocked(capabilities, options, fanOut);
     },
-    {
-        onAttach: (newArgs) => {
-            const onStepComplete = /** @type {((step: SyncStepResult) => void) | undefined} */ (newArgs[1]);
-            if (onStepComplete) _activeSyncStepCallbacks.push(onStepComplete);
-        },
-        shouldQueue: (currentArgs, newArgs) => {
-            const currentOptions = /** @type {{ resetToHostname?: string } | undefined} */ (currentArgs[0]);
-            const newOptions = /** @type {{ resetToHostname?: string } | undefined} */ (newArgs[0]);
-            return _syncOptionsConflict(currentOptions, newOptions);
-        },
-    }
+    // shouldQueue: queue when the new caller wants a reset the current run isn't doing.
+    _syncOptionsConflict
 );
 
 /**
@@ -170,7 +149,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess(
  */
 function synchronizeAll(capabilities, options, onStepComplete) {
     _syncCapabilities = capabilities;
-    return synchronizeAllExclusiveProcess.invoke([options, onStepComplete]).result;
+    return synchronizeAllExclusiveProcess.invoke(options, onStepComplete).result;
 }
 
 /**
