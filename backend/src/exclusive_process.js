@@ -6,10 +6,10 @@
  *
  * `makeExclusiveProcess({ procedure, conflictor })` where:
  *
- * - `procedure(fanOut, arg)` — the computation to run.  `fanOut` is a
- *   class-managed callback that distributes each progress event to every
- *   currently registered caller (initiator and all attachers).  `arg` is the
- *   invocation-specific argument.
+ * - `procedure(fanOut, arg)` — the async computation to run.  Must return a
+ *   `Promise<T>`.  `fanOut` is a class-managed callback that distributes each
+ *   progress event to every currently registered caller (initiator and all
+ *   attachers).  `arg` is the invocation-specific argument.
  *
  * - `conflictor(initiating, attaching)` — called when `invoke` arrives while a
  *   run is already in progress.  Returns `"queue"` to queue the new call behind
@@ -200,11 +200,28 @@ class ExclusiveProcessClass {
      */
     _startRun(arg, callerCallback) {
         this._currentArgHolder = { value: arg };
-        this._callbackReceivers = callerCallback !== null ? [callerCallback] : [];
+
+        // Capture a per-run array in the `fanOut` closure so that async
+        // progress events emitted after the run ends cannot leak into a later
+        // run's callback set.  Attachers push into `this._callbackReceivers`,
+        // which is the same object as `receivers` for the duration of this run.
+        /** @type {((cbArg: C) => void)[]} */
+        const receivers = callerCallback !== null ? [callerCallback] : [];
+        this._callbackReceivers = receivers;
 
         /** @type {(cbArg: C) => void} */
         const fanOut = (cbArg) => {
-            for (const cb of this._callbackReceivers) cb(cbArg);
+            for (const cb of receivers) {
+                try {
+                    cb(cbArg);
+                } catch (error) {
+                    // ExclusiveProcess is a generic utility with no access to
+                    // capabilities, so we fall back to console.error here.
+                    // This keeps one caller's callback bug from aborting the
+                    // run for everyone else.
+                    console.error("ExclusiveProcess: fan-out callback threw an error", error);
+                }
+            }
         };
 
         /** @type {(value: T) => void} */
@@ -218,17 +235,8 @@ class ExclusiveProcessClass {
         });
         this._currentPromise = promise;
 
-        let procedurePromise;
-        try {
-            procedurePromise = Promise.resolve(this._procedure(fanOut, arg));
-        } catch (error) {
-            this._currentPromise = null;
-            this._currentArgHolder = null;
-            this._callbackReceivers = [];
-            reject(error);
-            this._drainPending();
-            return new ExclusiveProcessHandleClass(true, promise);
-        }
+        /** @type {Promise<T>} */
+        const procedurePromise = this._procedure(fanOut, arg);
 
         procedurePromise.then(
             /** @param {T} result */
@@ -236,6 +244,7 @@ class ExclusiveProcessClass {
                 this._currentPromise = null;
                 this._currentArgHolder = null;
                 this._callbackReceivers = [];
+                receivers.length = 0;
                 resolve(result);
                 this._drainPending();
             },
@@ -244,6 +253,7 @@ class ExclusiveProcessClass {
                 this._currentPromise = null;
                 this._currentArgHolder = null;
                 this._callbackReceivers = [];
+                receivers.length = 0;
                 reject(error);
                 this._drainPending();
             }

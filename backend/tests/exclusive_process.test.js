@@ -127,19 +127,19 @@ describe("ExclusiveProcess", () => {
             await expect(h.result).resolves.toBe("recovered");
         });
 
-        it("handles a synchronously throwing procedure and resets the same ep to idle", async () => {
+        it("handles a rejected async procedure and resets the same ep to idle", async () => {
             let fail = true;
             const ep = makeExclusiveProcess({
-                procedure: (_fanOut, _arg) => {
-                    if (fail) throw new Error("sync throw");
-                    return Promise.resolve("ok");
+                procedure: async (_fanOut, _arg) => {
+                    if (fail) throw new Error("async error");
+                    return "ok";
                 },
             conflictor: () => "attach",
         });
 
             const handle = ep.invoke(undefined);
             expect(handle.isInitiator).toBe(true);
-            await expect(handle.result).rejects.toThrow("sync throw");
+            await expect(handle.result).rejects.toThrow("async error");
 
             // The SAME process should be idle again — second invoke is an initiator
             fail = false;
@@ -311,6 +311,33 @@ describe("ExclusiveProcess", () => {
 
             expect(cb1).toEqual(["late-event"]);
             expect(cb2).toEqual(["late-event"]);
+        });
+
+        it("a throwing callback does not abort fan-out for subsequent callbacks", async () => {
+            const events = [];
+            let emitEvent;
+            const ep = makeExclusiveProcess({
+                procedure: async (fanOut, _arg) => {
+                    await new Promise((resolve) => {
+                        emitEvent = () => {
+                            fanOut("event");
+                            resolve();
+                        };
+                    });
+                    return "done";
+                },
+                conflictor: () => "attach",
+            });
+
+            // First callback throws; second should still receive the event.
+            ep.invoke(undefined, (_e) => { throw new Error("callback error"); });
+            ep.invoke(undefined, (e) => events.push(e)); // attaches
+
+            // Emit after both callers are registered.
+            emitEvent();
+            await new Promise((r) => setImmediate(r));
+
+            expect(events).toEqual(["event"]);
         });
 
         it("callbacks are cleared between runs of the same EP", async () => {

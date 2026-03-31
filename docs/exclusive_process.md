@@ -62,10 +62,13 @@ resets to idle, so the next `invoke` starts a fresh run.
 
 Creates a new, idle `ExclusiveProcess`.
 
-**`procedure(fanOut, arg)`** — the computation to run.
+**`procedure(fanOut, arg)`** — the async computation to run.  Must return a
+`Promise<T>`.
 
 - `fanOut: (cbArg: C) => void` — class-managed wrapper; call this to
-  broadcast progress events to all current callers.
+  broadcast progress events to all current callers.  If a caller's callback
+  throws, the error is caught and logged via `console.error`; fan-out
+  continues to the remaining callbacks uninterrupted.
 - `arg: A` — per-invocation argument passed by the caller.
 
 The procedure is called fresh on each new run.
