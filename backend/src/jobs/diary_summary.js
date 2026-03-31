@@ -126,30 +126,14 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
                 continue;
             }
 
-            // Get the modification time of the transcription graph node.
-            // This is the stable signal for watermarking — entry_diary_content
-            // is recomputed whenever transcription changes.
-            let modTimeISO;
-            try {
-                const modTime = await capabilities.interface.getModificationTime(
-                    "transcription",
-                    [relativeAssetPath]
-                );
-                modTimeISO = modTime.toISOString();
-            } catch (error) {
-                capabilities.logger.logError(
-                    { relativeAssetPath, error },
-                    "Diary summary pipeline: failed to get modification time for transcription",
-                );
-                continue;
-            }
-
             // Check if this entry has already been processed.
             // NOTE: `processedTranscriptions` is a legacy field name; it actually
             // tracks the last-processed modification time of entry_diary_content nodes
             // (keyed by the transcription asset path for backwards-compatible storage).
             const lastProcessedDiaryContent = processedTranscriptions[relativeAssetPath];
-            if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= modTimeISO) {
+            // Get the event date as an ISO string for context.
+            const newEntryDateISO = event.date.toISOString();
+            if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= newEntryDateISO) {
                 continue;
             }
 
@@ -185,9 +169,6 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
             // Signal that this entry is about to be processed.
             callbacks?.onEntryQueued?.(relativeAssetPath);
 
-            // Get the event date as an ISO string for context.
-            const newEntryDateISO = event.date.toISOString();
-
             // Call the AI summarizer.
             try {
                 const result = await capabilities.aiDiarySummary.updateSummary({
@@ -199,7 +180,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
                 });
 
                 currentMarkdown = result.summaryMarkdown;
-                processedTranscriptions[relativeAssetPath] = modTimeISO;
+                processedTranscriptions[relativeAssetPath] = newEntryDateISO;
 
                 // Advance summaryDate to max(summaryDate, newEntryDateISO) using
                 // DateTime comparison to handle mixed timezone offsets correctly.
