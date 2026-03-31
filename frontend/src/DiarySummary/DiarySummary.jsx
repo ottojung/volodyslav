@@ -8,6 +8,8 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react";
+import { marked } from "marked";
+import "./markdown.css";
 import { fetchDiarySummary, runDiarySummary } from "./api.js";
 import { useToast } from "../toast.jsx";
 
@@ -23,42 +25,18 @@ function getInitialSummary() {
 }
 
 /**
- * Renders the summary markdown as simple paragraphs and bullet lists.
- * This avoids requiring a Markdown library dependency.
+ * Renders the summary markdown using the marked library.
  * @param {{ markdown: string }} props
  * @returns {React.JSX.Element}
  */
 function MarkdownText({ markdown }) {
-    const lines = markdown.split("\n");
-    /** @type {React.JSX.Element[]} */
-    const elements = [];
-    let key = 0;
-
-    for (const line of lines) {
-        if (line.startsWith("## ")) {
-            elements.push(
-                <Heading key={key++} as="h2" size="md" mt={4} mb={2}>
-                    {line.slice(3)}
-                </Heading>
-            );
-        } else if (line.startsWith("- ")) {
-            elements.push(
-                <Text key={key++} pl={4} mb={1}>
-                    {"• "}{line.slice(2)}
-                </Text>
-            );
-        } else if (line.trim() === "") {
-            elements.push(<Box key={key++} h={1} />);
-        } else {
-            elements.push(
-                <Text key={key++} mb={1}>
-                    {line}
-                </Text>
-            );
-        }
-    }
-
-    return <Box>{elements}</Box>;
+    const html = marked.parse(markdown, { gfm: true });
+    return (
+        <Box
+            className="markdown-body"
+            dangerouslySetInnerHTML={{ __html: html }}
+        />
+    );
 }
 
 /**

@@ -7,4 +7,7 @@ module.exports = {
     },
     moduleFileExtensions: ["js", "jsx", "json", "node"],
     setupFilesAfterEnv: ["<rootDir>/tests/setup.js"],
+    moduleNameMapper: {
+        "\\.css$": "<rootDir>/tests/styleMock.js",
+    },
 };
