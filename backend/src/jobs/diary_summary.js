@@ -44,46 +44,42 @@ const { getType: getEventType } = require("../event");
  */
 
 /**
- * Capabilities captured from the last `runDiarySummaryPipeline` call.
- * Set before each `invoke` so the fixed procedure can reference it.
- * @type {Capabilities | null}
+ * Argument type for `diarySummaryExclusiveProcess`.
+ * `capabilities` is part of the argument so the procedure can use it directly
+ * without relying on a module-level closure variable.
+ *
+ * @typedef {{ capabilities: Capabilities }} DiarySummaryArg
  */
-let _diarySummaryCapabilities = null;
 
 /**
  * Shared ExclusiveProcess for the diary summary pipeline.
  *
- * The procedure is curried: it first receives the class-managed `fanOut`
- * callback (which distributes each DiarySummaryEvent to all concurrent
- * callers), then the invocation argument (unused — `capabilities` is captured
- * via `_diarySummaryCapabilities`).
+ * The procedure receives `fanOut` (the class-managed fan-out callback) and
+ * `{ capabilities }` directly.  `capabilities` is passed as part of the
+ * argument so no module-level variable is needed.
  *
  * Both the hourly scheduled job and the POST /diary-summary/run route use this
  * instance.  A second concurrent invocation *attaches* to the already-running
  * computation instead of starting a new one, and its per-caller callback is
  * automatically registered in the fan-out set so it receives all subsequent
  * progress events.
+ *
+ * No `conflictor` is needed — all concurrent calls always attach.
  */
-const diarySummaryExclusiveProcess = makeExclusiveProcess(
+const diarySummaryExclusiveProcess = makeExclusiveProcess({
     /**
      * @param {(event: DiarySummaryEvent) => void} fanOut
-     * @returns {(arg: undefined) => Promise<DiaryMostImportantInfoSummaryEntry>}
+     * @param {DiarySummaryArg} arg
+     * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
      */
-    (fanOut) => (_arg) => {
-        const capabilities = _diarySummaryCapabilities;
-        if (capabilities === null) {
-            throw new Error(
-                "No capabilities set for diary summary pipeline. " +
-                "Call runDiarySummaryPipeline instead of invoking the process directly."
-            );
-        }
+    procedure: (fanOut, { capabilities }) => {
         return _runDiarySummaryPipelineUnlocked(capabilities, {
             onEntryQueued: (path) => fanOut({ type: "entryQueued", path }),
             onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
         });
-    }
-    // No shouldQueue — all concurrent calls attach to the same run.
-);
+    },
+    // No conflictor — all concurrent calls attach to the same run.
+});
 
 /**
  * Runs the diary summary pipeline.
@@ -106,7 +102,6 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess(
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
 function runDiarySummaryPipeline(capabilities, callbacks) {
-    _diarySummaryCapabilities = capabilities;
     /** @type {((event: DiarySummaryEvent) => void) | undefined} */
     const callerCallback = callbacks
         ? (event) => {
@@ -117,7 +112,7 @@ function runDiarySummaryPipeline(capabilities, callbacks) {
             }
         }
         : undefined;
-    return diarySummaryExclusiveProcess.invoke(undefined, callerCallback).result;
+    return diarySummaryExclusiveProcess.invoke({ capabilities }, callerCallback).result;
 }
 
 /**

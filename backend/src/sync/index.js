@@ -68,64 +68,58 @@ function isSynchronizeAllError(object) {
  */
 
 /**
- * Returns `true` if the incoming options conflict with the current run's
+ * Returns `"queue"` if the incoming options conflict with the current run's
  * options.  A conflict occurs when the new caller wants to reset to a specific
  * hostname that differs from what the current run is doing (either the current
  * run has no reset, or is resetting to a different hostname).
  *
  * If the new caller has no reset requirement (`resetToHostname` is absent),
- * any ongoing run is acceptable and there is no conflict.
+ * any ongoing run is acceptable and the new call attaches.
  *
- * @param {{ resetToHostname?: string } | undefined} current
- * @param {{ resetToHostname?: string } | undefined} incoming
- * @returns {boolean}
+ * @param {{ capabilities: Capabilities, options?: { resetToHostname?: string } }} initiating
+ * @param {{ capabilities: Capabilities, options?: { resetToHostname?: string } }} attaching
+ * @returns {"attach" | "queue"}
  */
-function _syncOptionsConflict(current, incoming) {
-    const incomingReset = incoming?.resetToHostname;
-    if (incomingReset === undefined) return false;
-    return incomingReset !== current?.resetToHostname;
+function _syncConflictor(initiating, attaching) {
+    const incomingReset = attaching.options?.resetToHostname;
+    if (incomingReset === undefined) return "attach";
+    return incomingReset !== initiating.options?.resetToHostname ? "queue" : "attach";
 }
 
 /**
- * Captured capabilities for the current / most-recent sync run.
- * Set by `synchronizeAll` before each `invoke` so the fixed procedure can
- * reference it without receiving it as an `invoke` arg.
- * @type {Capabilities | null}
+ * Argument type for `synchronizeAllExclusiveProcess`.
+ * `capabilities` is part of the argument so the procedure can use it directly.
+ *
+ * @typedef {{ capabilities: Capabilities, options?: { resetToHostname?: string } }} SyncArg
  */
-let _syncCapabilities = null;
 
 /**
  * Shared ExclusiveProcess for synchronization.
  *
- * The procedure is curried: it first receives the class-managed `fanOut`
- * callback (which distributes each SyncStepResult to all concurrent callers),
- * then the options argument.  `capabilities` is captured via `_syncCapabilities`.
+ * Both the hourly scheduled job and the POST /sync route use this instance.
+ *
+ * The procedure receives `fanOut` (the class-managed fan-out callback, used
+ * as `onStepComplete`) and `{ capabilities, options }` directly.
  *
  * Behaviour when a second call arrives while a run is active:
  * - **Compatible options** (same `resetToHostname` or none) → attaches; the
  *   attacher's `onStepComplete` is registered in the native fan-out.
  * - **Conflicting options** (wants a reset the current run isn't doing) →
  *   queued: after the current run ends a fresh run starts with the queued
- *   options; last-write-wins when multiple conflicting calls queue up.
+ *   options; last-write-wins when multiple conflicting calls queue up, but
+ *   all queued callers' callbacks are composed so everyone receives events.
  */
-const synchronizeAllExclusiveProcess = makeExclusiveProcess(
+const synchronizeAllExclusiveProcess = makeExclusiveProcess({
     /**
      * @param {(step: SyncStepResult) => void} fanOut
-     * @returns {(options: { resetToHostname?: string } | undefined) => Promise<void>}
+     * @param {SyncArg} arg
+     * @returns {Promise<void>}
      */
-    (fanOut) => (options) => {
-        const capabilities = _syncCapabilities;
-        if (capabilities === null) {
-            throw new Error(
-                "No capabilities set for the sync process. " +
-                "Call synchronizeAll() instead of invoking synchronizeAllExclusiveProcess directly."
-            );
-        }
+    procedure: (fanOut, { capabilities, options }) => {
         return _synchronizeAllUnlocked(capabilities, options, fanOut);
     },
-    // shouldQueue: queue when the new caller wants a reset the current run isn't doing.
-    _syncOptionsConflict
-);
+    conflictor: _syncConflictor,
+});
 
 /**
  * Synchronizes all destinations and then invalidates the incremental graph interface.
@@ -148,8 +142,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess(
  * @throws {SynchronizeAllError}
  */
 function synchronizeAll(capabilities, options, onStepComplete) {
-    _syncCapabilities = capabilities;
-    return synchronizeAllExclusiveProcess.invoke(options, onStepComplete).result;
+    return synchronizeAllExclusiveProcess.invoke({ capabilities, options }, onStepComplete).result;
 }
 
 /**

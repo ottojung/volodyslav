@@ -4,30 +4,35 @@
  *
  * ## Construction
  *
- * `makeExclusiveProcess(procedure, shouldQueue?)` where `procedure` is a
- * curried function:
+ * `makeExclusiveProcess({ procedure, conflictor? })` where:
  *
- *   `(fanOut: (cbArg: C) => void) => (arg: A) => Promise<T>`
+ * - `procedure(fanOut, arg)` — the computation to run.  `fanOut` is a
+ *   class-managed callback that distributes each progress event to every
+ *   currently registered caller (initiator and all attachers).  `arg` is the
+ *   invocation-specific argument.
  *
- * The `fanOut` parameter is a class-managed wrapper that distributes each
- * callback event to every currently registered caller (initiator and all
- * attachers).  The procedure should call `fanOut(event)` instead of calling
- * individual caller callbacks directly.
+ * - `conflictor(initiating, attaching)` — optional.  Called when `invoke` is
+ *   called while a run is already in progress.  Returns `"queue"` to queue the
+ *   new call behind the current run or `"attach"` to coalesce it onto the
+ *   current run.  Defaults to always `"attach"` when omitted.
  *
  * ## Invocation
  *
  * `ep.invoke(arg, callerCallback?)` — pass the argument and an optional
  * per-caller callback.
  *
- * | State before call | Behaviour |
- * |---|---|
- * | Idle | Starts a fresh run; caller is the *initiator* |
- * | Running, compatible | Attaches to the running computation; caller is an *attacher* |
- * | Running, conflicting (shouldQueue returns true) | Queues behind the current run |
+ * | State before call | `conflictor` decision | Behaviour |
+ * |---|---|---|
+ * | Idle | — | Starts a fresh run; caller is the *initiator* |
+ * | Running | `"attach"` | Coalesces onto current run; `callerCallback` added to fan-out |
+ * | Running | `"queue"` | Queued; starts after current run ends |
  *
  * Both initiator and all attachers share the same result promise.  All
- * registered callbacks (from every attaching caller) receive every event
- * emitted via `fanOut`.
+ * registered callbacks receive every event emitted via `fanOut`.
+ *
+ * For queued calls: last-write-wins on `arg` (most recent queued arg is used
+ * when the queued run starts), but **all** queued callers' callbacks are
+ * composed so every caller receives events from the queued run.
  *
  * After the computation finishes (successfully or with an error) the
  * ExclusiveProcess resets to idle so the next `invoke` starts a fresh run.
@@ -65,34 +70,39 @@ class ExclusiveProcessHandleClass {
  *
  * @template A - Type of the single argument passed to the procedure.
  * @template T - Return type of the procedure.
- * @template [C=never] - Type of each callback event emitted by the procedure.
+ * @template [C=never] - Type of each progress event emitted via `fanOut`.
  */
 class ExclusiveProcessClass {
     /** @type {undefined} */
     __brand = undefined;
 
     /**
-     * @param {(fanOut: (cbArg: C) => void) => (arg: A) => Promise<T>} procedure
-     * @param {((currentArg: A, newArg: A) => boolean) | null} [shouldQueue]
+     * @param {(fanOut: (cbArg: C) => void, arg: A) => Promise<T>} procedure
+     * @param {((initiating: A, attaching: A) => "attach" | "queue") | null} conflictor
      */
-    constructor(procedure, shouldQueue) {
+    constructor(procedure, conflictor) {
         if (this.__brand !== undefined) {
             throw new Error("ExclusiveProcess is a nominal type");
         }
         /** @type {Function} */
         this._procedure = procedure;
-        /** @type {((currentArg: A, newArg: A) => boolean) | null} */
-        this._shouldQueue = shouldQueue ?? null;
+        /** @type {((initiating: A, attaching: A) => "attach" | "queue") | null} */
+        this._conflictor = conflictor;
         /** @type {Promise<T> | null} */
         this._currentPromise = null;
         /** @type {{ value: A } | null} */
         this._currentArgHolder = null;
         /** @type {((cbArg: C) => void)[]} */
         this._callbackReceivers = [];
-        // Queued (pending) invocation
+        // Queued (pending) invocation state
         /** @type {{ value: A } | null} */
         this._pendingArgHolder = null;
-        /** @type {((cbArg: C) => void) | null} */
+        /**
+         * Composed callback for the pending run.  When multiple conflicting
+         * calls arrive, last-write-wins on the arg but all callbacks are
+         * composed so every queued caller receives fan-out events.
+         * @type {((cbArg: C) => void) | null}
+         */
         this._pendingCallback = null;
         /** @type {((value: T) => void) | null} */
         this._pendingResolve = null;
@@ -113,14 +123,6 @@ class ExclusiveProcessClass {
     /**
      * Invoke the managed computation.
      *
-     * If the process is idle, starts a fresh run and returns an initiator
-     * handle.  If running:
-     * - If `shouldQueue` returns `true` for the (current, new) arg pair, the
-     *   call is queued (last-write-wins when multiple calls queue up) and
-     *   returns an attacher handle backed by the pending run's promise.
-     * - Otherwise attaches to the running computation and returns an attacher
-     *   handle backed by the current run's promise.
-     *
      * @param {A} arg - Argument forwarded to the procedure when starting.
      * @param {((cbArg: C) => void) | null} [callerCallback] - Optional per-caller callback.
      * @returns {ExclusiveProcessHandleClass<T>}
@@ -132,34 +134,51 @@ class ExclusiveProcessClass {
             return this._startRun(arg, cb);
         }
 
-        // Decide: queue or attach?
-        if (this._shouldQueue !== null) {
+        // A run is active — ask the conflictor whether to attach or queue.
+        if (this._conflictor !== null) {
             const currentArgHolder = this._currentArgHolder;
-            if (
-                currentArgHolder !== null &&
-                this._shouldQueue(currentArgHolder.value, arg)
-            ) {
-                if (this._pendingPromise === null) {
-                    /** @type {(value: T) => void} */
-                    let resolve = (_v) => {};
-                    /** @type {(reason: unknown) => void} */
-                    let reject = (_r) => {};
-                    /** @type {Promise<T>} */
-                    const promise = new Promise((res, rej) => {
-                        resolve = res;
-                        reject = rej;
-                    });
-                    this._pendingArgHolder = { value: arg };
-                    this._pendingCallback = cb;
-                    this._pendingResolve = resolve;
-                    this._pendingReject = reject;
-                    this._pendingPromise = promise;
-                } else {
-                    // Last-write-wins for queued arg and callback.
-                    this._pendingArgHolder = { value: arg };
-                    this._pendingCallback = cb;
+            if (currentArgHolder !== null) {
+                const decision = this._conflictor(currentArgHolder.value, arg);
+                if (decision === "queue") {
+                    if (this._pendingPromise === null) {
+                        // First queued call: create a new pending promise.
+                        /** @type {(value: T) => void} */
+                        let resolve = (_v) => {};
+                        /** @type {(reason: unknown) => void} */
+                        let reject = (_r) => {};
+                        /** @type {Promise<T>} */
+                        const promise = new Promise((res, rej) => {
+                            resolve = res;
+                            reject = rej;
+                        });
+                        this._pendingArgHolder = { value: arg };
+                        this._pendingCallback = cb;
+                        this._pendingResolve = resolve;
+                        this._pendingReject = reject;
+                        this._pendingPromise = promise;
+                    } else {
+                        // Subsequent queued calls: last-write-wins on arg;
+                        // compose callbacks so all queued callers receive events.
+                        this._pendingArgHolder = { value: arg };
+                        if (cb !== null) {
+                            const existing = this._pendingCallback;
+                            if (existing === null) {
+                                this._pendingCallback = cb;
+                            } else {
+                                // Capture `existing` in the closure; `this._pendingCallback`
+                                // will be overwritten immediately after this block.
+                                this._pendingCallback = (event) => {
+                                    existing(event);
+                                    cb(event);
+                                };
+                            }
+                        }
+                    }
+                    return new ExclusiveProcessHandleClass(
+                        false,
+                        /** @type {Promise<T>} */ (this._pendingPromise)
+                    );
                 }
-                return new ExclusiveProcessHandleClass(false, this._pendingPromise);
             }
         }
 
@@ -199,7 +218,7 @@ class ExclusiveProcessClass {
 
         let procedurePromise;
         try {
-            procedurePromise = this._procedure(fanOut)(arg);
+            procedurePromise = this._procedure(fanOut, arg);
         } catch (error) {
             this._currentPromise = null;
             this._currentArgHolder = null;
@@ -236,38 +255,59 @@ class ExclusiveProcessClass {
      */
     _drainPending() {
         if (this._pendingPromise === null) return;
-        const argHolder = /** @type {{ value: A }} */ (this._pendingArgHolder);
+
+        const argHolder = this._pendingArgHolder;
         const callback = this._pendingCallback;
-        const pendingResolve = /** @type {(value: T) => void} */ (this._pendingResolve);
-        const pendingReject = /** @type {(reason: unknown) => void} */ (this._pendingReject);
+        const pendingResolve = this._pendingResolve;
+        const pendingReject = this._pendingReject;
+
+        if (argHolder === null || pendingResolve === null || pendingReject === null) {
+            throw new Error(
+                "ExclusiveProcess internal invariant violated: " +
+                "pending promise exists but pending arg/resolve/reject are null"
+            );
+        }
+
         this._pendingArgHolder = null;
         this._pendingCallback = null;
         this._pendingResolve = null;
         this._pendingReject = null;
         this._pendingPromise = null;
+
         const handle = this._startRun(argHolder.value, callback);
         handle.result.then(pendingResolve, pendingReject);
     }
 }
 
 /**
+ * @typedef {object} ExclusiveProcessOptions
+ * @template A
+ * @template T
+ * @template [C=never]
+ * @property {(fanOut: (cbArg: C) => void, arg: A) => Promise<T>} procedure
+ *   The computation to run.  `fanOut` is a class-managed callback that
+ *   distributes each progress event to every currently registered caller.
+ *   `arg` is the per-invocation argument.
+ * @property {((initiating: A, attaching: A) => "attach" | "queue") | null} [conflictor]
+ *   Optional.  Called when `invoke` arrives while a run is already in progress.
+ *   Return `"queue"` to queue the new call or `"attach"` to coalesce it onto
+ *   the current run.  Defaults to always `"attach"` when omitted.
+ */
+
+/**
  * Creates a new {@link ExclusiveProcessClass} instance.
  *
  * @template A - Type of the single argument passed to the procedure.
  * @template T - Return type of the procedure.
- * @template [C=never] - Type of each callback event emitted by the procedure.
- * @param {(fanOut: (cbArg: C) => void) => (arg: A) => Promise<T>} procedure
- *   Curried function: first receives the class-managed fan-out callback, then
- *   the invocation argument.  The procedure should call `fanOut(event)` to
- *   broadcast progress events to all current callers.
- * @param {((currentArg: A, newArg: A) => boolean) | null} [shouldQueue]
- *   If provided and returns `true` for a (currentArg, newArg) pair, the new
- *   call is queued rather than attached.  Last-write-wins when multiple calls
- *   queue up.
+ * @template [C=never] - Type of each progress event emitted via `fanOut`.
+ * @param {{ procedure: (fanOut: (cbArg: C) => void, arg: A) => Promise<T>, conflictor?: ((initiating: A, attaching: A) => "attach" | "queue") | null }} options
  * @returns {ExclusiveProcessClass<A, T, C>}
  */
-function makeExclusiveProcess(procedure, shouldQueue) {
-    return new ExclusiveProcessClass(procedure, shouldQueue ?? null);
+function makeExclusiveProcess(options) {
+    return new ExclusiveProcessClass(
+        options.procedure,
+        options.conflictor ?? null
+    );
 }
 
 /**
