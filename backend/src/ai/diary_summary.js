@@ -57,6 +57,7 @@ Rules:
    ## Decisions / commitments / open loops
    ## Recent important changes
    ## Wins / progress / helpful things
+   ## Important immutable facts
 
 2. Format: Mostly bullets (- ...). Short paragraphs only when clearly better.
 3. Where useful, add first-seen/last-seen/recency markers inside bullets.
