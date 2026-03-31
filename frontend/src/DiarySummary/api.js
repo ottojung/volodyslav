@@ -19,11 +19,11 @@ const DIARY_SUMMARY_POLL_INTERVAL_MS = 1000;
  */
 
 /**
- * @typedef {{ status: "idle" | "running" | "success" | "error", entries?: DiarySummaryRunEntry[], summary?: DiarySummaryData, error?: string }} DiarySummaryRunResponse
+ * @typedef {{ status: "idle" | "running" | "success" | "error", entries?: DiarySummaryRunEntry[], summary?: DiarySummaryData, error?: string, currentHostname?: string, analyzerHostname?: string }} DiarySummaryRunResponse
  */
 
 /**
- * @typedef {{ success: boolean, summary?: DiarySummaryData, error?: string, entries?: DiarySummaryRunEntry[] }} RunDiarySummaryResult
+ * @typedef {{ success: boolean, summary?: DiarySummaryData, error?: string, entries?: DiarySummaryRunEntry[], notAnalyzer?: boolean, analyzerHostname?: string, currentHostname?: string }} RunDiarySummaryResult
  */
 
 /**
@@ -79,12 +79,22 @@ export async function runDiarySummary(onProgress, signal) {
             signal,
         });
 
-        if (response.status !== 200 && response.status !== 202 && response.status !== 500) {
+        if (response.status !== 200 && response.status !== 202 && response.status !== 500 && response.status !== 503) {
             logger.warn("Failed to run diary summary:", response.status);
             return { success: false, error: `Request failed with status ${response.status}` };
         }
 
         let data = await readDiarySummaryRunResponse(response);
+
+        if (data?.error === "not_analyzer") {
+            return {
+                success: false,
+                notAnalyzer: true,
+                analyzerHostname: data.analyzerHostname,
+                currentHostname: data.currentHostname,
+                error: `This host (${data.currentHostname}) is not the analyzer. The analyzer is: ${data.analyzerHostname}`,
+            };
+        }
 
         if (data?.status === "running" && data.entries && !signal?.aborted) {
             onProgress?.(data.entries);

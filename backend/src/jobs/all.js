@@ -37,9 +37,18 @@ async function everyHour(capabilities) {
         }
     });
 
-    await runDiarySummaryPipeline(capabilities).catch((error) => {
-        capabilities.logger.logError({ error }, "Error in diary summary pipeline");
-    });
+    const currentHostname = capabilities.environment.hostname();
+    const analyzerHostname = capabilities.environment.analyzerHostname();
+    if (currentHostname !== analyzerHostname) {
+        capabilities.logger.logInfo(
+            { currentHostname, analyzerHostname },
+            "Not the analyzer host, skipping diary summary"
+        );
+    } else {
+        await runDiarySummaryPipeline(capabilities).catch((error) => {
+            capabilities.logger.logError({ error }, "Error in diary summary pipeline");
+        });
+    }
 }
 
 /**

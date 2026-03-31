@@ -126,7 +126,7 @@ describe("runDiarySummary", () => {
     });
 
     it("returns error result when the POST returns an unexpected status", async () => {
-        global.fetch.mockResolvedValueOnce(makeResponse(503, { error: "Not ready" }));
+        global.fetch.mockResolvedValueOnce(makeResponse(409, { error: "Not ready" }));
 
         let result;
         await act(async () => {
@@ -134,7 +134,25 @@ describe("runDiarySummary", () => {
         });
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain("503");
+        expect(result.error).toContain("409");
+    });
+
+    it("returns notAnalyzer result when the POST returns 503 with not_analyzer error", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(503, {
+            error: "not_analyzer",
+            currentHostname: "current-host",
+            analyzerHostname: "analyzer-host",
+        }));
+
+        let result;
+        await act(async () => {
+            result = await runDiarySummary();
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.notAnalyzer).toBe(true);
+        expect(result.analyzerHostname).toBe("analyzer-host");
+        expect(result.currentHostname).toBe("current-host");
     });
 
     it("returns error result on network failure", async () => {

@@ -116,6 +116,11 @@ export default function DiarySummary() {
                 setSummary(result.summary);
                 setLoadState("ready");
                 toast({ title: "Diary summary updated.", status: "success" });
+            } else if (result.notAnalyzer) {
+                toast({
+                    title: result.error,
+                    status: "error",
+                });
             } else {
                 setLoadState("error");
                 toast({ title: "Failed to run diary summary.", status: "error" });
