@@ -54,7 +54,6 @@ Rules:
    ## Ongoing themes and patterns
    ## Important people and relationships
    ## Projects / work / obligations
-   ## Health / symptoms / body / habits
    ## Decisions / commitments / open loops
    ## Recent important changes
    ## Wins / progress / helpful things
