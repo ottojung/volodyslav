@@ -131,7 +131,7 @@ describe("diary summary — ExclusiveProcess adoption", () => {
     });
 
     describe("P2 — callbacks forwarded to attached callers", () => {
-        it("attacher's onAttach hook is invoked, adding callbacks to fan-out", async () => {
+        it("attacher's callback is added to fan-out and receives all subsequent events", async () => {
             const capabilities = getTestCapabilities();
             const deferred = makeDeferred();
 

@@ -25,14 +25,20 @@ function simpleProcedure(fn) {
 describe("ExclusiveProcess", () => {
     describe("makeExclusiveProcess", () => {
         it("returns an ExclusiveProcess instance", () => {
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()),
+            conflictor: () => "attach",
+        });
             expect(isExclusiveProcess(ep)).toBe(true);
         });
 
         it("creates independent instances that do not share state", () => {
             const deferred = makeDeferred();
-            const ep1 = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
-            const ep2 = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep1 = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
+            const ep2 = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
 
             const h1 = ep1.invoke(undefined);
             expect(h1.isInitiator).toBe(true);
@@ -51,7 +57,8 @@ describe("ExclusiveProcess", () => {
                     received = arg;
                     return Promise.resolve();
                 },
-            });
+            conflictor: () => "attach",
+        });
             await ep.invoke("hello").result;
             expect(received).toBe("hello");
         });
@@ -64,7 +71,8 @@ describe("ExclusiveProcess", () => {
                     fanOut("event-2");
                     return Promise.resolve();
                 },
-            });
+            conflictor: () => "attach",
+        });
             await ep.invoke(undefined, (e) => events.push(e)).result;
             expect(events).toEqual(["event-1", "event-2"]);
         });
@@ -78,7 +86,8 @@ describe("ExclusiveProcess", () => {
                     called = true;
                     return 42;
                 }),
-            });
+            conflictor: () => "attach",
+        });
 
             const handle = ep.invoke(undefined);
 
@@ -90,7 +99,9 @@ describe("ExclusiveProcess", () => {
 
         it("resets to idle after a successful run", async () => {
             let run = 0;
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve(++run)) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve(++run)),
+            conflictor: () => "attach",
+        });
 
             await ep.invoke(undefined).result;
 
@@ -105,7 +116,8 @@ describe("ExclusiveProcess", () => {
                 procedure: simpleProcedure(() =>
                     fail ? Promise.reject(new Error("boom")) : Promise.resolve("recovered")
                 ),
-            });
+            conflictor: () => "attach",
+        });
 
             await ep.invoke(undefined).result.catch(() => {});
 
@@ -122,7 +134,8 @@ describe("ExclusiveProcess", () => {
                     if (fail) throw new Error("sync throw");
                     return Promise.resolve("ok");
                 },
-            });
+            conflictor: () => "attach",
+        });
 
             const handle = ep.invoke(undefined);
             expect(handle.isInitiator).toBe(true);
@@ -139,7 +152,9 @@ describe("ExclusiveProcess", () => {
     describe("invoke — running process (attaching)", () => {
         it("returns an attacher handle when a run is already in progress", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -153,7 +168,9 @@ describe("ExclusiveProcess", () => {
 
         it("attacher shares the same result promise as the initiator", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -173,7 +190,8 @@ describe("ExclusiveProcess", () => {
                     procedureCallCount++;
                     return deferred.promise;
                 },
-            });
+            conflictor: () => "attach",
+        });
 
             ep.invoke(undefined);
             ep.invoke(undefined);
@@ -188,7 +206,9 @@ describe("ExclusiveProcess", () => {
 
         it("multiple attachers all receive the same result", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
 
             const handles = [
                 ep.invoke(undefined),
@@ -222,7 +242,8 @@ describe("ExclusiveProcess", () => {
                     });
                     return deferred.promise.then(() => "done");
                 },
-            });
+            conflictor: () => "attach",
+        });
 
             const cb1 = [];
             const cb2 = [];
@@ -247,7 +268,8 @@ describe("ExclusiveProcess", () => {
                     deferred.promise.then(() => fanOut("event"));
                     return deferred.promise.then(() => "done");
                 },
-            });
+            conflictor: () => "attach",
+        });
 
             const cb1 = [];
             ep.invoke(undefined, (e) => cb1.push(e));
@@ -273,7 +295,8 @@ describe("ExclusiveProcess", () => {
                         };
                     });
                 },
-            });
+            conflictor: () => "attach",
+        });
 
             const cb1 = [];
             const cb2 = [];
@@ -302,7 +325,8 @@ describe("ExclusiveProcess", () => {
                     d.promise.then(() => fanOut(`event-${runCount}`));
                     return d.promise.then(() => "done");
                 },
-            });
+            conflictor: () => "attach",
+        });
 
             // First run with callback
             const h1 = ep.invoke(undefined, (e) => firstRunEvents.push(e));
@@ -454,7 +478,8 @@ describe("ExclusiveProcess", () => {
         it("propagates errors to the initiator", async () => {
             const ep = makeExclusiveProcess({
                 procedure: simpleProcedure(() => Promise.reject(new Error("failure"))),
-            });
+            conflictor: () => "attach",
+        });
 
             const handle = ep.invoke(undefined);
 
@@ -463,7 +488,9 @@ describe("ExclusiveProcess", () => {
 
         it("propagates errors to all attachers", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -484,7 +511,8 @@ describe("ExclusiveProcess", () => {
                 procedure: simpleProcedure(() =>
                     fail ? Promise.reject(new Error("crash")) : Promise.resolve("fresh")
                 ),
-            });
+            conflictor: () => "attach",
+        });
 
             const h1 = ep.invoke(undefined);
             await h1.result.catch(() => {});
@@ -502,7 +530,8 @@ describe("ExclusiveProcess", () => {
                 procedure: simpleProcedure(() =>
                     fail ? deferred.promise : Promise.resolve("new-run")
                 ),
-            });
+            conflictor: () => "attach",
+        });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -522,7 +551,9 @@ describe("ExclusiveProcess", () => {
 
     describe("isExclusiveProcess type guard", () => {
         it("returns true for an ExclusiveProcess", () => {
-            expect(isExclusiveProcess(makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()) }))).toBe(true);
+            expect(isExclusiveProcess(makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()),
+            conflictor: () => "attach",
+        }))).toBe(true);
         });
 
         it("returns false for non-ExclusiveProcess values", () => {
@@ -537,7 +568,9 @@ describe("ExclusiveProcess", () => {
     describe("isExclusiveProcessHandle type guard", () => {
         it("returns true for a handle returned by invoke", () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
             const handle = ep.invoke(undefined);
             expect(isExclusiveProcessHandle(handle)).toBe(true);
             deferred.resolve();
@@ -553,20 +586,26 @@ describe("ExclusiveProcess", () => {
 
     describe("isRunning", () => {
         it("returns false when the process is idle", () => {
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()),
+            conflictor: () => "attach",
+        });
             expect(ep.isRunning()).toBe(false);
         });
 
         it("returns true while a computation is active", () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
+            conflictor: () => "attach",
+        });
             ep.invoke(undefined);
             expect(ep.isRunning()).toBe(true);
             deferred.resolve();
         });
 
         it("returns false after a successful run completes", async () => {
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve("done")) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve("done")),
+            conflictor: () => "attach",
+        });
             await ep.invoke(undefined).result;
             expect(ep.isRunning()).toBe(false);
         });
@@ -574,7 +613,8 @@ describe("ExclusiveProcess", () => {
         it("returns false after a failed run completes", async () => {
             const ep = makeExclusiveProcess({
                 procedure: simpleProcedure(() => Promise.reject(new Error("fail"))),
-            });
+            conflictor: () => "attach",
+        });
             await ep.invoke(undefined).result.catch(() => {});
             expect(ep.isRunning()).toBe(false);
         });
@@ -583,7 +623,9 @@ describe("ExclusiveProcess", () => {
     describe("sequential runs", () => {
         it("allows a second run after the first completes", async () => {
             let runCount = 0;
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(async () => ++runCount) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(async () => ++runCount),
+            conflictor: () => "attach",
+        });
 
             const h1 = ep.invoke(undefined);
             await h1.result;
@@ -598,7 +640,9 @@ describe("ExclusiveProcess", () => {
 
         it("processes sequential invocations correctly", async () => {
             let runCount = 0;
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(async () => ++runCount) });
+            const ep = makeExclusiveProcess({ procedure: simpleProcedure(async () => ++runCount),
+            conflictor: () => "attach",
+        });
             const results = [];
 
             for (let i = 0; i < 3; i++) {

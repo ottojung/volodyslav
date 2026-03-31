@@ -64,7 +64,7 @@ const { getType: getEventType } = require("../event");
  * automatically registered in the fan-out set so it receives all subsequent
  * progress events.
  *
- * No `conflictor` is needed — all concurrent calls always attach.
+ * No queuing — all concurrent calls always attach.
  */
 const diarySummaryExclusiveProcess = makeExclusiveProcess({
     /**
@@ -78,7 +78,8 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
             onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
         });
     },
-    // No conflictor — all concurrent calls attach to the same run.
+    // All concurrent calls attach to the same run — no queuing needed.
+    conflictor: () => "attach",
 });
 
 /**

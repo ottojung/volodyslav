@@ -58,7 +58,7 @@ resets to idle, so the next `invoke` starts a fresh run.
 
 ## API
 
-### `makeExclusiveProcess<A, T, C>({ procedure, conflictor? }) → ExclusiveProcess<A, T, C>`
+### `makeExclusiveProcess<A, T, C>({ procedure, conflictor }) → ExclusiveProcess<A, T, C>`
 
 Creates a new, idle `ExclusiveProcess`.
 
@@ -68,11 +68,10 @@ Creates a new, idle `ExclusiveProcess`.
   broadcast progress events to all current callers.
 - `arg: A` — per-invocation argument passed by the caller.
 
-Unlike the curried form, both `fanOut` and `arg` are received at the same
-time; the procedure is called fresh on each new run.
+The procedure is called fresh on each new run.
 
-**`conflictor(initiating, attaching) → "attach" | "queue"`** (optional) —
-called when `invoke` arrives while a run is already in progress.
+**`conflictor(initiating, attaching) → "attach" | "queue"`** — called when
+`invoke` arrives while a run is already in progress.
 
 - Return `"attach"` to coalesce the new call onto the current run.  The
   new caller's `callerCallback` is added to the fan-out list and the new
@@ -80,7 +79,7 @@ called when `invoke` arrives while a run is already in progress.
 - Return `"queue"` to queue the new call behind the current run.  The
   new caller waits for a fresh run that starts after the current one ends.
 
-When `conflictor` is omitted every concurrent call attaches.
+To always attach (never queue), pass `conflictor: () => "attach"`.
 
 ---
 
@@ -134,6 +133,7 @@ const ep = makeExclusiveProcess({
         fanOut("step-2");
         return Promise.resolve("done");
     },
+    conflictor: () => "attach",
 });
 
 const steps1 = [];
@@ -158,6 +158,7 @@ the computation.
 ```javascript
 const ep = makeExclusiveProcess({
     procedure: (_fanOut, _arg) => Promise.reject(new Error("oops")),
+    conflictor: () => "attach",
 });
 
 const h1 = ep.invoke(undefined); // initiator
@@ -178,6 +179,7 @@ fresh computation.
 ```javascript
 const ep = makeExclusiveProcess({
     procedure: (_fanOut, _arg) => Promise.reject(new Error("first failure")),
+    conflictor: () => "attach",
 });
 await ep.invoke(undefined).result.catch(() => {});
 // ep is now idle again
@@ -217,7 +219,8 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
             onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
         });
     },
-    // No conflictor — all concurrent calls attach to the same run.
+    // All concurrent calls attach to the same run — no queuing needed.
+    conflictor: () => "attach",
 });
 
 function runDiarySummaryPipeline(capabilities, callbacks) {
