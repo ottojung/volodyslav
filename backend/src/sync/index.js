@@ -1,5 +1,5 @@
 const assets = require("../assets");
-const { makeExclusiveProcess, makeExclusiveProcessHandle } = require("../exclusive_process");
+const { makeExclusiveProcess } = require("../exclusive_process");
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 // ---------------------------------------------------------------------------
@@ -87,137 +87,66 @@ function _syncOptionsConflict(current, incoming) {
 }
 
 /**
- * Singleton ExclusiveProcess for synchronization.
+ * Captured capabilities for the current / most-recent sync run.
+ * Set by `synchronizeAll` before each `invoke` so the fixed procedure can
+ * reference it without receiving it as an `invoke` arg.
+ * @type {Capabilities | null}
+ */
+let _syncCapabilities = null;
+
+/**
+ * Per-run fan-out list of step callbacks.  Populated on each new run
+ * (initiator) and extended by the `onAttach` hook when further callers join.
+ * @type {((step: SyncStepResult) => void)[]}
+ */
+let _activeSyncStepCallbacks = [];
+
+/**
+ * Shared ExclusiveProcess for synchronization.
  *
  * Both the hourly scheduled job and the POST /sync route use this instance.
  *
- * - When a second call is made with **compatible** options (same reset target
- *   or no reset at all), it *attaches* to the running computation and shares
- *   its result.  The attacher's `onStepComplete` callback is added to a
- *   fan-out set so it also receives progress notifications for the remainder
- *   of the run.
+ * `invoke` receives `[options, onStepComplete]` (the parametric arguments).
+ * `capabilities` is a non-parametric dependency captured via the module-level
+ * `_syncCapabilities` variable, updated by `synchronizeAll` before each call.
  *
- * - When a second call is made with **conflicting** options (the caller wants
- *   a reset that the current run is not performing), it is *queued*: after the
- *   current run finishes the pending call is started automatically.  The
- *   caller's promise resolves only when its own queued run completes.
- *   Last-write-wins if multiple conflicting calls arrive during the same run.
- *
- * This ensures that a `resetToHostname` request from the frontend is never
- * silently dropped because an hourly job happened to be running concurrently.
+ * Behaviour when a second call arrives while a run is active:
+ * - **Compatible options** (same `resetToHostname` or none) → attach; the
+ *   attacher's `onStepComplete` is added to the fan-out list.
+ * - **Conflicting options** (wants a reset the current run isn't doing) →
+ *   queue: after the current run ends, a fresh run starts with the queued
+ *   args; last-write-wins when multiple conflicting calls queue up.
  */
-const synchronizeAllExclusiveProcess = (() => {
-    /** @type {{ resetToHostname?: string } | undefined} */
-    let currentRunOptions = undefined;
-    /** @type {((step: SyncStepResult) => void)[]} */
-    let currentStepCallbacks = [];
-
+const synchronizeAllExclusiveProcess = makeExclusiveProcess(
     /**
-     * Pending invocation queued because its options conflicted with the
-     * current run.  Last write wins for args; all callers that were queued
-     * share the same promise.
-     *
-     * @type {{ args: [Capabilities, ({ resetToHostname?: string } | undefined), ((step: SyncStepResult) => void) | undefined], resolve: (v: void) => void, reject: (e: unknown) => void, promise: Promise<void> } | null}
-     */
-    let pendingInvocation = null;
-
-    /**
-     * @param {Capabilities} capabilities
-     * @param {{ resetToHostname?: string } | undefined} options
-     * @returns {Promise<void>}
-     */
-    function procedure(capabilities, options) {
-        const fanOutStep = /** @param {SyncStepResult} step */ (step) => {
-            for (const fn of currentStepCallbacks) fn(step);
-        };
-        return _synchronizeAllUnlocked(capabilities, options, fanOutStep);
-    }
-
-    const base = makeExclusiveProcess(procedure);
-
-    /**
-     * Starts a fresh run.  Records the options and first callback, then
-     * registers a hook to drain `pendingInvocation` after the run ends.
-     *
-     * @param {Capabilities} capabilities
      * @param {{ resetToHostname?: string } | undefined} options
      * @param {((step: SyncStepResult) => void) | undefined} onStepComplete
+     * @returns {Promise<void>}
      */
-    function startRun(capabilities, options, onStepComplete) {
-        currentRunOptions = options;
-        currentStepCallbacks = onStepComplete ? [onStepComplete] : [];
-        const handle = base.invoke([capabilities, options]);
-        handle.result.then(
-            () => { runPending(); },
-            () => { runPending(); }
+    (options, onStepComplete) => {
+        // Reset the fan-out list for this run.
+        _activeSyncStepCallbacks = onStepComplete ? [onStepComplete] : [];
+        const fanOut = /** @param {SyncStepResult} step */ (step) => {
+            for (const fn of _activeSyncStepCallbacks) fn(step);
+        };
+        return _synchronizeAllUnlocked(
+            /** @type {Capabilities} */ (_syncCapabilities),
+            options,
+            fanOut
         );
-        return handle;
-    }
-
-    /**
-     * After the current run ends, starts the pending invocation (if any) and
-     * wires its result to the pending callers' shared promise.
-     */
-    function runPending() {
-        if (pendingInvocation === null) return;
-        const { args, resolve, reject } = pendingInvocation;
-        pendingInvocation = null;
-        const [cap, opts, onStep] = args;
-        const handle = startRun(cap, opts, onStep);
-        handle.result.then(resolve, reject);
-    }
-
-    return {
-        /**
-         * Start or attach to (or queue behind) a synchronization run.
-         *
-         * @param {Capabilities} capabilities
-         * @param {{ resetToHostname?: string }} [options]
-         * @param {(step: SyncStepResult) => void} [onStepComplete]
-         */
-        invoke(capabilities, options, onStepComplete) {
-            if (!base.isRunning()) {
-                return startRun(capabilities, options, onStepComplete);
-            }
-
-            if (!_syncOptionsConflict(currentRunOptions, options)) {
-                // Compatible options: attach and forward step callback.
-                if (onStepComplete) currentStepCallbacks.push(onStepComplete);
-                return base.invoke([capabilities, options]);
-            }
-
-            // Conflicting options: queue a run after the current one ends.
-            if (pendingInvocation === null) {
-                /** @type {(v: void) => void} */
-                let resolve = (_v) => {};
-                /** @type {(e: unknown) => void} */
-                let reject = (_e) => {};
-                const promise = /** @type {Promise<void>} */ (new Promise((res, rej) => {
-                    resolve = res;
-                    reject = rej;
-                }));
-                pendingInvocation = {
-                    args: [capabilities, options, onStepComplete],
-                    resolve,
-                    reject,
-                    promise,
-                };
-            } else {
-                // Update args — last write wins; all queued callers share the same promise.
-                pendingInvocation.args = [capabilities, options, onStepComplete];
-            }
-            return makeExclusiveProcessHandle(false, pendingInvocation.promise);
+    },
+    {
+        onAttach: (newArgs) => {
+            const onStepComplete = /** @type {((step: SyncStepResult) => void) | undefined} */ (newArgs[1]);
+            if (onStepComplete) _activeSyncStepCallbacks.push(onStepComplete);
         },
-
-        /**
-         * Returns `true` if a synchronization run is currently active.
-         * @returns {boolean}
-         */
-        isRunning() {
-            return base.isRunning();
+        shouldQueue: (currentArgs, newArgs) => {
+            const currentOptions = /** @type {{ resetToHostname?: string } | undefined} */ (currentArgs[0]);
+            const newOptions = /** @type {{ resetToHostname?: string } | undefined} */ (newArgs[0]);
+            return _syncOptionsConflict(currentOptions, newOptions);
         },
-    };
-})();
+    }
+);
 
 /**
  * Synchronizes all destinations and then invalidates the incremental graph interface.
@@ -228,10 +157,10 @@ const synchronizeAllExclusiveProcess = (() => {
  * at the end if at least one step failed; callers can inspect `.errors` and
  * dispatch on each type to produce per-destination log messages or responses.
  *
- * Uses a shared ExclusiveProcess singleton so that concurrent invocations with
- * compatible options attach to the running computation rather than starting a
- * new one.  Invocations with conflicting reset options are queued and run after
- * the current one completes.
+ * Uses a shared ExclusiveProcess so that concurrent invocations with compatible
+ * options attach to the running computation rather than starting a new one.
+ * Invocations with conflicting reset options are queued and run after the
+ * current one completes.
  *
  * @param {Capabilities} capabilities
  * @param {{ resetToHostname?: string }} [options]
@@ -240,7 +169,8 @@ const synchronizeAllExclusiveProcess = (() => {
  * @throws {SynchronizeAllError}
  */
 function synchronizeAll(capabilities, options, onStepComplete) {
-    return synchronizeAllExclusiveProcess.invoke(capabilities, options, onStepComplete).result;
+    _syncCapabilities = capabilities;
+    return synchronizeAllExclusiveProcess.invoke([options, onStepComplete]).result;
 }
 
 /**

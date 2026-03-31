@@ -1,6 +1,5 @@
 const {
     makeExclusiveProcess,
-    makeExclusiveProcessHandle,
     isExclusiveProcess,
     isExclusiveProcessHandle,
 } = require("../src/exclusive_process");
@@ -180,6 +179,127 @@ describe("ExclusiveProcess", () => {
         });
     });
 
+    describe("onAttach hook", () => {
+        it("onAttach is called when an attacher joins", () => {
+            const deferred = makeDeferred();
+            const attachedArgSets = [];
+            const ep = makeExclusiveProcess(() => deferred.promise, {
+                onAttach: (newArgs) => { attachedArgSets.push(newArgs); },
+            });
+
+            ep.invoke(["initial"]);
+            ep.invoke(["second"]);
+            ep.invoke(["third"]);
+
+            expect(attachedArgSets).toEqual([["second"], ["third"]]);
+            deferred.resolve();
+        });
+
+        it("onAttach is NOT called for the initiator", () => {
+            const deferred = makeDeferred();
+            let attachCalled = false;
+            const ep = makeExclusiveProcess(() => deferred.promise, {
+                onAttach: () => { attachCalled = true; },
+            });
+
+            ep.invoke(["first"]);
+            expect(attachCalled).toBe(false);
+            deferred.resolve();
+        });
+
+        it("onAttach receives currentArgs as second parameter", () => {
+            const deferred = makeDeferred();
+            const calls = [];
+            const ep = makeExclusiveProcess(() => deferred.promise, {
+                onAttach: (newArgs, currentArgs) => { calls.push({ newArgs, currentArgs }); },
+            });
+
+            ep.invoke(["initial"]);
+            ep.invoke(["attacher"]);
+
+            expect(calls[0].newArgs).toEqual(["attacher"]);
+            expect(calls[0].currentArgs).toEqual(["initial"]);
+            deferred.resolve();
+        });
+    });
+
+    describe("shouldQueue hook", () => {
+        it("queues a conflicting call instead of attaching", async () => {
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+            let callIndex = 0;
+            const deferreds = [deferred1, deferred2];
+            const ep = makeExclusiveProcess(
+                (type) => deferreds[callIndex++].promise,
+                {
+                    shouldQueue: (currentArgs, newArgs) => currentArgs[0] !== newArgs[0],
+                }
+            );
+
+            const h1 = ep.invoke(["A"]);
+            const h2 = ep.invoke(["B"]); // conflicts → queue
+
+            expect(h1.isInitiator).toBe(true);
+            expect(h2.isInitiator).toBe(false);
+            expect(h1.result).not.toBe(h2.result); // different promises
+
+            deferred1.resolve("result-A");
+            await h1.result;
+            await new Promise((r) => setImmediate(r));
+
+            // B should now be running
+            expect(callIndex).toBe(2);
+            deferred2.resolve("result-B");
+            await expect(h2.result).resolves.toBe("result-B");
+        });
+
+        it("last-write-wins when multiple conflicting calls queue up", async () => {
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+            let callIndex = 0;
+            const capturedArgs = [];
+            const ep = makeExclusiveProcess(
+                (type) => {
+                    capturedArgs.push(type);
+                    return [deferred1, deferred2][callIndex++].promise;
+                },
+                { shouldQueue: (cur, nw) => cur[0] !== nw[0] }
+            );
+
+            ep.invoke(["A"]);
+            const h2a = ep.invoke(["B"]);
+            const h2b = ep.invoke(["C"]); // overwrites B
+
+            // Both h2a and h2b share the same pending promise
+            expect(h2a.result).toBe(h2b.result);
+
+            deferred1.resolve();
+            await new Promise((r) => setImmediate(r));
+
+            // The queued run used last-write "C"
+            expect(capturedArgs[1]).toBe("C");
+            deferred2.resolve("done");
+            await Promise.all([h2a.result, h2b.result]);
+        });
+
+        it("compatible call attaches even when shouldQueue is defined", async () => {
+            const deferred = makeDeferred();
+            let calls = 0;
+            const ep = makeExclusiveProcess(
+                () => { calls++; return deferred.promise; },
+                { shouldQueue: (cur, nw) => cur[0] !== nw[0] }
+            );
+
+            const h1 = ep.invoke(["same"]);
+            const h2 = ep.invoke(["same"]); // same → attach
+
+            expect(h1.result).toBe(h2.result);
+            expect(calls).toBe(1);
+            deferred.resolve("ok");
+            await Promise.all([h1.result, h2.result]);
+        });
+    });
+
     describe("error propagation", () => {
         it("propagates errors to the initiator", async () => {
             const ep = makeExclusiveProcess(() => Promise.reject(new Error("failure")));
@@ -197,8 +317,7 @@ describe("ExclusiveProcess", () => {
             const h2 = ep.invoke([]);
             const h3 = ep.invoke([]);
 
-            const err = new Error("pipeline crashed");
-            deferred.reject(err);
+            deferred.reject(new Error("pipeline crashed"));
 
             await Promise.all([
                 expect(h1.result).rejects.toThrow("pipeline crashed"),
@@ -243,6 +362,28 @@ describe("ExclusiveProcess", () => {
             expect(h3.isInitiator).toBe(true);
             await expect(h3.result).resolves.toBe("new-run");
         });
+
+        it("queued run starts after initiator crashes", async () => {
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+            let callIndex = 0;
+            const ep = makeExclusiveProcess(
+                (v) => [deferred1, deferred2][callIndex++].promise,
+                { shouldQueue: (c, n) => c[0] !== n[0] }
+            );
+
+            const h1 = ep.invoke(["A"]);
+            const h2 = ep.invoke(["B"]);
+
+            deferred1.reject(new Error("A-crashed"));
+            await h1.result.catch(() => {});
+            await new Promise((r) => setImmediate(r));
+
+            // Queued run B should have started
+            expect(callIndex).toBe(2);
+            deferred2.resolve("B-ok");
+            await expect(h2.result).resolves.toBe("B-ok");
+        });
     });
 
     describe("isExclusiveProcess type guard", () => {
@@ -266,11 +407,6 @@ describe("ExclusiveProcess", () => {
             const handle = ep.invoke([]);
             expect(isExclusiveProcessHandle(handle)).toBe(true);
             deferred.resolve();
-        });
-
-        it("returns true for a handle created by makeExclusiveProcessHandle", () => {
-            const handle = makeExclusiveProcessHandle(false, Promise.resolve());
-            expect(isExclusiveProcessHandle(handle)).toBe(true);
         });
 
         it("returns false for non-handle values", () => {
