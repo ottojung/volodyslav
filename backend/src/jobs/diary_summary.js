@@ -11,11 +11,19 @@ const path = require("path");
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
 const { DIARY_SUMMARY_MODEL } = aiDiarySummaryModule;
 const { fromISOString } = require("../datetime");
+const { makeUniqueFunctor } = require("../unique_functor");
+const { asset: eventAsset, getType: getEventType } = require("../event");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"]);
+
+/**
+ * Mutex key for serializing concurrent diary summary pipeline runs.
+ * Prevents the hourly job and POST /diary-summary/run from racing.
+ */
+const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").instantiate([]);
 
 /**
  * @param {string} filename
@@ -33,34 +41,34 @@ function isAudioFilename(filename) {
 }
 
 /**
- * Computes the assets directory path for a given event.
- * @param {string} assetsDir
- * @param {import('../event/structure').Event} event
- * @returns {string}
- */
-function eventAssetsDir(assetsDir, event) {
-    const date = event.date;
-    const year = date.year;
-    const month = String(date.month).padStart(2, "0");
-    const day = String(date.day).padStart(2, "0");
-    return path.join(assetsDir, `${year}-${month}`, day, event.id.identifier);
-}
-
-/**
  * Runs the diary summary pipeline.
  *
  * Steps:
  *  1. Read current summary from graph.
- *  2. Iterate all events in ascending date order.
+ *  2. Iterate all diary events in ascending date order.
  *  3. For each event, scan its audio assets and look for materialized transcriptions
  *     whose graph-node modification time is newer than the recorded watermark.
  *  4. For each new transcription, call the AI summarizer and advance the watermarks.
- *  5. Write the updated summary back to the graph.
+ *  5. Write the updated summary back to the graph after each fold.
+ *
+ * Runs are serialized with a mutex so the hourly job and an explicit POST run
+ * cannot race and overwrite each other.
  *
  * @param {Capabilities} capabilities
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
 async function runDiarySummaryPipeline(capabilities) {
+    return capabilities.sleeper.withMutex(DIARY_SUMMARY_MUTEX_KEY, () =>
+        _runDiarySummaryPipelineUnlocked(capabilities)
+    );
+}
+
+/**
+ * Internal (unlocked) implementation of the pipeline.
+ * @param {Capabilities} capabilities
+ * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
+ */
+async function _runDiarySummaryPipelineUnlocked(capabilities) {
     await capabilities.interface.ensureInitialized();
 
     const currentSummary = await capabilities.interface.getDiarySummary();
@@ -75,7 +83,11 @@ async function runDiarySummaryPipeline(capabilities) {
     let hasUpdates = false;
 
     for await (const event of capabilities.interface.getSortedEvents("dateAscending")) {
-        const dirPath = eventAssetsDir(assetsDir, event);
+        if (getEventType(event) !== "diary") {
+            continue;
+        }
+
+        const dirPath = eventAsset.targetDir(capabilities, event);
 
         const dirProof = await capabilities.checker.directoryExists(dirPath);
         if (dirProof === null) {
@@ -191,9 +203,9 @@ async function runDiarySummaryPipeline(capabilities) {
                 };
                 await capabilities.interface.setDiarySummary(intermediateSummary);
             } catch (error) {
-                const msg = error instanceof Error ? error.message : String(error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logError(
-                    { relativeAssetPath, error: msg },
+                    { relativeAssetPath, error, errorMessage },
                     "Error updating diary summary for transcription"
                 );
                 // Continue to the next transcription rather than aborting the pipeline.

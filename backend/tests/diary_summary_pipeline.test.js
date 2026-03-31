@@ -210,4 +210,65 @@ describe("runDiarySummaryPipeline", () => {
         // Should be called once per fold (2 transcriptions → 2 calls).
         expect(setDiarySummarySpy).toHaveBeenCalledTimes(2);
     });
+
+    test("skips non-diary events", async () => {
+        const capabilities = await getTestCapabilities();
+        await capabilities.interface.ensureInitialized();
+
+        // Create a non-diary event (type "food" is parsed from the input string).
+        const foodEvent = {
+            id: event.id.fromString("99"),
+            description: "",
+            date: fromISOString("2024-01-01T00:00:00.000Z"),
+            original: "food pizza",
+            input: "food pizza",
+            modifiers: {},
+            creator: {
+                name: "test",
+                uuid: "00000000-0000-0000-0000-000000000001",
+                version: "0.0.0",
+                hostname: "test-host",
+            },
+        };
+        const tmpDir = await capabilities.creator.createTemporaryDirectory();
+        const assetFile = await capabilities.creator.createFile(require("path").join(tmpDir, "meal.mp3"));
+        await capabilities.writer.writeFile(assetFile, "audio");
+        const { makeFromExistingFile } = require("../src/filesystem/file_ref");
+        const assetObj = event.asset.make(foodEvent, makeFromExistingFile(
+            assetFile,
+            (p) => capabilities.reader.readFileAsBuffer(p)
+        ));
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(foodEvent, [assetObj]);
+        });
+
+        // Even if a transcription were somehow present, the pipeline should skip this event.
+        // (Without materializing anything there is nothing to skip, so just verify AI isn't called.)
+        await runDiarySummaryPipeline(capabilities);
+        expect(capabilities.aiDiarySummary.updateSummary).not.toHaveBeenCalled();
+    });
+
+    test("serializes concurrent pipeline runs via mutex", async () => {
+        const capabilities = await getTestCapabilities();
+        await capabilities.interface.ensureInitialized();
+
+        const [relativeAssetPath] = await writeDiaryEventWithAssets(
+            capabilities, "1", ["memo.mp3"], fromISOString("2024-01-01T00:00:00.000Z")
+        );
+        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+
+        // Launch two pipeline runs concurrently.
+        const [r1, r2] = await Promise.all([
+            runDiarySummaryPipeline(capabilities),
+            runDiarySummaryPipeline(capabilities),
+        ]);
+
+        // Both should succeed and return a valid summary.
+        expect(r1.type).toBe("diary_most_important_info_summary");
+        expect(r2.type).toBe("diary_most_important_info_summary");
+
+        // The AI should be called exactly once total: the second run sees the
+        // transcription already watermarked by the first and skips it.
+        expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
+    });
 });

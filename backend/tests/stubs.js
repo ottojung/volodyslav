@@ -157,7 +157,7 @@ function stubAiDiaryQuestions(capabilities) {
 
 /**
  * Stubs the AI diary summary capabilities for testing.
- * By default returns the current summary markdown unchanged (passthrough).
+ * By default returns the current summary markdown with "\n- updated" appended.
  * @param {object} capabilities
  */
 function stubAiDiarySummary(capabilities) {

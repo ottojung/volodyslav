@@ -19,8 +19,8 @@ async function handleGetDiarySummary(capabilities, _req, res) {
         const summary = await capabilities.interface.getDiarySummary();
         res.json(summary);
     } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ error: msg }, "Failed to get diary summary");
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        capabilities.logger.logError({ error, errorMessage }, "Failed to get diary summary");
         res.status(500).json({ error: "Internal server error" });
     }
 }
@@ -41,8 +41,8 @@ async function handleRunDiarySummary(capabilities, _req, res) {
         const summary = await runDiarySummaryPipeline(capabilities);
         res.json(summary);
     } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ error: msg }, "Failed to run diary summary pipeline");
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        capabilities.logger.logError({ error, errorMessage }, "Failed to run diary summary pipeline");
         res.status(500).json({ error: "Internal server error" });
     }
 }
