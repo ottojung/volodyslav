@@ -115,7 +115,11 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
                     [relativeAssetPath]
                 );
                 modTimeISO = modTime.toISOString();
-            } catch {
+            } catch (error) {
+                capabilities.logger.logError(
+                    { relativeAssetPath, error },
+                    "Diary summary pipeline: failed to get modification time for transcription",
+                );
                 continue;
             }
 
@@ -143,7 +147,11 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
                     continue;
                 }
                 diaryContentValue = diaryContentEntry.value;
-            } catch {
+            } catch (error) {
+                capabilities.logger.logError(
+                    { eventId, relativeAssetPath, error },
+                    "Diary summary pipeline: failed to pull entry_diary_content",
+                );
                 continue;
             }
 

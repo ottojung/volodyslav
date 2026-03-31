@@ -208,7 +208,12 @@ async function setup(state) {
 
     const transport = pino.transport({ targets });
 
-    state.logger = pino({ level: logLevelValue }, transport);
+    state.logger = pino({
+        level: logLevelValue,
+        serializers: {
+            error: pino.stdSerializers.err,
+        },
+    }, transport);
     state.logLevel = logLevelValue;
     state.logFile = logFilePath;
 
