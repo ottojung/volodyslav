@@ -18,15 +18,6 @@ const { getType: getEventType } = require("../event");
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
 
 /**
- * Shared ExclusiveProcess for the diary summary pipeline.
- *
- * Both the hourly scheduled job and the POST /diary-summary/run route use this
- * instance.  A second concurrent invocation attaches to the already-running
- * computation instead of starting a new one.
- */
-const diarySummaryExclusiveProcess = makeExclusiveProcess();
-
-/**
  * @callback OnEntryQueued
  * @param {string} path - The relative asset path of the entry that will be processed.
  * @returns {void}
@@ -46,6 +37,81 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess();
  */
 
 /**
+ * Singleton ExclusiveProcess for the diary summary pipeline.
+ *
+ * Both the hourly scheduled job and the POST /diary-summary/run route use this
+ * instance.  A second concurrent invocation *attaches* to the already-running
+ * computation instead of starting a new one.
+ *
+ * Callbacks from all concurrent callers (initiator + every attacher) are
+ * collected into a per-run fan-out set so that every caller receives
+ * onEntryQueued / onEntryProcessed notifications for the entire run,
+ * regardless of whether the run was started by the caller or was already
+ * under way when the caller joined.
+ */
+const diarySummaryExclusiveProcess = (() => {
+    /** @type {DiarySummaryPipelineCallbacks[]} */
+    let subscriberCallbacks = [];
+
+    /**
+     * The fixed procedure.  Receives only `capabilities`; callbacks are taken
+     * from the shared `subscriberCallbacks` list so that future attachers can
+     * be added to it after the run has started.
+     *
+     * @param {Capabilities} capabilities
+     * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
+     */
+    function procedure(capabilities) {
+        /** @type {DiarySummaryPipelineCallbacks} */
+        const fanOut = {
+            onEntryQueued: (path) => {
+                for (const cb of subscriberCallbacks) cb.onEntryQueued?.(path);
+            },
+            onEntryProcessed: (path, status) => {
+                for (const cb of subscriberCallbacks) cb.onEntryProcessed?.(path, status);
+            },
+        };
+        return _runDiarySummaryPipelineUnlocked(capabilities, fanOut);
+    }
+
+    const base = makeExclusiveProcess(procedure);
+
+    return {
+        /**
+         * Start or attach to the diary summary pipeline.
+         *
+         * - If idle: starts a new run and registers `callbacks` as the first
+         *   subscriber in the fan-out set.
+         * - If running: registers `callbacks` in the fan-out set so future
+         *   events are forwarded, then returns an attacher handle backed by
+         *   the current run's shared promise.
+         *
+         * @param {Capabilities} capabilities
+         * @param {DiarySummaryPipelineCallbacks} [callbacks]
+         * @returns {import('../exclusive_process').ExclusiveProcessHandleClass<DiaryMostImportantInfoSummaryEntry>}
+         */
+        invoke(capabilities, callbacks) {
+            if (base.isRunning()) {
+                if (callbacks) {
+                    subscriberCallbacks.push(callbacks);
+                }
+            } else {
+                subscriberCallbacks = callbacks ? [callbacks] : [];
+            }
+            return base.invoke([capabilities]);
+        },
+
+        /**
+         * Returns `true` if the pipeline is currently running.
+         * @returns {boolean}
+         */
+        isRunning() {
+            return base.isRunning();
+        },
+    };
+})();
+
+/**
  * Runs the diary summary pipeline.
  *
  * Steps:
@@ -56,19 +122,17 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess();
  *  5. For each new diary content entry, call the AI summarizer and advance the watermarks.
  *  6. Persist the updated summary back to the graph after each fold.
  *
- * Uses an ExclusiveProcess so that a second concurrent invocation attaches to
- * the already-running computation instead of starting a new one.  Any error
- * from the underlying pipeline propagates to all concurrent callers.
+ * Uses a shared ExclusiveProcess singleton so that a second concurrent
+ * invocation attaches to the already-running computation instead of starting
+ * a new one.  Callbacks are forwarded to all concurrent callers.  Any error
+ * propagates to all callers.
  *
  * @param {Capabilities} capabilities
  * @param {DiarySummaryPipelineCallbacks} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
 function runDiarySummaryPipeline(capabilities, callbacks) {
-    const handle = diarySummaryExclusiveProcess.invoke(() =>
-        _runDiarySummaryPipelineUnlocked(capabilities, callbacks)
-    );
-    return handle.result;
+    return diarySummaryExclusiveProcess.invoke(capabilities, callbacks).result;
 }
 
 /**

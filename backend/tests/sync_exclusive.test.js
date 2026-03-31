@@ -1,8 +1,8 @@
 /**
  * Integration tests for the ExclusiveProcess adoption in the sync module.
  * Validates that the scheduled job and the HTTP route share the same exclusive
- * process — i.e. a second concurrent invocation attaches to the already-running
- * computation rather than starting a new one.
+ * process, options are never silently dropped, and step callbacks are
+ * forwarded to all concurrent callers.
  */
 
 const request = require("supertest");
@@ -56,8 +56,8 @@ describe("sync — ExclusiveProcess adoption", () => {
         assetsSynchronize.mockResolvedValue(undefined);
     });
 
-    describe("synchronizeAll uses the ExclusiveProcess", () => {
-        it("second call attaches to the first run rather than starting a new one", async () => {
+    describe("compatible-options: attach to the running run", () => {
+        it("second call with no options attaches to the first run", async () => {
             const capabilities = getTestCapabilities();
             const deferred = makeDeferred();
 
@@ -82,7 +82,7 @@ describe("sync — ExclusiveProcess adoption", () => {
             expect(syncDatabaseCallCount).toBe(1);
         });
 
-        it("error propagates to all concurrent callers", async () => {
+        it("error propagates to all concurrent callers on the same run", async () => {
             const capabilities = getTestCapabilities();
             const deferred = makeDeferred();
 
@@ -113,11 +113,163 @@ describe("sync — ExclusiveProcess adoption", () => {
             deferred.reject(new Error("crash"));
             await p1.catch(() => {});
 
-            // Next call should be a NEW initiator.
-            const ep = synchronizeAllExclusiveProcess;
-            const h = ep.invoke(() => Promise.resolve(undefined));
-            expect(h.isInitiator).toBe(true);
-            await h.result;
+            // EP is idle again.
+            expect(synchronizeAllExclusiveProcess.isRunning()).toBe(false);
+        });
+    });
+
+    describe("P1 — conflicting options are queued, not silently ignored", () => {
+        it("call with reset_to_hostname is queued when a plain sync is already running", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+
+            let callIndex = 0;
+            const deferreds = [deferred1, deferred2];
+            const capturedOptions = [];
+
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockImplementation((opts) => {
+                    capturedOptions.push(opts);
+                    return deferreds[callIndex++].promise;
+                });
+
+            // First run: job with no options.
+            const p1 = synchronizeAll(capabilities);
+            expect(synchronizeAllExclusiveProcess.isRunning()).toBe(true);
+            expect(callIndex).toBe(1);
+
+            // Second call with reset — should be queued, not started yet.
+            const p2 = synchronizeAll(capabilities, { resetToHostname: "alice" });
+            expect(callIndex).toBe(1); // still only one DB call
+
+            // Resolve first run.
+            deferred1.resolve();
+            await p1;
+            await new Promise((r) => setImmediate(r));
+
+            // Now the queued reset run should have started.
+            expect(callIndex).toBe(2);
+            expect(capturedOptions[1]).toEqual({ resetToHostname: "alice" });
+
+            // Resolve the reset run so p2 settles.
+            deferred2.resolve();
+            await p2;
+        });
+
+        it("caller with conflicting options gets a promise that resolves after the queued run", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+
+            let callIndex = 0;
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockImplementation(() => [deferred1, deferred2][callIndex++].promise);
+
+            const p1 = synchronizeAll(capabilities);
+            const p2 = synchronizeAll(capabilities, { resetToHostname: "alice" });
+
+            // p2 must NOT be the same object as p1 (it's a queued promise).
+            expect(p1).not.toBe(p2);
+
+            // Resolve first run: p1 resolves but p2 should NOT resolve yet.
+            deferred1.resolve();
+            await p1;
+
+            let p2Resolved = false;
+            p2.then(() => { p2Resolved = true; });
+
+            await new Promise((r) => setImmediate(r));
+            expect(p2Resolved).toBe(false); // pending run still in progress
+
+            // Resolve the queued run.
+            deferred2.resolve();
+            await p2;
+            expect(p2Resolved).toBe(true);
+        });
+
+        it("last-write-wins when multiple conflicting calls queue up during a single run", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+
+            let callIndex = 0;
+            const capturedOptions = [];
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockImplementation((opts) => {
+                    capturedOptions.push(opts);
+                    return [deferred1, deferred2][callIndex++].promise;
+                });
+
+            const p1 = synchronizeAll(capabilities);
+            // Two conflicting callers — last write wins for the queued args.
+            const p2a = synchronizeAll(capabilities, { resetToHostname: "alice" });
+            const p2b = synchronizeAll(capabilities, { resetToHostname: "bob" });
+
+            // Both p2a and p2b share the same queued promise.
+            expect(p2a).toBe(p2b);
+
+            deferred1.resolve();
+            await p1;
+            await new Promise((r) => setImmediate(r));
+
+            // The queued run used the last-written options ("bob").
+            expect(capturedOptions[1]).toEqual({ resetToHostname: "bob" });
+
+            deferred2.resolve();
+            await Promise.all([p2a, p2b]);
+        });
+
+        it("a plain attach is not confused with a conflicting queue", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred = makeDeferred();
+
+            let callCount = 0;
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockImplementation(() => {
+                    callCount++;
+                    return deferred.promise;
+                });
+
+            // Run with reset.
+            const p1 = synchronizeAll(capabilities, { resetToHostname: "alice" });
+
+            // Second call with the SAME reset — should attach (no conflict).
+            const p2 = synchronizeAll(capabilities, { resetToHostname: "alice" });
+            expect(p1).toBe(p2);
+            expect(callCount).toBe(1);
+
+            deferred.resolve();
+            await Promise.all([p1, p2]);
+        });
+
+        it("step callbacks are forwarded to attached callers", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred = makeDeferred();
+
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockImplementation(() => deferred.promise);
+
+            const initiatorSteps = [];
+            const attacherSteps = [];
+
+            const p1 = synchronizeAll(capabilities, undefined, (step) => initiatorSteps.push(step));
+            const p2 = synchronizeAll(capabilities, undefined, (step) => attacherSteps.push(step));
+
+            // Both should share the same run (no options conflict).
+            expect(p1).toBe(p2);
+
+            deferred.resolve();
+            await Promise.all([p1, p2]);
+
+            // generators step fired for both.
+            expect(initiatorSteps).toContainEqual({ name: "generators", status: "success" });
+            expect(attacherSteps).toContainEqual({ name: "generators", status: "success" });
         });
     });
 
@@ -209,6 +361,55 @@ describe("sync — ExclusiveProcess adoption", () => {
 
             deferred.resolve();
             await jobPromise;
+        });
+
+        it("route request with reset_to_hostname is queued when a job run is active", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+
+            let callIndex = 0;
+            const capturedOptions = [];
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockImplementation((opts) => {
+                    capturedOptions.push(opts);
+                    return [deferred1, deferred2][callIndex++].promise;
+                });
+
+            // Job starts a plain sync.
+            const jobPromise = synchronizeAll(capabilities);
+
+            const app = expressApp.make();
+            app.use("/api", makeRouter(capabilities));
+
+            // Route requests sync with reset — this should be queued.
+            const routeStartResp = await request(app)
+                .post("/api/sync")
+                .send({ reset_to_hostname: "alice" });
+            expect(routeStartResp.statusCode).toBe(202);
+            expect(routeStartResp.body.status).toBe("running");
+
+            // Only one DB call so far (the job's plain sync).
+            expect(callIndex).toBe(1);
+
+            // Finish the job run.
+            deferred1.resolve();
+            await jobPromise;
+            await new Promise((r) => setImmediate(r));
+
+            // Now the reset run should have started.
+            expect(callIndex).toBe(2);
+            expect(capturedOptions[1]).toEqual({ resetToHostname: "alice" });
+
+            // Finish the reset run.
+            deferred2.resolve();
+            await new Promise((r) => setImmediate(r));
+
+            // Route should show success.
+            const finishedResp = await request(app).get("/api/sync");
+            expect(finishedResp.statusCode).toBe(200);
+            expect(finishedResp.body.status).toBe("success");
         });
     });
 });
