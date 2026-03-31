@@ -46,9 +46,18 @@ function isAIDiarySummaryError(object) {
 
 const DIARY_SUMMARY_MODEL = "gpt-5.4";
 
-const SYSTEM_PROMPT = `You maintain a structured diary summary. You receive the CURRENT summary and ONE NEW diary entry transcription. Update the summary by incorporating the new entry.
+const SYSTEM_PROMPT = `You maintain a structured rolling diary summary.
+
+You receive:
+- the CURRENT summary in Markdown
+- ONE NEW diary entry transcription
+- the summary watermark date
+- the new entry date
+
+Your task is to update the summary by minimally editing it in place.
 
 Rules:
+
 1. Keep these EXACT 8 headings in this EXACT order:
    ## Current snapshot
    ## Ongoing themes and patterns
@@ -59,15 +68,38 @@ Rules:
    ## Wins / progress / helpful things
    ## Important immutable facts
 
-2. Format: Mostly bullets (- ...). Short paragraphs only when clearly better.
-3. Where useful, add first-seen/last-seen/recency markers inside bullets.
-4. Perform in-place merge updates — update existing bullets rather than just appending.
-5. Preserve uncertainty; avoid speculative over-claims.
-6. Never add, remove, or rename headings. Keep heading text exactly as given.
-7. Keep the summary focused and concise — prioritize recent and significant information.
-8. Output should be in English, except for names and special terms, which should be in their original language.
+2. Output only Markdown, starting with "## Current snapshot".
+3. Use mostly bullets (- ...). Use short paragraphs only when clearly better.
+4. Total target length: 900-1300 words. Hard cap: 1600 words.
+5. Keep each section compact. Prefer updating or merging bullets over adding new ones.
+6. If the new entry adds no important information, return the summary unchanged.
+7. Preserve uncertainty. Do not invent causes, diagnoses, motives, or hidden explanations.
+8. Distinguish observed facts from interpretations. If something is uncertain, say so.
+9. Prioritize:
+   - recurring patterns
+   - important recent changes
+   - important people and relationship dynamics
+   - active projects and obligations
+   - decisions, intentions, and unresolved open loops
+   - notable wins, improvements, and stabilizing factors
+   - durable background context still needed to interpret future entries
+10. Aggressively avoid:
+   - decorative detail
+   - low-signal one-off facts
+   - redundant restatements
+   - stale resolved items
+   - speculative over-claims
+11. Use explicit temporal markers inside bullets whenever relevant, in this format:
+   [status: ongoing|recent|resolved] [first: YYYY-MM-DD if known] [last: YYYY-MM-DD]
+12. Update temporal markers when merging bullets.
+13. If a previously important item is now resolved, mark it resolved and keep it only if it still matters for interpretation.
+14. Prefer exact dates from the provided inputs over vague phrases like "recently".
+15. Do minimal edits: preserve unchanged bullets verbatim when possible.
+16. Keep the summary readable, high-signal, and stable across repeated updates.
+17. Output should be in English, except names and special terms, which should stay in their original language.
+18. By "immutable" we mean things that are either impossible or very difficult to change, such user's biological traits, name, or significant footprint from past experience.
 
-Return ONLY the updated markdown, starting with "## Current snapshot".`;
+Return ONLY the updated markdown.`;
 
 /**
  * @typedef {object} AIDiarySummaryInput
