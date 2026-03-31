@@ -11,17 +11,20 @@
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
 const { DIARY_SUMMARY_MODEL } = aiDiarySummaryModule;
 const { fromISOString } = require("../datetime");
-const { makeUniqueFunctor } = require("../unique_functor");
+const { makeExclusiveProcess } = require("../exclusive_process");
 const { getType: getEventType } = require("../event");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
 
 /**
- * Mutex key for serializing concurrent diary summary pipeline runs.
- * Prevents the hourly job and POST /diary-summary/run from racing.
+ * Shared ExclusiveProcess for the diary summary pipeline.
+ *
+ * Both the hourly scheduled job and the POST /diary-summary/run route use this
+ * instance.  A second concurrent invocation attaches to the already-running
+ * computation instead of starting a new one.
  */
-const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").instantiate([]);
+const diarySummaryExclusiveProcess = makeExclusiveProcess();
 
 /**
  * @callback OnEntryQueued
@@ -53,17 +56,19 @@ const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").inst
  *  5. For each new diary content entry, call the AI summarizer and advance the watermarks.
  *  6. Persist the updated summary back to the graph after each fold.
  *
- * Runs are serialized with a mutex so the hourly job and an explicit POST run
- * cannot race and overwrite each other.
+ * Uses an ExclusiveProcess so that a second concurrent invocation attaches to
+ * the already-running computation instead of starting a new one.  Any error
+ * from the underlying pipeline propagates to all concurrent callers.
  *
  * @param {Capabilities} capabilities
  * @param {DiarySummaryPipelineCallbacks} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
-async function runDiarySummaryPipeline(capabilities, callbacks) {
-    return capabilities.sleeper.withMutex(DIARY_SUMMARY_MUTEX_KEY, () =>
+function runDiarySummaryPipeline(capabilities, callbacks) {
+    const handle = diarySummaryExclusiveProcess.invoke(() =>
         _runDiarySummaryPipelineUnlocked(capabilities, callbacks)
     );
+    return handle.result;
 }
 
 /**
@@ -243,5 +248,6 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
 
 module.exports = {
     runDiarySummaryPipeline,
+    diarySummaryExclusiveProcess,
 };
 

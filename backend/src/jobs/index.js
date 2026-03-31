@@ -1,7 +1,7 @@
 
 const { everyHour, daily, allTasks, scheduleAll, runAllTasks } = require("./all");
 const { isDailyTasksUnavailable, ensureDailyTasksAvailable, executeDailyTasks } = require("./daily");
-const { runDiarySummaryPipeline } = require("./diary_summary");
+const { runDiarySummaryPipeline, diarySummaryExclusiveProcess } = require("./diary_summary");
 
 module.exports = {
     everyHour,
@@ -13,4 +13,5 @@ module.exports = {
     ensureDailyTasksAvailable,
     executeDailyTasks,
     runDiarySummaryPipeline,
+    diarySummaryExclusiveProcess,
 };
