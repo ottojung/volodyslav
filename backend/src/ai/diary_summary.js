@@ -95,11 +95,11 @@ function makeUserMessage(input) {
         `Current summary date: ${input.currentSummaryDateISO || "none"}`,
         `New entry date: ${input.newEntryDateISO}`,
         "",
-        "## CURRENT SUMMARY",
+        "# CURRENT SUMMARY",
         "",
         input.currentSummaryMarkdown || "(no summary yet)",
         "",
-        "## NEW ENTRY TRANSCRIPTION",
+        "# NEW ENTRY TRANSCRIPTION",
         "",
         input.newEntryTranscriptionText,
     ];
