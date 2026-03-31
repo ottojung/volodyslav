@@ -24,6 +24,25 @@ const { getType: getEventType } = require("../event");
 const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").instantiate([]);
 
 /**
+ * @callback OnEntryQueued
+ * @param {string} path - The relative asset path of the entry that will be processed.
+ * @returns {void}
+ */
+
+/**
+ * @callback OnEntryProcessed
+ * @param {string} path - The relative asset path of the entry that was processed.
+ * @param {"success" | "error"} status - The outcome.
+ * @returns {void}
+ */
+
+/**
+ * @typedef {object} DiarySummaryPipelineCallbacks
+ * @property {OnEntryQueued} [onEntryQueued] - Called when an entry is determined to need processing.
+ * @property {OnEntryProcessed} [onEntryProcessed] - Called after each entry is processed.
+ */
+
+/**
  * Runs the diary summary pipeline.
  *
  * Steps:
@@ -38,20 +57,22 @@ const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").inst
  * cannot race and overwrite each other.
  *
  * @param {Capabilities} capabilities
+ * @param {DiarySummaryPipelineCallbacks} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
-async function runDiarySummaryPipeline(capabilities) {
+async function runDiarySummaryPipeline(capabilities, callbacks) {
     return capabilities.sleeper.withMutex(DIARY_SUMMARY_MUTEX_KEY, () =>
-        _runDiarySummaryPipelineUnlocked(capabilities)
+        _runDiarySummaryPipelineUnlocked(capabilities, callbacks)
     );
 }
 
 /**
  * Internal (unlocked) implementation of the pipeline.
  * @param {Capabilities} capabilities
+ * @param {DiarySummaryPipelineCallbacks} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
-async function _runDiarySummaryPipelineUnlocked(capabilities) {
+async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
     await capabilities.interface.ensureInitialized();
 
     const currentSummary = await capabilities.interface.getDiarySummary();
@@ -161,6 +182,9 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
                 continue;
             }
 
+            // Signal that this entry is about to be processed.
+            callbacks?.onEntryQueued?.(relativeAssetPath);
+
             // Get the event date as an ISO string for context.
             const newEntryDateISO = event.date.toISOString();
 
@@ -205,12 +229,15 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
                     version: "1",
                 };
                 await capabilities.interface.setDiarySummary(intermediateSummary);
+
+                callbacks?.onEntryProcessed?.(relativeAssetPath, "success");
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logError(
                     { relativeAssetPath, error, errorMessage },
                     "Error updating diary summary for diary content entry"
                 );
+                callbacks?.onEntryProcessed?.(relativeAssetPath, "error");
                 // Continue to the next transcription rather than aborting the pipeline.
             }
         }

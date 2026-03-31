@@ -11,10 +11,12 @@ import {
 import { marked } from "marked";
 import "./markdown.css";
 import { fetchDiarySummary, runDiarySummary } from "./api.js";
+import { DiarySummaryEntryList } from "./DiarySummaryEntryList.jsx";
 import { useToast } from "../toast.jsx";
 
 /**
  * @typedef {import('./api.js').DiarySummaryData} DiarySummaryData
+ * @typedef {import('./api.js').DiarySummaryRunEntry} DiarySummaryRunEntry
  */
 
 /**
@@ -55,6 +57,8 @@ export default function DiarySummary() {
     const [summary, setSummary] = useState(getInitialSummary());
     const [loadState, setLoadState] = useState(getInitialLoadState());
     const [isRunning, setIsRunning] = useState(false);
+    /** @type {[DiarySummaryRunEntry[], React.Dispatch<React.SetStateAction<DiarySummaryRunEntry[]>>]} */
+    const [runEntries, setRunEntries] = useState(/** @type {DiarySummaryRunEntry[]} */ ([]));
     const toast = useToast();
 
     useEffect(() => {
@@ -80,10 +84,13 @@ export default function DiarySummary() {
 
     async function handleRun() {
         setIsRunning(true);
+        setRunEntries([]);
         try {
-            const data = await runDiarySummary();
-            if (data !== null) {
-                setSummary(data);
+            const result = await runDiarySummary((entries) => {
+                setRunEntries([...entries]);
+            });
+            if (result.success && result.summary) {
+                setSummary(result.summary);
                 setLoadState("ready");
                 toast({ title: "Diary summary updated.", status: "success" });
             } else {
@@ -115,6 +122,10 @@ export default function DiarySummary() {
                 >
                     Update Summary
                 </Button>
+
+                {(isRunning || runEntries.length > 0) && (
+                    <DiarySummaryEntryList entries={runEntries} isRunning={isRunning} />
+                )}
 
                 {loadState === "loading" && (
                     <Box display="flex" alignItems="center" gap={2}>
