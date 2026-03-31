@@ -69,12 +69,14 @@ export async function fetchDiarySummary() {
 /**
  * Triggers the diary summary pipeline and polls until it completes.
  * @param {(entries: DiarySummaryRunEntry[]) => void} [onProgress] - Called with current entries whenever the running state is polled.
+ * @param {AbortSignal} [signal] - If provided, polling and progress callbacks stop when the signal is aborted.
  * @returns {Promise<RunDiarySummaryResult>}
  */
-export async function runDiarySummary(onProgress) {
+export async function runDiarySummary(onProgress, signal) {
     try {
         const response = await fetch(`${API_BASE_URL}/diary-summary/run`, {
             method: "POST",
+            signal,
         });
 
         if (response.status !== 200 && response.status !== 202 && response.status !== 500) {
@@ -84,12 +86,15 @@ export async function runDiarySummary(onProgress) {
 
         let data = await readDiarySummaryRunResponse(response);
 
-        if (data?.status === "running" && data.entries) {
+        if (data?.status === "running" && data.entries && !signal?.aborted) {
             onProgress?.(data.entries);
         }
 
-        while (data?.status === "running") {
+        while (data?.status === "running" && !signal?.aborted) {
             await waitForNextDiarySummaryPoll();
+            if (signal?.aborted) {
+                break;
+            }
             const statusResponse = await fetch(`${API_BASE_URL}/diary-summary/run`);
 
             if (statusResponse.status !== 200 && statusResponse.status !== 202 && statusResponse.status !== 500) {
@@ -99,9 +104,13 @@ export async function runDiarySummary(onProgress) {
 
             data = await readDiarySummaryRunResponse(statusResponse);
 
-            if (data?.status === "running" && data.entries) {
+            if (data?.status === "running" && data.entries && !signal?.aborted) {
                 onProgress?.(data.entries);
             }
+        }
+
+        if (signal?.aborted) {
+            return { success: false, error: "Aborted" };
         }
 
         if (data?.status === "success" && data.summary) {
@@ -122,6 +131,9 @@ export async function runDiarySummary(onProgress) {
         logger.warn("Diary summary run returned unexpected state:", data?.status);
         return { success: false, error: "Unexpected response from server" };
     } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+            return { success: false, error: "Aborted" };
+        }
         logger.error("Error running diary summary:", error);
         return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

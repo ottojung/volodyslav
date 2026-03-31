@@ -110,7 +110,7 @@ function makeDiarySummaryController(capabilities) {
                     error: errorMessage,
                 };
                 capabilities.logger.logError(
-                    { error: errorMessage },
+                    { error, errorMessage },
                     "Diary summary pipeline failed"
                 );
             });

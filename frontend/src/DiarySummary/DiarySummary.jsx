@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
     Box,
@@ -58,7 +58,14 @@ export default function DiarySummary() {
     const [loadState, setLoadState] = useState(getInitialLoadState());
     const [isRunning, setIsRunning] = useState(false);
     const [runEntries, setRunEntries] = useState([]);
+    const runAbortControllerRef = useRef(null);
     const toast = useToast();
+
+    useEffect(() => {
+        return () => {
+            runAbortControllerRef.current?.abort();
+        };
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -82,12 +89,21 @@ export default function DiarySummary() {
     }, []);
 
     async function handleRun() {
+        const abortController = new AbortController();
+        runAbortControllerRef.current?.abort();
+        runAbortControllerRef.current = abortController;
+
         setIsRunning(true);
         setRunEntries([]);
         try {
             const result = await runDiarySummary((entries) => {
-                setRunEntries([...entries]);
-            });
+                if (!abortController.signal.aborted) {
+                    setRunEntries([...entries]);
+                }
+            }, abortController.signal);
+            if (abortController.signal.aborted) {
+                return;
+            }
             if (result.success && result.summary) {
                 setSummary(result.summary);
                 setLoadState("ready");
@@ -97,7 +113,9 @@ export default function DiarySummary() {
                 toast({ title: "Failed to run diary summary.", status: "error" });
             }
         } finally {
-            setIsRunning(false);
+            if (!abortController.signal.aborted) {
+                setIsRunning(false);
+            }
         }
     }
 
