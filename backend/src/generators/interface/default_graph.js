@@ -14,6 +14,8 @@ const {
     calories,
     transcription,
     eventTranscription,
+    eventAudiosList,
+    diarySummary,
 } = require("../individual");
 
 /**
@@ -29,6 +31,7 @@ const {
  * @property {import('../../filesystem/deleter').FileDeleter} deleter - A file deleter instance.
  * @property {import('../../filesystem/copier').FileCopier} copier - A file copier instance.
  * @property {import('../../filesystem/appender').FileAppender} appender - A file appender instance.
+ * @property {import('../../filesystem/dirscanner').DirScanner} scanner - A directory scanner instance.
  * @property {import('../../subprocess/command').Command} git - A command instance for Git operations.
  * @property {import('../../environment').Environment} environment - An environment instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
@@ -57,15 +60,17 @@ const {
  *   all_events -> basic_context(e)
  *   basic_context(e) -> calories(e)
  *   transcription(a)                            [standalone, no graph inputs]
- *   event(e), transcription(a) -> event_transcription(e, a)
+ *   event(e) -> event_audios_list(e)
+ *   event_audios_list(e), transcription(a) -> event_transcription(e, a)
  *   config                                      [standalone, no graph inputs]
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @param {import('../individual/config/wrapper').ConfigBox} configBox
  * @param {import('../individual/all_events/wrapper').AllEventsBox} allEventsBox
+ * @param {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox} diarySummaryBox
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(capabilities, configBox, allEventsBox) {
+function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, diarySummaryBox) {
     return [
         {
             output: "config",
@@ -188,10 +193,24 @@ function createDefaultGraphDefinition(capabilities, configBox, allEventsBox) {
             hasSideEffects: true,
         },
         {
+            output: "event_audios_list(e)",
+            inputs: ["event(e)"],
+            computor: eventAudiosList.makeComputor(capabilities),
+            isDeterministic: false,
+            hasSideEffects: true,
+        },
+        {
             output: "event_transcription(e, a)",
             inputs: ["event(e)", "transcription(a)"],
             computor: eventTranscription.makeComputor(capabilities),
             isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "diary_most_important_info_summary",
+            inputs: [],
+            computor: diarySummary.makeComputor(diarySummaryBox),
+            isDeterministic: false,
             hasSideEffects: false,
         },
     ];

@@ -156,6 +156,20 @@ function stubAiDiaryQuestions(capabilities) {
 }
 
 /**
+ * Stubs the AI diary summary capabilities for testing.
+ * By default returns the current summary markdown with "\n- updated" appended.
+ * @param {object} capabilities
+ */
+function stubAiDiarySummary(capabilities) {
+    capabilities.aiDiarySummary.updateSummary = jest
+        .fn()
+        .mockImplementation(({ currentSummaryMarkdown }) =>
+            Promise.resolve({ summaryMarkdown: currentSummaryMarkdown + "\n- updated" })
+        );
+}
+
+
+/**
  * Stubs the AI transcript recombination capabilities for testing.
  * By default returns the newWindowText unchanged (passthrough).
  * @param {object} capabilities
@@ -571,6 +585,7 @@ module.exports = {
     stubAiTranscriber,
     stubAiCalories,
     stubAiDiaryQuestions,
+    stubAiDiarySummary,
     stubAiTranscriptRecombination,
     stubNotifier,
     stubDailyTasksExecutable,

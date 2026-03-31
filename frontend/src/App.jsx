@@ -126,6 +126,9 @@ function App() {
           <Link to="/record-diary">
             <Button colorPalette="orange" variant="outline" w="200px">Record Diary</Button>
           </Link>
+          <Link to="/diary-summary">
+            <Button colorPalette="cyan" variant="outline" w="200px">Diary Summary</Button>
+          </Link>
           <Link to="/config">
             <Button colorPalette="gray" variant="outline" w="200px">Manage Config</Button>
           </Link>

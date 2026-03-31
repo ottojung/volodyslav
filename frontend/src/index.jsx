@@ -9,6 +9,7 @@ import Search from './Search/Search.jsx';
 import EntryDetail from './EntryDetail/EntryDetail.jsx';
 import ConfigPage from './ConfigPage/ConfigPage.jsx';
 import AudioDiary from './AudioDiary/AudioDiary.jsx';
+import DiarySummary from './DiarySummary/DiarySummary.jsx';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 import { ToastProvider } from './toast.jsx';
@@ -44,6 +45,7 @@ ReactDOM.createRoot(root).render(
             <Route path="/entry/:id" element={<EntryDetail />} />
             <Route path="/config" element={<ConfigPage />} />
             <Route path="/record-diary" element={<AudioDiary />} />
+            <Route path="/diary-summary" element={<DiarySummary />} />
             <Route path="*" element={<App />} />
           </Routes>
         </BrowserRouter>

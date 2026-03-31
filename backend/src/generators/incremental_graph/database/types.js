@@ -210,8 +210,31 @@ function versionToString(Version) {
  */
 
 /**
+ * The list of audio file paths associated with an event.
+ * Computed by scanning the event's assets directory.
+ * @typedef {object} EventAudiosListEntry
+ * @property {'event_audios_list'} type - The type of the entry
+ * @property {SerializedEvent} event - The serialized event these audio files belong to
+ * @property {string[]} audioPaths - Sorted relative paths (relative to assets root) of audio files
+ */
+
+/**
+ * The rolling diary summary node. Stores the current structured markdown summary,
+ * the max diary entry date incorporated, and a map of processed transcription paths
+ * with their last-processed modification timestamps.
+ * @typedef {object} DiaryMostImportantInfoSummaryEntry
+ * @property {'diary_most_important_info_summary'} type - The type of the entry
+ * @property {string} markdown - The current summary markdown
+ * @property {string} summaryDate - ISO date of the max entry date incorporated
+ * @property {Record<string, string>} processedTranscriptions - Map of relativeAssetPath to lastProcessedModificationTimeISO
+ * @property {string} updatedAt - ISO timestamp of when this summary was last updated
+ * @property {string} model - The model used for the last update
+ * @property {string} version - Version string for the summary format
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
  */
 
 /**
