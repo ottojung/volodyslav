@@ -79,6 +79,54 @@ describe("POST /api/entries", () => {
         expect(res.body.entry.date).toMatch(/\+03/);
     });
 
+    it("accepts a plain positive numeric offset as clientTimezone", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const serverTime = fromISOString("2025-05-23T12:00:00.000Z");
+        capabilities.datetime.now.mockReturnValue(serverTime);
+
+        // "+3" means UTC+3; server noon UTC becomes 15:00 +03.
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza", clientTimezone: "+3" })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.entry.date).toContain("2025-05-23");
+        expect(res.body.entry.date).toMatch(/\+0300/);
+    });
+
+    it("accepts a plain negative numeric offset as clientTimezone", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const serverTime = fromISOString("2025-05-23T12:00:00.000Z");
+        capabilities.datetime.now.mockReturnValue(serverTime);
+
+        // "-7" means UTC-7; server noon UTC becomes 05:00 -07.
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza", clientTimezone: "-7" })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.entry.date).toContain("2025-05-23");
+        expect(res.body.entry.date).toMatch(/-0700/);
+    });
+
+    it("accepts a numeric offset with colon as clientTimezone", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const serverTime = fromISOString("2025-05-23T12:00:00.000Z");
+        capabilities.datetime.now.mockReturnValue(serverTime);
+
+        // "+05:30" means UTC+5:30 (India); server noon UTC becomes 17:30 +05:30.
+        const res = await request(app)
+            .post("/api/entries")
+            .send({ rawInput: "food pizza", clientTimezone: "+05:30" })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.entry.date).toContain("2025-05-23");
+        expect(res.body.entry.date).toMatch(/\+0530/);
+    });
+
     it("returns 400 when clientTimezone is not provided", async () => {
         const { app } = await makeTestApp();
 

@@ -5,7 +5,7 @@ const fromInput = event.fromInput;
 const { processUserInput, isInputParseError } = fromInput;
 const { sanitizeFilename, isFilenameValidationError } = require("../../temporary");
 const { makeFromData } = require("../../filesystem").file_ref;
-const { isValidIANATimezone } = require("../../datetime");
+const { parseClientTimezone } = require("../../datetime");
 
 /**
  * @typedef {import('../../environment').Environment} Environment
@@ -222,7 +222,8 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         if (typeof clientTimezone !== "string") {
             return res.status(400).json({ error: "clientTimezone must be a string" });
         }
-        if (!isValidIANATimezone(clientTimezone)) {
+        const parsedTimezone = parseClientTimezone(clientTimezone);
+        if (parsedTimezone === null) {
             return res.status(400).json({ error: `Invalid clientTimezone: ${clientTimezone}` });
         }
 
@@ -250,7 +251,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         const entryData = {
             original,
             input,
-            clientTimezone,
+            clientTimezone: parsedTimezone,
         };
 
         const fileRefs = await prepareFileObjects(capabilities, files, reqId);
