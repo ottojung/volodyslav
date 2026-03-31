@@ -49,6 +49,13 @@ function getInitialLoadState() {
 }
 
 /**
+ * @returns {DiarySummaryRunEntry[]}
+ */
+function getInitialRunEntries() {
+    return [];
+}
+
+/**
  * Diary Summary page component.
  * Shows the current rolling diary summary and allows triggering an update.
  * @returns {React.JSX.Element}
@@ -57,7 +64,8 @@ export default function DiarySummary() {
     const [summary, setSummary] = useState(getInitialSummary());
     const [loadState, setLoadState] = useState(getInitialLoadState());
     const [isRunning, setIsRunning] = useState(false);
-    const [runEntries, setRunEntries] = useState([]);
+    const [runEntries, setRunEntries] = useState(getInitialRunEntries());
+    /** @type {import('react').MutableRefObject<AbortController | null>} */
     const runAbortControllerRef = useRef(null);
     const toast = useToast();
 
