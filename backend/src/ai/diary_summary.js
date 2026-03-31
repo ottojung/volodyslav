@@ -70,7 +70,7 @@ Rules:
 
 2. Output only Markdown, starting with "## Current snapshot".
 3. Use mostly bullets (- ...). Use short paragraphs only when clearly better.
-4. Total target length: 900-1300 words. Hard cap: 1600 words.
+4. Total target length: 2000-3000 words. Hard cap: 4000 words.
 5. Keep each section compact. Prefer updating or merging bullets over adding new ones.
 6. If the new entry adds no important information, return the summary unchanged.
 7. Preserve uncertainty. Do not invent causes, diagnoses, motives, or hidden explanations.
