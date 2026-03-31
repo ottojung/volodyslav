@@ -105,11 +105,17 @@ export async function runDiarySummary(onProgress) {
         }
 
         if (data?.status === "success" && data.summary) {
+            if (data.entries) {
+                onProgress?.(data.entries);
+            }
             return { success: true, summary: data.summary, entries: data.entries };
         }
 
         if (data?.status === "error") {
             logger.warn("Diary summary pipeline failed:", data.error);
+            if (data.entries) {
+                onProgress?.(data.entries);
+            }
             return { success: false, error: data.error, entries: data.entries };
         }
 

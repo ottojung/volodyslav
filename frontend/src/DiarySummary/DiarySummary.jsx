@@ -57,8 +57,7 @@ export default function DiarySummary() {
     const [summary, setSummary] = useState(getInitialSummary());
     const [loadState, setLoadState] = useState(getInitialLoadState());
     const [isRunning, setIsRunning] = useState(false);
-    /** @type {[DiarySummaryRunEntry[], React.Dispatch<React.SetStateAction<DiarySummaryRunEntry[]>>]} */
-    const [runEntries, setRunEntries] = useState(/** @type {DiarySummaryRunEntry[]} */ ([]));
+    const [runEntries, setRunEntries] = useState([]);
     const toast = useToast();
 
     useEffect(() => {

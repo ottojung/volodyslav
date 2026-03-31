@@ -104,8 +104,25 @@ describe("runDiarySummary", () => {
             await runDiarySummary(onProgress);
         });
 
+        // Called twice for "running" polls, then once more for the final "success" state.
         expect(onProgress).toHaveBeenCalledWith(entries1);
-        expect(onProgress).toHaveBeenCalledTimes(2);
+        expect(onProgress).toHaveBeenLastCalledWith(entries2);
+        expect(onProgress).toHaveBeenCalledTimes(3);
+    });
+
+    it("calls onProgress with final entries on terminal error state", async () => {
+        const entries = [{ path: "assets/a.wav", status: "error" }];
+        global.fetch
+            .mockResolvedValueOnce(makeResponse(202, { status: "running", entries: [] }))
+            .mockResolvedValueOnce(makeResponse(500, { status: "error", error: "AI service unavailable", entries }));
+
+        const onProgress = jest.fn();
+
+        await act(async () => {
+            await runDiarySummary(onProgress);
+        });
+
+        expect(onProgress).toHaveBeenLastCalledWith(entries);
     });
 
     it("returns error result when the POST returns an unexpected status", async () => {
