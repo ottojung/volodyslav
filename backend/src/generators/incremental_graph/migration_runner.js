@@ -148,7 +148,15 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
             }
             const oldFreshness = await prevStorage.freshness.get(nodeKey);
             if (oldFreshness !== undefined) {
-                ops.push(newStorage.freshness.putOp(nodeKey, oldFreshness));
+                // If the stored freshness is "up-to-date" but the value is
+                // missing the database is in an inconsistent state.  Reset to
+                // "potentially-outdated" so the node is recomputed on the
+                // next pull rather than keeping the broken invariant.
+                const effectiveFreshness =
+                    oldFreshness === "up-to-date" && value === undefined
+                        ? "potentially-outdated"
+                        : oldFreshness;
+                ops.push(newStorage.freshness.putOp(nodeKey, effectiveFreshness));
             }
             const counter = await prevStorage.counters.get(nodeKey);
             if (counter !== undefined) {

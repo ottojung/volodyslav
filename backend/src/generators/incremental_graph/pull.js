@@ -151,12 +151,13 @@ async function internalPullByNodeKeyStringWithStatusDuringPull(
 
         if (nodeFreshness === "up-to-date") {
             const result = await batch.values.get(nodeKeyStr);
-            if (result === undefined) {
-                throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${nodeKeyStringToString(nodeKeyStr)}`
-                );
+            if (result !== undefined) {
+                return { value: result, status: "cached" };
             }
-            return { value: result, status: "cached" };
+            // The node is marked up-to-date but has no stored value — an
+            // invariant violation that can arise from a corrupted or
+            // inconsistently-migrated database.  Heal by falling through to
+            // recompute so that the node ends up in a consistent state.
         }
 
         return await incrementalGraph.maybeRecalculate(
