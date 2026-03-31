@@ -99,12 +99,12 @@ describe("runDiarySummaryPipeline", () => {
         const capabilities = await getTestCapabilities();
         await capabilities.interface.ensureInitialized();
 
-        // Write event with assets but do NOT pull transcription (not materialized).
+        // Write event with assets but do NOT pull entry_diary_content (not materialized).
         await writeDiaryEventWithAssets(capabilities, "1", ["memo.mp3"]);
 
         const result = await runDiarySummaryPipeline(capabilities);
 
-        // No transcription materialized → AI not called.
+        // No entry_diary_content materialized → AI not called.
         expect(capabilities.aiDiarySummary.updateSummary).not.toHaveBeenCalled();
         // processedTranscriptions should be empty.
         expect(Object.keys(result.processedTranscriptions)).toHaveLength(0);
@@ -121,14 +121,14 @@ describe("runDiarySummaryPipeline", () => {
             fromISOString("2024-03-15T10:00:00.000Z"),
         );
 
-        // Materialize the transcription node by pulling it.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        // Materialize the entry_diary_content node by pulling it.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         const result = await runDiarySummaryPipeline(capabilities);
 
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
         const call = capabilities.aiDiarySummary.updateSummary.mock.calls[0][0];
-        expect(call.newEntryTranscriptionText).toContain("mocked transcription");
+        expect(call.newEntryTranscribedAudioRecording).toContain("mocked transcription");
         expect(call.newEntryDateISO).toBeTruthy();
 
         // Watermark should be recorded for this asset.
@@ -145,14 +145,14 @@ describe("runDiarySummaryPipeline", () => {
             ["memo.mp3"],
         );
 
-        // Materialize transcription.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        // Materialize entry_diary_content.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
-        // First run: processes the transcription.
+        // First run: processes the entry.
         const first = await runDiarySummaryPipeline(capabilities);
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
 
-        // Second run: transcription mod-time unchanged, should be skipped.
+        // Second run: entry_diary_content mod-time unchanged, should be skipped.
         const second = await runDiarySummaryPipeline(capabilities);
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1); // still 1
 
@@ -175,9 +175,9 @@ describe("runDiarySummaryPipeline", () => {
             capabilities, "2", ["newer.mp3"], newerDate
         );
 
-        // Materialize both transcriptions.
-        await capabilities.interface.pullGraphNode("transcription", [olderPath]);
-        await capabilities.interface.pullGraphNode("transcription", [newerPath]);
+        // Materialize both entry_diary_content nodes.
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", olderPath]);
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["2", newerPath]);
 
         const result = await runDiarySummaryPipeline(capabilities);
 
@@ -200,8 +200,8 @@ describe("runDiarySummaryPipeline", () => {
         );
 
         // Materialize both.
-        await capabilities.interface.pullGraphNode("transcription", [p1]);
-        await capabilities.interface.pullGraphNode("transcription", [p2]);
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", p1]);
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["2", p2]);
 
         const setDiarySummarySpy = jest.spyOn(capabilities.interface, "setDiarySummary");
 
@@ -255,7 +255,7 @@ describe("runDiarySummaryPipeline", () => {
         const [relativeAssetPath] = await writeDiaryEventWithAssets(
             capabilities, "1", ["memo.mp3"], fromISOString("2024-01-01T00:00:00.000Z")
         );
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        await capabilities.interface.pullGraphNode("entry_diary_content", ["1", relativeAssetPath]);
 
         // Launch two pipeline runs concurrently.
         const [r1, r2] = await Promise.all([
@@ -268,7 +268,7 @@ describe("runDiarySummaryPipeline", () => {
         expect(r2.type).toBe("diary_most_important_info_summary");
 
         // The AI should be called exactly once total: the second run sees the
-        // transcription already watermarked by the first and skips it.
+        // entry already watermarked by the first and skips it.
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1);
     });
 });

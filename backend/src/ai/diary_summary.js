@@ -50,9 +50,16 @@ const SYSTEM_PROMPT = `You maintain a structured rolling diary summary.
 
 You receive:
 - the CURRENT summary in Markdown
-- ONE NEW diary entry transcription
+- ONE NEW diary entry, which may include:
+  - TYPED TEXT: text typed directly by the user (spelling is reliable)
+  - TRANSCRIBED AUDIO: speech-to-text transcription of a recorded audio (may contain transcription errors)
 - the summary watermark date
 - the new entry date
+
+Note on content reliability:
+- Typed text has accurate spelling and punctuation.
+- Transcribed audio may contain transcription errors (mishearing, homophones, punctuation gaps).
+  Treat uncertain words cautiously; prefer the typed text when both sources are available.
 
 Your task is to update the summary by minimally editing it in place.
 
@@ -104,7 +111,8 @@ Return ONLY the updated markdown.`;
 /**
  * @typedef {object} AIDiarySummaryInput
  * @property {string} currentSummaryMarkdown - The current summary markdown.
- * @property {string} newEntryTranscriptionText - The transcription text of the new entry.
+ * @property {string | undefined} newEntryTypedText - The typed text of the new entry (if present).
+ * @property {string | undefined} newEntryTranscribedAudioRecording - The transcribed audio recording of the new entry (if present).
  * @property {string} currentSummaryDateISO - ISO date of the current summary.
  * @property {string} newEntryDateISO - ISO date of the new entry.
  */
@@ -132,10 +140,24 @@ function makeUserMessage(input) {
         "",
         input.currentSummaryMarkdown || "(no summary yet)",
         "",
-        "# NEW ENTRY TRANSCRIPTION",
+        "# NEW ENTRY",
         "",
-        input.newEntryTranscriptionText,
     ];
+
+    if (input.newEntryTypedText) {
+        lines.push("## TYPED TEXT");
+        lines.push("");
+        lines.push(input.newEntryTypedText);
+        lines.push("");
+    }
+
+    if (input.newEntryTranscribedAudioRecording) {
+        lines.push("## TRANSCRIBED AUDIO");
+        lines.push("");
+        lines.push(input.newEntryTranscribedAudioRecording);
+        lines.push("");
+    }
+
     return lines.join("\n");
 }
 
@@ -191,6 +213,7 @@ function make(getCapabilities) {
 module.exports = {
     DIARY_SUMMARY_MODEL,
     SYSTEM_PROMPT,
+    makeUserMessage,
     make,
     isAIDiarySummaryError,
 };

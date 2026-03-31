@@ -219,6 +219,15 @@ function versionToString(Version) {
  */
 
 /**
+ * The diary content for a specific (event, audio) pair.
+ * Combines typed text from the event with transcribed audio recording text.
+ * Returns "N/A" when the event is not a diary entry.
+ * @typedef {object} EntryDiaryContentEntry
+ * @property {'entry_diary_content'} type - The type of the entry
+ * @property {{ typed_text: string | undefined, transcribed_audio_recording: string | undefined } | 'N/A'} value - The diary content
+ */
+
+/**
  * The rolling diary summary node. Stores the current structured markdown summary,
  * the max diary entry date incorporated, and a map of processed transcription paths
  * with their last-processed modification timestamps.
@@ -234,7 +243,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDiaryContentEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
  */
 
 /**

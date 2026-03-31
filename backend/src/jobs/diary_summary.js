@@ -2,9 +2,10 @@
  * Diary summary pipeline.
  *
  * Iterates all diary events via the incremental graph and folds their materialized
- * transcriptions into the rolling summary. The list of audio files for each event
- * is obtained by pulling the `event_audios_list(e)` graph node — no direct
- * filesystem access occurs in this module.
+ * diary content (typed text and/or transcribed audio) into the rolling summary.
+ * The list of audio files for each event is obtained by pulling the
+ * `event_audios_list(e)` graph node — no direct filesystem access occurs in this
+ * module.
  */
 
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
@@ -29,8 +30,8 @@ const DIARY_SUMMARY_MUTEX_KEY = makeUniqueFunctor("diary-summary-pipeline").inst
  *  1. Read current summary from graph.
  *  2. Iterate all diary events in ascending date order.
  *  3. For each event, pull `event_audios_list(e)` from the graph to get its audio paths.
- *  4. For each audio path, check whether a transcription graph node has been materialized.
- *  5. For each new transcription, call the AI summarizer and advance the watermarks.
+ *  4. For each audio path, check whether an `entry_diary_content(e, a)` graph node has been materialized.
+ *  5. For each new diary content entry, call the AI summarizer and advance the watermarks.
  *  6. Persist the updated summary back to the graph after each fold.
  *
  * Runs are serialized with a mutex so the hourly job and an explicit POST run
@@ -94,53 +95,54 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
         }
 
         for (const relativeAssetPath of audioListEntry.audioPaths) {
-            // Check if a transcription has been materialized for this asset.
+            // Check if an entry_diary_content node has been materialized for this asset.
             const freshness = await capabilities.interface.debugGetFreshness(
-                "transcription",
-                [relativeAssetPath]
+                "entry_diary_content",
+                [eventId, relativeAssetPath]
             );
             if (freshness === "missing") {
                 continue;
             }
 
-            // Get the modification time of the transcription graph node.
+            // Get the modification time of the entry_diary_content graph node.
             let modTimeISO;
             try {
                 const modTime = await capabilities.interface.getModificationTime(
-                    "transcription",
-                    [relativeAssetPath]
+                    "entry_diary_content",
+                    [eventId, relativeAssetPath]
                 );
                 modTimeISO = modTime.toISOString();
             } catch {
                 continue;
             }
 
-            // Check if this transcription has already been processed.
+            // Check if this entry has already been processed.
             const lastProcessed = processedTranscriptions[relativeAssetPath];
             if (lastProcessed !== undefined && lastProcessed >= modTimeISO) {
                 continue;
             }
 
-            // Read the transcription value.
-            let transcriptionText;
+            // Read the entry_diary_content value.
+            let diaryContentValue;
             try {
-                const transcriptionEntry = await capabilities.interface.pullGraphNode(
-                    "transcription",
-                    [relativeAssetPath]
+                const diaryContentEntry = await capabilities.interface.pullGraphNode(
+                    "entry_diary_content",
+                    [eventId, relativeAssetPath]
                 );
-                if (transcriptionEntry.type !== "transcription") {
+                if (diaryContentEntry.type !== "entry_diary_content") {
                     continue;
                 }
-                if ("message" in transcriptionEntry.value) {
-                    // Skip failed transcriptions.
+                if (diaryContentEntry.value === "N/A") {
                     continue;
                 }
-                transcriptionText = transcriptionEntry.value.text;
+                diaryContentValue = diaryContentEntry.value;
             } catch {
                 continue;
             }
 
-            if (!transcriptionText || transcriptionText.trim() === "") {
+            const { typed_text: typedText, transcribed_audio_recording: transcribedAudioRecording } = diaryContentValue;
+
+            if (!typedText && !transcribedAudioRecording) {
                 continue;
             }
 
@@ -151,7 +153,8 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
             try {
                 const result = await capabilities.aiDiarySummary.updateSummary({
                     currentSummaryMarkdown: currentMarkdown,
-                    newEntryTranscriptionText: transcriptionText,
+                    newEntryTypedText: typedText,
+                    newEntryTranscribedAudioRecording: transcribedAudioRecording,
                     currentSummaryDateISO: currentSummaryDate,
                     newEntryDateISO,
                 });
@@ -172,7 +175,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
 
                 capabilities.logger.logInfo(
                     { relativeAssetPath, newEntryDateISO },
-                    "Diary summary updated with new transcription"
+                    "Diary summary updated with new diary content"
                 );
 
                 // Persist incrementally so a crash mid-run loses at most one fold.
@@ -191,7 +194,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logError(
                     { relativeAssetPath, error, errorMessage },
-                    "Error updating diary summary for transcription"
+                    "Error updating diary summary for diary content entry"
                 );
                 // Continue to the next transcription rather than aborting the pipeline.
             }
@@ -199,7 +202,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities) {
     }
 
     if (!hasUpdates) {
-        capabilities.logger.logDebug({}, "Diary summary pipeline: no new transcriptions to process");
+        capabilities.logger.logDebug({}, "Diary summary pipeline: no new diary content to process");
         return currentSummary;
     }
 
