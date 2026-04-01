@@ -84,6 +84,7 @@ Rules:
 7. Preserve uncertainty. Do not invent causes, diagnoses, motives, or hidden explanations.
 8. Distinguish observed facts from interpretations. If something is uncertain, say so.
 9. Prioritize:
+   - deduplication
    - recurring patterns
    - important recent changes
    - important people and relationship dynamics
@@ -92,6 +93,7 @@ Rules:
    - notable wins, improvements, and stabilizing factors
    - important long-term facts
 10. Aggressively avoid:
+   - duplication, rephrasing, and restatements of the same facts
    - decorative detail
    - low-signal one-off facts
    - redundant restatements
