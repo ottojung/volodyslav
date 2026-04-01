@@ -92,8 +92,8 @@ function migrationCallback(capabilities) {
                         throw new Error(`Unexpected missing value for node key ${nodeKey}`);
                     }
 
-                    if (JSON.stringify(Object.keys(currentValue)) !== JSON.stringify(['markdown', 'summaryDate', 'processedTranscriptions', 'updatedAt', 'model', 'version'])) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: has unexpected fields`);
+                    if (JSON.stringify(Object.keys(currentValue).sort()) !== JSON.stringify(['type', 'markdown', 'summaryDate', 'processedTranscriptions', 'updatedAt', 'model', 'version'].sort())) {
+                        throw new Error(`Unexpected node value for key ${nodeKey}: has unexpected fields: ${Object.keys(currentValue)}`);
                     }
 
                     if (!('markdown' in currentValue)) {
