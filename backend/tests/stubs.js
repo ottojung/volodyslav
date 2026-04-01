@@ -156,6 +156,9 @@ function stubAiDiaryQuestions(capabilities) {
             { text: "What details do you want to remember later?", intent: "clarifying" },
             { text: "What small step feels right from here?", intent: "forward" },
         ]);
+    capabilities.aiDiaryQuestions.generateInitialQuestionsFromSummary = jest
+        .fn()
+        .mockResolvedValue([]);
 }
 
 /**

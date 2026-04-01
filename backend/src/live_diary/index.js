@@ -5,9 +5,12 @@
  * @module live_diary
  */
 
-const { pushAudio, getPendingQuestions } = require("./service");
+const { pushAudio } = require("./service");
+const { getPendingQuestions } = require("./pending_questions");
+const { generateInitialQuestionsAndPush } = require("./initial_questions");
 
 module.exports = {
     pushAudio,
     getPendingQuestions,
+    generateInitialQuestionsAndPush,
 };

@@ -26,7 +26,7 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
-const { getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
+const { getPendingQuestions: getLiveDiaryPendingQuestions, generateInitialQuestionsAndPush } = require("../live_diary");
 const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_analysis_queue");
 
 /** @typedef {import('../environment').Environment} Environment */
@@ -36,6 +36,7 @@ const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_a
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
+/** @typedef {import('../generators').Interface} Interface */
 
 /**
  * @typedef {object} Capabilities
@@ -46,6 +47,7 @@ const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_a
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
+ * @property {Interface} interface
  */
 
 /**
@@ -240,6 +242,25 @@ function makeRouter(capabilities) {
             capabilities.logger.logError(
                 { sessionId, error: error instanceof Error ? error.message : String(error) },
                 "Failed to fetch live diary pending questions"
+            );
+            return res.status(500).json({ success: false, error: "Internal error" });
+        }
+    });
+
+    // POST /audio-recording-session/:sessionId/initialize-live-questions
+    // Generates the initial set of diary questions from the diary summary using the
+    // smart AI model and pushes them as pending questions for the client to fetch.
+    // Should be called once when a new recording session starts (before any audio is pushed).
+    router.post("/audio-recording-session/:sessionId/initialize-live-questions", async (req, res) => {
+        const { sessionId } = req.params;
+
+        try {
+            await generateInitialQuestionsAndPush(capabilities, sessionId);
+            return res.json({ success: true });
+        } catch (error) {
+            capabilities.logger.logError(
+                { sessionId, error: error instanceof Error ? error.message : String(error) },
+                "Failed to generate initial live diary questions"
             );
             return res.status(500).json({ success: false, error: "Internal error" });
         }

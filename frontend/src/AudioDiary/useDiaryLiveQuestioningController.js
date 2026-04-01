@@ -24,13 +24,13 @@ import { getLiveQuestions } from "./session_api.js";
 /**
  * How often (in ms) to poll the backend for newly generated diary questions.
  */
-const POLLING_INTERVAL_MS = 5000;
+const POLLING_INTERVAL_MS = 60000;
 const NEW_FLAG_DURATION_MS = 300;
 
 /**
  * Maximum number of unpinned questions to keep visible at once.
  */
-const MAX_VISIBLE_UNPINNED = 8;
+const MAX_VISIBLE_UNPINNED = 40;
 
 /**
  * @typedef {object} DisplayedQuestion

@@ -22,6 +22,7 @@ import RecorderStatusBadge from "./RecorderStatusBadge.jsx";
 import LiveQuestionsPanel from "./LiveQuestionsPanel.jsx";
 import { useDiaryLiveQuestioningController } from "./useDiaryLiveQuestioningController.js";
 import { submitDiaryAudio } from "./diary_audio_api.js";
+import { initializeLiveQuestions } from "./session_api.js";
 
 const pulseRing = keyframes`
     0%   { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.5); }
@@ -79,11 +80,15 @@ export default function AudioDiary() {
         }
     }, [hasRestoredSession, recorderState, startLive]);
 
-    // Wrap handleStart to also start live questioning.
+    // Wrap handleStart to also start live questioning and trigger initial questions.
     const handleStart = useCallback(async () => {
         try {
             await handleStartBase();
-            startLive(sessionIdRef.current);
+            const sessionId = sessionIdRef.current;
+            startLive(sessionId);
+            // Fire-and-forget: generate initial questions from the diary summary.
+            // This runs asynchronously and failures are silently ignored.
+            initializeLiveQuestions(sessionId).catch(() => {});
         } catch (error) {
             // Ensure live questioning is not left running if recorder start fails.
             stopLive();

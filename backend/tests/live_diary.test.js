@@ -798,7 +798,7 @@ describe("getPendingQuestions", () => {
         expect(second).toEqual([]);
     });
 
-    it("accumulates questions from multiple fragments before they are fetched", async () => {
+    it("skips question generation when the previous batch has not been fetched yet", async () => {
         const caps = makeCapabilities();
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
@@ -846,12 +846,15 @@ describe("getPendingQuestions", () => {
 
         await pushAudio(caps, "sess-multi", buildTestPcmInfo(), 1);
         await pushAudio(caps, "sess-multi", buildTestPcmInfo(), 2);
+        // Fragment 3: the previous batch ("Question A?") has not been fetched yet,
+        // so question generation is skipped for this fragment.
         await pushAudio(caps, "sess-multi", buildTestPcmInfo(), 3);
 
-        // Neither generation has been fetched yet — both should be pending.
+        // Only the first generation result is pending — the second was skipped.
         const pending = await getPendingQuestions(caps, "sess-multi");
         const texts = pending.map((q) => q.text);
         expect(texts).toContain("Question A?");
-        expect(texts).toContain("Question B?");
+        expect(texts).not.toContain("Question B?");
+        expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
     });
 });
