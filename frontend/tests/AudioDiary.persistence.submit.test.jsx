@@ -40,11 +40,15 @@ describe("AudioDiary persistence: submit lifecycle", () => {
     });
 
     it("keeps session ID when submit fails", async () => {
-        // Override the fetch mock to fail for diary-audio
+        // Override the fetch mock to fail for entries submission
         const originalFetch = global.fetch;
         global.fetch = jest.fn().mockImplementation((url, options) => {
             const urlStr = String(url);
-            if (options && options.method === "POST" && urlStr.includes("/entries/diary-audio")) {
+            if (
+                options &&
+                options.method === "POST" &&
+                /\/entries(?:\?|$)/.test(urlStr)
+            ) {
                 return Promise.resolve({
                     ok: false,
                     status: 500,

@@ -98,8 +98,12 @@ function makeFetchMock() {
             });
         }
 
-        // POST /entries/diary-audio
-        if (options && options.method === "POST" && urlStr.includes("/entries/diary-audio")) {
+        // POST /entries
+        if (
+            options &&
+            options.method === "POST" &&
+            /\/entries(?:\?|$)/.test(urlStr)
+        ) {
             return Promise.resolve({
                 ok: true,
                 status: 201,
