@@ -8,9 +8,10 @@
  *
  * Questions are retrieved from GET /audio-recording-session/:sessionId/live-questions
  * with one immediate fetch on start, then every POLLING_INTERVAL_MS milliseconds
- * while recording is active. Until the first questions arrive, startup retries
- * run at a shorter interval so initial questions appear as soon as backend
- * generation completes.
+ * while recording is active.  The first fetch blocks on the backend until the
+ * initial set of questions is ready (the endpoint chains after the initialization
+ * queue), so initial questions appear as soon as the model responds without any
+ * client-side retry loops.
  *
  * Each question is shown as an independent item.  Clicking a question pins
  * it to the top of the list; clicking again removes the pin (and the question
@@ -28,7 +29,6 @@ import { getLiveQuestions } from "./session_api.js";
  * How often (in ms) to poll the backend for newly generated diary questions.
  */
 const POLLING_INTERVAL_MS = 60000;
-const STARTUP_POLL_RETRY_MS = 3000;
 const NEW_FLAG_DURATION_MS = 300;
 
 /**
@@ -108,10 +108,6 @@ export function useDiaryLiveQuestioningController() {
     const pollingCounterRef = useRef(0);
     /** @type {import('react').MutableRefObject<boolean>} */
     const isPollInFlightRef = useRef(false);
-    /** @type {import('react').MutableRefObject<boolean>} */
-    const hasReceivedAnyQuestionRef = useRef(false);
-    /** @type {import('react').MutableRefObject<ReturnType<typeof setTimeout> | null>} */
-    const startupPollTimeoutRef = useRef(null);
     /**
      * IDs of pending isNew-clear timeouts.  Tracked so they can be cancelled
      * when the session stops or the component unmounts, preventing stale
@@ -155,7 +151,6 @@ export function useDiaryLiveQuestioningController() {
             if (!isRunningRef.current || !questions || questions.length === 0) {
                 return;
             }
-            hasReceivedAnyQuestionRef.current = true;
 
             /** @type {DisplayedQuestion[]} */
             const newItems = questions.map((q) => ({
@@ -190,17 +185,15 @@ export function useDiaryLiveQuestioningController() {
 
     /**
      * Best-effort single poll for pending live questions in the active session.
-     * Returns the number of questions consumed by this call, or 0 when skipped
-     * (not running / already in-flight) or when no questions are available.
      */
     const pollOnce = useCallback(async () => {
         if (!isRunningRef.current || !currentSessionIdRef.current) {
-            return 0;
+            return;
         }
         const pollSessionId = currentSessionIdRef.current;
         // Skip if a previous poll is still in flight to prevent overlapping executions.
         if (isPollInFlightRef.current) {
-            return 0;
+            return;
         }
         isPollInFlightRef.current = true;
         try {
@@ -212,52 +205,13 @@ export function useDiaryLiveQuestioningController() {
             ) {
                 pollingCounterRef.current += 1;
                 onQuestions(questions, pollingCounterRef.current);
-                return questions.length;
             }
-            return 0;
         } catch {
             // Polling failure is best-effort; recording continues unaffected.
-            return 0;
         } finally {
             isPollInFlightRef.current = false;
         }
     }, [onQuestions]);
-
-    /**
-     * Cancel startup retry polling.
-     */
-    const clearStartupPollTimeout = useCallback(() => {
-        if (startupPollTimeoutRef.current !== null) {
-            clearTimeout(startupPollTimeoutRef.current);
-            startupPollTimeoutRef.current = null;
-        }
-    }, []);
-
-    /**
-     * Poll more frequently during startup until at least one question appears.
-     * This minimizes delay when initial-question generation takes less than
-     * the main 60s polling interval.
-     */
-    const scheduleStartupRetryPolling = useCallback(() => {
-        const retry = async () => {
-            if (!isRunningRef.current || hasReceivedAnyQuestionRef.current) {
-                clearStartupPollTimeout();
-                return;
-            }
-            const consumedCount = await pollOnce();
-            if (
-                consumedCount === 0 &&
-                isRunningRef.current &&
-                !hasReceivedAnyQuestionRef.current
-            ) {
-                startupPollTimeoutRef.current = setTimeout(retry, STARTUP_POLL_RETRY_MS);
-            } else {
-                clearStartupPollTimeout();
-            }
-        };
-        clearStartupPollTimeout();
-        startupPollTimeoutRef.current = setTimeout(retry, STARTUP_POLL_RETRY_MS);
-    }, [clearStartupPollTimeout, pollOnce]);
 
     /**
      * Toggle pin state for a question.
@@ -317,10 +271,8 @@ export function useDiaryLiveQuestioningController() {
         /** @param {string} sessionId */
         (sessionId) => {
             clearNewFlagTimeouts();
-            clearStartupPollTimeout();
             isRunningRef.current = true;
             currentSessionIdRef.current = sessionId;
-            hasReceivedAnyQuestionRef.current = false;
             displayedQuestionsRef.current = [];
             pinnedQuestionIdsRef.current = [];
             pinnedQuestionsRef.current = [];
@@ -335,11 +287,12 @@ export function useDiaryLiveQuestioningController() {
             pollingIntervalRef.current = setInterval(() => {
                 void pollOnce();
             }, POLLING_INTERVAL_MS);
-            // Fetch once immediately so initial questions appear as soon as they are ready.
+            // Fetch once immediately.  The backend's GET /live-questions endpoint
+            // chains after the initialization queue, so this call blocks until
+            // the initial questions (or 0 on failure) are ready.
             void pollOnce();
-            scheduleStartupRetryPolling();
         },
-        [clearNewFlagTimeouts, clearStartupPollTimeout, pollOnce, scheduleStartupRetryPolling]
+        [clearNewFlagTimeouts, pollOnce]
     );
 
     /**
@@ -352,9 +305,8 @@ export function useDiaryLiveQuestioningController() {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
         }
-        clearStartupPollTimeout();
         clearNewFlagTimeouts();
-    }, [clearStartupPollTimeout, clearNewFlagTimeouts]);
+    }, [clearNewFlagTimeouts]);
 
     // Cleanup on unmount: stop polling and cancel any pending isNew timeouts.
     useEffect(() => {
@@ -362,10 +314,9 @@ export function useDiaryLiveQuestioningController() {
             if (pollingIntervalRef.current !== null) {
                 clearInterval(pollingIntervalRef.current);
             }
-            clearStartupPollTimeout();
             clearNewFlagTimeouts();
         };
-    }, [clearStartupPollTimeout, clearNewFlagTimeouts]);
+    }, [clearNewFlagTimeouts]);
 
     return {
         displayedQuestions,

@@ -85,10 +85,11 @@ export default function AudioDiary() {
         try {
             await handleStartBase();
             const sessionId = sessionIdRef.current;
+            // Await the POST response so the backend queues initialization before
+            // the first getLiveQuestions() poll is sent.  initializeLiveQuestions
+            // swallows all errors internally, so this never throws.
+            await initializeLiveQuestions(sessionId);
             startLive(sessionId);
-            // Fire-and-forget: generate initial questions from the diary summary.
-            // This runs asynchronously and failures are silently ignored.
-            initializeLiveQuestions(sessionId);
         } catch (error) {
             // Ensure live questioning is not left running if recorder start fails.
             stopLive();

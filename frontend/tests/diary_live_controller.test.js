@@ -47,39 +47,6 @@ describe("startLive", () => {
         expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-immediate");
     });
 
-    it("keeps short startup retries until initial questions become available", async () => {
-        sessionApi.getLiveQuestions
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([{ text: "Initial ready", intent: "clarifying" }]);
-        const { result } = renderHook(() => useDiaryLiveQuestioningController());
-
-        act(() => result.current.startLive("session-startup-retry"));
-        await act(async () => Promise.resolve());
-        expect(sessionApi.getLiveQuestions).toHaveBeenCalledTimes(1);
-
-        await act(async () => {
-            jest.advanceTimersByTime(3000);
-            await Promise.resolve();
-        });
-        expect(sessionApi.getLiveQuestions).toHaveBeenCalledTimes(2);
-
-        await act(async () => {
-            jest.advanceTimersByTime(3000);
-            await Promise.resolve();
-        });
-        expect(sessionApi.getLiveQuestions).toHaveBeenCalledTimes(3);
-        expect(result.current.displayedQuestions).toHaveLength(1);
-        expect(result.current.displayedQuestions[0].text).toBe("Initial ready");
-
-        // No more startup retries after first successful question batch.
-        await act(async () => {
-            jest.advanceTimersByTime(3000);
-            await Promise.resolve();
-        });
-        expect(sessionApi.getLiveQuestions).toHaveBeenCalledTimes(3);
-    });
-
     it("ignores stale poll responses from a previous session after stop/start", async () => {
         /** @type {(value: Array<{text: string, intent: "warm_reflective" | "clarifying" | "forward"}>) => void} */
         let resolveFirstPoll;
