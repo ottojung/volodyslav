@@ -110,6 +110,30 @@ describe("runDiarySummaryPipeline", () => {
         expect(Object.keys(result.processedTranscriptions)).toHaveLength(0);
     });
 
+    test("does not update summary when transcription freshness is potentially-outdated", async () => {
+        const capabilities = await getTestCapabilities();
+        await capabilities.interface.ensureInitialized();
+
+        const [relativeAssetPath] = await writeDiaryEventWithAssets(capabilities, "1", ["memo.mp3"]);
+
+        // Materialize transcription once, then simulate stale freshness.
+        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        const graph = capabilities.interface._requireInitializedGraph();
+        const originalDebugGetFreshness = graph.debugGetFreshness.bind(graph);
+        const debugGetFreshnessSpy = jest.spyOn(graph, "debugGetFreshness");
+        debugGetFreshnessSpy.mockImplementation(async (head, args = []) => {
+            if (head === "transcription" && args[0] === relativeAssetPath) {
+                return "potentially-outdated";
+            }
+            return await originalDebugGetFreshness(head, args);
+        });
+
+        const result = await runDiarySummaryPipeline(capabilities);
+
+        expect(capabilities.aiDiarySummary.updateSummary).not.toHaveBeenCalled();
+        expect(Object.keys(result.processedTranscriptions)).toHaveLength(0);
+    });
+
     test("updates summary when a materialized transcription is present", async () => {
         const capabilities = await getTestCapabilities();
         await capabilities.interface.ensureInitialized();

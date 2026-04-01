@@ -315,10 +315,10 @@ async function internalIsTranscribed(interfaceInstance, eventId) {
         return true;
     }
 
-    // At least one audio path must have a materialized transcription.
+    // At least one audio path must have an up-to-date transcription.
     for (const audioPath of audioListResult.audioPaths) {
         const freshness = await graph.debugGetFreshness("transcription", [audioPath]);
-        if (freshness !== "missing") {
+        if (freshness === "up-to-date") {
             return true;
         }
     }
@@ -333,8 +333,8 @@ async function internalIsTranscribed(interfaceInstance, eventId) {
  * already has a materialized `transcription(a)`, pulls
  * `event_transcription(e, a)` for the transcribed audio recording text.
  *
- * Audio files whose transcription is not yet materialized are skipped so that
- * this method never triggers new AI transcription calls.
+ * Audio files whose transcription is not up-to-date are skipped so that this
+ * method never triggers new AI transcription calls.
  *
  * @param {InterfaceQueryAccess} interfaceInstance
  * @param {string} eventId
@@ -361,7 +361,7 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
     const transcribedParts = [];
     for (const audioPath of audioListResult.audioPaths) {
         const freshness = await graph.debugGetFreshness("transcription", [audioPath]);
-        if (freshness === "missing") {
+        if (freshness !== "up-to-date") {
             continue;
         }
         const transcriptionResult = await graph.pull("event_transcription", [eventId, audioPath]);
