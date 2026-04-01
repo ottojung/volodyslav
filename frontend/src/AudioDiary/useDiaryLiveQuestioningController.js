@@ -6,8 +6,9 @@
  * and question generation are handled server-side; this hook only owns the
  * client-side presentation state.
  *
- * Questions are retrieved by polling GET /audio-recording-session/:sessionId/live-questions
- * every POLLING_INTERVAL_MS milliseconds while recording is active.
+ * Questions are retrieved from GET /audio-recording-session/:sessionId/live-questions
+ * with one immediate fetch on start, then every POLLING_INTERVAL_MS milliseconds
+ * while recording is active.
  *
  * Each question is shown as an independent item.  Clicking a question pins
  * it to the top of the list; clicking again removes the pin (and the question
@@ -180,6 +181,36 @@ export function useDiaryLiveQuestioningController() {
     );
 
     /**
+     * Best-effort single poll for pending live questions in the active session.
+     */
+    const pollOnce = useCallback(async () => {
+        if (!isRunningRef.current || !currentSessionIdRef.current) {
+            return;
+        }
+        const pollSessionId = currentSessionIdRef.current;
+        // Skip if a previous poll is still in flight to prevent overlapping executions.
+        if (isPollInFlightRef.current) {
+            return;
+        }
+        isPollInFlightRef.current = true;
+        try {
+            const questions = await getLiveQuestions(pollSessionId);
+            if (
+                questions.length > 0 &&
+                isRunningRef.current &&
+                currentSessionIdRef.current === pollSessionId
+            ) {
+                pollingCounterRef.current += 1;
+                onQuestions(questions, pollingCounterRef.current);
+            }
+        } catch {
+            // Polling failure is best-effort; recording continues unaffected.
+        } finally {
+            isPollInFlightRef.current = false;
+        }
+    }, [onQuestions]);
+
+    /**
      * Toggle pin state for a question.
      * - If not pinned: move to pinnedQuestions at the front, remove from unpinned.
      * - If already pinned: remove from pinnedQuestions entirely.
@@ -250,34 +281,13 @@ export function useDiaryLiveQuestioningController() {
             if (pollingIntervalRef.current !== null) {
                 clearInterval(pollingIntervalRef.current);
             }
-            pollingIntervalRef.current = setInterval(async () => {
-                if (!isRunningRef.current || !currentSessionIdRef.current) {
-                    return;
-                }
-                const pollSessionId = currentSessionIdRef.current;
-                // Skip if a previous poll is still in flight to prevent overlapping executions.
-                if (isPollInFlightRef.current) {
-                    return;
-                }
-                isPollInFlightRef.current = true;
-                try {
-                    const questions = await getLiveQuestions(pollSessionId);
-                    if (
-                        questions.length > 0 &&
-                        isRunningRef.current &&
-                        currentSessionIdRef.current === pollSessionId
-                    ) {
-                        pollingCounterRef.current += 1;
-                        onQuestions(questions, pollingCounterRef.current);
-                    }
-                } catch {
-                    // Polling failure is best-effort; recording continues unaffected.
-                } finally {
-                    isPollInFlightRef.current = false;
-                }
+            pollingIntervalRef.current = setInterval(() => {
+                void pollOnce();
             }, POLLING_INTERVAL_MS);
+            // Fetch once immediately so initial questions appear as soon as they are ready.
+            void pollOnce();
         },
-        [clearNewFlagTimeouts, onQuestions]
+        [clearNewFlagTimeouts, pollOnce]
     );
 
     /**

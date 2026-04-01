@@ -36,6 +36,17 @@ describe("startLive", () => {
         expect(result.current.displayedQuestions).toEqual([]);
     });
 
+    it("polls immediately on startLive so initial questions can appear without waiting 60s", async () => {
+        sessionApi.getLiveQuestions.mockResolvedValue([]);
+        const { result } = renderHook(() => useDiaryLiveQuestioningController());
+
+        act(() => result.current.startLive("session-immediate"));
+        await act(async () => Promise.resolve());
+
+        expect(sessionApi.getLiveQuestions).toHaveBeenCalledTimes(1);
+        expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-immediate");
+    });
+
     it("ignores stale poll responses from a previous session after stop/start", async () => {
         /** @type {(value: Array<{text: string, intent: "warm_reflective" | "clarifying" | "forward"}>) => void} */
         let resolveFirstPoll;
