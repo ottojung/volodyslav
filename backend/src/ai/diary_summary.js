@@ -45,7 +45,7 @@ function isAIDiarySummaryError(object) {
     return object instanceof AIDiarySummaryError;
 }
 
-const DIARY_SUMMARY_MODEL = "gpt-5.4";
+const DIARY_SUMMARY_MODEL = "gpt-5.4-mini";
 
 const SYSTEM_PROMPT = `You maintain a structured rolling diary summary.
 
