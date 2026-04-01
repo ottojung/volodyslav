@@ -106,8 +106,8 @@ describe("runDiarySummaryPipeline", () => {
 
         // No transcription materialized → AI not called.
         expect(capabilities.aiDiarySummary.updateSummary).not.toHaveBeenCalled();
-        // processedTranscriptions should be empty.
-        expect(Object.keys(result.processedTranscriptions)).toHaveLength(0);
+        // processedEntries should be empty.
+        expect(Object.keys(result.processedEntries)).toHaveLength(0);
     });
 
     test("does not update summary when transcription freshness is potentially-outdated", async () => {
@@ -131,7 +131,7 @@ describe("runDiarySummaryPipeline", () => {
         const result = await runDiarySummaryPipeline(capabilities);
 
         expect(capabilities.aiDiarySummary.updateSummary).not.toHaveBeenCalled();
-        expect(Object.keys(result.processedTranscriptions)).toHaveLength(0);
+        expect(Object.keys(result.processedEntries)).toHaveLength(0);
     });
 
     test("updates summary when a materialized transcription is present", async () => {
@@ -156,7 +156,7 @@ describe("runDiarySummaryPipeline", () => {
         expect(call.newEntryDateISO).toBeTruthy();
 
         // Watermark should be recorded for this entry (keyed by event ID).
-        expect(result.processedTranscriptions["1"]).toBeTruthy();
+        expect(result.processedEntries["1"]).toBeTruthy();
     });
 
     test("skips transcription that was already processed (watermark)", async () => {
@@ -181,8 +181,8 @@ describe("runDiarySummaryPipeline", () => {
         expect(capabilities.aiDiarySummary.updateSummary).toHaveBeenCalledTimes(1); // still 1
 
         // Watermark should be the same.
-        expect(second.processedTranscriptions["1"])
-            .toBe(first.processedTranscriptions["1"]);
+        expect(second.processedEntries["1"])
+            .toBe(first.processedEntries["1"]);
     });
 
     test("advances summaryDate to the newer entry date", async () => {
@@ -329,6 +329,6 @@ describe("runDiarySummaryPipeline", () => {
         expect(call.newEntryTranscribedAudioRecording).toBeUndefined();
 
         // Watermark should be recorded keyed by event ID.
-        expect(result.processedTranscriptions["typed-1"]).toBeTruthy();
+        expect(result.processedEntries["typed-1"]).toBeTruthy();
     });
 });

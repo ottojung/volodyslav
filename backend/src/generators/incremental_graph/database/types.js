@@ -234,7 +234,7 @@ function versionToString(Version) {
  * @property {'diary_most_important_info_summary'} type - The type of the entry
  * @property {string} markdown - The current summary markdown
  * @property {string} summaryDate - ISO date of the max entry date incorporated
- * @property {Record<string, string>} processedTranscriptions - Map of eventId to lastProcessedEntryDateISO
+ * @property {Record<string, string>} processedEntries - Map of eventId to lastProcessedEntryDateISO
  * @property {string} updatedAt - ISO timestamp of when this summary was last updated
  * @property {string} model - The model used for the last update
  * @property {string} version - Version string for the summary format

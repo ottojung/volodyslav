@@ -132,7 +132,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
     let currentMarkdown = currentSummary.markdown;
     let currentSummaryDate = currentSummary.summaryDate;
     /** @type {Record<string, string>} */
-    const processedTranscriptions = { ...currentSummary.processedTranscriptions };
+    const processedEntries = { ...currentSummary.processedEntries };
 
     let hasUpdates = false;
 
@@ -151,7 +151,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
         }
 
         // Check if this entry has already been processed (watermark by event ID).
-        const lastProcessedDiaryContent = processedTranscriptions[eventId];
+        const lastProcessedDiaryContent = processedEntries[eventId];
         const newEntryDateISO = event.date.toISOString();
         if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= newEntryDateISO) {
             continue;
@@ -190,7 +190,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
             });
 
             currentMarkdown = result.summaryMarkdown;
-            processedTranscriptions[eventId] = newEntryDateISO;
+            processedEntries[eventId] = newEntryDateISO;
 
             // Advance summaryDate to max(summaryDate, newEntryDateISO) using
             // DateTime comparison to handle mixed timezone offsets correctly.
@@ -214,7 +214,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
                 type: "diary_most_important_info_summary",
                 markdown: currentMarkdown,
                 summaryDate: currentSummaryDate,
-                processedTranscriptions: { ...processedTranscriptions },
+                processedEntries: { ...processedEntries },
                 updatedAt: capabilities.datetime.now().toISOString(),
                 model: DIARY_SUMMARY_MODEL,
                 version: "1",

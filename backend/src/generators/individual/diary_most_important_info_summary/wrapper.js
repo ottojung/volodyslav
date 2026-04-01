@@ -57,7 +57,7 @@ function makeDefaultSummary() {
             "- None recorded.",
         ].join("\n"),
         summaryDate: "",
-        processedTranscriptions: {},
+        processedEntries: {},
         updatedAt: "",
         model: "",
         version: "1",

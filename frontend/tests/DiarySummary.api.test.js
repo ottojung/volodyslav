@@ -29,7 +29,7 @@ function makeSummaryData() {
         type: "diary_most_important_info_summary",
         markdown: "## Summary",
         summaryDate: "2024-03-01T00:00:00.000Z",
-        processedTranscriptions: {},
+        processedEntries: {},
         updatedAt: "2024-03-02T10:00:00.000Z",
         model: "gpt-5.4",
         version: "1",

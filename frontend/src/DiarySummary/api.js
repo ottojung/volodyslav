@@ -8,7 +8,7 @@ const DIARY_SUMMARY_POLL_INTERVAL_MS = 1000;
  * @property {string} type
  * @property {string} markdown
  * @property {string} summaryDate
- * @property {Record<string, string>} processedTranscriptions
+ * @property {Record<string, string>} processedEntries
  * @property {string} updatedAt
  * @property {string} model
  * @property {string} version

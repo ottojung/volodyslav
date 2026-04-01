@@ -43,7 +43,7 @@ function getTestCapabilities() {
             type: "diary_most_important_info_summary",
             markdown: "",
             summaryDate: null,
-            processedTranscriptions: {},
+            processedEntries: {},
             updatedAt: null,
             model: "gpt-5.4",
             version: "1",
