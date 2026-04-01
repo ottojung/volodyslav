@@ -39,7 +39,6 @@ const {
     writeStringField,
     readAskedQuestions,
     readPendingQuestions,
-    clearPendingQuestions,
     commitQuestionGenerationResult,
 } = require("./session_state");
 const { buildWav, extensionForMime } = require("./wav_utils");
@@ -381,6 +380,21 @@ async function pushAudio(
         return { questions: [], status: "ok" };
     }
 
+    // Skip question generation if the previous batch of questions has not been
+    // fetched by the client yet.  This ensures questions are not generated more
+    // often than the client polls (once per minute).
+    const existingPending = await readPendingQuestions(temporary, sessionId);
+    if (existingPending.length > 0) {
+        // Persist the accumulated word count so it is not lost while waiting for
+        // the client to fetch the pending batch.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
+        capabilities.logger.logDebug(
+            { sessionId, fragmentNumber, pendingCount: existingPending.length },
+            "Live diary skipping question generation: previous batch not yet fetched by client"
+        );
+        return { questions: [], status: "ok" };
+    }
+
     // Enough words accumulated — determine how many questions to ask.
     /** @type {number} */
     let maxQuestions;
@@ -446,30 +460,6 @@ async function pushAudio(
     return { questions: newQuestions, status: "ok" };
 }
 
-/**
- * Fetch and clear pending live diary questions for a session.
- *
- * Returns all questions that have been generated since the last call.
- * The pending list is cleared atomically so each question is returned at most once.
- *
- * @param {Capabilities} capabilities
- * @param {string} sessionId
- * @returns {Promise<Array<{text: string, intent: string}>>}
- */
-async function getPendingQuestions(capabilities, sessionId) {
-    const { temporary } = capabilities;
-    const questions = await readPendingQuestions(temporary, sessionId);
-    if (questions.length > 0) {
-        await clearPendingQuestions(temporary, sessionId);
-        capabilities.logger.logDebug(
-            { sessionId, count: questions.length },
-            "Live diary pending questions fetched and cleared"
-        );
-    }
-    return questions;
-}
-
 module.exports = {
     pushAudio,
-    getPendingQuestions,
 };

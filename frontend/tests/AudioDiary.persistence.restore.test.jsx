@@ -131,7 +131,7 @@ describe("AudioDiary persistence: restore states", () => {
 
             // Advance past the polling interval to trigger the first live-questions poll.
             await act(async () => {
-                jest.advanceTimersByTime(6000);
+                jest.advanceTimersByTime(61000);
                 await Promise.resolve();
             });
 

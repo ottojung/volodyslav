@@ -26,8 +26,12 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
-const { getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
-const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_analysis_queue");
+const {
+    enqueueAnalysis,
+    enqueueInitialQuestions,
+    enqueuePendingQuestionsFetch,
+    dequeueSession,
+} = require("./audio_recording_session_analysis_queue");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -36,6 +40,7 @@ const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_a
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
+/** @typedef {import('../generators').Interface} Interface */
 
 /**
  * @typedef {object} Capabilities
@@ -46,6 +51,7 @@ const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_a
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
+ * @property {Interface} interface
  */
 
 /**
@@ -234,7 +240,7 @@ function makeRouter(capabilities) {
         const { sessionId } = req.params;
 
         try {
-            const questions = await getLiveDiaryPendingQuestions(capabilities, sessionId);
+            const questions = await enqueuePendingQuestionsFetch(capabilities, sessionId);
             return res.json({ success: true, questions });
         } catch (error) {
             capabilities.logger.logError(
@@ -243,6 +249,23 @@ function makeRouter(capabilities) {
             );
             return res.status(500).json({ success: false, error: "Internal error" });
         }
+    });
+
+    // POST /audio-recording-session/:sessionId/initialize-live-questions
+    // Best-effort endpoint: queues initial live questions generation and always returns success.
+    // Any generation errors are handled and logged inside the per-session queue worker so
+    // recording start and UI flow are never blocked by initialization failures.
+    router.post("/audio-recording-session/:sessionId/initialize-live-questions", (req, res) => {
+        const { sessionId } = req.params;
+        try {
+            enqueueInitialQuestions(capabilities, sessionId);
+        } catch (error) {
+            capabilities.logger.logError(
+                { sessionId, error: error instanceof Error ? error.message : String(error) },
+                "Failed to enqueue initial live diary questions; returning success (best-effort endpoint)"
+            );
+        }
+        return res.json({ success: true });
     });
 
     // DELETE /audio-recording-session/:sessionId

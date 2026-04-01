@@ -268,6 +268,27 @@ export async function getLiveQuestions(sessionId) {
 }
 
 /**
+ * Trigger initial live diary question generation from the diary summary.
+ * Should be called once when a new recording session starts, before any audio is pushed.
+ * Fails silently — initial question generation is best-effort.
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+export async function initializeLiveQuestions(sessionId) {
+    try {
+        const response = await fetch(
+            `${SESSION_BASE}/${encodeURIComponent(sessionId)}/initialize-live-questions`,
+            { method: "POST" }
+        );
+        if (!response.ok) {
+            throw new Error(`Failed to initialize live questions: ${response.status}`);
+        }
+    } catch {
+        // Best-effort: initial question generation failure does not block recording.
+    }
+}
+
+/**
  * Delete all data for a session. Best-effort: does not throw on failure.
  * @param {string} sessionId
  * @returns {Promise<void>}

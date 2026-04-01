@@ -36,6 +36,17 @@ describe("startLive", () => {
         expect(result.current.displayedQuestions).toEqual([]);
     });
 
+    it("polls immediately on startLive so initial questions can appear without waiting 60s", async () => {
+        sessionApi.getLiveQuestions.mockResolvedValue([]);
+        const { result } = renderHook(() => useDiaryLiveQuestioningController());
+
+        act(() => result.current.startLive("session-immediate"));
+        await act(async () => Promise.resolve());
+
+        expect(sessionApi.getLiveQuestions).toHaveBeenCalledTimes(1);
+        expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-immediate");
+    });
+
     it("ignores stale poll responses from a previous session after stop/start", async () => {
         /** @type {(value: Array<{text: string, intent: "warm_reflective" | "clarifying" | "forward"}>) => void} */
         let resolveFirstPoll;
@@ -50,7 +61,7 @@ describe("startLive", () => {
 
         act(() => result.current.startLive("session-old"));
         await act(async () => {
-            jest.advanceTimersByTime(5000);
+            jest.advanceTimersByTime(60000);
         });
         expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-old");
 
@@ -64,7 +75,7 @@ describe("startLive", () => {
         expect(result.current.displayedQuestions).toHaveLength(0);
 
         await act(async () => {
-            jest.advanceTimersByTime(5000);
+            jest.advanceTimersByTime(60000);
         });
         expect(sessionApi.getLiveQuestions).toHaveBeenCalledWith("session-new");
         expect(result.current.displayedQuestions).toHaveLength(1);
@@ -150,17 +161,17 @@ describe("onQuestions", () => {
         expect(result.current.displayedQuestions[1].text).toBe("Q1");
     });
 
-    it("trims displayedQuestions to MAX_VISIBLE_UNPINNED (8)", () => {
+    it("trims displayedQuestions to MAX_VISIBLE_UNPINNED (40)", () => {
         const { result } = renderHook(() => useDiaryLiveQuestioningController());
         act(() => result.current.startLive("session-onquestions-5"));
 
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 50; i++) {
             act(() => {
                 result.current.onQuestions([{ text: `Q${i}`, intent: "clarifying" }], i + 1);
             });
         }
 
-        expect(result.current.displayedQuestions.length).toBeLessThanOrEqual(8);
+        expect(result.current.displayedQuestions.length).toBeLessThanOrEqual(40);
     });
 
     it("ignores questions if called before startLive", () => {

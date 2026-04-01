@@ -15,6 +15,11 @@
 const { OpenAI } = require("openai");
 const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
+const initialQuestions = require("./diary_initial_questions");
+const {
+    AIDiaryQuestionsError,
+    isAIDiaryQuestionsError,
+} = require("./diary_questions_error");
 
 /** @typedef {import('../environment').Environment} Environment */
 
@@ -22,27 +27,6 @@ const memoize = require("@emotion/memoize").default;
  * @typedef {object} Capabilities
  * @property {Environment} environment - An environment instance.
  */
-
-class AIDiaryQuestionsError extends Error {
-    /**
-     * @param {string} message
-     * @param {unknown} cause
-     */
-    constructor(message, cause) {
-        super(message);
-        this.name = "AIDiaryQuestionsError";
-        this.cause = cause;
-    }
-}
-
-/**
- * Checks if the error is an AIDiaryQuestionsError.
- * @param {unknown} object - The error to check.
- * @returns {object is AIDiaryQuestionsError}
- */
-function isAIDiaryQuestionsError(object) {
-    return object instanceof AIDiaryQuestionsError;
-}
 
 const DIARY_QUESTIONS_MODEL = "gpt-5.4-mini";
 const TARGET_QUESTION_COUNT = 5;
@@ -145,6 +129,7 @@ function makeQuestionsMessages(transcriptSoFar, askedQuestions, maxQuestions) {
 /**
  * @typedef {object} AIDiaryQuestions
  * @property {(transcriptSoFar: string, askedQuestions: string[], maxQuestions?: number) => Promise<DiaryQuestion[]>} generateQuestions
+ * @property {(summaryMarkdown: string) => Promise<DiaryQuestion[]>} generateInitialQuestionsFromSummary
  */
 
 const VALID_INTENTS = new Set(["warm_reflective", "clarifying", "forward"]);
@@ -236,6 +221,7 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
     return questions.slice(0, clampedMax);
 }
 
+
 /**
  * Creates an AIDiaryQuestions capability.
  * @param {() => Capabilities} getCapabilities - A function returning the capabilities object.
@@ -247,6 +233,12 @@ function make(getCapabilities) {
     return {
         generateQuestions: (transcriptSoFar, askedQuestions, maxQuestions) =>
             generateQuestions(makeClient, getCapabilitiesMemo(), transcriptSoFar, askedQuestions, maxQuestions),
+        generateInitialQuestionsFromSummary: (summaryMarkdown) =>
+            initialQuestions.generateInitialQuestionsFromSummary(
+                makeClient,
+                getCapabilitiesMemo(),
+                summaryMarkdown
+            ),
     };
 }
 
@@ -258,4 +250,8 @@ module.exports = {
     MIN_QUESTION_COUNT,
     SYSTEM_PROMPT,
     makeQuestionsUserPrompt,
+    DIARY_INITIAL_QUESTIONS_MODEL: initialQuestions.DIARY_INITIAL_QUESTIONS_MODEL,
+    INITIAL_QUESTIONS_COUNT: initialQuestions.INITIAL_QUESTIONS_COUNT,
+    INITIAL_QUESTIONS_SYSTEM_PROMPT: initialQuestions.INITIAL_QUESTIONS_SYSTEM_PROMPT,
+    makeInitialQuestionsUserPrompt: initialQuestions.makeInitialQuestionsUserPrompt,
 };
