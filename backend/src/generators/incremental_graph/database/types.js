@@ -219,12 +219,11 @@ function versionToString(Version) {
  */
 
 /**
- * The diary content for a specific (event, audio) pair.
- * Combines typed text from the event with transcribed audio recording text.
- * Returns "N/A" when the event is not a diary entry.
- * @typedef {object} EntryDiaryContentEntry
- * @property {'entry_diary_content'} type - The type of the entry
- * @property {{ typedText: string | undefined, transcribedAudioRecording: string | undefined } | 'N/A'} value - The diary content
+ * The typed description for a specific event.
+ * Returns undefined for the description when the event is not a diary entry or has no description.
+ * @typedef {object} EntryDescriptionEntry
+ * @property {'entry_description'} type - The type of the entry
+ * @property {string | undefined} description - The typed description text, or undefined if none
  */
 
 /**
@@ -243,7 +242,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDiaryContentEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
  */
 
 /**

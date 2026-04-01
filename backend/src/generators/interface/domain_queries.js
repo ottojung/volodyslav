@@ -289,6 +289,98 @@ async function internalGetEvent(interfaceInstance, eventId) {
     }
 }
 
+/**
+ * Returns true when the event with the given ID has at least one materialized
+ * transcription, or when it has no audio files at all (in which case there is
+ * nothing to transcribe and the entry is ready to be summarized).
+ *
+ * This is used by the diary-summary pipeline to decide whether to include an
+ * entry without triggering new AI transcription calls.
+ *
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @param {string} eventId
+ * @returns {Promise<boolean>}
+ */
+async function internalIsTranscribed(interfaceInstance, eventId) {
+    await interfaceInstance.ensureInitialized();
+    const graph = interfaceInstance._requireInitializedGraph();
+
+    const audioListResult = await graph.pull("event_audios_list", [eventId]);
+    if (audioListResult.type !== "event_audios_list") {
+        throw new Error(`Expected event_audios_list entry but got type: ${audioListResult.type}`);
+    }
+
+    // No audio files: nothing to transcribe, entry is ready.
+    if (audioListResult.audioPaths.length === 0) {
+        return true;
+    }
+
+    // At least one audio path must have a materialized transcription.
+    for (const audioPath of audioListResult.audioPaths) {
+        const freshness = await graph.debugGetFreshness("transcription", [audioPath]);
+        if (freshness !== "missing") {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Returns the combined diary content for a given entry.
+ *
+ * Pulls `entry_description(e)` for the typed text and, for each audio that
+ * already has a materialized `transcription(a)`, pulls
+ * `event_transcription(e, a)` for the transcribed audio recording text.
+ *
+ * Audio files whose transcription is not yet materialized are skipped so that
+ * this method never triggers new AI transcription calls.
+ *
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @param {string} eventId
+ * @returns {Promise<{ typedText: string | undefined, transcribedAudioRecording: string | undefined }>}
+ */
+async function internalEntryDiaryContent(interfaceInstance, eventId) {
+    await interfaceInstance.ensureInitialized();
+    const graph = interfaceInstance._requireInitializedGraph();
+
+    // Pull the typed description.
+    const descriptionResult = await graph.pull("entry_description", [eventId]);
+    if (descriptionResult.type !== "entry_description") {
+        throw new Error(`Expected entry_description entry but got type: ${descriptionResult.type}`);
+    }
+    const typedText = descriptionResult.description;
+
+    // Pull materialized transcriptions, combining multiple into one string.
+    const audioListResult = await graph.pull("event_audios_list", [eventId]);
+    if (audioListResult.type !== "event_audios_list") {
+        throw new Error(`Expected event_audios_list entry but got type: ${audioListResult.type}`);
+    }
+
+    /** @type {string[]} */
+    const transcribedParts = [];
+    for (const audioPath of audioListResult.audioPaths) {
+        const freshness = await graph.debugGetFreshness("transcription", [audioPath]);
+        if (freshness === "missing") {
+            continue;
+        }
+        const transcriptionResult = await graph.pull("event_transcription", [eventId, audioPath]);
+        if (transcriptionResult.type !== "event_transcription") {
+            continue;
+        }
+        const { transcription } = transcriptionResult;
+        if (!("message" in transcription) && transcription.text && transcription.text.trim() !== "") {
+            transcribedParts.push(transcription.text);
+        }
+    }
+
+    const transcribedAudioRecording = transcribedParts.length > 0
+        ? transcribedParts.join("\n")
+        : undefined;
+
+    return { typedText, transcribedAudioRecording };
+}
+
 module.exports = {
     internalGetAllEvents,
     internalGetSortedEvents,
@@ -300,4 +392,6 @@ module.exports = {
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
+    internalIsTranscribed,
+    internalEntryDiaryContent,
 };

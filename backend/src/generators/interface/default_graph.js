@@ -14,7 +14,7 @@ const {
     calories,
     transcription,
     eventTranscription,
-    entryDiaryContent,
+    entryDescription,
     eventAudiosList,
     diarySummary,
 } = require("../individual");
@@ -63,7 +63,7 @@ const {
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e) -> event_audios_list(e)
  *   event_audios_list(e), transcription(a) -> event_transcription(e, a)
- *   event_transcription(e, a) -> entry_diary_content(e, a)
+ *   event(e) -> entry_description(e)
  *   config                                      [standalone, no graph inputs]
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
@@ -209,9 +209,9 @@ function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, dia
             hasSideEffects: false,
         },
         {
-            output: "entry_diary_content(e, a)",
-            inputs: ["event_transcription(e, a)"],
-            computor: entryDiaryContent.makeComputor(),
+            output: "entry_description(e)",
+            inputs: ["event(e)"],
+            computor: entryDescription.computor,
             isDeterministic: true,
             hasSideEffects: false,
         },

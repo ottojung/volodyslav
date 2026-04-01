@@ -40,6 +40,8 @@ const {
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
+    internalIsTranscribed,
+    internalEntryDiaryContent,
 } = require("./domain_queries");
 
 /** Interface that encapsulates incremental-graph operations. */
@@ -319,6 +321,29 @@ class InterfaceClass {
      */
     async getEventBasicContext(event) {
         return await internalGetEventBasicContext(this, event);
+    }
+
+    /**
+     * Returns true when the event has at least one materialized transcription,
+     * or when it has no audio files at all (nothing to transcribe).
+     * Used by the diary-summary pipeline to avoid triggering new AI calls.
+     * @param {string} eventId
+     * @returns {Promise<boolean>}
+     */
+    async isTranscribed(eventId) {
+        return await internalIsTranscribed(this, eventId);
+    }
+
+    /**
+     * Returns the combined diary content for a given entry.
+     * Pulls the typed description from `entry_description(e)` and the
+     * transcribed audio recording from already-materialized `event_transcription(e, a)` nodes.
+     * Never triggers new AI transcription calls.
+     * @param {string} eventId
+     * @returns {Promise<{ typedText: string | undefined, transcribedAudioRecording: string | undefined }>}
+     */
+    async entryDiaryContent(eventId) {
+        return await internalEntryDiaryContent(this, eventId);
     }
 }
 
