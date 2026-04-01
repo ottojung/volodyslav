@@ -21,8 +21,9 @@ const { readPendingQuestions, clearPendingQuestions } = require("./session_state
 /**
  * Fetch and clear pending live diary questions for a session.
  *
- * Returns all questions that have been generated since the last call.
- * The pending list is cleared atomically so each question is returned at most once.
+ * Returns all questions that are currently pending for the given session.
+ * After retrieval, the pending list is cleared so subsequent calls will not
+ * return the same questions again unless they are re-enqueued.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId

@@ -88,7 +88,7 @@ export default function AudioDiary() {
             startLive(sessionId);
             // Fire-and-forget: generate initial questions from the diary summary.
             // This runs asynchronously and failures are silently ignored.
-            initializeLiveQuestions(sessionId).catch(() => {});
+            initializeLiveQuestions(sessionId);
         } catch (error) {
             // Ensure live questioning is not left running if recorder start fails.
             stopLive();

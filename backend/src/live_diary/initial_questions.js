@@ -4,7 +4,7 @@
  * Called once when a recording session starts (before any audio is pushed).
  * Uses the smart AI model to generate a comprehensive set of personalized questions
  * based on the user's diary summary, then stores them as pending so the client can
- * retrieve them via GET /live-questions.
+ * retrieve them via GET /audio-recording-session/:sessionId/live-questions.
  *
  * @module live_diary/initial_questions
  */
@@ -30,7 +30,7 @@ const { appendPendingQuestions } = require("./session_state");
  * This is called once at the start of a new recording session (before any audio
  * is pushed).  It fetches the current diary summary, uses the smart AI model
  * to generate a full set of initial questions, and stores them so the client can
- * retrieve them via GET /live-questions.
+ * retrieve them via GET /audio-recording-session/:sessionId/live-questions.
  *
  * @param {CapabilitiesWithInterface} capabilities
  * @param {string} sessionId

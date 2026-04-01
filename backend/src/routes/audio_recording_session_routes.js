@@ -26,8 +26,8 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
-const { getPendingQuestions: getLiveDiaryPendingQuestions, generateInitialQuestionsAndPush } = require("../live_diary");
-const { enqueueAnalysis, dequeueSession } = require("./audio_recording_session_analysis_queue");
+const { getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
+const { enqueueAnalysis, enqueueInitialQuestions, dequeueSession } = require("./audio_recording_session_analysis_queue");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -251,11 +251,13 @@ function makeRouter(capabilities) {
     // Generates the initial set of diary questions from the diary summary using the
     // smart AI model and pushes them as pending questions for the client to fetch.
     // Should be called once when a new recording session starts (before any audio is pushed).
+    // The generation is serialized through the per-session processing queue so it cannot
+    // interleave with concurrent pushAudio calls that also write to the pending-questions store.
     router.post("/audio-recording-session/:sessionId/initialize-live-questions", async (req, res) => {
         const { sessionId } = req.params;
 
         try {
-            await generateInitialQuestionsAndPush(capabilities, sessionId);
+            await enqueueInitialQuestions(capabilities, sessionId);
             return res.json({ success: true });
         } catch (error) {
             capabilities.logger.logError(

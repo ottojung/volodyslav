@@ -385,6 +385,9 @@ async function pushAudio(
     // often than the client polls (once per minute).
     const existingPending = await readPendingQuestions(temporary, sessionId);
     if (existingPending.length > 0) {
+        // Persist the accumulated word count so it is not lost while waiting for
+        // the client to fetch the pending batch.
+        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
         capabilities.logger.logDebug(
             { sessionId, fragmentNumber, pendingCount: existingPending.length },
             "Live diary skipping question generation: previous batch not yet fetched by client"

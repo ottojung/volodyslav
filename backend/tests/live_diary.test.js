@@ -858,3 +858,79 @@ describe("getPendingQuestions", () => {
         expect(caps.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
     });
 });
+
+// ─── generateInitialQuestionsAndPush ────────────────────────────────────────
+
+const { generateInitialQuestionsAndPush } = require("../src/live_diary");
+
+describe("generateInitialQuestionsAndPush", () => {
+    function makeCapabilitiesWithInterface(summaryMarkdown) {
+        const caps = makeCapabilities();
+        caps.interface = {
+            getDiarySummary: jest.fn().mockResolvedValue({
+                type: "diary_most_important_info_summary",
+                markdown: summaryMarkdown,
+                summaryDate: "",
+                processedEntries: {},
+                updatedAt: "",
+                model: "",
+                version: "1",
+            }),
+        };
+        caps.aiDiaryQuestions.generateInitialQuestionsFromSummary = jest
+            .fn()
+            .mockResolvedValue([
+                { text: "Initial question 1?", intent: "warm_reflective" },
+                { text: "Initial question 2?", intent: "clarifying" },
+            ]);
+        return caps;
+    }
+
+    it("pushes questions returned by the AI into the pending queue", async () => {
+        const caps = makeCapabilitiesWithInterface("## Summary\n- Feeling well.");
+        await generateInitialQuestionsAndPush(caps, "sess-init");
+        const pending = await getPendingQuestions(caps, "sess-init");
+        expect(pending).toHaveLength(2);
+        expect(pending[0].text).toBe("Initial question 1?");
+        expect(pending[1].text).toBe("Initial question 2?");
+    });
+
+    it("passes the diary summary markdown to the AI", async () => {
+        const summary = "## Summary\n- Active project ongoing.";
+        const caps = makeCapabilitiesWithInterface(summary);
+        await generateInitialQuestionsAndPush(caps, "sess-init-summary");
+        expect(caps.aiDiaryQuestions.generateInitialQuestionsFromSummary).toHaveBeenCalledWith(summary);
+    });
+
+    it("does not push anything when the AI returns no questions", async () => {
+        const caps = makeCapabilitiesWithInterface("## Summary");
+        caps.aiDiaryQuestions.generateInitialQuestionsFromSummary = jest.fn().mockResolvedValue([]);
+        await generateInitialQuestionsAndPush(caps, "sess-init-empty");
+        const pending = await getPendingQuestions(caps, "sess-init-empty");
+        expect(pending).toEqual([]);
+    });
+
+    it("uses an empty summary when getDiarySummary fails and still completes", async () => {
+        const caps = makeCapabilities();
+        caps.interface = {
+            getDiarySummary: jest.fn().mockRejectedValue(new Error("graph not ready")),
+        };
+        caps.aiDiaryQuestions.generateInitialQuestionsFromSummary = jest
+            .fn()
+            .mockResolvedValue([{ text: "Fallback question?", intent: "warm_reflective" }]);
+        await generateInitialQuestionsAndPush(caps, "sess-init-fail-summary");
+        expect(caps.aiDiaryQuestions.generateInitialQuestionsFromSummary).toHaveBeenCalledWith("");
+        const pending = await getPendingQuestions(caps, "sess-init-fail-summary");
+        expect(pending).toHaveLength(1);
+    });
+
+    it("completes without throwing when AI generation fails", async () => {
+        const caps = makeCapabilitiesWithInterface("## Summary");
+        caps.aiDiaryQuestions.generateInitialQuestionsFromSummary = jest
+            .fn()
+            .mockRejectedValue(new Error("AI unavailable"));
+        await expect(generateInitialQuestionsAndPush(caps, "sess-init-ai-fail")).resolves.toBeUndefined();
+        const pending = await getPendingQuestions(caps, "sess-init-ai-fail");
+        expect(pending).toEqual([]);
+    });
+});
