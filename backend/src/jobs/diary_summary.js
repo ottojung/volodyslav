@@ -151,9 +151,9 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
         }
 
         // Check if this entry has already been processed (watermark by event ID).
-        const lastProcessedDiaryContent = processedEntries[eventId];
+        const lastProcessedTimestamp = processedEntries[eventId];
         const newEntryDateISO = event.date.toISOString();
-        if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= newEntryDateISO) {
+        if (lastProcessedTimestamp !== undefined && lastProcessedTimestamp >= newEntryDateISO) {
             continue;
         }
 
