@@ -5,7 +5,7 @@ const { runDiarySummaryPipeline } = require("../jobs");
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
 
 /**
- * @typedef {{ path: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
+ * @typedef {{ eventId: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
  */
 
 /**
@@ -56,20 +56,20 @@ function makeDiarySummaryController(capabilities) {
             "Diary summary pipeline started in background"
         );
 
-        /** @param {string} path */
-        const onEntryQueued = (path) => {
+        /** @param {string} eventId */
+        const onEntryQueued = (eventId) => {
             if (currentState === runningState) {
-                runningState.entries.push({ path, status: "pending" });
+                runningState.entries.push({ eventId, status: "pending" });
             }
         };
 
         /**
-         * @param {string} path
+         * @param {string} eventId
          * @param {"success" | "error"} status
          */
-        const onEntryProcessed = (path, status) => {
+        const onEntryProcessed = (eventId, status) => {
             if (currentState === runningState) {
-                const entry = runningState.entries.find((e) => e.path === path && e.status === "pending");
+                const entry = runningState.entries.find((e) => e.eventId === eventId && e.status === "pending");
                 if (entry !== undefined) {
                     entry.status = status;
                 }

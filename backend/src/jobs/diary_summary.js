@@ -1,11 +1,11 @@
 /**
  * Diary summary pipeline.
  *
- * Iterates all diary events via the incremental graph and folds their materialized
+ * Iterates all diary events via the incremental graph and folds their
  * diary content (typed text and/or transcribed audio) into the rolling summary.
- * The list of audio files for each event is obtained by pulling the
- * `event_audios_list(e)` graph node — no direct filesystem access occurs in this
- * module.
+ * For each diary event, `Interface.isTranscribed` is checked first to avoid
+ * triggering new AI transcription calls, then `Interface.entryDiaryContent`
+ * is used to retrieve the combined content.
  */
 
 const { diarySummary: aiDiarySummaryModule } = require("../ai");
@@ -19,13 +19,13 @@ const { getType: getEventType } = require("../event");
 
 /**
  * @callback OnEntryQueued
- * @param {string} path - The relative asset path of the entry that will be processed.
+ * @param {string} eventId - The event ID of the entry that will be processed.
  * @returns {void}
  */
 
 /**
  * @callback OnEntryProcessed
- * @param {string} path - The relative asset path of the entry that was processed.
+ * @param {string} eventId - The event ID of the entry that was processed.
  * @param {"success" | "error"} status - The outcome.
  * @returns {void}
  */
@@ -40,7 +40,7 @@ const { getType: getEventType } = require("../event");
  * Discriminated union of progress events emitted by the diary summary pipeline.
  * Used as the callback event type `C` for the ExclusiveProcess.
  *
- * @typedef {{ type: "entryQueued", path: string } | { type: "entryProcessed", path: string, status: "success" | "error" }} DiarySummaryEvent
+ * @typedef {{ type: "entryQueued", eventId: string } | { type: "entryProcessed", eventId: string, status: "success" | "error" }} DiarySummaryEvent
  */
 
 /**
@@ -74,8 +74,8 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
      */
     procedure: (fanOut, { capabilities }) => {
         return _runDiarySummaryPipelineUnlocked(capabilities, {
-            onEntryQueued: (path) => fanOut({ type: "entryQueued", path }),
-            onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
+            onEntryQueued: (eventId) => fanOut({ type: "entryQueued", eventId }),
+            onEntryProcessed: (eventId, status) => fanOut({ type: "entryProcessed", eventId, status }),
         });
     },
     // All concurrent calls attach to the same run — no queuing needed.
@@ -88,8 +88,10 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
  * Steps:
  *  1. Read current summary from graph.
  *  2. Iterate all diary events in ascending date order.
- *  3. For each event, pull `event_audios_list(e)` from the graph to get its audio paths.
- *  4. For each audio path, check whether an `entry_diary_content(e, a)` graph node has been materialized.
+ *  3. For each event, check `Interface.isTranscribed(eventId)` to skip events
+ *     that have un-transcribed audio (avoiding new AI calls).
+ *  4. Call `Interface.entryDiaryContent(eventId)` to get typed text and any
+ *     available transcribed audio recording text.
  *  5. For each new diary content entry, call the AI summarizer and advance the watermarks.
  *  6. Persist the updated summary back to the graph after each fold.
  *
@@ -107,9 +109,9 @@ function runDiarySummaryPipeline(capabilities, callbacks) {
     const callerCallback = callbacks
         ? (event) => {
             if (event.type === "entryQueued") {
-                callbacks.onEntryQueued?.(event.path);
+                callbacks.onEntryQueued?.(event.eventId);
             } else if (event.type === "entryProcessed") {
-                callbacks.onEntryProcessed?.(event.path, event.status);
+                callbacks.onEntryProcessed?.(event.eventId, event.status);
             }
         }
         : undefined;
@@ -141,136 +143,93 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
 
         const eventId = event.id.identifier;
 
-        // Pull the audio list from the graph — no filesystem access here.
-        let audioListEntry;
+        // Skip events whose audio has not yet been transcribed to avoid triggering
+        // new AI transcription calls. Entries with no audio always pass this gate.
+        const isTranscribed = await capabilities.interface.isTranscribed(eventId);
+        if (!isTranscribed) {
+            continue;
+        }
+
+        // Check if this entry has already been processed (watermark by event ID).
+        const lastProcessedDiaryContent = processedTranscriptions[eventId];
+        const newEntryDateISO = event.date.toISOString();
+        if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= newEntryDateISO) {
+            continue;
+        }
+
+        // Pull the combined diary content (typed text + transcribed audio).
+        let typedText;
+        let transcribedAudioRecording;
         try {
-            audioListEntry = await capabilities.interface.pullGraphNode(
-                "event_audios_list",
-                [eventId],
+            const content = await capabilities.interface.entryDiaryContent(eventId);
+            typedText = content.typedText;
+            transcribedAudioRecording = content.transcribedAudioRecording;
+        } catch (error) {
+            capabilities.logger.logError(
+                { eventId, error },
+                "Diary summary pipeline: failed to pull entry diary content",
             );
+            continue;
+        }
+
+        if (!typedText && !transcribedAudioRecording) {
+            continue;
+        }
+
+        // Signal that this entry is about to be processed.
+        callbacks?.onEntryQueued?.(eventId);
+
+        // Call the AI summarizer.
+        try {
+            const result = await capabilities.aiDiarySummary.updateSummary({
+                currentSummaryMarkdown: currentMarkdown,
+                newEntryTypedText: typedText,
+                newEntryTranscribedAudioRecording: transcribedAudioRecording,
+                currentSummaryDateISO: currentSummaryDate,
+                newEntryDateISO,
+            });
+
+            currentMarkdown = result.summaryMarkdown;
+            processedTranscriptions[eventId] = newEntryDateISO;
+
+            // Advance summaryDate to max(summaryDate, newEntryDateISO) using
+            // DateTime comparison to handle mixed timezone offsets correctly.
+            const newEntryTime = fromISOString(newEntryDateISO);
+            const shouldAdvance = !currentSummaryDate ||
+                newEntryTime.isAfter(fromISOString(currentSummaryDate));
+            if (shouldAdvance) {
+                currentSummaryDate = newEntryDateISO;
+            }
+
+            hasUpdates = true;
+
+            capabilities.logger.logInfo(
+                { eventId, newEntryDateISO },
+                "Diary summary updated with new diary content"
+            );
+
+            // Persist incrementally so a crash mid-run loses at most one fold.
+            /** @type {DiaryMostImportantInfoSummaryEntry} */
+            const intermediateSummary = {
+                type: "diary_most_important_info_summary",
+                markdown: currentMarkdown,
+                summaryDate: currentSummaryDate,
+                processedTranscriptions: { ...processedTranscriptions },
+                updatedAt: capabilities.datetime.now().toISOString(),
+                model: DIARY_SUMMARY_MODEL,
+                version: "1",
+            };
+            await capabilities.interface.setDiarySummary(intermediateSummary);
+
+            callbacks?.onEntryProcessed?.(eventId, "success");
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             capabilities.logger.logError(
                 { eventId, error, errorMessage },
-                "Diary summary pipeline: failed to pull event_audios_list",
+                "Error updating diary summary for diary content entry"
             );
-            continue;
-        }
-
-        if (audioListEntry.type !== "event_audios_list") {
-            capabilities.logger.logError(
-                { eventId, actualType: audioListEntry.type },
-                "Diary summary pipeline: unexpected node type from event_audios_list pull",
-            );
-            continue;
-        }
-
-        for (const relativeAssetPath of audioListEntry.audioPaths) {
-            // Gate on transcription(a) materialization to avoid triggering
-            // new AI transcription calls for un-transcribed audio.
-            const transcriptionFreshness = await capabilities.interface.debugGetFreshness(
-                "transcription",
-                [relativeAssetPath]
-            );
-            if (transcriptionFreshness === "missing") {
-                continue;
-            }
-
-            // Check if this entry has already been processed.
-            // NOTE: `processedTranscriptions` is a legacy field name; it actually
-            // tracks the last-processed modification time of entry_diary_content nodes
-            // (keyed by the transcription asset path for backwards-compatible storage).
-            const lastProcessedDiaryContent = processedTranscriptions[relativeAssetPath];
-            // Get the event date as an ISO string for context.
-            const newEntryDateISO = event.date.toISOString();
-            if (lastProcessedDiaryContent !== undefined && lastProcessedDiaryContent >= newEntryDateISO) {
-                continue;
-            }
-
-            // Pull entry_diary_content unconditionally — this triggers its computation
-            // from the already-cached transcription(a) value without triggering new AI calls.
-            let diaryContentValue;
-            try {
-                const diaryContentEntry = await capabilities.interface.pullGraphNode(
-                    "entry_diary_content",
-                    [eventId, relativeAssetPath]
-                );
-                if (diaryContentEntry.type !== "entry_diary_content") {
-                    continue;
-                }
-                if (diaryContentEntry.value === "N/A") {
-                    continue;
-                }
-                diaryContentValue = diaryContentEntry.value;
-            } catch (error) {
-                capabilities.logger.logError(
-                    { eventId, relativeAssetPath, error },
-                    "Diary summary pipeline: failed to pull entry_diary_content",
-                );
-                continue;
-            }
-
-            const { typedText, transcribedAudioRecording } = diaryContentValue;
-
-            if (!typedText && !transcribedAudioRecording) {
-                continue;
-            }
-
-            // Signal that this entry is about to be processed.
-            callbacks?.onEntryQueued?.(relativeAssetPath);
-
-            // Call the AI summarizer.
-            try {
-                const result = await capabilities.aiDiarySummary.updateSummary({
-                    currentSummaryMarkdown: currentMarkdown,
-                    newEntryTypedText: typedText,
-                    newEntryTranscribedAudioRecording: transcribedAudioRecording,
-                    currentSummaryDateISO: currentSummaryDate,
-                    newEntryDateISO,
-                });
-
-                currentMarkdown = result.summaryMarkdown;
-                processedTranscriptions[relativeAssetPath] = newEntryDateISO;
-
-                // Advance summaryDate to max(summaryDate, newEntryDateISO) using
-                // DateTime comparison to handle mixed timezone offsets correctly.
-                const newEntryTime = fromISOString(newEntryDateISO);
-                const shouldAdvance = !currentSummaryDate ||
-                    newEntryTime.isAfter(fromISOString(currentSummaryDate));
-                if (shouldAdvance) {
-                    currentSummaryDate = newEntryDateISO;
-                }
-
-                hasUpdates = true;
-
-                capabilities.logger.logInfo(
-                    { relativeAssetPath, newEntryDateISO },
-                    "Diary summary updated with new diary content"
-                );
-
-                // Persist incrementally so a crash mid-run loses at most one fold.
-                /** @type {DiaryMostImportantInfoSummaryEntry} */
-                const intermediateSummary = {
-                    type: "diary_most_important_info_summary",
-                    markdown: currentMarkdown,
-                    summaryDate: currentSummaryDate,
-                    processedTranscriptions: { ...processedTranscriptions },
-                    updatedAt: capabilities.datetime.now().toISOString(),
-                    model: DIARY_SUMMARY_MODEL,
-                    version: "1",
-                };
-                await capabilities.interface.setDiarySummary(intermediateSummary);
-
-                callbacks?.onEntryProcessed?.(relativeAssetPath, "success");
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                capabilities.logger.logError(
-                    { relativeAssetPath, error, errorMessage },
-                    "Error updating diary summary for diary content entry"
-                );
-                callbacks?.onEntryProcessed?.(relativeAssetPath, "error");
-                // Continue to the next transcription rather than aborting the pipeline.
-            }
+            callbacks?.onEntryProcessed?.(eventId, "error");
+            // Continue to the next entry rather than aborting the pipeline.
         }
     }
 
@@ -295,4 +254,3 @@ module.exports = {
     runDiarySummaryPipeline,
     diarySummaryExclusiveProcess,
 };
-
