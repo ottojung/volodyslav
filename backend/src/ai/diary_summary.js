@@ -67,16 +67,14 @@ Your task is to update the summary by minimally editing it in place.
 Rules:
 
 1. Keep these EXACT 8 headings in this EXACT order:
-   ## Current snapshot
    ## Ongoing themes and patterns
    ## Important people and relationships
    ## Projects / work / obligations
    ## Decisions / commitments / open loops
    ## Recent important changes
-   ## Wins / progress / helpful things
    ## Important long-term facts
 
-2. Output only Markdown, starting with "## Current snapshot".
+2. Output only Markdown, starting with "## Ongoing themes and patterns".
 3. Use mostly bullets (- ...). Use short paragraphs only when clearly better.
 4. Total target length: 1000-1500 words. Hard cap: 2000 words.
 5. Keep each section compact. Prefer updating or merging bullets over adding new ones.
