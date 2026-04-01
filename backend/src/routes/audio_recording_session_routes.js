@@ -26,8 +26,12 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
-const { getPendingQuestions: getLiveDiaryPendingQuestions } = require("../live_diary");
-const { enqueueAnalysis, enqueueInitialQuestions, dequeueSession } = require("./audio_recording_session_analysis_queue");
+const {
+    enqueueAnalysis,
+    enqueueInitialQuestions,
+    enqueuePendingQuestionsFetch,
+    dequeueSession,
+} = require("./audio_recording_session_analysis_queue");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -236,7 +240,7 @@ function makeRouter(capabilities) {
         const { sessionId } = req.params;
 
         try {
-            const questions = await getLiveDiaryPendingQuestions(capabilities, sessionId);
+            const questions = await enqueuePendingQuestionsFetch(capabilities, sessionId);
             return res.json({ success: true, questions });
         } catch (error) {
             capabilities.logger.logError(
@@ -251,9 +255,16 @@ function makeRouter(capabilities) {
     // Best-effort endpoint: queues initial live questions generation and always returns success.
     // Any generation errors are handled and logged inside the per-session queue worker so
     // recording start and UI flow are never blocked by initialization failures.
-    router.post("/audio-recording-session/:sessionId/initialize-live-questions", async (req, res) => {
+    router.post("/audio-recording-session/:sessionId/initialize-live-questions", (req, res) => {
         const { sessionId } = req.params;
-        await enqueueInitialQuestions(capabilities, sessionId);
+        try {
+            enqueueInitialQuestions(capabilities, sessionId);
+        } catch (error) {
+            capabilities.logger.logError(
+                { sessionId, error: error instanceof Error ? error.message : String(error) },
+                "Failed to enqueue initial live diary questions; returning success (best-effort endpoint)"
+            );
+        }
         return res.json({ success: true });
     });
 

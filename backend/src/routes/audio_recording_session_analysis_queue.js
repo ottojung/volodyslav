@@ -7,7 +7,11 @@
  * @module routes/audio_recording_session_analysis_queue
  */
 
-const { pushAudio: pushLiveDiaryAudio, generateInitialQuestionsAndPush } = require("../live_diary");
+const {
+    pushAudio: pushLiveDiaryAudio,
+    generateInitialQuestionsAndPush,
+    getPendingQuestions: getLiveDiaryPendingQuestions,
+} = require("../live_diary");
 
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../temporary').Temporary} Temporary */
@@ -111,18 +115,12 @@ function dequeueSession(sessionId) {
  * queue as fragment processing, so it cannot interleave with concurrent
  * `pushAudio` calls that also write to the pending-questions store.
  *
- * Returns a promise that resolves once the initialization has completed (or
- * failed and been absorbed), allowing the route to await it before responding.
- *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
- * @returns {Promise<void>}
+ * @returns {void}
  */
 function enqueueInitialQuestions(capabilities, sessionId) {
     const existing = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
-    /** @type {(value?: unknown) => void} */
-    let resolveDone = () => {};
-    const donePromise = new Promise((resolve) => { resolveDone = resolve; });
     const next = existing.then(async () => {
         try {
             await generateInitialQuestionsAndPush(capabilities, sessionId);
@@ -139,8 +137,6 @@ function enqueueInitialQuestions(capabilities, sessionId) {
                 },
                 "Live diary initial question generation failed"
             );
-        } finally {
-            resolveDone();
         }
     });
     processingQueues.set(sessionId, next);
@@ -154,7 +150,37 @@ function enqueueInitialQuestions(capabilities, sessionId) {
             "Unexpected error in live diary initial question generation queue"
         );
     });
-    return donePromise;
 }
 
-module.exports = { enqueueAnalysis, enqueueInitialQuestions, dequeueSession };
+/**
+ * Enqueue fetching+clearing pending live diary questions.
+ *
+ * This serializes the read/clear consume operation with all other per-session
+ * live-diary writes so pending-question updates cannot be lost due to races.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @returns {Promise<Array<{text: string, intent: string}>>}
+ */
+function enqueuePendingQuestionsFetch(capabilities, sessionId) {
+    const existing = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
+    const readPromise = existing.then(() => getLiveDiaryPendingQuestions(capabilities, sessionId));
+    const next = readPromise.then(
+        () => undefined,
+        () => undefined
+    );
+    processingQueues.set(sessionId, next);
+    next.finally(() => {
+        if (processingQueues.get(sessionId) === next) {
+            processingQueues.delete(sessionId);
+        }
+    });
+    return readPromise;
+}
+
+module.exports = {
+    enqueueAnalysis,
+    enqueueInitialQuestions,
+    enqueuePendingQuestionsFetch,
+    dequeueSession,
+};
