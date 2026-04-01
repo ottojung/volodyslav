@@ -1,5 +1,5 @@
 /**
- * API client for the diary-audio entry endpoint.
+ * API helpers for entry submission.
  *
  * @module diary_audio_api
  */
