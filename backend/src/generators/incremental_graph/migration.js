@@ -17,10 +17,6 @@ const { deserializeNodeKey } = require("./node_key");
  */
 
 /**
- * @typedef {import('./database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry
- */
-
-/**
  * A migration callback that keeps all nodes of a certain type.
  *
  * @param {string} nodeName - The name of the node type to keep (e.g., "meta_events")
@@ -77,108 +73,7 @@ function migrationCallback(capabilities) {
         await keepNodeType("event_transcription", storage);
         await keepNodeType("transcription", storage);
         await keepNodeType("event_audios_list", storage);
-
-        await deleteNodeType("entry_diary_content", storage);
-
-        const nodeNameTyped = stringToNodeName("diary_most_important_info_summary");
-        const nodeKeys = storage.listMaterializedNodes();
-        for await (const nodeKey of nodeKeys) {
-            const parsed = deserializeNodeKey(nodeKey);
-            if (parsed.head === nodeNameTyped) {
-                /** @type {(nodeKey: NodeKeyString) => Promise<DiaryMostImportantInfoSummaryEntry>} */
-                const transform = async (nodeKey) => {
-                    const currentValue = await storage.get(nodeKey);
-                    if (!currentValue) {
-                        throw new Error(`Unexpected missing value for node key ${nodeKey}`);
-                    }
-
-                    if (JSON.stringify(Object.keys(currentValue).sort()) !== JSON.stringify(['type', 'markdown', 'summaryDate', 'processedTranscriptions', 'updatedAt', 'model', 'version'].sort())) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: has unexpected fields: ${Object.keys(currentValue)}`);
-                    }
-
-                    if (!('markdown' in currentValue)) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: missing 'markdown' field`);
-                    }
-                    if (!('summaryDate' in currentValue)) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: missing 'summaryDate' field`);
-                    }
-                    if (!('updatedAt' in currentValue)) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: missing 'updatedAt' field`);
-                    }
-                    if (!('model' in currentValue)) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: missing 'model' field`);
-                    }
-                    if (!('version' in currentValue)) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: missing 'version' field`);
-                    }
-                    if (typeof currentValue.markdown !== 'string') {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: 'markdown' field is not a string`);
-                    }
-                    if (typeof currentValue.summaryDate !== 'string') {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: 'summaryDate' field is not a string`);
-                    }
-                    if (typeof currentValue.updatedAt !== 'string') {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: 'updatedAt' field is not a string`);
-                    }
-                    if (typeof currentValue.model !== 'string') {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: 'model' field is not a string`);
-                    }
-                    if (typeof currentValue.version !== 'string') {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: 'version' field is not a string`);
-                    }
-
-                    if (!('processedTranscriptions' in currentValue)) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: missing 'processedTranscriptions' field`);
-                    }
-                    if (typeof currentValue.processedTranscriptions !== 'object' || currentValue.processedTranscriptions === null) {
-                        throw new Error(`Unexpected node value for key ${nodeKey}: 'processedTranscriptions' field is not an object`);
-                    }
-
-                    /** @type {Record<string, string>} */
-                    const processedEntries = {};
-                    for (const [audioPath, value] of Object.entries(currentValue.processedTranscriptions)) {
-                        if (typeof audioPath !== 'string') {
-                            throw new Error(`Unexpected node value for key ${nodeKey}: 'processedTranscriptions' field contains non-string entry`);
-                        }
-
-                        const parts = audioPath.split('/');
-                        if (parts.length !== 4) {
-                            throw new Error(`Unexpected audio path in 'processedTranscriptions' for key ${nodeKey}: expected 4 parts separated by '/', got ${parts.length}`);
-                        }
-
-                        const [yearMonth, day, entryId, basename] = parts;
-                        if (typeof entryId !== 'string') {
-                            throw new Error(`Unexpected node value for key ${nodeKey}: 'processedTranscriptions' field contains entry with non-string entryId`);
-                        }
-                        if (typeof basename !== 'string') {
-                            throw new Error(`Unexpected node value for key ${nodeKey}: 'processedTranscriptions' field contains entry with non-string basename`);
-                        }
-                        if (typeof yearMonth !== 'string') {
-                            throw new Error(`Unexpected node value for key ${nodeKey}: 'processedTranscriptions' field contains entry with non-string yearMonth`);
-                        }
-                        if (typeof day !== 'string') {
-                            throw new Error(`Unexpected node value for key ${nodeKey}: 'processedTranscriptions' field contains entry with non-string day`);
-                        }
-                        processedEntries[entryId] = value;
-                    }
-
-                    /** @type {DiaryMostImportantInfoSummaryEntry} */
-                    const ret = {
-                        type: 'diary_most_important_info_summary',
-                        markdown: currentValue.markdown,
-                        summaryDate: currentValue.summaryDate,
-                        processedEntries,
-                        updatedAt: currentValue.updatedAt,
-                        model: currentValue.model,
-                        version: currentValue.version,
-                    };
-
-                    return ret;
-                };
-
-                await storage.override(nodeKey, transform);
-            }
-        }
+        await keepNodeType("diary_most_important_info_summary", storage);
     };
 }
 
