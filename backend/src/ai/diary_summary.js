@@ -180,7 +180,6 @@ async function updateSummary(openai, capabilities, input) {
         const apiKey = capabilities.environment.openaiAPIKey();
         const response = await openai(apiKey).chat.completions.create({
             model: DIARY_SUMMARY_MODEL,
-            max_tokens: 4000,
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: makeUserMessage(input) },
