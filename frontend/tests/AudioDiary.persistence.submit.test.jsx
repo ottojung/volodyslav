@@ -44,7 +44,11 @@ describe("AudioDiary persistence: submit lifecycle", () => {
         const originalFetch = global.fetch;
         global.fetch = jest.fn().mockImplementation((url, options) => {
             const urlStr = String(url);
-            if (options && options.method === "POST" && urlStr.includes("/entries")) {
+            if (
+                options &&
+                options.method === "POST" &&
+                /\/entries(?:\?|$)/.test(urlStr)
+            ) {
                 return Promise.resolve({
                     ok: false,
                     status: 500,

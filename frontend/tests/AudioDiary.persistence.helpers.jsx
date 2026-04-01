@@ -99,7 +99,11 @@ function makeFetchMock() {
         }
 
         // POST /entries
-        if (options && options.method === "POST" && urlStr.includes("/entries")) {
+        if (
+            options &&
+            options.method === "POST" &&
+            /\/entries(?:\?|$)/.test(urlStr)
+        ) {
             return Promise.resolve({
                 ok: true,
                 status: 201,

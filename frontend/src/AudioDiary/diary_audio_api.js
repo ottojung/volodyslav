@@ -23,6 +23,11 @@ export async function submitDiaryAudio(audioBlob, mimeType, note = "") {
         ? `diary [audiorecording] ${trimmedNote}`
         : "diary [audiorecording]";
     const audioFile = new File([audioBlob], `diary-audio.${ext}`, { type: mimeType });
-    const data = await submitEntry(rawInput, undefined, [audioFile]);
-    return { entry: data.entry || null };
+    try {
+        const data = await submitEntry(rawInput, undefined, [audioFile]);
+        return { entry: data.entry || null };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Diary audio submission failed: ${message}`);
+    }
 }

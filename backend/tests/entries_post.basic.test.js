@@ -27,6 +27,15 @@ async function makeTestApp() {
 }
 
 describe("POST /api/entries", () => {
+    it("does not expose a dedicated /api/entries/diary-audio endpoint", async () => {
+        const { app } = await makeTestApp();
+        const res = await request(app)
+            .post("/api/entries/diary-audio")
+            .field("note", "hello")
+            .attach("audio", Buffer.from("audio"), "diary-audio.webm");
+        expect(res.statusCode).toBe(404);
+    });
+
     it("creates an entry and returns 201 with event data", async () => {
         // Equivalent curl command:
         // curl -X POST http://localhost:PORT/api/entries \
