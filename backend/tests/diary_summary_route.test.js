@@ -110,7 +110,7 @@ describe("diary summary route", () => {
         const deferred = makeDeferred();
 
         runDiarySummaryPipeline.mockImplementation((_capabilities, callbacks) => {
-            callbacks?.onEntryQueued?.("assets/audio1.wav");
+            callbacks?.onEntryQueued?.("event-1");
             return deferred.promise;
         });
 
@@ -120,7 +120,7 @@ describe("diary summary route", () => {
         const runningResponse = await request(app).get("/api/diary-summary/run");
         expect(runningResponse.statusCode).toBe(202);
         expect(runningResponse.body.entries).toEqual([
-            { path: "assets/audio1.wav", status: "pending" },
+            { eventId: "event-1", status: "pending" },
         ]);
 
         deferred.resolve(makeSummaryEntry());
@@ -128,8 +128,8 @@ describe("diary summary route", () => {
 
     it("updates entry status to success after processing", async () => {
         runDiarySummaryPipeline.mockImplementation((_capabilities, callbacks) => {
-            callbacks?.onEntryQueued?.("assets/audio1.wav");
-            callbacks?.onEntryProcessed?.("assets/audio1.wav", "success");
+            callbacks?.onEntryQueued?.("event-1");
+            callbacks?.onEntryProcessed?.("event-1", "success");
             return Promise.resolve(makeSummaryEntry());
         });
 
@@ -140,14 +140,14 @@ describe("diary summary route", () => {
         const finishedResponse = await request(app).get("/api/diary-summary/run");
         expect(finishedResponse.statusCode).toBe(200);
         expect(finishedResponse.body.entries).toEqual([
-            { path: "assets/audio1.wav", status: "success" },
+            { eventId: "event-1", status: "success" },
         ]);
     });
 
     it("updates entry status to error on processing failure", async () => {
         runDiarySummaryPipeline.mockImplementation((_capabilities, callbacks) => {
-            callbacks?.onEntryQueued?.("assets/audio1.wav");
-            callbacks?.onEntryProcessed?.("assets/audio1.wav", "error");
+            callbacks?.onEntryQueued?.("event-1");
+            callbacks?.onEntryProcessed?.("event-1", "error");
             return Promise.resolve(makeSummaryEntry());
         });
 
@@ -158,7 +158,7 @@ describe("diary summary route", () => {
         const finishedResponse = await request(app).get("/api/diary-summary/run");
         expect(finishedResponse.statusCode).toBe(200);
         expect(finishedResponse.body.entries).toEqual([
-            { path: "assets/audio1.wav", status: "error" },
+            { eventId: "event-1", status: "error" },
         ]);
     });
 

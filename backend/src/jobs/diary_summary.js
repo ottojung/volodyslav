@@ -19,13 +19,13 @@ const { getType: getEventType } = require("../event");
 
 /**
  * @callback OnEntryQueued
- * @param {string} path - The relative asset path of the entry that will be processed.
+ * @param {string} eventId - The event ID of the entry that will be processed.
  * @returns {void}
  */
 
 /**
  * @callback OnEntryProcessed
- * @param {string} path - The relative asset path of the entry that was processed.
+ * @param {string} eventId - The event ID of the entry that was processed.
  * @param {"success" | "error"} status - The outcome.
  * @returns {void}
  */
@@ -40,7 +40,7 @@ const { getType: getEventType } = require("../event");
  * Discriminated union of progress events emitted by the diary summary pipeline.
  * Used as the callback event type `C` for the ExclusiveProcess.
  *
- * @typedef {{ type: "entryQueued", path: string } | { type: "entryProcessed", path: string, status: "success" | "error" }} DiarySummaryEvent
+ * @typedef {{ type: "entryQueued", eventId: string } | { type: "entryProcessed", eventId: string, status: "success" | "error" }} DiarySummaryEvent
  */
 
 /**
@@ -74,8 +74,8 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
      */
     procedure: (fanOut, { capabilities }) => {
         return _runDiarySummaryPipelineUnlocked(capabilities, {
-            onEntryQueued: (path) => fanOut({ type: "entryQueued", path }),
-            onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
+            onEntryQueued: (eventId) => fanOut({ type: "entryQueued", eventId }),
+            onEntryProcessed: (eventId, status) => fanOut({ type: "entryProcessed", eventId, status }),
         });
     },
     // All concurrent calls attach to the same run — no queuing needed.
@@ -109,9 +109,9 @@ function runDiarySummaryPipeline(capabilities, callbacks) {
     const callerCallback = callbacks
         ? (event) => {
             if (event.type === "entryQueued") {
-                callbacks.onEntryQueued?.(event.path);
+                callbacks.onEntryQueued?.(event.eventId);
             } else if (event.type === "entryProcessed") {
-                callbacks.onEntryProcessed?.(event.path, event.status);
+                callbacks.onEntryProcessed?.(event.eventId, event.status);
             }
         }
         : undefined;
@@ -254,4 +254,3 @@ module.exports = {
     runDiarySummaryPipeline,
     diarySummaryExclusiveProcess,
 };
-

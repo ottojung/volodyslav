@@ -144,10 +144,10 @@ describe("diary summary — ExclusiveProcess adoption", () => {
 
             // Both callers join before the run completes.
             const p1 = runDiarySummaryPipeline(capabilities, {
-                onEntryQueued: (path) => initiatorQueued.push(path),
+                onEntryQueued: (eventId) => initiatorQueued.push(eventId),
             });
             const p2 = runDiarySummaryPipeline(capabilities, {
-                onEntryQueued: (path) => attacherQueued.push(path),
+                onEntryQueued: (eventId) => attacherQueued.push(eventId),
             });
 
             expect(p1).toBe(p2);
