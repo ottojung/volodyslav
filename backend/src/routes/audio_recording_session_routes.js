@@ -248,24 +248,13 @@ function makeRouter(capabilities) {
     });
 
     // POST /audio-recording-session/:sessionId/initialize-live-questions
-    // Generates the initial set of diary questions from the diary summary using the
-    // smart AI model and pushes them as pending questions for the client to fetch.
-    // Should be called once when a new recording session starts (before any audio is pushed).
-    // The generation is serialized through the per-session processing queue so it cannot
-    // interleave with concurrent pushAudio calls that also write to the pending-questions store.
+    // Best-effort endpoint: queues initial live questions generation and always returns success.
+    // Any generation errors are handled and logged inside the per-session queue worker so
+    // recording start and UI flow are never blocked by initialization failures.
     router.post("/audio-recording-session/:sessionId/initialize-live-questions", async (req, res) => {
         const { sessionId } = req.params;
-
-        try {
-            await enqueueInitialQuestions(capabilities, sessionId);
-            return res.json({ success: true });
-        } catch (error) {
-            capabilities.logger.logError(
-                { sessionId, error: error instanceof Error ? error.message : String(error) },
-                "Failed to generate initial live diary questions"
-            );
-            return res.status(500).json({ success: false, error: "Internal error" });
-        }
+        await enqueueInitialQuestions(capabilities, sessionId);
+        return res.json({ success: true });
     });
 
     // DELETE /audio-recording-session/:sessionId

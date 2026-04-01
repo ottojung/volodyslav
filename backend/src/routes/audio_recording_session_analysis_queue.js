@@ -7,8 +7,7 @@
  * @module routes/audio_recording_session_analysis_queue
  */
 
-const { pushAudio: pushLiveDiaryAudio } = require("../live_diary");
-const { generateInitialQuestionsAndPush } = require("../live_diary");
+const { pushAudio: pushLiveDiaryAudio, generateInitialQuestionsAndPush } = require("../live_diary");
 
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../temporary').Temporary} Temporary */

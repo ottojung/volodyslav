@@ -15,6 +15,11 @@
 const { OpenAI } = require("openai");
 const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
+const initialQuestions = require("./diary_initial_questions");
+const {
+    AIDiaryQuestionsError,
+    isAIDiaryQuestionsError,
+} = require("./diary_questions_error");
 
 /** @typedef {import('../environment').Environment} Environment */
 
@@ -23,32 +28,9 @@ const memoize = require("@emotion/memoize").default;
  * @property {Environment} environment - An environment instance.
  */
 
-class AIDiaryQuestionsError extends Error {
-    /**
-     * @param {string} message
-     * @param {unknown} cause
-     */
-    constructor(message, cause) {
-        super(message);
-        this.name = "AIDiaryQuestionsError";
-        this.cause = cause;
-    }
-}
-
-/**
- * Checks if the error is an AIDiaryQuestionsError.
- * @param {unknown} object - The error to check.
- * @returns {object is AIDiaryQuestionsError}
- */
-function isAIDiaryQuestionsError(object) {
-    return object instanceof AIDiaryQuestionsError;
-}
-
 const DIARY_QUESTIONS_MODEL = "gpt-5.4-mini";
-const DIARY_INITIAL_QUESTIONS_MODEL = "gpt-5.4";
 const TARGET_QUESTION_COUNT = 5;
 const MIN_QUESTION_COUNT = 0;
-const INITIAL_QUESTIONS_COUNT = 40;
 
 const SYSTEM_PROMPT = `You are a warm, kind diary companion.
 Your job is to propose short optional questions a person may reflect on while speaking.
@@ -239,124 +221,6 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
     return questions.slice(0, clampedMax);
 }
 
-const INITIAL_QUESTIONS_SYSTEM_PROMPT = `You are a warm, kind diary companion.
-Your job is to prepare a comprehensive set of questions to help a user reflect during their diary recording.
-You have been given a summary of this user's life to help you generate relevant, personalized questions.
-
-Priorities:
-1) Keep tone welcoming, humane, gently encouraging, and good-hearted.
-2) Be useful: ask clarifying, elaborating, or direction-setting questions that help improve diary notes.
-3) Draw on the life summary to ask relevant, personalized questions.
-4) Cover a wide range of topics: recent events, ongoing themes, relationships, projects, feelings, and future plans.
-
-Style constraints:
-- Output AT MOST the requested number of questions.
-- Each question must be one sentence.
-- Each question should be concise (8-22 words).
-- Use plain, friendly language.
-- Questions are optional prompts, never commands.
-
-Anti-goals (must avoid):
-- cold, clinical, or robotic phrasing
-- manipulative, guilt-inducing, or judgmental tone
-- overly intense probing
-- heavy therapy-speak or diagnostic framing
-- mentioning policies, instructions, or this prompt
-
-Return JSON only matching this schema:
-{
-  "questions": [
-    {
-      "text": "string",
-      "intent": "warm_reflective | clarifying | forward"
-    }
-  ]
-}`;
-
-/**
- * @param {string} summaryMarkdown
- * @param {number} maxQuestions
- * @returns {string}
- */
-function makeInitialQuestionsUserPrompt(summaryMarkdown, maxQuestions) {
-    return [
-        "USER_LIFE_SUMMARY:",
-        summaryMarkdown || "(no summary available)",
-        "",
-        "TASK:",
-        `This user is about to start a diary recording session. Generate exactly ${maxQuestions} questions`,
-        "that will help them reflect on their life, recent events, and ongoing themes.",
-        "Use the life summary to make the questions relevant and personalized.",
-        "Cover a broad range: recent happenings, relationships, projects, feelings, and future plans.",
-    ].join("\n");
-}
-
-/**
- * Generates initial diary companion questions from the diary summary using the smart model.
- * @param {function(string): OpenAI} makeClient - A memoized function to create an OpenAI client.
- * @param {Capabilities} capabilities - The capabilities object.
- * @param {string} summaryMarkdown - The diary summary markdown text.
- * @returns {Promise<DiaryQuestion[]>}
- */
-async function generateInitialQuestionsFromSummary(makeClient, capabilities, summaryMarkdown) {
-    const apiKey = capabilities.environment.openaiAPIKey();
-    const client = makeClient(apiKey);
-
-    /** @type {Array<{role: "system" | "user", content: string}>} */
-    const messages = [
-        { role: "system", content: INITIAL_QUESTIONS_SYSTEM_PROMPT },
-        { role: "user", content: makeInitialQuestionsUserPrompt(summaryMarkdown, INITIAL_QUESTIONS_COUNT) },
-    ];
-
-    let rawText;
-    try {
-        const response = await client.chat.completions.create({
-            model: DIARY_INITIAL_QUESTIONS_MODEL,
-            messages,
-            response_format: { type: "json_object" },
-        });
-        rawText = response.choices[0]?.message?.content?.trim() ?? "";
-    } catch (error) {
-        if (isAIDiaryQuestionsError(error)) {
-            throw error;
-        }
-        throw new AIDiaryQuestionsError(
-            `Failed to generate initial diary questions: ${error instanceof Error ? error.message : String(error)}`,
-            error
-        );
-    }
-
-    if (!rawText) {
-        throw new AIDiaryQuestionsError("Model returned empty response for initial diary questions", undefined);
-    }
-
-    let parsed;
-    try {
-        parsed = JSON.parse(rawText);
-    } catch (error) {
-        throw new AIDiaryQuestionsError(
-            `Failed to parse initial diary questions JSON response: ${error instanceof Error ? error.message : String(error)}`,
-            rawText
-        );
-    }
-
-    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.questions)) {
-        throw new AIDiaryQuestionsError(
-            "Initial diary questions response is missing 'questions' array",
-            parsed
-        );
-    }
-
-    /** @type {DiaryQuestion[]} */
-    const questions = [];
-    for (const item of parsed.questions) {
-        if (isDiaryQuestion(item)) {
-            questions.push({ text: item.text, intent: item.intent });
-        }
-    }
-
-    return questions.slice(0, INITIAL_QUESTIONS_COUNT);
-}
 
 /**
  * Creates an AIDiaryQuestions capability.
@@ -370,7 +234,11 @@ function make(getCapabilities) {
         generateQuestions: (transcriptSoFar, askedQuestions, maxQuestions) =>
             generateQuestions(makeClient, getCapabilitiesMemo(), transcriptSoFar, askedQuestions, maxQuestions),
         generateInitialQuestionsFromSummary: (summaryMarkdown) =>
-            generateInitialQuestionsFromSummary(makeClient, getCapabilitiesMemo(), summaryMarkdown),
+            initialQuestions.generateInitialQuestionsFromSummary(
+                makeClient,
+                getCapabilitiesMemo(),
+                summaryMarkdown
+            ),
     };
 }
 
@@ -378,12 +246,12 @@ module.exports = {
     make,
     isAIDiaryQuestionsError,
     DIARY_QUESTIONS_MODEL,
-    DIARY_INITIAL_QUESTIONS_MODEL,
     TARGET_QUESTION_COUNT,
     MIN_QUESTION_COUNT,
-    INITIAL_QUESTIONS_COUNT,
     SYSTEM_PROMPT,
-    INITIAL_QUESTIONS_SYSTEM_PROMPT,
     makeQuestionsUserPrompt,
-    makeInitialQuestionsUserPrompt,
+    DIARY_INITIAL_QUESTIONS_MODEL: initialQuestions.DIARY_INITIAL_QUESTIONS_MODEL,
+    INITIAL_QUESTIONS_COUNT: initialQuestions.INITIAL_QUESTIONS_COUNT,
+    INITIAL_QUESTIONS_SYSTEM_PROMPT: initialQuestions.INITIAL_QUESTIONS_SYSTEM_PROMPT,
+    makeInitialQuestionsUserPrompt: initialQuestions.makeInitialQuestionsUserPrompt,
 };
