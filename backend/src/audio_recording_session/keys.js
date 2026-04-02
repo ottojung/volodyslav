@@ -13,6 +13,7 @@ const { stringToTempKey } = require("../temporary");
 const SESSION_NAMESPACE = "audio_session";
 const INDEX_SUBLEVEL = "index";
 const SESSIONS_SUBLEVEL = "sessions";
+const SESSION_BINARY_SUBLEVEL = "binary";
 const CHUNKS_SUBLEVEL = "chunk";
 const CURRENT_SESSION_KEY = stringToTempKey("current_session_id");
 const SESSION_INDEX_KEY_PREFIX = "session/";
@@ -59,6 +60,24 @@ function sessionSublevel(temporary, sessionId) {
  */
 function chunksSublevel(temporary, sessionId) {
     return sessionSublevel(temporary, sessionId).getSublevel(CHUNKS_SUBLEVEL);
+}
+
+/**
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {import('../temporary/database').TemporaryBinarySublevel}
+ */
+function sessionBinarySublevel(temporary, sessionId) {
+    return sessionSublevel(temporary, sessionId).getBinarySublevel(SESSION_BINARY_SUBLEVEL);
+}
+
+/**
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {import('../temporary/database').TemporaryBinarySublevel}
+ */
+function chunksBinarySublevel(temporary, sessionId) {
+    return sessionBinarySublevel(temporary, sessionId).getSublevel(CHUNKS_SUBLEVEL);
 }
 
 /**
@@ -160,6 +179,8 @@ module.exports = {
     sessionsSublevel,
     sessionSublevel,
     chunksSublevel,
+    chunksBinarySublevel,
+    sessionBinarySublevel,
     metaKey,
     chunkKey,
     finalKey,

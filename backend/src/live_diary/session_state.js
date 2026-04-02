@@ -17,6 +17,7 @@ const { stringToTempKey } = require("../temporary");
 /** @typedef {import('../temporary').Temporary} Temporary */
 
 const LIVE_DIARY_SUBLEVEL = "live_diary";
+const LIVE_DIARY_BINARY_SUBLEVEL = "binary";
 
 const LAST_FRAGMENT_KEY = stringToTempKey("last_fragment");
 const LAST_FRAGMENT_FORMAT_KEY = stringToTempKey("last_fragment_mime");
@@ -33,6 +34,15 @@ const WORDS_SINCE_LAST_QUESTION_KEY = stringToTempKey("words_since_last_question
  */
 function liveDiarySessionSublevel(temporary, sessionId) {
     return sessionSublevel(temporary, sessionId).getSublevel(LIVE_DIARY_SUBLEVEL);
+}
+
+/**
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @returns {import('../temporary/database').TemporaryBinarySublevel}
+ */
+function liveDiaryBinarySublevel(temporary, sessionId) {
+    return liveDiarySessionSublevel(temporary, sessionId).getBinarySublevel(LIVE_DIARY_BINARY_SUBLEVEL);
 }
 
 /**
@@ -70,11 +80,8 @@ async function writeCurrentSessionId(temporary, sessionId) {
  * @returns {Promise<Buffer | null>}
  */
 async function readLastFragment(temporary, sessionId) {
-    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
-    if (entry === undefined || entry.type !== "blob") {
-        return null;
-    }
-    return Buffer.from(entry.data, "base64");
+    const entry = await liveDiaryBinarySublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
+    return entry === undefined ? null : entry;
 }
 
 /**
@@ -85,10 +92,7 @@ async function readLastFragment(temporary, sessionId) {
  * @returns {Promise<void>}
  */
 async function writeLastFragment(temporary, sessionId, fragment) {
-    await liveDiarySessionSublevel(temporary, sessionId).put(LAST_FRAGMENT_KEY, {
-        type: "blob",
-        data: fragment.toString("base64"),
-    });
+    await liveDiaryBinarySublevel(temporary, sessionId).put(LAST_FRAGMENT_KEY, fragment);
 }
 
 /**

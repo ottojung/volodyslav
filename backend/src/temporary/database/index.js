@@ -110,6 +110,15 @@ class TemporaryDatabaseClass {
     getSublevel(name) {
         return makeTemporarySublevel(this._db.sublevel(name, { valueEncoding: "json" }));
     }
+
+    /**
+     * Open a binary sublevel (Buffer value encoding) under the root temporary database.
+     * @param {string} name
+     * @returns {TemporaryBinarySublevel}
+     */
+    getBinarySublevel(name) {
+        return makeTemporaryBinarySublevel(this._db.sublevel(name, { valueEncoding: "buffer" }));
+    }
 }
 
 class TemporarySublevelClass {
@@ -202,6 +211,107 @@ class TemporarySublevelClass {
     getSublevel(name) {
         return makeTemporarySublevel(this._sublevel.sublevel(name, { valueEncoding: "json" }));
     }
+
+    /**
+     * Open a nested binary sublevel.
+     * @param {string} name
+     * @returns {TemporaryBinarySublevel}
+     */
+    getBinarySublevel(name) {
+        return makeTemporaryBinarySublevel(this._sublevel.sublevel(name, { valueEncoding: "buffer" }));
+    }
+}
+
+class TemporaryBinarySublevelClass {
+    /**
+     * @private
+     * @type {*}
+     */
+    _sublevel;
+
+    /**
+     * @param {*} sublevel
+     */
+    constructor(sublevel) {
+        this._sublevel = sublevel;
+    }
+
+    /**
+     * Retrieve a binary value by key.
+     * Returns `undefined` when the key does not exist.
+     * @param {TempKey} key
+     * @returns {Promise<Buffer | undefined>}
+     */
+    async get(key) {
+        return this._sublevel.get(tempKeyToString(key));
+    }
+
+    /**
+     * Store a binary value atomically.
+     * @param {TempKey} key
+     * @param {Buffer} value
+     * @returns {Promise<void>}
+     */
+    async put(key, value) {
+        await this._sublevel.put(tempKeyToString(key), value);
+    }
+
+    /**
+     * Delete a key. No-op if the key does not exist.
+     * @param {TempKey} key
+     * @returns {Promise<void>}
+     */
+    async del(key) {
+        await this._sublevel.del(tempKeyToString(key));
+    }
+
+    /**
+     * Apply a batch of put/del operations atomically.
+     * @param {Array<{type: 'put', key: TempKey, value: Buffer} | {type: 'del', key: TempKey}>} operations
+     * @returns {Promise<void>}
+     */
+    async batch(operations) {
+        if (operations.length === 0) {
+            return;
+        }
+        const raw = operations.map((op) => {
+            if (op.type === "put") {
+                return { type: op.type, key: tempKeyToString(op.key), value: op.value };
+            }
+            return { type: op.type, key: tempKeyToString(op.key) };
+        });
+        await this._sublevel.batch(raw);
+    }
+
+    /**
+     * Iterate over keys in this sublevel.
+     * @returns {Promise<TempKey[]>}
+     */
+    async listKeys() {
+        /** @type {TempKey[]} */
+        const keys = [];
+        for await (const key of this._sublevel.keys()) {
+            keys.push(stringToTempKey(key));
+        }
+        return keys;
+    }
+
+    /**
+     * Delete all data under this sublevel.
+     * @returns {Promise<void>}
+     */
+    async clear() {
+        await this._sublevel.clear();
+    }
+
+    /**
+     * Open a nested binary sublevel.
+     * @param {string} name
+     * @returns {TemporaryBinarySublevel}
+     */
+    getSublevel(name) {
+        return makeTemporaryBinarySublevel(this._sublevel.sublevel(name, { valueEncoding: "buffer" }));
+    }
 }
 
 /** @typedef {TemporaryDatabaseClass} TemporaryDatabase */
@@ -214,6 +324,18 @@ class TemporarySublevelClass {
  * @property {() => Promise<TempKey[]>} listKeys
  * @property {() => Promise<void>} clear
  * @property {(name: string) => TemporarySublevel} getSublevel
+ * @property {(name: string) => TemporaryBinarySublevel} getBinarySublevel
+ */
+
+/**
+ * @typedef {object} TemporaryBinarySublevel
+ * @property {(key: TempKey) => Promise<Buffer | undefined>} get
+ * @property {(key: TempKey, value: Buffer) => Promise<void>} put
+ * @property {(key: TempKey) => Promise<void>} del
+ * @property {(operations: Array<{type: 'put', key: TempKey, value: Buffer} | {type: 'del', key: TempKey}>) => Promise<void>} batch
+ * @property {() => Promise<TempKey[]>} listKeys
+ * @property {() => Promise<void>} clear
+ * @property {(name: string) => TemporaryBinarySublevel} getSublevel
  */
 
 /**
@@ -235,11 +357,28 @@ function isTemporarySublevel(object) {
 }
 
 /**
+ * Type guard for TemporaryBinarySublevel.
+ * @param {unknown} object
+ * @returns {object is TemporaryBinarySublevel}
+ */
+function isTemporaryBinarySublevel(object) {
+    return object instanceof TemporaryBinarySublevelClass;
+}
+
+/**
  * @param {*} sublevel
  * @returns {TemporarySublevel}
  */
 function makeTemporarySublevel(sublevel) {
     return new TemporarySublevelClass(sublevel);
+}
+
+/**
+ * @param {*} sublevel
+ * @returns {TemporaryBinarySublevel}
+ */
+function makeTemporaryBinarySublevel(sublevel) {
+    return new TemporaryBinarySublevelClass(sublevel);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +455,7 @@ module.exports = {
     getTemporaryDatabase,
     isTemporaryDatabase,
     isTemporarySublevel,
+    isTemporaryBinarySublevel,
     isTemporaryDatabaseInitializationError,
     TEMPORARY_DB_SUBPATH,
     pathToTemporaryDatabase,
