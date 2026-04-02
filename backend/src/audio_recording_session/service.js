@@ -3,9 +3,9 @@
  *
  * Manages audio recording sessions in the temporary LevelDB store.
  * Key layout:
- *   audio_session/<sessionId>/meta         → session metadata (JSON)
+ *   audio_session/sessions/<sessionId>/meta → session metadata (JSON)
  *   audio_session/sessions/<sessionId>/binary/chunk/<seq> → binary PCM fragment
- *   audio_session/sessions/<sessionId>/binary/final       → final WAV buffer
+ *   audio_session/sessions/<sessionId>/binary/final → final WAV buffer
  *   audio_session/index/current_session_id → current session id
  *
  * @module audio_recording_session/service
@@ -26,6 +26,8 @@ const { buildWav } = require("../build_wav");
 const {
     CURRENT_SESSION_KEY,
     indexSublevel,
+    sessionSublevel,
+    chunksSublevel,
     chunksBinarySublevel,
     sessionBinarySublevel,
     chunkKey,
@@ -330,26 +332,53 @@ async function fetchFinalAudio(capabilities, sessionId) {
         );
     }
 
+    const sessionBinary = sessionBinarySublevel(temporary, sessionId);
+
     // Return cached WAV if already assembled.
-    const cachedBuffer = await sessionBinarySublevel(temporary, sessionId).get(finalKey());
+    const cachedBuffer = await sessionBinary.get(finalKey());
     if (cachedBuffer !== undefined) {
-        return {
-            buffer: cachedBuffer,
-            mimeType: meta.mimeType,
-        };
+        return { buffer: cachedBuffer, mimeType: meta.mimeType };
+    }
+
+    const legacyCachedEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
+    if (
+        legacyCachedEntry !== undefined &&
+        legacyCachedEntry.type === "blob" &&
+        typeof legacyCachedEntry.data === "string"
+    ) {
+        const legacyBuffer = Buffer.from(legacyCachedEntry.data, "base64");
+        await sessionBinary.put(finalKey(), legacyBuffer);
+        await sessionSublevel(temporary, sessionId).del(finalKey());
+        return { buffer: legacyBuffer, mimeType: meta.mimeType };
     }
 
     // Lazy WAV assembly: read all PCM chunks, concatenate and wrap in a WAV container.
     const sessionChunks = chunksBinarySublevel(temporary, sessionId);
     const chunkKeys = await sessionChunks.listKeys();
-    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
+    const legacySessionChunks = chunksSublevel(temporary, sessionId);
+    const legacyChunkKeys = await legacySessionChunks.listKeys();
+    const allChunkKeys = new Set([...chunkKeys, ...legacyChunkKeys]);
+    const sortedChunkKeys = [...allChunkKeys];
+    sortedChunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
 
     /** @type {Buffer[]} */
     const pcmBuffers = [];
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined) {
-            pcmBuffers.push(entry);
+    for (const key of sortedChunkKeys) {
+        const binaryEntry = await sessionChunks.get(key);
+        if (binaryEntry !== undefined) {
+            pcmBuffers.push(binaryEntry);
+            continue;
+        }
+        const legacyEntry = await legacySessionChunks.get(key);
+        if (
+            legacyEntry !== undefined &&
+            legacyEntry.type === "blob" &&
+            typeof legacyEntry.data === "string"
+        ) {
+            const legacyBuffer = Buffer.from(legacyEntry.data, "base64");
+            pcmBuffers.push(legacyBuffer);
+            await sessionChunks.put(key, legacyBuffer);
+            await legacySessionChunks.del(key);
         }
     }
 
@@ -366,7 +395,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
 
     // Cache the assembled WAV so subsequent calls can skip assembly.
     try {
-        await sessionBinarySublevel(temporary, sessionId).put(finalKey(), finalBuffer);
+        await sessionBinary.put(finalKey(), finalBuffer);
     } catch (error) {
         throw new AudioSessionFinalizeError(
             `Failed to store final audio for session ${sessionId}: ${error}`,
@@ -375,10 +404,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
         );
     }
 
-    return {
-        buffer: finalBuffer,
-        mimeType: meta.mimeType,
-    };
+    return { buffer: finalBuffer, mimeType: meta.mimeType };
 }
 
 /**

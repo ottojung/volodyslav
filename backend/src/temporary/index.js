@@ -132,7 +132,23 @@ async function storeBlob(database, reqId, filename, data) {
  * @returns {Promise<Buffer | null>}
  */
 async function getBlob(database, reqId, filename) {
-    const value = await database.getBinarySublevel("binary").get(blobKey(reqId, filename));
+    const key = blobKey(reqId, filename);
+    const binarySublevel = database.getBinarySublevel("binary");
+    const value = await binarySublevel.get(key);
+    if (value !== undefined) {
+        return value;
+    }
+    const legacyEntry = await database.get(key);
+    if (
+        legacyEntry !== undefined &&
+        legacyEntry.type === "blob" &&
+        typeof legacyEntry.data === "string"
+    ) {
+        const decoded = Buffer.from(legacyEntry.data, "base64");
+        await binarySublevel.put(key, decoded);
+        await database.del(key);
+        return decoded;
+    }
     return value === undefined ? null : value;
 }
 
@@ -178,8 +194,19 @@ async function deleteDone(database, reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(database, reqId) {
-    const entry = await database.getBinarySublevel("binary").get(doneKey(reqId));
-    return entry !== undefined;
+    const key = doneKey(reqId);
+    const binarySublevel = database.getBinarySublevel("binary");
+    const entry = await binarySublevel.get(key);
+    if (entry !== undefined) {
+        return true;
+    }
+    const legacyEntry = await database.get(key);
+    if (legacyEntry !== undefined && legacyEntry.type === "done") {
+        await binarySublevel.put(key, Buffer.alloc(0));
+        await database.del(key);
+        return true;
+    }
+    return false;
 }
 
 /**

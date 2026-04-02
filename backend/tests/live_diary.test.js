@@ -17,6 +17,7 @@ const {
     stubAiTranscriptRecombination,
 } = require("./stubs");
 const { pushAudio, getPendingQuestions } = require("../src/live_diary");
+const { stringToTempKey } = require("../src/temporary");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -57,6 +58,14 @@ function makeCapabilities() {
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "live-diary-test-"));
     tempDirs.push(workDir);
     return makeCapabilitiesWithWorkDir(workDir);
+}
+
+function liveDiarySublevel(temporary, sessionId) {
+    return temporary
+        .getSublevel("audio_session")
+        .getSublevel("sessions")
+        .getSublevel(sessionId)
+        .getSublevel("live_diary");
 }
 
 const SHORT_TIMEOUT_MS = 10;
@@ -688,6 +697,34 @@ describe("session isolation across session ids", () => {
 // ─── Backend reboot continuity ───────────────────────────────────────────────
 
 describe("backend reboot continuity", () => {
+    it("migrates legacy base64 last fragment on read after restart", async () => {
+        const sharedWorkDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "live-diary-legacy-fragment-test-")
+        );
+        tempDirs.push(sharedWorkDir);
+
+        const caps1 = makeCapabilitiesWithWorkDir(sharedWorkDir);
+        const legacyKey = stringToTempKey("last_fragment");
+        await liveDiarySublevel(caps1.temporary, "legacy-session").put(legacyKey, {
+                type: "blob",
+                data: buildTestPcmBuffer().toString("base64"),
+            });
+        await liveDiarySublevel(caps1.temporary, "legacy-session").put(stringToTempKey("last_fragment_mime"), {
+                type: "live_diary_string",
+                value: "16000/1/16",
+            });
+        await caps1.temporary.close();
+
+        const caps2 = makeCapabilitiesWithWorkDir(sharedWorkDir);
+        await pushAudio(caps2, "legacy-session", buildTestPcmInfo(), 2);
+
+        expect(caps2.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
+        const binaryEntry = await liveDiarySublevel(caps2.temporary, "legacy-session")
+            .getBinarySublevel("binary")
+            .get(legacyKey);
+        expect(binaryEntry).toEqual(buildTestPcmBuffer());
+    });
+
     it("resumes from stored last fragment after simulated backend restart", async () => {
         const sharedWorkDir = fs.mkdtempSync(
             path.join(os.tmpdir(), "live-diary-reboot-test-")
