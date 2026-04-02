@@ -3,10 +3,10 @@
  *
  * Manages audio recording sessions in the temporary LevelDB store.
  * Key layout:
- *   audio_session/sessions/<sessionId>/meta         → session metadata (JSON)
+ *   audio_session/sessions/<sessionId>/meta               → session metadata (JSON)
  *   audio_session/sessions/<sessionId>/binary/chunk/<seq> → binary PCM fragment
  *   audio_session/sessions/<sessionId>/binary/final       → final WAV buffer
- *   audio_session/index/current_session_id → current session id
+ *   audio_session/index/current_session_id                → current session id
  *
  * @module audio_recording_session/service
  */
