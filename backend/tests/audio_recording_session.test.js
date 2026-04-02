@@ -12,7 +12,6 @@ const {
     isAudioSessionConflictError,
 } = require("../src/audio_recording_session");
 const { parseWav } = require("../src/live_diary/wav_utils");
-const { stringToTempKey } = require("../src/temporary");
 
 function getCapabilities() {
     const caps = getMockedRootCapabilities();
@@ -461,78 +460,6 @@ describe("audio_recording_session", () => {
             // Both calls must return identically-sized, valid WAV data.
             expect(first.buffer.length).toBe(second.buffer.length);
             expect(first.buffer).toEqual(second.buffer);
-        });
-
-        it("migrates legacy base64 final cache entries to binary sublevel", async () => {
-            const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID);
-            await uploadChunk(caps, TEST_SESSION_ID, {
-                pcm: Buffer.from(new Int16Array(8).buffer),
-                sampleRateHz: 16000,
-                channels: 1,
-                bitDepth: 16,
-                startMs: 0,
-                endMs: 10000,
-                sequence: 0,
-            });
-            await stopSession(caps, TEST_SESSION_ID);
-
-            const session = caps.temporary
-                .getSublevel("audio_session")
-                .getSublevel("sessions")
-                .getSublevel(TEST_SESSION_ID);
-            const binary = session.getBinarySublevel("binary");
-            const legacyFinalKey = stringToTempKey("final");
-            const legacyFinalBuffer = Buffer.from("legacy-final-cache");
-            await session.put(legacyFinalKey, {
-                type: "blob",
-                data: legacyFinalBuffer.toString("base64"),
-            });
-
-            const fetched = await fetchFinalAudio(caps, TEST_SESSION_ID);
-            expect(fetched.buffer).toEqual(legacyFinalBuffer);
-
-            const migratedFinal = await binary.get(legacyFinalKey);
-            expect(migratedFinal).toEqual(legacyFinalBuffer);
-            const legacyFinalEntry = await session.get(legacyFinalKey);
-            expect(legacyFinalEntry).toBeUndefined();
-        });
-
-        it("migrates legacy base64 chunk entries to binary sublevel during lazy assembly", async () => {
-            const caps = getCapabilities();
-            await startSession(caps, TEST_SESSION_ID);
-            const pcm = Buffer.from(new Int16Array(8).buffer);
-            await uploadChunk(caps, TEST_SESSION_ID, {
-                pcm,
-                sampleRateHz: 16000,
-                channels: 1,
-                bitDepth: 16,
-                startMs: 0,
-                endMs: 10000,
-                sequence: 0,
-            });
-            await stopSession(caps, TEST_SESSION_ID);
-
-            const session = caps.temporary
-                .getSublevel("audio_session")
-                .getSublevel("sessions")
-                .getSublevel(TEST_SESSION_ID);
-            const chunksBinary = session.getBinarySublevel("binary").getSublevel("chunk");
-            const legacyChunkKey = stringToTempKey("000000");
-            const originalChunk = await chunksBinary.get(legacyChunkKey);
-            expect(originalChunk).toEqual(pcm);
-            await chunksBinary.del(legacyChunkKey);
-            await session.getSublevel("chunk").put(legacyChunkKey, {
-                type: "blob",
-                data: pcm.toString("base64"),
-            });
-
-            const { buffer } = await fetchFinalAudio(caps, TEST_SESSION_ID);
-            const wavInfo = parseWav(buffer);
-            expect(wavInfo).not.toBeNull();
-            expect(wavInfo.pcm).toEqual(pcm);
-            const migratedChunk = await chunksBinary.get(legacyChunkKey);
-            expect(migratedChunk).toEqual(pcm);
         });
 
         it("throws on not-yet-finalized session", async () => {

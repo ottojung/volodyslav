@@ -3,12 +3,7 @@ const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
-const {
-    sanitizeFilename,
-    FilenameValidationError,
-    isFilenameValidationError,
-    stringToTempKey,
-} = require("../src/temporary");
+const { sanitizeFilename, FilenameValidationError, isFilenameValidationError } = require("../src/temporary");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -24,10 +19,6 @@ async function makeApp(capabilities) {
     await capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
-}
-
-async function readBinaryTemporaryValue(temporary, key) {
-    return temporary.getBinarySublevel("binary").get(key);
 }
 
 describe("POST /api/upload", () => {
@@ -160,43 +151,5 @@ describe("sanitizeFilename", () => {
 
     it("throws FilenameValidationError for empty string", () => {
         expect(() => sanitizeFilename("")).toThrow(FilenameValidationError);
-    });
-});
-
-describe("temporary legacy compatibility", () => {
-    it("migrates legacy base64 blob entries when reading via getBlob", async () => {
-        const capabilities = getTestCapabilities();
-        const { fromRequest } = require("../src/request_identifier");
-        const reqIdObj = fromRequest({ query: { request_identifier: "legacy-blob-req" } });
-        const key = stringToTempKey(`blob/${reqIdObj.identifier}/legacy.jpg`);
-        await capabilities.temporary.putEntry(key, {
-            type: "blob",
-            data: Buffer.from("legacy content").toString("base64"),
-        });
-
-        const value = await capabilities.temporary.getBlob(reqIdObj, "legacy.jpg");
-        expect(value).not.toBeNull();
-        expect(value.toString()).toBe("legacy content");
-
-        const legacyEntry = await capabilities.temporary.getEntry(key);
-        expect(legacyEntry).toBeUndefined();
-        const migrated = await readBinaryTemporaryValue(capabilities.temporary, key);
-        expect(migrated).toEqual(Buffer.from("legacy content"));
-    });
-
-    it("migrates legacy done entries when checking isDone", async () => {
-        const capabilities = getTestCapabilities();
-        const { fromRequest } = require("../src/request_identifier");
-        const reqIdObj = fromRequest({ query: { request_identifier: "legacy-done-req" } });
-        const key = stringToTempKey(`done/${reqIdObj.identifier}`);
-        await capabilities.temporary.putEntry(key, { type: "done" });
-
-        const done = await capabilities.temporary.isDone(reqIdObj);
-        expect(done).toBe(true);
-
-        const legacyEntry = await capabilities.temporary.getEntry(key);
-        expect(legacyEntry).toBeUndefined();
-        const migrated = await readBinaryTemporaryValue(capabilities.temporary, key);
-        expect(migrated).toEqual(Buffer.alloc(0));
     });
 });

@@ -80,24 +80,8 @@ async function writeCurrentSessionId(temporary, sessionId) {
  * @returns {Promise<Buffer | null>}
  */
 async function readLastFragment(temporary, sessionId) {
-    const binarySublevel = liveDiaryBinarySublevel(temporary, sessionId);
-    const entry = await binarySublevel.get(LAST_FRAGMENT_KEY);
-    if (entry !== undefined) {
-        return entry;
-    }
-    const sessionSub = liveDiarySessionSublevel(temporary, sessionId);
-    const legacyEntry = await sessionSub.get(LAST_FRAGMENT_KEY);
-    if (
-        legacyEntry !== undefined &&
-        legacyEntry.type === "blob" &&
-        typeof legacyEntry.data === "string"
-    ) {
-        const decoded = Buffer.from(legacyEntry.data, "base64");
-        await binarySublevel.put(LAST_FRAGMENT_KEY, decoded);
-        await sessionSub.del(LAST_FRAGMENT_KEY);
-        return decoded;
-    }
-    return null;
+    const entry = await liveDiaryBinarySublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
+    return entry === undefined ? null : entry;
 }
 
 /**

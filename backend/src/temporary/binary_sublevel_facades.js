@@ -1,23 +1,5 @@
 /** @typedef {import('./database').TemporaryDatabase} TemporaryDatabase */
 
-class TemporarySublevelPathError extends Error {
-    /**
-     * @param {string} message
-     */
-    constructor(message) {
-        super(message);
-        this.name = "TemporarySublevelPathError";
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is TemporarySublevelPathError}
- */
-function isTemporarySublevelPathError(object) {
-    return object instanceof TemporarySublevelPathError;
-}
-
 class TemporaryBinarySublevelFacadeClass {
     /**
      * @private
@@ -55,7 +37,7 @@ class TemporaryBinarySublevelFacadeClass {
         const db = await this._getDatabase();
         const firstJson = this._jsonPath[0];
         if (firstJson === undefined) {
-            throw new TemporarySublevelPathError("Temporary sublevel path must not be empty");
+            throw new Error("Temporary sublevel path must not be empty");
         }
         let jsonSublevel = db.getSublevel(firstJson);
         for (const segment of this._jsonPath.slice(1)) {
@@ -63,7 +45,7 @@ class TemporaryBinarySublevelFacadeClass {
         }
         const firstBinary = this._binaryPath[0];
         if (firstBinary === undefined) {
-            throw new TemporarySublevelPathError("Temporary binary sublevel path must not be empty");
+            throw new Error("Temporary binary sublevel path must not be empty");
         }
         let binarySublevel = jsonSublevel.getBinarySublevel(firstBinary);
         for (const segment of this._binaryPath.slice(1)) {
@@ -163,7 +145,7 @@ class TemporaryRootBinarySublevelFacadeClass {
         const db = await this._getDatabase();
         const first = this._path[0];
         if (first === undefined) {
-            throw new TemporarySublevelPathError("Temporary binary sublevel path must not be empty");
+            throw new Error("Temporary binary sublevel path must not be empty");
         }
         let sublevel = db.getBinarySublevel(first);
         for (const segment of this._path.slice(1)) {
@@ -256,6 +238,4 @@ function makeNestedBinarySublevelFacade(getDatabase, jsonPathSegments, binaryPat
 module.exports = {
     makeRootBinarySublevelFacade,
     makeNestedBinarySublevelFacade,
-    TemporarySublevelPathError,
-    isTemporarySublevelPathError,
 };

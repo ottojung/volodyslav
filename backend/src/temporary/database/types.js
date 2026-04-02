@@ -86,14 +86,6 @@ function tempKeyToString(key) {
  */
 
 /**
- * Legacy stored binary blob entry (base64 encoded string payload).
- * Kept for compatibility reads and one-time migration into binary sublevels.
- * @typedef {object} BlobEntry
- * @property {'blob'} type
- * @property {string} data
- */
-
-/**
  * A stored runtime state entry.
  * @typedef {object} RuntimeStateEntry
  * @property {'runtime_state'} type
@@ -161,7 +153,7 @@ function tempKeyToString(key) {
 
 /**
  * The union of all value types stored in the temporary database.
- * @typedef {DoneEntry | BlobEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry} TempEntry
+ * @typedef {DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry} TempEntry
  */
 
 module.exports = {
