@@ -18,6 +18,7 @@
 
 const path = require("path");
 const { getTemporaryDatabase, stringToTempKey, tempKeyToString } = require("./database");
+const { makeRootBinarySublevelFacade, makeNestedBinarySublevelFacade } = require("./binary_sublevel_facades");
 
 /** @typedef {import('./database').TemporaryDatabase} TemporaryDatabase */
 /** @typedef {import('../request_identifier').RequestIdentifier} RequestIdentifier */
@@ -109,7 +110,7 @@ const RUNTIME_STATE_KEY = stringToTempKey("runtime_state/current");
 
 /**
  * Store a binary blob atomically in the temporary database.
- * The buffer is base64-encoded and stored as a JSON value.
+ * The buffer is stored natively in a binary sublevel.
  *
  * @param {TemporaryDatabase} database
  * @param {RequestIdentifier} reqId
@@ -118,10 +119,7 @@ const RUNTIME_STATE_KEY = stringToTempKey("runtime_state/current");
  * @returns {Promise<void>}
  */
 async function storeBlob(database, reqId, filename, data) {
-    await database.put(blobKey(reqId, filename), {
-        type: "blob",
-        data: data.toString("base64"),
-    });
+    await database.getBinarySublevel("binary").put(blobKey(reqId, filename), data);
 }
 
 /**
@@ -134,11 +132,8 @@ async function storeBlob(database, reqId, filename, data) {
  * @returns {Promise<Buffer | null>}
  */
 async function getBlob(database, reqId, filename) {
-    const entry = await database.get(blobKey(reqId, filename));
-    if (entry === undefined || entry.type !== "blob") {
-        return null;
-    }
-    return Buffer.from(entry.data, "base64");
+    const value = await database.getBinarySublevel("binary").get(blobKey(reqId, filename));
+    return value === undefined ? null : value;
 }
 
 /**
@@ -150,7 +145,7 @@ async function getBlob(database, reqId, filename) {
  * @returns {Promise<void>}
  */
 async function deleteBlob(database, reqId, filename) {
-    await database.del(blobKey(reqId, filename));
+    await database.getBinarySublevel("binary").del(blobKey(reqId, filename));
 }
 
 /**
@@ -161,7 +156,7 @@ async function deleteBlob(database, reqId, filename) {
  * @returns {Promise<void>}
  */
 async function markDone(database, reqId) {
-    await database.put(doneKey(reqId), { type: "done" });
+    await database.getBinarySublevel("binary").put(doneKey(reqId), Buffer.alloc(0));
 }
 
 /**
@@ -172,7 +167,7 @@ async function markDone(database, reqId) {
  * @returns {Promise<void>}
  */
 async function deleteDone(database, reqId) {
-    await database.del(doneKey(reqId));
+    await database.getBinarySublevel("binary").del(doneKey(reqId));
 }
 
 /**
@@ -183,8 +178,8 @@ async function deleteDone(database, reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(database, reqId) {
-    const entry = await database.get(doneKey(reqId));
-    return entry !== undefined && entry.type === "done";
+    const entry = await database.getBinarySublevel("binary").get(doneKey(reqId));
+    return entry !== undefined;
 }
 
 /**
@@ -197,21 +192,22 @@ async function isDone(database, reqId) {
  * @returns {Promise<void>}
  */
 async function storeBlobsAndMarkDone(database, reqId, blobs) {
-    /** @type {Array<{type: 'put', key: import('./database/types').TempKey, value: import('./database/types').TempEntry}>} */
+    const binary = database.getBinarySublevel("binary");
+    /** @type {Array<{type: 'put', key: import('./database/types').TempKey, value: Buffer}>} */
     const operations = [];
     for (const { filename, data } of blobs) {
         operations.push({
             type: "put",
             key: blobKey(reqId, filename),
-            value: { type: "blob", data: data.toString("base64") },
+            value: data,
         });
     }
     operations.push({
         type: "put",
         key: doneKey(reqId),
-        value: { type: "done" },
+        value: Buffer.alloc(0),
     });
-    await database.batch(operations);
+    await binary.batch(operations);
 }
 
 /**
@@ -284,6 +280,14 @@ class TemporarySublevelFacadeClass {
      */
     getSublevel(name) {
         return new TemporarySublevelFacadeClass(this._getDatabase, [...this._path, name]);
+    }
+
+    /**
+     * @param {string} name
+     * @returns {import('./database').TemporaryBinarySublevel}
+     */
+    getBinarySublevel(name) {
+        return makeNestedBinarySublevelFacade(this._getDatabase, this._path, [name]);
     }
 
     /**
@@ -503,6 +507,15 @@ class TemporaryClass {
      */
     getSublevel(name) {
         return new TemporarySublevelFacadeClass(() => this._getDatabase(), [name]);
+    }
+
+    /**
+     * Open a binary sublevel under temporary storage.
+     * @param {string} name
+     * @returns {import('./database').TemporaryBinarySublevel}
+     */
+    getBinarySublevel(name) {
+        return makeRootBinarySublevelFacade(() => this._getDatabase(), [name]);
     }
 
     /**

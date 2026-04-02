@@ -80,13 +80,6 @@ function tempKeyToString(key) {
 // ---------------------------------------------------------------------------
 
 /**
- * A stored binary blob (base64-encoded).
- * @typedef {object} BlobEntry
- * @property {'blob'} type
- * @property {string} data - Base64-encoded binary content
- */
-
-/**
  * A stored request-completion marker.
  * @typedef {object} DoneEntry
  * @property {'done'} type
@@ -160,7 +153,7 @@ function tempKeyToString(key) {
 
 /**
  * The union of all value types stored in the temporary database.
- * @typedef {BlobEntry | DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry} TempEntry
+ * @typedef {DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry} TempEntry
  */
 
 module.exports = {

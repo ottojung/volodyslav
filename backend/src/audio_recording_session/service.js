@@ -3,10 +3,10 @@
  *
  * Manages audio recording sessions in the temporary LevelDB store.
  * Key layout:
- *   audio_session/<sessionId>/meta         → session metadata (JSON)
- *   audio_session/<sessionId>/chunk/<seq>  → binary audio chunk (base64)
- *   audio_session/<sessionId>/final        → final combined audio (base64)
- *   audio_session/index/current_session_id → current session id
+ *   audio_session/sessions/<sessionId>/meta               → session metadata (JSON)
+ *   audio_session/sessions/<sessionId>/binary/chunk/<seq> → binary PCM fragment
+ *   audio_session/sessions/<sessionId>/binary/final       → final WAV buffer
+ *   audio_session/index/current_session_id                → current session id
  *
  * @module audio_recording_session/service
  */
@@ -26,8 +26,8 @@ const { buildWav } = require("../build_wav");
 const {
     CURRENT_SESSION_KEY,
     indexSublevel,
-    sessionSublevel,
-    chunksSublevel,
+    chunksBinarySublevel,
+    sessionBinarySublevel,
     chunkKey,
     finalKey,
     markSessionExists,
@@ -194,16 +194,13 @@ async function uploadChunk(capabilities, sessionId, params) {
     }
 
     const seqPadded = String(sequence).padStart(6, "0");
-    const sessionChunks = chunksSublevel(temporary, sessionId);
+    const sessionChunks = chunksBinarySublevel(temporary, sessionId);
     const chunkTempKey = chunkKey(sequence);
     const existingChunk = await sessionChunks.get(chunkTempKey);
 
     const isNewChunk = existingChunk === undefined;
 
-    await sessionChunks.put(chunkTempKey, {
-        type: "blob",
-        data: pcm.toString("base64"),
-    });
+    await sessionChunks.put(chunkTempKey, pcm);
 
     const shouldUpdateLastSequence = isNewChunk && sequence > meta.lastSequence;
     // Also update lastEndMs when overwriting the current latest chunk,
@@ -334,27 +331,8 @@ async function fetchFinalAudio(capabilities, sessionId) {
     }
 
     // Return cached WAV if already assembled.
-    const cachedEntry = await sessionSublevel(temporary, sessionId).get(finalKey());
-    if (cachedEntry !== undefined) {
-        if (cachedEntry.type !== "blob" || typeof cachedEntry.data !== "string") {
-            throw new AudioSessionFinalizeError(
-                `Corrupt final audio cache for session ${sessionId}`,
-                sessionId
-            );
-        }
-
-        /** @type {Buffer} */
-        let cachedBuffer;
-        try {
-            cachedBuffer = Buffer.from(cachedEntry.data, "base64");
-        } catch (error) {
-            throw new AudioSessionFinalizeError(
-                `Corrupt final audio cache for session ${sessionId}`,
-                sessionId,
-                error
-            );
-        }
-
+    const cachedBuffer = await sessionBinarySublevel(temporary, sessionId).get(finalKey());
+    if (cachedBuffer !== undefined) {
         return {
             buffer: cachedBuffer,
             mimeType: meta.mimeType,
@@ -362,7 +340,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
     }
 
     // Lazy WAV assembly: read all PCM chunks, concatenate and wrap in a WAV container.
-    const sessionChunks = chunksSublevel(temporary, sessionId);
+    const sessionChunks = chunksBinarySublevel(temporary, sessionId);
     const chunkKeys = await sessionChunks.listKeys();
     chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
 
@@ -370,8 +348,8 @@ async function fetchFinalAudio(capabilities, sessionId) {
     const pcmBuffers = [];
     for (const key of chunkKeys) {
         const entry = await sessionChunks.get(key);
-        if (entry !== undefined && entry.type === "blob") {
-            pcmBuffers.push(Buffer.from(entry.data, "base64"));
+        if (entry !== undefined) {
+            pcmBuffers.push(entry);
         }
     }
 
@@ -388,10 +366,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
 
     // Cache the assembled WAV so subsequent calls can skip assembly.
     try {
-        await sessionSublevel(temporary, sessionId).put(finalKey(), {
-            type: "blob",
-            data: finalBuffer.toString("base64"),
-        });
+        await sessionBinarySublevel(temporary, sessionId).put(finalKey(), finalBuffer);
     } catch (error) {
         throw new AudioSessionFinalizeError(
             `Failed to store final audio for session ${sessionId}: ${error}`,
