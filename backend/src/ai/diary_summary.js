@@ -76,7 +76,7 @@ Rules:
 
 2. Output only Markdown, starting with "## Ongoing themes and patterns".
 3. Use mostly bullets (- ...). Use short paragraphs only when clearly better.
-4. Total target length: 1000-1500 words. Hard cap: 2000 words.
+4. Total target length: 1000-1500 words. Hard cap: 2000 words. If the current summary is longer, you MUST reduce its size to 2000 words. Watch this carefully.
 5. Keep each section compact. Prefer updating or merging bullets over adding new ones.
 6. If the new entry adds no important information, return the summary unchanged.
 7. Preserve uncertainty. Do not invent causes, diagnoses, motives, or hidden explanations.
