@@ -203,6 +203,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
             },
             "Pull cycle: PCM assembly failed"
         );
+        await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
         return { status: "degraded_transcription" };
     }
 
@@ -228,6 +229,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
                 "Pull cycle: transcription failed"
             );
         }
+        await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
         return { status: "degraded_transcription" };
     }
 
@@ -365,6 +367,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
                 "Pull cycle: question generation failed"
             );
         }
+        await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
         return { status: "degraded_question_generation", degradedGap: gapScan.hasDegradedGap };
     }
 

@@ -8,7 +8,7 @@
  * @module live_diary/ingest_fragment
  */
 
-const { markSessionExists, validatePcmParams } = require("../audio_recording_session");
+const { getSession, markSessionExists, validatePcmParams } = require("../audio_recording_session");
 const {
     computeContentHash,
     writeFragmentIndex,
@@ -87,8 +87,9 @@ async function ingestFragment(capabilities, sessionId, params) {
         return { status: "invalid_pcm" };
     }
 
+    await getSession(capabilities, sessionId);
+
     const contentHash = computeContentHash(pcm);
-    const ingestedAtMs = capabilities.datetime.now().toMillis();
 
     // Check for existing fragment with same sequence.
     const existing = await readFragmentIndex(temporary, sessionId, sequence);
@@ -117,6 +118,10 @@ async function ingestFragment(capabilities, sessionId, params) {
         }
         // Above watermark — allow replacement.
     }
+
+    const ingestedAtMs = existing === null
+        ? capabilities.datetime.now().toMillis()
+        : existing.ingestedAtMs;
 
     await markSessionExists(temporary, sessionId);
     await writeFragmentIndex(temporary, sessionId, {
