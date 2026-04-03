@@ -57,6 +57,32 @@ async function seedRangeWithGap(capabilities, nowMs = 1_000_000) {
     });
 }
 
+async function seedContiguousRange(capabilities, nowMs = 1_000_000) {
+    await startSession(capabilities, SESSION_ID);
+    await writeTranscribedUntilMs(capabilities.temporary, SESSION_ID, 0);
+    await writeKnownGaps(capabilities.temporary, SESSION_ID, []);
+    await writeFragmentIndex(capabilities.temporary, SESSION_ID, {
+        sequence: 0,
+        startMs: 0,
+        endMs: 10_000,
+        contentHash: "frag-0",
+        ingestedAtMs: nowMs - 5_000,
+        sampleRateHz: TEST_PCM_FORMAT.sampleRateHz,
+        channels: TEST_PCM_FORMAT.channels,
+        bitDepth: TEST_PCM_FORMAT.bitDepth,
+    });
+    await writeFragmentIndex(capabilities.temporary, SESSION_ID, {
+        sequence: 1,
+        startMs: 10_000,
+        endMs: 20_000,
+        contentHash: "frag-1",
+        ingestedAtMs: nowMs - 4_000,
+        sampleRateHz: TEST_PCM_FORMAT.sampleRateHz,
+        channels: TEST_PCM_FORMAT.channels,
+        bitDepth: TEST_PCM_FORMAT.bitDepth,
+    });
+}
+
 async function seedRangeWithPreAgedGap(capabilities, nowMs = 1_000_000) {
     await startSession(capabilities, SESSION_ID);
     await writeTranscribedUntilMs(capabilities.temporary, SESSION_ID, 0);
@@ -92,6 +118,20 @@ async function putChunk(temporary, sessionId, sequence, byteLength = 16000) {
 }
 
 describe("_runPullCycle degraded exits", () => {
+    it("does not advance watermark when a planned-window fragment index exists but binary chunk is missing", async () => {
+        const caps = makeCapabilities();
+        const nowMs = 1_000_000;
+        await seedContiguousRange(caps, nowMs);
+        await putChunk(caps.temporary, SESSION_ID, 0);
+        // Sequence 1 intentionally has index metadata but no stored binary.
+
+        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs, 10_000);
+
+        expect(result.status).toBe("degraded_transcription");
+        expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(0);
+        expect(await readKnownGaps(caps.temporary, SESSION_ID)).toEqual([]);
+    });
+
     it("persists updated gaps on assembler failure without advancing watermark", async () => {
         const caps = makeCapabilities();
         const nowMs = 1_000_000;
@@ -114,6 +154,8 @@ describe("_runPullCycle degraded exits", () => {
         const caps = makeCapabilities();
         const nowMs = 1_000_000;
         await seedRangeWithGap(caps, nowMs);
+        await putChunk(caps.temporary, SESSION_ID, 0);
+        await putChunk(caps.temporary, SESSION_ID, 1);
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockRejectedValue(new Error("transcribe failed"));
 
         const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs, 10_000);
@@ -131,6 +173,8 @@ describe("_runPullCycle degraded exits", () => {
         const caps = makeCapabilities();
         const nowMs = 1_000_000;
         await seedRangeWithGap(caps, nowMs);
+        await putChunk(caps.temporary, SESSION_ID, 0);
+        await putChunk(caps.temporary, SESSION_ID, 1);
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockResolvedValue({
             text: "this transcript should absolutely trigger question generation now because it has many words",
             provider: "Google",

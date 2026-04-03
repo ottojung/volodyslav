@@ -58,8 +58,10 @@ const {
  * Ingest a PCM fragment for a session — ingestion only, no AI processing.
  *
  * Stores fragment timing metadata in the live diary fragment index.
- * Binary PCM is already stored by `uploadChunk` in the audio-session sublevel;
- * this function only records the timing/hash metadata required for the pull cycle.
+ * In the `push-pcm` route, this ingest step runs before `uploadChunk` so that
+ * duplicate-below-watermark cases are rejected before any binary overwrite.
+ * Pull processing therefore treats index-without-bytes as a degraded retry case
+ * and must not advance the watermark until bytes are durable.
  *
  * Idempotent duplicate semantics:
  *   - Exact duplicates (same sequence + same contentHash + same timing) are accepted as no-op.

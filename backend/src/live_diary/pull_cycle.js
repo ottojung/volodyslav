@@ -95,9 +95,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     const allFragments = await listFragmentIndex(temporary, sessionId);
 
     // 3. Identify candidates: fragments intersecting (transcribedUntilMs, deadlineMs].
-    const candidates = allFragments.filter(
-        (f) => f.endMs > transcribedUntilMs && f.startMs < deadlineMs
-    );
+    const candidates = allFragments.filter((f) => f.endMs > transcribedUntilMs && f.startMs < deadlineMs);
 
     if (candidates.length === 0) {
         capabilities.logger.logDebug(
@@ -172,18 +170,19 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
 
     /** @type {import('./assembler').AssemblerFragment[]} */
     const assemblerFragments = [];
+    let hasMissingBinaryInWindow = false;
     for (const frag of allFragments) {
         if (frag.endMs <= windowStartMs || frag.startMs >= windowEndMs) continue;
         const pcm = await loadFragmentPcm(temporary, sessionId, frag.sequence);
         if (pcm === null) {
-            capabilities.logger.logWarning(
-                { sessionId, sequence: frag.sequence },
-                "Pull cycle: binary PCM missing for fragment — treating as silence"
-            );
+            hasMissingBinaryInWindow = true;
+            capabilities.logger.logWarning({ sessionId, sequence: frag.sequence, fragmentStartMs: frag.startMs, fragmentEndMs: frag.endMs, windowStartMs, windowEndMs }, "Pull cycle: binary PCM missing for fragment in planned window — blocking watermark advance for this cycle");
             continue;
         }
         assemblerFragments.push({ ...frag, pcm });
     }
+
+    if (hasMissingBinaryInWindow) { await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps); return { status: "degraded_transcription" }; }
 
     let combinedPcm;
     try {

@@ -11,12 +11,12 @@ The pipeline separates **upload** from **transcription**. The client can upload 
 ```
 Client                     Backend
 ──────                     ───────
-push-pcm ──────────────────► store chunk + index fragment
-push-pcm ──────────────────► store chunk + index fragment
-push-pcm ──────────────────► store chunk + index fragment
+push-pcm ──────────────────► ingest fragment index, then store chunk bytes
+push-pcm ──────────────────► ingest fragment index, then store chunk bytes
+push-pcm ──────────────────► ingest fragment index, then store chunk bytes
 GET /live-questions ───────► pull cycle (transcribe + question)
                     ◄──────── { questions: [...] }
-push-pcm ──────────────────► store chunk + index fragment
+push-pcm ──────────────────► ingest fragment index, then store chunk bytes
 GET /live-questions ───────► pull cycle (transcribe + question)
 ```
 
@@ -24,13 +24,12 @@ GET /live-questions ───────► pull cycle (transcribe + question)
 
 ## Part 1: Fragment Upload and Indexing (push-pcm)
 
-### Binary storage
+### Fragment index (first)
 
-Each PCM chunk is stored in the audio session's binary chunk sublevel, keyed by its sequence number. This part is handled by the existing `uploadChunk` mechanism.
+`push-pcm` runs `ingestFragment` before `uploadChunk`.
+This ordering is intentional: duplicate-below-watermark fragments can be rejected before any binary overwrite is attempted.
 
-### Fragment index
-
-After binary storage, `ingestFragment` records lightweight timing and format metadata in the **fragment index**:
+`ingestFragment` records lightweight timing and format metadata in the **fragment index**:
 
 - `sequence` — monotonically increasing integer assigned by the client.
 - `startMs`, `endMs` — wall-clock timestamps (milliseconds) for the audio slice.
@@ -39,6 +38,12 @@ After binary storage, `ingestFragment` records lightweight timing and format met
 - `ingestedAtMs` — server-side ingestion timestamp.
 
 **Idempotency**: if the same sequence number is uploaded again with identical content and timing, the ingest is a silent no-op (`duplicate_no_op`). Non-identical re-uploads of a sequence that has already been transcribed (below the watermark) are rejected (`duplicate_rejected`) to prevent retroactive corruption of the running transcript.
+
+### Binary storage (second)
+
+If ingest accepts the fragment, `uploadChunk` stores PCM bytes in the audio session binary chunk sublevel keyed by sequence number.
+
+Because index write currently happens before binary write, pulls can transiently observe index-without-bytes. The pull cycle treats missing binary bytes for a planned-window fragment as degraded (`degraded_transcription`), persists updated gaps, and does **not** advance the watermark in that cycle.
 
 ---
 
@@ -179,6 +184,7 @@ The pipeline is designed so that every failure mode either retries automatically
 | PCM assembly failure (format mismatch) | Return `degraded_transcription`; watermark not advanced. |
 | Gap at watermark (fragment not yet uploaded) | Return `blocked_at_watermark`; gaps updated; next pull retries after more uploads. |
 | Gap abandoned (fragment never arrived) | Cross with silence; `hasDegradedGap = true`; pull proceeds. |
+| Index entry exists but binary chunk is missing in planned window | Return `degraded_transcription`; persist updated gaps; do **not** advance watermark in that cycle. |
 | Duplicate fragment (below watermark) | Rejected with 409; `push-pcm` checks the live diary index before writing the binary chunk, so an already-transcribed chunk is never overwritten. |
 
 ---
