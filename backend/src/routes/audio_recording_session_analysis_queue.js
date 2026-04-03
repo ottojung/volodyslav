@@ -64,8 +64,8 @@ function dequeueSession(sessionId) {
  * Enqueue initial live diary question generation for a new recording session.
  *
  * Chains `generateInitialQuestionsAndPush` onto the same per-session promise
- * queue as fragment processing, so it cannot interleave with concurrent
- * `pushAudio` calls that also write to the pending-questions store.
+ * queue as pull cycles, so it cannot interleave with concurrent
+ * pull cycles that also write to the pending-questions store.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
