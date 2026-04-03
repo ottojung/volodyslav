@@ -26,6 +26,9 @@ const { _runPullCycle } = require("./pull_cycle");
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
@@ -35,6 +38,9 @@ const { _runPullCycle } = require("./pull_cycle");
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  * @property {Datetime} datetime
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileDeleter} deleter
  */
 
 /**

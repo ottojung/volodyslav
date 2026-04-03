@@ -55,6 +55,9 @@ const { transcribeBuffer } = require("./transcribe_utils");
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 /** @typedef {import('../temporary/database/types').LiveDiaryQuestion} LiveDiaryQuestion */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
@@ -63,6 +66,9 @@ const { transcribeBuffer } = require("./transcribe_utils");
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileDeleter} deleter
  */
 
 // ---------------------------------------------------------------------------

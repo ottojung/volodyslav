@@ -15,10 +15,8 @@ const {
     RUNNING_TRANSCRIPT_KEY,
     WORDS_SINCE_LAST_QUESTION_KEY,
     readStringField,
-    writeStringField,
     readAskedQuestions,
     readPendingQuestions,
-    commitQuestionGenerationResult,
     commitPullState,
     listFragmentIndex,
     readTranscribedUntilMs,
@@ -47,6 +45,9 @@ const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 /** @typedef {import('./session_state').LastTranscribedRange} LastTranscribedRange */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
@@ -55,6 +56,9 @@ const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileDeleter} deleter
  */
 
 /**
@@ -236,12 +240,15 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     if (!newWindowTranscript) {
         // Silent window — commit watermark + gaps but not transcript changes.
         const existingRunning = await readStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY);
+        const existingWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
         await commitPullState(temporary, sessionId, {
             transcribedUntilMs: processableEndMs,
             knownGaps: gapScan.updatedGaps,
             lastRange: newLastRange,
             lastWindowTranscript: "",
             runningTranscript: existingRunning,
+            wordsSinceLastQuestion: parseInt(existingWordCount, 10) || 0,
+            questionCommit: null,
         });
         capabilities.logger.logDebug(
             { sessionId },
@@ -296,19 +303,19 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     const storedWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
     const cumulativeWordCount = (parseInt(storedWordCount, 10) || 0) + fragmentWordCount;
 
-    // Shared state bundle to commit atomically once questions are handled.
     /** @type {import('./session_state').PullStateCommit} */
-    const stateBundle = {
+    const baseBundle = {
         transcribedUntilMs: processableEndMs,
         knownGaps: gapScan.updatedGaps,
         lastRange: newLastRange,
         lastWindowTranscript: newWindowTranscript,
         runningTranscript: updatedRunningTranscript,
+        wordsSinceLastQuestion: cumulativeWordCount,
+        questionCommit: null,
     };
 
     if (cumulativeWordCount < 10) {
-        await commitPullState(temporary, sessionId, stateBundle);
-        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
+        await commitPullState(temporary, sessionId, baseBundle);
         capabilities.logger.logDebug(
             { sessionId, cumulativeWordCount },
             "Pull cycle: word count below threshold; skipping question generation"
@@ -318,8 +325,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
 
     const existingPending = await readPendingQuestions(temporary, sessionId);
     if (existingPending.length > 0) {
-        await commitPullState(temporary, sessionId, stateBundle);
-        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
+        await commitPullState(temporary, sessionId, baseBundle);
         capabilities.logger.logDebug(
             { sessionId, pendingCount: existingPending.length },
             "Pull cycle: skipping question generation — previous batch not yet fetched"
@@ -366,15 +372,11 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         "Pull cycle: question generation result"
     );
 
-    // Commit all pull state + questions atomically only after successful generation.
-    await commitPullState(temporary, sessionId, stateBundle);
-    await commitQuestionGenerationResult(
-        temporary,
-        sessionId,
-        askedQuestions,
-        newQuestions,
-        cumulativeWordCount
-    );
+    // Commit watermark + transcripts + questions in a single atomic batch.
+    await commitPullState(temporary, sessionId, {
+        ...baseBundle,
+        questionCommit: { askedQuestions, newQuestions, cumulativeWordCount, existingPending },
+    });
 
     return { status: "ok", degradedGap: gapScan.hasDegradedGap };
 }

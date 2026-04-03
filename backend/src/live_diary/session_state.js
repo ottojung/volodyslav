@@ -33,10 +33,7 @@ const WORDS_SINCE_LAST_QUESTION_KEY = stringToTempKey("words_since_last_question
 const TRANSCRIBED_UNTIL_MS_KEY = stringToTempKey("transcribed_until_ms");
 const LAST_TRANSCRIBED_RANGE_KEY = stringToTempKey("last_transcribed_range");
 const KNOWN_GAPS_KEY = stringToTempKey("known_gaps");
-const PULL_LOCK_KEY = stringToTempKey("pull_lock");
 
-/** Maximum age for a pull lock before it is considered stale and released. */
-const PULL_LOCK_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * @param {Temporary} temporary
@@ -464,20 +461,32 @@ async function writeKnownGaps(temporary, sessionId, gaps) {
 // ---------------------------------------------------------------------------
 
 /**
+ * @typedef {object} QuestionCommit
+ * @property {string[]} askedQuestions - Previously asked questions (for deduplication).
+ * @property {Array<{text: string, intent: string}>} newQuestions - Newly generated questions.
+ * @property {number} cumulativeWordCount - Word count to persist.
+ * @property {Array<{text: string, intent: string}>} existingPending - Current pending queue
+ *   (read before question generation so the batch stays atomic).
+ */
+
+/**
  * @typedef {object} PullStateCommit
  * @property {number} transcribedUntilMs - New watermark.
  * @property {import('../temporary/database/types').LiveDiaryGap[]} knownGaps - Updated gap list.
  * @property {LastTranscribedRange | null} lastRange - Updated last-range metadata (null to leave unchanged).
  * @property {string} lastWindowTranscript - New last-window transcript.
  * @property {string} runningTranscript - New running transcript.
+ * @property {number} wordsSinceLastQuestion - Word count to persist (used when no question generation).
+ * @property {QuestionCommit | null} questionCommit - If non-null, commit question state in the same
+ *   batch as the watermark to prevent crash gaps between the two writes.
  */
 
 /**
  * Atomically commit all pull-cycle state updates in a single batch.
  *
- * Writing all fields in one batch ensures that a crash between individual
- * puts cannot leave the session in an inconsistent state (e.g., watermark
- * advanced but transcript not updated).
+ * When `state.questionCommit` is provided, the question generation results
+ * (asked/pending questions, word count) are committed in the same LevelDB
+ * batch as the watermark, eliminating the crash window between the two writes.
  *
  * @param {Temporary} temporary
  * @param {string} sessionId
@@ -496,47 +505,23 @@ async function commitPullState(temporary, sessionId, state) {
     if (state.lastRange !== null) {
         ops.push({ type: "put", key: LAST_TRANSCRIBED_RANGE_KEY, value: { type: "live_diary_last_range", firstStartMs: state.lastRange.firstStartMs, lastEndMs: state.lastRange.lastEndMs, fragmentCount: state.lastRange.fragmentCount } });
     }
+
+    const qc = state.questionCommit;
+    if (qc !== null && qc.newQuestions.length > 0) {
+        // Commit new questions atomically with the watermark.
+        ops.push(
+            { type: "put", key: ASKED_QUESTIONS_KEY, value: { type: "live_diary_questions", questions: [...qc.askedQuestions.map((text) => ({ text, intent: "" })), ...qc.newQuestions.map((q) => ({ text: q.text, intent: "" }))] } },
+            { type: "put", key: PENDING_QUESTIONS_KEY, value: { type: "live_diary_questions", questions: [...qc.existingPending, ...qc.newQuestions] } },
+            { type: "put", key: WORDS_SINCE_LAST_QUESTION_KEY, value: { type: "live_diary_string", value: "0" } }
+        );
+    } else {
+        ops.push({ type: "put", key: WORDS_SINCE_LAST_QUESTION_KEY, value: { type: "live_diary_string", value: String(qc !== null ? qc.cumulativeWordCount : state.wordsSinceLastQuestion) } });
+    }
+
     await sublevel.batch(ops);
 }
 
 // ---------------------------------------------------------------------------
-// Pull lock (kept for potential future use / crash recovery)
-// ---------------------------------------------------------------------------
-
-/**
- * Attempt to acquire the pull lock for a session.
- * Returns true if the lock was acquired, false if it is already held.
- * A stale lock (older than PULL_LOCK_MAX_AGE_MS) is automatically cleared.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {number} nowMs
- * @returns {Promise<boolean>}
- */
-async function acquirePullLock(temporary, sessionId, nowMs) {
-    const entry = await liveDiarySessionSublevel(temporary, sessionId).get(PULL_LOCK_KEY);
-    if (entry !== undefined && entry.type === "live_diary_string") {
-        const lockAcquiredAt = parseInt(entry.value, 10) || 0;
-        if (nowMs - lockAcquiredAt < PULL_LOCK_MAX_AGE_MS) {
-            return false; // Lock is still valid.
-        }
-        // Stale lock — fall through to re-acquire.
-    }
-    await liveDiarySessionSublevel(temporary, sessionId).put(PULL_LOCK_KEY, {
-        type: "live_diary_string",
-        value: String(nowMs),
-    });
-    return true;
-}
-
-/**
- * Release the pull lock for a session.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<void>}
- */
-async function releasePullLock(temporary, sessionId) {
-    await liveDiarySessionSublevel(temporary, sessionId).del(PULL_LOCK_KEY);
-}
 
 module.exports = {
     LAST_FRAGMENT_FORMAT_KEY,
@@ -569,6 +554,4 @@ module.exports = {
     readKnownGaps,
     writeKnownGaps,
     commitPullState,
-    acquirePullLock,
-    releasePullLock,
 };

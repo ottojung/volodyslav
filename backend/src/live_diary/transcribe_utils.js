@@ -4,23 +4,29 @@
  * Used by both the legacy eager pipeline (`service.js`) and the lazy pull
  * pipeline (`pull_helpers.js`) so the implementation stays in one place.
  *
+ * File I/O is performed through the capabilities pattern (creator / writer /
+ * deleter) so that the helper is testable without touching the real filesystem.
+ *
  * @module live_diary/transcribe_utils
  */
 
-const os = require("os");
 const path = require("path");
-const fsp = require("fs/promises");
 const fs = require("fs");
-const crypto = require("crypto");
 const { extensionForMime } = require("./wav_utils");
 
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} TranscribeCapabilities
  * @property {AITranscription} aiTranscription
  * @property {Logger} logger
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileDeleter} deleter
  */
 
 /**
@@ -33,13 +39,15 @@ const { extensionForMime } = require("./wav_utils");
  */
 async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
     const ext = extensionForMime(mimeType);
-    const randomHex = crypto.randomBytes(8).toString("hex");
-    const tmpFile = path.join(os.tmpdir(), `diary-${randomHex}.${ext}`);
+    const tmpDir = await capabilities.creator.createTemporaryDirectory();
 
     try {
-        await fsp.writeFile(tmpFile, audioBuffer);
+        const tmpFile = await capabilities.creator.createFile(
+            path.join(tmpDir, `diary.${ext}`)
+        );
+        await capabilities.writer.writeBuffer(tmpFile, audioBuffer);
 
-        const fileStream = fs.createReadStream(tmpFile);
+        const fileStream = fs.createReadStream(tmpFile.path);
 
         await new Promise((resolve, reject) => {
             fileStream.once("open", resolve);
@@ -55,7 +63,7 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 
         return result.structured.transcript.trim();
     } finally {
-        fsp.unlink(tmpFile).catch(() => {
+        capabilities.deleter.deleteDirectory(tmpDir).catch(() => {
             // Best-effort cleanup.
         });
     }

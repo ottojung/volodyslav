@@ -2,7 +2,7 @@
  * Unit tests for live_diary/gap_tracker.js.
  */
 
-const { scanGaps, GAP_WAIT_MS, GAP_ABANDON_MS } = require("../src/live_diary/gap_tracker");
+const { scanGaps, GAP_ABANDON_MS } = require("../src/live_diary/gap_tracker");
 
 /** Build a minimal fragment index entry. */
 function makeFragment(sequence, startMs, endMs) {
@@ -68,7 +68,7 @@ describe("scanGaps — no gaps", () => {
 });
 
 describe("scanGaps — waiting gaps", () => {
-    it("stops before a newly observed gap (age < gapWaitMs)", () => {
+    it("stops before a newly observed gap (blocking until gap resolves)", () => {
         // Fragment 0 ends at 10_000; fragment 1 starts at 15_000 — gap [10000, 15000).
         const fragments = [
             makeFragment(0, 0, 10_000),
@@ -80,10 +80,9 @@ describe("scanGaps — waiting gaps", () => {
             deadlineMs: DEADLINE,
             knownGaps: [],
             nowMs: NOW,
-            gapWaitMs: GAP_WAIT_MS,
             gapAbandonMs: GAP_ABANDON_MS,
         });
-        // Should stop at fragment 0 end (10_000) because the gap is brand new.
+        // Should stop at fragment 0 end (10_000) because the gap has not yet been abandoned.
         expect(result.processableEndMs).toBe(10_000);
         expect(result.blockedAtWatermark).toBe(false);
         expect(result.hasDegradedGap).toBe(false);
@@ -103,7 +102,6 @@ describe("scanGaps — waiting gaps", () => {
             deadlineMs: DEADLINE,
             knownGaps: [],
             nowMs: NOW,
-            gapWaitMs: GAP_WAIT_MS,
             gapAbandonMs: GAP_ABANDON_MS,
         });
         expect(result.blockedAtWatermark).toBe(true);

@@ -122,28 +122,28 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, i
                 // this response is sent.  The client may immediately call /live-questions,
                 // which triggers a pull cycle — if the index entry is not yet written the
                 // pull cycle will miss this fragment.
-                try {
-                    await ingestLiveDiaryFragment(capabilities, sessionId, {
-                        pcm: pcmFile.buffer,
-                        sampleRateHz: sampleRateHzNum,
-                        channels: channelsNum,
-                        bitDepth: bitDepthNum,
-                        startMs: startMsNum,
-                        endMs: endMsNum,
-                        sequence: sequenceNum,
+                const ingestResult = await ingestLiveDiaryFragment(capabilities, sessionId, {
+                    pcm: pcmFile.buffer,
+                    sampleRateHz: sampleRateHzNum,
+                    channels: channelsNum,
+                    bitDepth: bitDepthNum,
+                    startMs: startMsNum,
+                    endMs: endMsNum,
+                    sequence: sequenceNum,
+                });
+
+                if (ingestResult.status === "invalid_pcm") {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Fragment rejected by live diary indexer: invalid PCM or timing",
                     });
-                } catch (ingestErr) {
-                    // Non-fatal: the binary PCM is already stored by pushAudioFragment.
-                    // The fragment index entry may be missing, causing it to be absent
-                    // from the next pull cycle, but this is recoverable on retry.
-                    capabilities.logger.logError(
-                        {
-                            sessionId,
-                            sequence: sequenceNum,
-                            error: ingestErr instanceof Error ? ingestErr.message : String(ingestErr),
-                        },
-                        "push-pcm: live diary ingestion failed (non-fatal)"
-                    );
+                }
+
+                if (ingestResult.status === "duplicate_rejected") {
+                    return res.status(409).json({
+                        success: false,
+                        error: "Non-identical duplicate fragment rejected: already transcribed",
+                    });
                 }
 
                 capabilities.logger.logDebug(
@@ -151,6 +151,7 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, i
                         sessionId,
                         sequence: sequenceNum,
                         fragmentCount: result.session.fragmentCount,
+                        ingestStatus: ingestResult.status,
                     },
                     "push-pcm: fragment stored, live diary fragment ingested"
                 );

@@ -7,8 +7,7 @@
  * permanently missing for this pull cycle).  Abandoned gaps are synthesized
  * as silence by the assembler.
  *
- * Configurable thresholds:
- *   GAP_WAIT_MS    – grace period before a gap blocks progress (default 5 s).
+ * Configurable threshold:
  *   GAP_ABANDON_MS – age at which a gap is abandoned and crossed with silence (default 30 s).
  *
  * @module live_diary/gap_tracker
@@ -16,9 +15,6 @@
 
 /** @typedef {import('../temporary/database/types').LiveDiaryGap} LiveDiaryGap */
 /** @typedef {import('../temporary/database/types').LiveDiaryFragmentIndexEntry} LiveDiaryFragmentIndexEntry */
-
-/** Grace period before a waiting gap stops progress. */
-const GAP_WAIT_MS = 5_000;
 
 /** Age at which an unresolved gap is abandoned. */
 const GAP_ABANDON_MS = 30_000;
@@ -36,6 +32,10 @@ const GAP_ABANDON_MS = 30_000;
 
 /**
  * Scan the fragment timeline and determine how far the pull can process.
+ *
+ * Any gap in fragment coverage blocks progress until the gap either resolves
+ * (a filling fragment arrives) or is abandoned (age >= gapAbandonMs), at which
+ * point the assembler fills it with silence.
  *
  * @param {object} params
  * @param {LiveDiaryFragmentIndexEntry[]} params.fragments - All known fragments sorted by (startMs, sequence).
@@ -128,8 +128,7 @@ function scanGaps(params) {
             continue;
         }
 
-        // Gap is still waiting (either too young or past gapWaitMs but not yet abandoned).
-        // Either way, stop here and block progress.
+        // Gap is still waiting — stop here and block progress.
         if (coveredUntilMs === transcribedUntilMs) {
             blockedAtWatermark = true;
         }
@@ -150,7 +149,6 @@ function scanGaps(params) {
 }
 
 module.exports = {
-    GAP_WAIT_MS,
     GAP_ABANDON_MS,
     scanGaps,
 };

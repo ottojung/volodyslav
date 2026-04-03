@@ -21,6 +21,9 @@ const {
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 /** @typedef {import('../generators').Interface} Interface */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
@@ -31,6 +34,9 @@ const {
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  * @property {Interface} interface
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileDeleter} deleter
  */
 
 /**
