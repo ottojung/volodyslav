@@ -97,16 +97,40 @@ function frameSize(channels, bitDepth) {
  * a byte offset within the fragment's PCM buffer.  The result is aligned down
  * to the nearest frame boundary.
  *
+ * Use this for slice start offsets (rounding down ensures we don't skip audio
+ * that starts slightly before the requested boundary).
+ *
  * @param {number} relativeMs - Time offset from fragment start (may be negative = clamp to 0).
  * @param {number} sampleRateHz
  * @param {number} channels
  * @param {number} bitDepth
- * @returns {number} byte offset (frame-aligned, clamped to [0, Infinity))
+ * @returns {number} byte offset (frame-aligned floor, clamped to [0, Infinity))
  */
 function msToBytesAligned(relativeMs, sampleRateHz, channels, bitDepth) {
     if (relativeMs <= 0) return 0;
     const fs = frameSize(channels, bitDepth);
     const frames = Math.floor(relativeMs * sampleRateHz / 1000);
+    return frames * fs;
+}
+
+/**
+ * Convert a time offset in milliseconds (relative to a fragment's startMs) to
+ * a byte offset within the fragment's PCM buffer.  The result is aligned UP
+ * to the nearest frame boundary.
+ *
+ * Use this for slice end offsets so that audio at non-integer millisecond
+ * boundaries is never truncated (the extra partial frame is included).
+ *
+ * @param {number} relativeMs - Time offset from fragment start (may be negative = clamp to 0).
+ * @param {number} sampleRateHz
+ * @param {number} channels
+ * @param {number} bitDepth
+ * @returns {number} byte offset (frame-aligned ceil, clamped to [0, Infinity))
+ */
+function msToBytesAlignedCeil(relativeMs, sampleRateHz, channels, bitDepth) {
+    if (relativeMs <= 0) return 0;
+    const fs = frameSize(channels, bitDepth);
+    const frames = Math.ceil(relativeMs * sampleRateHz / 1000);
     return frames * fs;
 }
 
@@ -191,8 +215,10 @@ function assemblePcm(input) {
         }
 
         // Byte offsets within this fragment's PCM buffer.
+        // Use floor for the start so we don't skip audio at non-integer boundaries;
+        // use ceil for the end so a partial last frame is included rather than dropped.
         const byteStart = msToBytesAligned(sliceStartMs - frag.startMs, sampleRateHz, channels, bitDepth);
-        const byteEnd = msToBytesAligned(sliceEndMs - frag.startMs, sampleRateHz, channels, bitDepth);
+        const byteEnd = msToBytesAlignedCeil(sliceEndMs - frag.startMs, sampleRateHz, channels, bitDepth);
         const clampedEnd = Math.min(byteEnd, frag.pcm.length);
 
         if (byteStart < clampedEnd) {

@@ -79,10 +79,10 @@ async function ingestFragment(capabilities, sessionId, params) {
     }
 
     // Validate timing.
-    if (endMs <= startMs) {
+    if (endMs < startMs) {
         capabilities.logger.logWarning(
             { sessionId, sequence, startMs, endMs },
-            "Live diary ingest: fragment has invalid duration (endMs <= startMs)"
+            "Live diary ingest: fragment has invalid duration (endMs < startMs)"
         );
         return { status: "invalid_pcm" };
     }

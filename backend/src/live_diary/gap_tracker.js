@@ -80,6 +80,10 @@ function scanGaps(params) {
     let hasDegradedGap = false;
     let blockedAtWatermark = false;
 
+    // Track which gaps were actually encountered (still real gaps).
+    /** @type {Set<number>} */
+    const encounteredGapStarts = new Set();
+
     for (const frag of candidates) {
         const fragStart = frag.startMs;
 
@@ -114,6 +118,10 @@ function scanGaps(params) {
             gap.endMs = fragStart;
         }
 
+        // Record this gap's actual startMs so the pruning step can distinguish
+        // still-real gaps (encountered this scan) from resolved ones.
+        encounteredGapStarts.add(gap.startMs);
+
         const gapAge = nowMs - gap.firstObservedAtMs;
 
         if (gap.status === "waiting" && gapAge >= gapAbandonMs) {
@@ -137,8 +145,15 @@ function scanGaps(params) {
 
     const processableEndMs = Math.min(coveredUntilMs, deadlineMs);
 
-    // Build the updated gaps list from the map.
-    const updatedGaps = Array.from(gapMap.values());
+    // Build the updated gaps list: keep only gaps that were actually encountered
+    // during this scan (still real holes in the timeline) or that start at or
+    // beyond processableEndMs (not yet scanned — we can't declare them resolved).
+    // Gaps that were in knownGaps but not encountered during the scan AND whose
+    // startMs is before processableEndMs have been filled by new fragments and
+    // should be pruned to prevent stale records from incorrectly aging future gaps.
+    const updatedGaps = Array.from(gapMap.values()).filter(
+        (g) => encounteredGapStarts.has(g.startMs) || g.startMs >= processableEndMs
+    );
 
     return {
         processableEndMs,

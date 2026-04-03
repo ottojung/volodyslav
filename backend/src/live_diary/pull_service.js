@@ -28,6 +28,7 @@ const { _runPullCycle } = require("./pull_cycle");
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
@@ -40,6 +41,7 @@ const { _runPullCycle } = require("./pull_cycle");
  * @property {Datetime} datetime
  * @property {FileCreator} creator
  * @property {FileWriter} writer
+ * @property {FileReader} reader
  * @property {FileDeleter} deleter
  */
 

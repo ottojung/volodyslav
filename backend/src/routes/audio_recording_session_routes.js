@@ -43,6 +43,7 @@ const {
 /** @typedef {import('../generators').Interface} Interface */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
@@ -57,6 +58,7 @@ const {
  * @property {Interface} interface
  * @property {FileCreator} creator
  * @property {FileWriter} writer
+ * @property {FileReader} reader
  * @property {FileDeleter} deleter
  */
 

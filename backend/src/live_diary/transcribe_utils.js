@@ -5,19 +5,20 @@
  * pipeline (`pull_helpers.js`) so the implementation stays in one place.
  *
  * File I/O is performed through the capabilities pattern (creator / writer /
- * deleter) so that the helper is testable without touching the real filesystem.
+ * reader / deleter) so that the helper is testable without touching the real
+ * filesystem.
  *
  * @module live_diary/transcribe_utils
  */
 
 const path = require("path");
-const fs = require("fs");
 const { extensionForMime } = require("./wav_utils");
 
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
@@ -26,6 +27,7 @@ const { extensionForMime } = require("./wav_utils");
  * @property {Logger} logger
  * @property {FileCreator} creator
  * @property {FileWriter} writer
+ * @property {FileReader} reader
  * @property {FileDeleter} deleter
  */
 
@@ -47,7 +49,7 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
         );
         await capabilities.writer.writeBuffer(tmpFile, audioBuffer);
 
-        const fileStream = fs.createReadStream(tmpFile.path);
+        const fileStream = capabilities.reader.createReadStream(tmpFile);
 
         await new Promise((resolve, reject) => {
             fileStream.once("open", resolve);

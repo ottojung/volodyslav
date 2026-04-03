@@ -57,6 +57,7 @@ const { transcribeBuffer } = require("./transcribe_utils");
 /** @typedef {import('../temporary/database/types').LiveDiaryQuestion} LiveDiaryQuestion */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
@@ -68,6 +69,7 @@ const { transcribeBuffer } = require("./transcribe_utils");
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  * @property {FileCreator} creator
  * @property {FileWriter} writer
+ * @property {FileReader} reader
  * @property {FileDeleter} deleter
  */
 
