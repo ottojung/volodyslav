@@ -1,6 +1,7 @@
 
 const {
     config,
+    ontology,
     allEvents,
     sortedEventsDescending,
     sortedEventsAscending,
@@ -65,19 +66,28 @@ const {
  *   event_audios_list(e), transcription(a) -> event_transcription(e, a)
  *   event(e) -> entry_description(e)
  *   config                                      [standalone, no graph inputs]
+ *   ontology                                    [standalone, no graph inputs]
  *
  * @param {Capabilities} capabilities - Various capabilities that computors use.
  * @param {import('../individual/config/wrapper').ConfigBox} configBox
  * @param {import('../individual/all_events/wrapper').AllEventsBox} allEventsBox
  * @param {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox} diarySummaryBox
+ * @param {import('../individual/ontology/wrapper').OntologyBox} ontologyBox
  * @returns {Array<import('../incremental_graph/types').NodeDef>}
  */
-function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, diarySummaryBox) {
+function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, diarySummaryBox, ontologyBox) {
     return [
         {
             output: "config",
             inputs: [],
             computor: config.makeComputor(configBox, capabilities),
+            isDeterministic: false,
+            hasSideEffects: false,
+        },
+        {
+            output: "ontology",
+            inputs: [],
+            computor: ontology.makeComputor(ontologyBox, capabilities),
             isDeterministic: false,
             hasSideEffects: false,
         },

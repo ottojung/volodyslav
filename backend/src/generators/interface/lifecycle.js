@@ -14,6 +14,7 @@
  * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
  * @property {import('../individual/config/wrapper').ConfigBox | null} _configBox
  * @property {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox | null} _diarySummaryBox
+ * @property {import('../individual/ontology/wrapper').OntologyBox | null} _ontologyBox
  */
 
 const {
@@ -26,7 +27,7 @@ const {
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
-const { allEvents, config, diarySummary } = require("../individual");
+const { allEvents, config, diarySummary, ontology } = require("../individual");
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
 function internalIsInitialized(interfaceInstance) {
@@ -73,11 +74,13 @@ async function internalEnsureInitializedWithMigration(
     const configBox = config.makeBox();
     const allEventsBox = allEvents.makeBox();
     const diarySummaryBox = diarySummary.makeBox();
+    const ontologyBox = ontology.makeBox();
     const nodeDefs = createDefaultGraphDefinition(
         capabilities,
         configBox,
         allEventsBox,
-        diarySummaryBox
+        diarySummaryBox,
+        ontologyBox
     );
     try {
         await runMigrationProcedure(
@@ -96,6 +99,7 @@ async function internalEnsureInitializedWithMigration(
         interfaceInstance._allEventsBox = allEventsBox;
         interfaceInstance._configBox = configBox;
         interfaceInstance._diarySummaryBox = diarySummaryBox;
+        interfaceInstance._ontologyBox = ontologyBox;
     } catch (error) {
         try {
             await database.close();
@@ -132,6 +136,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const allEventsBox = interfaceInstance._allEventsBox;
     const configBox = interfaceInstance._configBox;
     const diarySummaryBox = interfaceInstance._diarySummaryBox;
+    const ontologyBox = interfaceInstance._ontologyBox;
     if (database === null) {
         await synchronizeNoLock(capabilities, options);
         return;
@@ -142,6 +147,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     interfaceInstance._allEventsBox = null;
     interfaceInstance._configBox = null;
     interfaceInstance._diarySummaryBox = null;
+    interfaceInstance._ontologyBox = null;
 
     try {
         await database.close();
@@ -151,6 +157,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
         interfaceInstance._allEventsBox = allEventsBox;
         interfaceInstance._configBox = configBox;
         interfaceInstance._diarySummaryBox = diarySummaryBox;
+        interfaceInstance._ontologyBox = ontologyBox;
         throw error;
     }
 

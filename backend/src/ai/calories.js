@@ -20,9 +20,13 @@
 const { OpenAI } = require("openai");
 const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
+const { fromInput } = require("../event");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../event').SerializedEvent} SerializedEvent */
+/** @typedef {import('../ontology/structure').Ontology} Ontology */
+/** @typedef {import('../ontology/structure').OntologyTypeEntry} OntologyTypeEntry */
+/** @typedef {import('../ontology/structure').OntologyModifierEntry} OntologyModifierEntry */
 
 /**
  * @typedef {object} Capabilities
@@ -57,6 +61,7 @@ const SYSTEM_PROMPT = `You estimate calories consumed in the TARGET EVENT of a p
 The user message contains:
 - a "Target event" section with the single event whose calories must be estimated
 - a "Basic context" section with related events that may clarify the target event
+- optionally, a "User's logging conventions" section explaining how this specific log uses types and modifiers
 
 Decision rules:
 - Estimate calories only for food or drink consumed in the target event.
@@ -66,6 +71,7 @@ Decision rules:
 - Use 0 for clearly non-caloric drinks such as water, plain tea, or black coffee.
 - If the target event clearly contains multiple consumed items, total them.
 - When details are missing, infer a single best integer estimate from common portions.
+- If "User's logging conventions" are provided, use them to interpret ambiguous entries (e.g. default portion sizes, whether full consumption is assumed, what units are used).
 
 Respond with exactly one token:
 - an integer like 540
@@ -96,6 +102,59 @@ function makeCaloriesEntryText(targetEvent, contextEvents) {
 }
 
 /**
+ * Builds user logging conventions text for the events in this context.
+ * Only includes type and modifier entries that are relevant to the event types present.
+ * Returns null if there are no matching entries.
+ *
+ * The ontology represents how the user creates log entries — their personal conventions,
+ * assumed defaults, and units. This helps the AI interpret ambiguous entries accurately.
+ *
+ * @param {Ontology} ontology
+ * @param {Array<SerializedEvent>} contextEvents
+ * @returns {string | null}
+ */
+function makeOntologyText(ontology, contextEvents) {
+    const presentTypes = new Set(
+        contextEvents.map((event) => fromInput.parseStructuredInput(event.input).type)
+            .filter((typeName) => typeName !== "")
+    );
+
+    const matchingTypes = ontology.types.filter((t) => presentTypes.has(t.name));
+    const matchingModifiers = ontology.modifiers.filter(
+        (m) => m.only_for_type === undefined || presentTypes.has(m.only_for_type)
+    );
+
+    if (matchingTypes.length === 0 && matchingModifiers.length === 0) {
+        return null;
+    }
+
+    const lines = ["User's logging conventions (how this log's types and modifiers work):"];
+
+    if (matchingTypes.length > 0) {
+        lines.push("Types:");
+        for (const t of matchingTypes) {
+            lines.push(`- ${t.name}: ${t.description}`);
+        }
+    }
+
+    if (matchingModifiers.length > 0) {
+        if (matchingTypes.length > 0) {
+            lines.push("");
+        }
+        lines.push("Modifiers:");
+        for (const m of matchingModifiers) {
+            if (m.only_for_type !== undefined) {
+                lines.push(`- ${m.name} (${m.only_for_type} only): ${m.description}`);
+            } else {
+                lines.push(`- ${m.name}: ${m.description}`);
+            }
+        }
+    }
+
+    return lines.join("\n");
+}
+
+/**
  * @param {SerializedEvent} targetEvent
  * @param {Array<SerializedEvent>} contextEvents
  * @returns {Array<{ role: "system" | "user", content: string }>}
@@ -109,8 +168,26 @@ function makeCaloriesMessages(targetEvent, contextEvents) {
 }
 
 /**
+ * @param {SerializedEvent} targetEvent
+ * @param {Array<SerializedEvent>} contextEvents
+ * @param {Ontology} ontology
+ * @returns {Array<{ role: "system" | "user", content: string }>}
+ */
+function makeCaloriesMessagesWithOntology(targetEvent, contextEvents, ontology) {
+    let entry = makeCaloriesEntryText(targetEvent, contextEvents);
+    const ontologyText = makeOntologyText(ontology, contextEvents);
+    if (ontologyText !== null) {
+        entry = entry + "\n\n" + ontologyText;
+    }
+    return [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: entry },
+    ];
+}
+
+/**
  * @typedef {object} AICalories
- * @property {(targetEvent: SerializedEvent, contextEvents: Array<SerializedEvent>) => Promise<number | 'N/A'>} estimateCalories
+ * @property {(targetEvent: SerializedEvent, contextEvents: Array<SerializedEvent>, ontology: Ontology) => Promise<number | 'N/A'>} estimateCalories
  */
 
 /**
@@ -119,9 +196,10 @@ function makeCaloriesMessages(targetEvent, contextEvents) {
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {SerializedEvent} targetEvent - The event whose calories should be estimated.
  * @param {Array<SerializedEvent>} contextEvents - Basic-context events for disambiguation.
+ * @param {Ontology} ontology - User's logging conventions for richer AI context.
  * @returns {Promise<number | 'N/A'>} - The estimated calorie count, or 'N/A' when not applicable.
  */
-async function estimateCalories(openai, capabilities, targetEvent, contextEvents) {
+async function estimateCalories(openai, capabilities, targetEvent, contextEvents, ontology) {
     if (targetEvent.input.trim() === "") {
         return "N/A";
     }
@@ -130,7 +208,7 @@ async function estimateCalories(openai, capabilities, targetEvent, contextEvents
         const apiKey = capabilities.environment.openaiAPIKey();
         const response = await openai(apiKey).chat.completions.create({
             model: CALORIES_MODEL,
-            messages: makeCaloriesMessages(targetEvent, contextEvents),
+            messages: makeCaloriesMessagesWithOntology(targetEvent, contextEvents, ontology),
         });
         const text = response.choices[0]?.message?.content?.trim() ?? "N/A";
         if (text === "N/A") {
@@ -164,8 +242,8 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
     const openai = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        estimateCalories: (targetEvent, contextEvents) =>
-            estimateCalories(openai, getCapabilitiesMemo(), targetEvent, contextEvents),
+        estimateCalories: (targetEvent, contextEvents, ontology) =>
+            estimateCalories(openai, getCapabilitiesMemo(), targetEvent, contextEvents, ontology),
     };
 }
 
@@ -174,6 +252,8 @@ module.exports = {
     SYSTEM_PROMPT,
     makeCaloriesEntryText,
     makeCaloriesMessages,
+    makeCaloriesMessagesWithOntology,
+    makeOntologyText,
     make,
     isAICaloriesError,
 };

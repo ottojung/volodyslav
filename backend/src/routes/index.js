@@ -7,6 +7,7 @@ const transcribeAll = require("./transcribe_all");
 const periodic = require("./periodic");
 const entries = require("./entries");
 const config = require("./config");
+const ontology = require("./ontology");
 const sync = require("./sync");
 const graph = require("./graph");
 const version = require("./version");
@@ -24,6 +25,7 @@ module.exports = {
     periodic,
     entries,
     config,
+    ontology,
     sync,
     graph,
     version,

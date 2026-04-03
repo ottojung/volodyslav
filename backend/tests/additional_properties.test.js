@@ -218,7 +218,8 @@ describe("GET /api/entries/:id/additional-properties", () => {
 
             expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
                 expect.objectContaining({ id: "entry-2", input }),
-                [expect.objectContaining({ id: "entry-2", input })]
+                [expect.objectContaining({ id: "entry-2", input })],
+                { types: [], modifiers: [] }
             );
         });
 

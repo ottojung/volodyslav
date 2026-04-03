@@ -183,3 +183,70 @@ export const updateConfig = async (config) => {
         return null;
     }
 };
+
+/**
+ * @typedef {Object} OntologyTypeEntry
+ * @property {string} name - The type name (e.g., "food", "weight")
+ * @property {string} description - Description of what this type means
+ */
+
+/**
+ * @typedef {Object} OntologyModifierEntry
+ * @property {string} name - The modifier name (e.g., "when", "duration")
+ * @property {string} [only_for_type] - Optional type restriction
+ * @property {string} description - Description of what this modifier means
+ */
+
+/**
+ * @typedef {Object} Ontology
+ * @property {OntologyTypeEntry[]} types - Array of type definitions
+ * @property {OntologyModifierEntry[]} modifiers - Array of modifier definitions
+ */
+
+/**
+ * Fetches the current ontology from the API.
+ * Always returns an Ontology (empty by default when none has been saved).
+ * @returns {Promise<Ontology>}
+ */
+export const fetchOntology = async () => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/ontology`);
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.ontology;
+        } else {
+            logger.warn("Failed to fetch ontology:", response.status);
+            return { types: [], modifiers: [] };
+        }
+    } catch (error) {
+        logger.error("Error fetching ontology:", error);
+        return { types: [], modifiers: [] };
+    }
+};
+
+/**
+ * Updates the entire ontology via the API.
+ * @param {Ontology} ontology
+ * @returns {Promise<Ontology|null>}
+ */
+export const updateOntology = async (ontology) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/ontology`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(ontology),
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.ontology;
+        } else {
+            logger.warn("Failed to update ontology:", response.status);
+            return null;
+        }
+    } catch (error) {
+        logger.error("Error updating ontology:", error);
+        return null;
+    }
+};

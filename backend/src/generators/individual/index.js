@@ -4,6 +4,7 @@
  */
 
 const config = require('./config');
+const ontology = require('./ontology');
 const allEvents = require('./all_events');
 const sortedEventsDescending = require('./sorted_events_descending');
 const sortedEventsAscending = require('./sorted_events_ascending');
@@ -24,6 +25,7 @@ const eventAudiosList = require('./event_audios_list');
 
 module.exports = {
     config,
+    ontology,
     allEvents,
     sortedEventsDescending,
     sortedEventsAscending,

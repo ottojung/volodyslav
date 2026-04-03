@@ -31,13 +31,14 @@ describe("default graph computor wiring", () => {
     test("uses extracted factory computors for capabilities-bound nodes", async () => {
         const capabilities = {};
         const graph = createDefaultGraphDefinition(capabilities);
+        expect(findNode(graph, "calories(e)").inputs).toEqual(["basic_context(e)"]);
 
         await expect(findNode(graph, "calories(e)").computor([], undefined, []))
             .rejects
-            .toThrow("Expected input of type basic_context for calories(e) computor");
+            .toThrow("Expected first input of type basic_context for calories(e) computor");
         await expect(individual.calories.makeComputor(capabilities)([], undefined, []))
             .rejects
-            .toThrow("Expected input of type basic_context for calories(e) computor");
+            .toThrow("Expected first input of type basic_context for calories(e) computor");
 
         await expect(findNode(graph, "transcription(a)").computor([], undefined, [123]))
             .rejects
