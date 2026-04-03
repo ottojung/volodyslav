@@ -240,14 +240,15 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     const newLastRange = _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs);
 
     if (!newWindowTranscript) {
-        // Silent window — commit watermark + gaps but not transcript changes.
+        // Silent window — commit watermark + gaps but preserve transcript state.
+        const existingLastWindowTranscript = await readStringField(temporary, sessionId, LAST_WINDOW_TRANSCRIPT_KEY);
         const existingRunning = await readStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY);
         const existingWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
         await commitPullState(temporary, sessionId, {
             transcribedUntilMs: processableEndMs,
             knownGaps: gapScan.updatedGaps,
             lastRange: newLastRange,
-            lastWindowTranscript: "",
+            lastWindowTranscript: existingLastWindowTranscript,
             runningTranscript: existingRunning,
             wordsSinceLastQuestion: parseInt(existingWordCount, 10) || 0,
             questionCommit: null,
