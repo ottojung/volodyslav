@@ -20,6 +20,7 @@
 const { OpenAI } = require("openai");
 const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
+const { fromInput } = require("../event");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../event').SerializedEvent} SerializedEvent */
@@ -101,22 +102,6 @@ function makeCaloriesEntryText(targetEvent, contextEvents) {
 }
 
 /**
- * Extracts the event type from an event input string.
- * The type is the first whitespace-delimited word, normalized to remove a trailing
- * type separator (e.g. "food" from "food: pizza" or "food pizza").
- * @param {SerializedEvent} event
- * @returns {string}
- */
-function extractEventType(event) {
-    const trimmedInput = event.input.trim();
-    if (trimmedInput === "") {
-        return "";
-    }
-    const [firstToken = ""] = trimmedInput.split(/\s+/);
-    return firstToken.endsWith(":") ? firstToken.slice(0, -1) : firstToken;
-}
-
-/**
  * Builds user logging conventions text for the events in this context.
  * Only includes type and modifier entries that are relevant to the event types present.
  * Returns null if there are no matching entries.
@@ -129,7 +114,10 @@ function extractEventType(event) {
  * @returns {string | null}
  */
 function makeOntologyText(ontology, contextEvents) {
-    const presentTypes = new Set(contextEvents.map(extractEventType).filter((t) => t !== ""));
+    const presentTypes = new Set(
+        contextEvents.map((event) => fromInput.parseStructuredInput(event.input).type)
+            .filter((typeName) => typeName !== "")
+    );
 
     const matchingTypes = ontology.types.filter((t) => presentTypes.has(t.name));
     const matchingModifiers = ontology.modifiers.filter(

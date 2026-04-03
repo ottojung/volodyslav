@@ -184,6 +184,11 @@ function validateOntologySemantics(ontology) {
         if (onlyForType === "") {
             return new Error(`Modifier '${name}' has empty only_for_type`);
         }
+        if (!seenTypeNames.has(onlyForType)) {
+            return new Error(
+                `Modifier '${name}' has unknown only_for_type '${onlyForType}'`
+            );
+        }
         normalizedModifiers.push({ name, description, only_for_type: onlyForType });
         modifierIndex += 1;
     }

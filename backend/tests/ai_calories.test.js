@@ -130,4 +130,21 @@ describe("ai/calories", () => {
         expect(isAICaloriesError(error)).toBe(true);
         expect(error.message).toContain("non-numeric response");
     });
+
+    test("includes ontology conventions for canonically parsed event types", () => {
+        const targetEvent = makeSerializedEvent("1", "food:apple");
+        const contextEvents = [
+            targetEvent,
+            makeSerializedEvent("2", "food[when 1h] banana"),
+        ];
+        const ontology = {
+            types: [{ name: "food", description: "Food conventions." }],
+            modifiers: [{ name: "when", description: "Relative time.", only_for_type: "food" }],
+        };
+
+        const messages = makeCaloriesMessagesWithOntology(targetEvent, contextEvents, ontology);
+        expect(messages[1].content).toContain("User's logging conventions");
+        expect(messages[1].content).toContain("- food: Food conventions.");
+        expect(messages[1].content).toContain("- when (food only): Relative time.");
+    });
 });

@@ -184,6 +184,21 @@ describe("PUT /api/ontology", () => {
         expect(res.body.error).toMatch(/empty only_for_type/);
     });
 
+    it("returns 400 when modifier only_for_type does not match any known type", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [{ name: "food", description: "desc" }],
+                modifiers: [{ name: "duration", description: "desc", only_for_type: "foood" }],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/unknown only_for_type/);
+    });
+
     it("returns 400 for duplicate type names", async () => {
         const { app } = await makeTestApp();
 
