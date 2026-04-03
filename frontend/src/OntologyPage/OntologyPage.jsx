@@ -33,14 +33,28 @@ import { ModifierRow } from "./ModifierRow.jsx";
  */
 
 /**
+ * @returns {KeyedTypeEntry[]}
+ */
+function getInitialKeyedTypes() {
+    return [];
+}
+
+/**
+ * @returns {KeyedModifierEntry[]}
+ */
+function getInitialKeyedModifiers() {
+    return [];
+}
+
+/**
  * Page for managing the ontology (entry types and modifiers).
  * @returns {React.JSX.Element}
  */
 export default function OntologyPage() {
     /** @type {[KeyedTypeEntry[], React.Dispatch<React.SetStateAction<KeyedTypeEntry[]>>]} */
-    const [keyedTypes, setKeyedTypes] = useState([]);
+    const [keyedTypes, setKeyedTypes] = useState(getInitialKeyedTypes());
     /** @type {[KeyedModifierEntry[], React.Dispatch<React.SetStateAction<KeyedModifierEntry[]>>]} */
-    const [keyedModifiers, setKeyedModifiers] = useState([]);
+    const [keyedModifiers, setKeyedModifiers] = useState(getInitialKeyedModifiers());
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const nextKey = useRef(0);
@@ -56,23 +70,18 @@ export default function OntologyPage() {
         const load = async () => {
             setIsLoading(true);
             const ontology = await fetchOntology();
-            if (ontology) {
-                let keyCounter = 0;
-                setKeyedTypes(ontology.types.map((entry) => {
-                    const k = keyCounter;
-                    keyCounter += 1;
-                    return { key: k, entry };
-                }));
-                setKeyedModifiers(ontology.modifiers.map((entry) => {
-                    const k = keyCounter;
-                    keyCounter += 1;
-                    return { key: k, entry };
-                }));
-                nextKey.current = keyCounter;
-            } else {
-                setKeyedTypes([]);
-                setKeyedModifiers([]);
-            }
+            let keyCounter = 0;
+            setKeyedTypes(ontology.types.map((entry) => {
+                const k = keyCounter;
+                keyCounter += 1;
+                return { key: k, entry };
+            }));
+            setKeyedModifiers(ontology.modifiers.map((entry) => {
+                const k = keyCounter;
+                keyCounter += 1;
+                return { key: k, entry };
+            }));
+            nextKey.current = keyCounter;
             setIsLoading(false);
         };
         load();

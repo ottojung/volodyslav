@@ -7,6 +7,9 @@ const { makeUnchanged } = require("../../incremental_graph");
  * @property {import('../../../ontology/structure').Ontology | null} value
  */
 
+/** @type {import('../../../ontology/structure').Ontology} */
+const EMPTY_ONTOLOGY = Object.freeze({ types: [], modifiers: [] });
+
 /**
  * @returns {OntologyBox}
  */
@@ -23,23 +26,14 @@ function makeBox() {
  */
 function makeComputor(box, _capabilities) {
     return async (_inputs, oldValue, _bindings) => {
-        if (box.value === null) {
-            if (oldValue === undefined) {
-                return { type: "ontology", ontology: null };
-            } else {
-                return makeUnchanged();
-            }
-        }
+        // Use the stored value, or fall back to the empty default.
+        const nextOntology = box.value ?? EMPTY_ONTOLOGY;
+        const nextValue = { type: "ontology", ontology: nextOntology };
 
-        const nextValue = { type: "ontology", ontology: box.value };
         if (
             oldValue !== undefined &&
             oldValue.type === "ontology" &&
-            JSON.stringify(
-                oldValue.ontology === null ? null : serialize(oldValue.ontology)
-            ) === JSON.stringify(
-                nextValue.ontology === null ? null : serialize(nextValue.ontology)
-            )
+            JSON.stringify(serialize(oldValue.ontology)) === JSON.stringify(serialize(nextOntology))
         ) {
             return makeUnchanged();
         }

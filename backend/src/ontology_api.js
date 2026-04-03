@@ -30,20 +30,20 @@
 
 /**
  * Retrieves the current ontology from the event log.
+ * Always returns an Ontology (empty by default when none has been saved).
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @returns {Promise<import('./ontology/structure').Ontology | null>} - The current ontology or null if not found.
+ * @returns {Promise<import('./ontology/structure').Ontology>} - The current ontology.
  */
 async function getOntology(capabilities) {
     const ontology = await capabilities.interface.getOntology();
 
     capabilities.logger.logDebug(
         {
-            ontologyExists: ontology !== null,
-            typeCount: ontology?.types?.length || 0,
-            modifierCount: ontology?.modifiers?.length || 0,
+            typeCount: ontology.types.length,
+            modifierCount: ontology.modifiers.length,
         },
-        `Retrieved ontology: ${ontology ? 'found' : 'not found'} with ${ontology?.types?.length || 0} types and ${ontology?.modifiers?.length || 0} modifiers`
+        `Retrieved ontology with ${ontology.types.length} types and ${ontology.modifiers.length} modifiers`
     );
 
     return ontology;

@@ -22,7 +22,7 @@
  *
  * @param {string} targetEventId - The event ID whose calories are being estimated
  * @param {Array<SerializedEvent>} contextEvents - The serialized basic context events
- * @param {Ontology | null} ontology - Optional ontology for richer AI context
+ * @param {Ontology} ontology - User's logging conventions for richer AI context
  * @param {CaloriesCapabilities} capabilities - Capabilities providing the AI estimator
  * @returns {Promise<CaloriesEntry>}
  */

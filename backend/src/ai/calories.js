@@ -60,7 +60,7 @@ const SYSTEM_PROMPT = `You estimate calories consumed in the TARGET EVENT of a p
 The user message contains:
 - a "Target event" section with the single event whose calories must be estimated
 - a "Basic context" section with related events that may clarify the target event
-- optionally, an "Ontology" section with descriptions of event types and modifiers used in this log
+- optionally, a "User's logging conventions" section explaining how this specific log uses types and modifiers
 
 Decision rules:
 - Estimate calories only for food or drink consumed in the target event.
@@ -70,6 +70,7 @@ Decision rules:
 - Use 0 for clearly non-caloric drinks such as water, plain tea, or black coffee.
 - If the target event clearly contains multiple consumed items, total them.
 - When details are missing, infer a single best integer estimate from common portions.
+- If "User's logging conventions" are provided, use them to interpret ambiguous entries (e.g. default portion sizes, whether full consumption is assumed, what units are used).
 
 Respond with exactly one token:
 - an integer like 540
@@ -101,18 +102,27 @@ function makeCaloriesEntryText(targetEvent, contextEvents) {
 
 /**
  * Extracts the event type from an event input string.
- * The type is the first whitespace-delimited word (e.g. "food" from "food: pizza").
+ * The type is the first whitespace-delimited word, normalized to remove a trailing
+ * type separator (e.g. "food" from "food: pizza" or "food pizza").
  * @param {SerializedEvent} event
  * @returns {string}
  */
 function extractEventType(event) {
-    return event.input.split(" ")[0];
+    const trimmedInput = event.input.trim();
+    if (trimmedInput === "") {
+        return "";
+    }
+    const [firstToken = ""] = trimmedInput.split(/\s+/);
+    return firstToken.endsWith(":") ? firstToken.slice(0, -1) : firstToken;
 }
 
 /**
- * Builds ontology context text for the events in this context.
+ * Builds user logging conventions text for the events in this context.
  * Only includes type and modifier entries that are relevant to the event types present.
  * Returns null if there are no matching entries.
+ *
+ * The ontology represents how the user creates log entries — their personal conventions,
+ * assumed defaults, and units. This helps the AI interpret ambiguous entries accurately.
  *
  * @param {Ontology} ontology
  * @param {Array<SerializedEvent>} contextEvents
@@ -130,7 +140,7 @@ function makeOntologyText(ontology, contextEvents) {
         return null;
     }
 
-    const lines = ["Ontology (meanings of types and modifiers used in this log):"];
+    const lines = ["User's logging conventions (how this log's types and modifiers work):"];
 
     if (matchingTypes.length > 0) {
         lines.push("Types:");
@@ -172,16 +182,14 @@ function makeCaloriesMessages(targetEvent, contextEvents) {
 /**
  * @param {SerializedEvent} targetEvent
  * @param {Array<SerializedEvent>} contextEvents
- * @param {Ontology | null} ontology
+ * @param {Ontology} ontology
  * @returns {Array<{ role: "system" | "user", content: string }>}
  */
 function makeCaloriesMessagesWithOntology(targetEvent, contextEvents, ontology) {
     let entry = makeCaloriesEntryText(targetEvent, contextEvents);
-    if (ontology !== null) {
-        const ontologyText = makeOntologyText(ontology, contextEvents);
-        if (ontologyText !== null) {
-            entry = entry + "\n\n" + ontologyText;
-        }
+    const ontologyText = makeOntologyText(ontology, contextEvents);
+    if (ontologyText !== null) {
+        entry = entry + "\n\n" + ontologyText;
     }
     return [
         { role: "system", content: SYSTEM_PROMPT },
@@ -191,7 +199,7 @@ function makeCaloriesMessagesWithOntology(targetEvent, contextEvents, ontology) 
 
 /**
  * @typedef {object} AICalories
- * @property {(targetEvent: SerializedEvent, contextEvents: Array<SerializedEvent>, ontology: Ontology | null) => Promise<number | 'N/A'>} estimateCalories
+ * @property {(targetEvent: SerializedEvent, contextEvents: Array<SerializedEvent>, ontology: Ontology) => Promise<number | 'N/A'>} estimateCalories
  */
 
 /**
@@ -200,7 +208,7 @@ function makeCaloriesMessagesWithOntology(targetEvent, contextEvents, ontology) 
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {SerializedEvent} targetEvent - The event whose calories should be estimated.
  * @param {Array<SerializedEvent>} contextEvents - Basic-context events for disambiguation.
- * @param {Ontology | null} ontology - Optional ontology for richer AI context.
+ * @param {Ontology} ontology - User's logging conventions for richer AI context.
  * @returns {Promise<number | 'N/A'>} - The estimated calorie count, or 'N/A' when not applicable.
  */
 async function estimateCalories(openai, capabilities, targetEvent, contextEvents, ontology) {
@@ -247,7 +255,7 @@ function make(getCapabilities) {
     const openai = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
         estimateCalories: (targetEvent, contextEvents, ontology) =>
-            estimateCalories(openai, getCapabilitiesMemo(), targetEvent, contextEvents, ontology ?? null),
+            estimateCalories(openai, getCapabilitiesMemo(), targetEvent, contextEvents, ontology),
     };
 }
 

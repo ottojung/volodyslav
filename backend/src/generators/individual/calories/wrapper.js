@@ -15,8 +15,10 @@ function makeComputor(capabilities) {
             throw new Error("Expected first input of type basic_context for calories(e) computor");
         }
         const secondInput = inputs[1];
-        const ontology = (secondInput && secondInput.type === "ontology") ? secondInput.ontology : null;
-        return computeCaloriesForEvent(firstInput.eventId, firstInput.events, ontology, capabilities);
+        if (!secondInput || secondInput.type !== "ontology") {
+            throw new Error("Expected second input of type ontology for calories(e) computor");
+        }
+        return computeCaloriesForEvent(firstInput.eventId, firstInput.events, secondInput.ontology, capabilities);
     };
 }
 

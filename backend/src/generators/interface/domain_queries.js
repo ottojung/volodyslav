@@ -130,7 +130,7 @@ async function internalGetDiarySummary(interfaceInstance) {
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
- * @returns {Promise<import('../../ontology/structure').Ontology | null>}
+ * @returns {Promise<import('../../ontology/structure').Ontology>}
  */
 async function internalGetOntology(interfaceInstance) {
     await interfaceInstance.ensureInitialized();

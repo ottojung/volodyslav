@@ -14,6 +14,7 @@ const {
     make,
     makeCaloriesEntryText,
     makeCaloriesMessages,
+    makeCaloriesMessagesWithOntology,
 } = require("../src/ai/calories");
 
 function makeMockCapabilities() {
@@ -92,14 +93,15 @@ describe("ai/calories", () => {
             makeSerializedEvent("1", "text packed lunch"),
             targetEvent,
         ];
+        const emptyOntology = { types: [], modifiers: [] };
 
-        const result = await aiCalories.estimateCalories(targetEvent, contextEvents);
+        const result = await aiCalories.estimateCalories(targetEvent, contextEvents, emptyOntology);
 
         expect(result).toBe(420);
         expect(OpenAI).toHaveBeenCalledWith({ apiKey: "test-api-key" });
         expect(mockCreate).toHaveBeenCalledWith({
             model: CALORIES_MODEL,
-            messages: makeCaloriesMessages(targetEvent, contextEvents),
+            messages: makeCaloriesMessagesWithOntology(targetEvent, contextEvents, emptyOntology),
         });
     });
 
@@ -107,8 +109,9 @@ describe("ai/calories", () => {
         const capabilities = makeMockCapabilities();
         const aiCalories = make(() => capabilities);
         const targetEvent = makeSerializedEvent("1", "   ");
+        const emptyOntology = { types: [], modifiers: [] };
 
-        const result = await aiCalories.estimateCalories(targetEvent, [targetEvent]);
+        const result = await aiCalories.estimateCalories(targetEvent, [targetEvent], emptyOntology);
 
         expect(result).toBe("N/A");
         expect(OpenAI).not.toHaveBeenCalled();
@@ -119,8 +122,9 @@ describe("ai/calories", () => {
         const capabilities = makeMockCapabilities();
         const aiCalories = make(() => capabilities);
         const targetEvent = makeSerializedEvent("1", "food: sandwich");
+        const emptyOntology = { types: [], modifiers: [] };
         const error = await aiCalories
-            .estimateCalories(targetEvent, [targetEvent])
+            .estimateCalories(targetEvent, [targetEvent], emptyOntology)
             .catch((caught) => caught);
 
         expect(isAICaloriesError(error)).toBe(true);

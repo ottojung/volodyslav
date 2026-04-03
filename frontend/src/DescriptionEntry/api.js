@@ -205,7 +205,8 @@ export const updateConfig = async (config) => {
 
 /**
  * Fetches the current ontology from the API.
- * @returns {Promise<Ontology|null>}
+ * Always returns an Ontology (empty by default when none has been saved).
+ * @returns {Promise<Ontology>}
  */
 export const fetchOntology = async () => {
     try {
@@ -216,11 +217,11 @@ export const fetchOntology = async () => {
             return data.ontology;
         } else {
             logger.warn("Failed to fetch ontology:", response.status);
-            return null;
+            return { types: [], modifiers: [] };
         }
     } catch (error) {
         logger.error("Error fetching ontology:", error);
-        return null;
+        return { types: [], modifiers: [] };
     }
 };
 

@@ -68,13 +68,8 @@ function makeRouter(capabilities) {
 async function handleOntologyGet(_req, res, capabilities) {
     try {
         const ontology = await getOntology(capabilities);
-
-        if (ontology === null) {
-            res.json({ ontology: null });
-        } else {
-            const serializedOntology = serialize(ontology);
-            res.json({ ontology: serializedOntology });
-        }
+        const serializedOntology = serialize(ontology);
+        res.json({ ontology: serializedOntology });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
 
@@ -128,7 +123,7 @@ async function handleOntologyPut(req, res, capabilities) {
 
 /**
  * @typedef {object} OntologyResponse
- * @property {SerializedOntology|null} ontology - The current ontology in serialized format, or null if no ontology exists
+ * @property {SerializedOntology} ontology - The current ontology in serialized format
  */
 
 /**

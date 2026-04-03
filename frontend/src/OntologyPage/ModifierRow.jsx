@@ -29,8 +29,7 @@ export function ModifierRow({ rowKey, entry, onChange, onDelete }) {
             if (value) {
                 onChange(rowKey, { ...entry, only_for_type: value });
             } else {
-                const { only_for_type: _, ...rest } = entry;
-                onChange(rowKey, rest);
+                onChange(rowKey, { name: entry.name, description: entry.description });
             }
         } else {
             onChange(rowKey, { ...entry, [field]: value });

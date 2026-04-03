@@ -243,7 +243,7 @@ function versionToString(Version) {
 /**
  * @typedef {object} OntologyEntry
  * @property {'ontology'} type - The type of the entry
- * @property {import('../../../ontology/structure').Ontology | null} ontology - The ontology or null if not found
+ * @property {import('../../../ontology/structure').Ontology} ontology - The current ontology (empty by default)
  */
 
 /**

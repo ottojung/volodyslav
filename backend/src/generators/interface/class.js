@@ -167,7 +167,7 @@ class InterfaceClass {
     }
 
     /**
-     * @returns {Promise<import('../../ontology/structure').Ontology | null>}
+     * @returns {Promise<import('../../ontology/structure').Ontology>}
      */
     async getOntology() {
         return await internalGetOntology(this);
