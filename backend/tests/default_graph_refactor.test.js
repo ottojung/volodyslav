@@ -31,6 +31,7 @@ describe("default graph computor wiring", () => {
     test("uses extracted factory computors for capabilities-bound nodes", async () => {
         const capabilities = {};
         const graph = createDefaultGraphDefinition(capabilities);
+        expect(findNode(graph, "calories(e)").inputs).toEqual(["basic_context(e)"]);
 
         await expect(findNode(graph, "calories(e)").computor([], undefined, []))
             .rejects

@@ -60,7 +60,7 @@ const {
  *   all_events -> events_count                            (O(1) length)
  *   all_events -> event(e)
  *   all_events -> basic_context(e)
- *   basic_context(e), ontology -> calories(e)
+ *   basic_context(e) -> calories(e)
  *   transcription(a)                            [standalone, no graph inputs]
  *   event(e) -> event_audios_list(e)
  *   event_audios_list(e), transcription(a) -> event_transcription(e, a)
@@ -192,7 +192,7 @@ function createDefaultGraphDefinition(capabilities, configBox, allEventsBox, dia
         },
         {
             output: "calories(e)",
-            inputs: ["basic_context(e)", "ontology"],
+            inputs: ["basic_context(e)"],
             computor: calories.makeComputor(capabilities),
             isDeterministic: false,
             hasSideEffects: true,

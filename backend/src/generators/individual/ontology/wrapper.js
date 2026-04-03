@@ -26,8 +26,16 @@ function makeBox() {
  */
 function makeComputor(box, _capabilities) {
     return async (_inputs, oldValue, _bindings) => {
-        // Use the stored value, or fall back to the empty default.
-        const nextOntology = box.value ?? EMPTY_ONTOLOGY;
+        if (box.value === null) {
+            // Initial state before explicit setOntology(). Preserve a persisted old
+            // value if one already exists instead of overwriting it with defaults.
+            if (oldValue === undefined) {
+                return { type: "ontology", ontology: EMPTY_ONTOLOGY };
+            }
+            return makeUnchanged();
+        }
+
+        const nextOntology = box.value;
         const nextValue = { type: "ontology", ontology: nextOntology };
 
         if (

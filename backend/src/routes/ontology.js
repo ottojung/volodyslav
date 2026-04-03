@@ -102,9 +102,15 @@ async function handleOntologyPut(req, res, capabilities) {
             return;
         }
 
-        await setOntology(capabilities, ontology);
+        const validatedOntology = validateOntologySemantics(ontology);
+        if (validatedOntology instanceof Error) {
+            res.status(400).json({ error: validatedOntology.message });
+            return;
+        }
 
-        const serializedOntology = serialize(ontology);
+        await setOntology(capabilities, validatedOntology);
+
+        const serializedOntology = serialize(validatedOntology);
         res.json({ ontology: serializedOntology });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -119,6 +125,70 @@ async function handleOntologyPut(req, res, capabilities) {
 
         res.status(500).json({ error: "Internal server error" });
     }
+}
+
+/**
+ * @param {import('../ontology/structure').Ontology} ontology
+ * @returns {import('../ontology/structure').Ontology | Error}
+ */
+function validateOntologySemantics(ontology) {
+    /** @type {Set<string>} */
+    const seenTypeNames = new Set();
+    /** @type {Set<string>} */
+    const seenModifierNames = new Set();
+
+    /** @type {import('../ontology/structure').OntologyTypeEntry[]} */
+    const normalizedTypes = [];
+    let typeIndex = 0;
+    for (const entry of ontology.types) {
+        const name = entry.name.trim();
+        const description = entry.description.trim();
+        if (name === "") {
+            return new Error(`Type at index ${typeIndex} has empty name`);
+        }
+        if (description === "") {
+            return new Error(`Type '${name}' has empty description`);
+        }
+        if (seenTypeNames.has(name)) {
+            return new Error(`Duplicate type name: '${name}'`);
+        }
+        seenTypeNames.add(name);
+        normalizedTypes.push({ name, description });
+        typeIndex += 1;
+    }
+
+    /** @type {import('../ontology/structure').OntologyModifierEntry[]} */
+    const normalizedModifiers = [];
+    let modifierIndex = 0;
+    for (const entry of ontology.modifiers) {
+        const name = entry.name.trim();
+        const description = entry.description.trim();
+        if (name === "") {
+            return new Error(`Modifier at index ${modifierIndex} has empty name`);
+        }
+        if (description === "") {
+            return new Error(`Modifier '${name}' has empty description`);
+        }
+        if (seenModifierNames.has(name)) {
+            return new Error(`Duplicate modifier name: '${name}'`);
+        }
+        seenModifierNames.add(name);
+
+        if (entry.only_for_type === undefined) {
+            normalizedModifiers.push({ name, description });
+            modifierIndex += 1;
+            continue;
+        }
+
+        const onlyForType = entry.only_for_type.trim();
+        if (onlyForType === "") {
+            return new Error(`Modifier '${name}' has empty only_for_type`);
+        }
+        normalizedModifiers.push({ name, description, only_for_type: onlyForType });
+        modifierIndex += 1;
+    }
+
+    return { types: normalizedTypes, modifiers: normalizedModifiers };
 }
 
 /**

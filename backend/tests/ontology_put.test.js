@@ -138,4 +138,103 @@ describe("PUT /api/ontology", () => {
         expect(res.statusCode).toBe(400);
         expect(res.body).toHaveProperty("error");
     });
+
+    it("returns 400 when a type entry has empty name after trim", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [{ name: "   ", description: "desc" }],
+                modifiers: [],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/empty name/);
+    });
+
+    it("returns 400 when a type entry has empty description after trim", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [{ name: "food", description: "   " }],
+                modifiers: [],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/empty description/);
+    });
+
+    it("returns 400 when modifier only_for_type is empty after trim", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [{ name: "food", description: "desc" }],
+                modifiers: [{ name: "duration", description: "desc", only_for_type: "   " }],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/empty only_for_type/);
+    });
+
+    it("returns 400 for duplicate type names", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [
+                    { name: "food", description: "desc1" },
+                    { name: "food", description: "desc2" },
+                ],
+                modifiers: [],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/Duplicate type name/);
+    });
+
+    it("returns 400 for duplicate modifier names", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [],
+                modifiers: [
+                    { name: "when", description: "d1" },
+                    { name: "when", description: "d2" },
+                ],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toMatch(/Duplicate modifier name/);
+    });
+
+    it("trims names and descriptions before persistence", async () => {
+        const { app } = await makeTestApp();
+
+        const res = await request(app)
+            .put("/api/ontology")
+            .send({
+                types: [{ name: " food ", description: " desc " }],
+                modifiers: [{ name: " when ", description: " d ", only_for_type: " food " }],
+            })
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.ontology).toEqual({
+            types: [{ name: "food", description: "desc" }],
+            modifiers: [{ name: "when", description: "d", only_for_type: "food" }],
+        });
+    });
 });
