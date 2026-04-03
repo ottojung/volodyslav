@@ -1,8 +1,8 @@
 /**
- * Shared transcription helper for the live diary pipeline.
+ * Shared transcription helper for the live diary pull pipeline.
  *
- * Used by both the legacy eager pipeline (`service.js`) and the lazy pull
- * pipeline (`pull_helpers.js`) so the implementation stays in one place.
+ * Used by the pull pipeline (`pull_helpers.js`) so the implementation stays
+ * in one place.
  *
  * File I/O is performed through the capabilities pattern (creator / writer /
  * reader / deleter) so that the helper is testable without touching the real

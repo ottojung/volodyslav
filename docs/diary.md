@@ -272,7 +272,7 @@ Common patterns across diary modules:
 
 1. **Shape validation at route boundaries** (session IDs, mime types, sequence numbers, fragment numbers).
 2. **Specific error classes** in deeper services (e.g., audio session not found/conflict/finalize errors).
-3. **Fail-soft UX for live features with explicit status**: the pull cycle (triggered by `GET /api/audio-recording-session/:sessionId/live-questions`) returns `{ questions }` where `questions` is an empty array when the pipeline is degraded. See [docs/live-audio-pipeline.md](./live-audio-pipeline.md) for failure and retry semantics.
+3. **Fail-soft UX for live features without an explicit degraded-status field**: the pull cycle (triggered by `GET /api/audio-recording-session/:sessionId/live-questions`) returns `{ success: true, questions }`; when the pipeline is degraded, this is represented by `questions` being an empty array rather than a distinct status value. See [docs/live-audio-pipeline.md](./live-audio-pipeline.md) for failure and retry semantics.
 4. **Fail-safe persistence semantics**: cleanup on transaction failure and deletion only after durable write.
 
 This combination gives robust day-to-day operation for a personal tool without over-engineering adversarial protections.

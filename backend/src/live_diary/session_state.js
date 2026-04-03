@@ -20,7 +20,6 @@ const { stringToTempKey } = require("../temporary");
 /** @typedef {import('../temporary/database/types').LiveDiaryGap} LiveDiaryGap */
 
 const LIVE_DIARY_SUBLEVEL = "live_diary";
-const LIVE_DIARY_BINARY_SUBLEVEL = "binary";
 const FRAGMENT_INDEX_SUBLEVEL = "fragment_index";
 
 const LAST_WINDOW_TRANSCRIPT_KEY = stringToTempKey("last_window_transcript");
@@ -40,15 +39,6 @@ const KNOWN_GAPS_KEY = stringToTempKey("known_gaps");
  */
 function liveDiarySessionSublevel(temporary, sessionId) {
     return sessionSublevel(temporary, sessionId).getSublevel(LIVE_DIARY_SUBLEVEL);
-}
-
-/**
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {import('../temporary/database').TemporaryBinarySublevel}
- */
-function liveDiaryBinarySublevel(temporary, sessionId) {
-    return liveDiarySessionSublevel(temporary, sessionId).getBinarySublevel(LIVE_DIARY_BINARY_SUBLEVEL);
 }
 
 /**

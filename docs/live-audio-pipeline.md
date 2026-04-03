@@ -175,7 +175,7 @@ The pipeline is designed so that every failure mode either retries automatically
 | PCM assembly failure (format mismatch) | Return `degraded_transcription`; watermark not advanced. |
 | Gap at watermark (fragment not yet uploaded) | Return `blocked_at_watermark`; gaps updated; next pull retries after more uploads. |
 | Gap abandoned (fragment never arrived) | Cross with silence; `hasDegradedGap = true`; pull proceeds. |
-| Duplicate fragment (below watermark) | Rejected with 409; binary chunk not orphaned because ingest now uses `endMs < startMs` (aligned with uploadChunk). |
+| Duplicate fragment (below watermark) | Rejected with 409; `push-pcm` checks the live diary index before writing the binary chunk, so an already-transcribed chunk is never overwritten. |
 
 ---
 
@@ -187,6 +187,6 @@ Push-pcm ingestion is awaited before responding to the client, guaranteeing the 
 
 ---
 
-## Part 6: Legacy Eager Pipeline
+## Part 6: Historical Note
 
-The `service.js` module implements an older, eager pipeline where transcription was triggered on every push rather than lazily on pull. It is retained for backwards compatibility with any non-lazy session paths but shares the same `transcribeBuffer` helper and text-processing utilities. The two pipelines do not interfere: the eager pipeline uses `lastFragment` state while the pull pipeline uses the fragment index.
+The live diary pipeline was previously an eager, fixed-cadence design where transcription was triggered synchronously on every `push-pcm` call. That `service.js` implementation has been removed. The lazy pull architecture described in this document is now the only pipeline: uploads are indexed by `ingestFragment` and transcription/question generation happen on demand during `pullLiveDiaryProcessing`.

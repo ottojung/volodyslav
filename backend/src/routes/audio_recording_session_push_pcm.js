@@ -104,24 +104,13 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, i
                         startMs: startMsNum,
                         endMs: endMsNum,
                     },
-                    "push-pcm: validated, storing PCM fragment"
+                    "push-pcm: validated, checking live diary index before storing PCM"
                 );
 
-                // Store binary PCM via audio-session service.
-                const result = await pushAudioFragment(capabilities, sessionId, {
-                    pcm: pcmFile.buffer,
-                    sampleRateHz: sampleRateHzNum,
-                    channels: channelsNum,
-                    bitDepth: bitDepthNum,
-                    startMs: startMsNum,
-                    endMs: endMsNum,
-                    sequence: sequenceNum,
-                });
-
-                // Await ingestion so that the fragment index entry is durable before
-                // this response is sent.  The client may immediately call /live-questions,
-                // which triggers a pull cycle — if the index entry is not yet written the
-                // pull cycle will miss this fragment.
+                // Check the live diary index BEFORE writing the binary PCM chunk.
+                // If the ingestor rejects the fragment (duplicate_rejected), we must
+                // not overwrite the already-transcribed binary chunk — doing so would
+                // corrupt the final audio assembly for the session.
                 const ingestResult = await ingestLiveDiaryFragment(capabilities, sessionId, {
                     pcm: pcmFile.buffer,
                     sampleRateHz: sampleRateHzNum,
@@ -145,6 +134,18 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, i
                         error: "Non-identical duplicate fragment rejected: already transcribed",
                     });
                 }
+
+                // Store binary PCM via audio-session service.  Only reached when
+                // ingest accepted or no-op'd (exact duplicate — safe to overwrite).
+                const result = await pushAudioFragment(capabilities, sessionId, {
+                    pcm: pcmFile.buffer,
+                    sampleRateHz: sampleRateHzNum,
+                    channels: channelsNum,
+                    bitDepth: bitDepthNum,
+                    startMs: startMsNum,
+                    endMs: endMsNum,
+                    sequence: sequenceNum,
+                });
 
                 capabilities.logger.logDebug(
                     {
