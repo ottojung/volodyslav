@@ -87,8 +87,142 @@ function createNodeKeyFromPattern(pattern, bindings) {
     return { head, args: bindings };
 }
 
+/**
+ * Return a numeric rank for a ConstValue based on its type.
+ * Lower rank = earlier in sort order.
+ * Rank order: null(0) < boolean(1) < number(2) < string(3) < array(4) < object(5)
+ * @param {ConstValue | null} value
+ * @returns {number}
+ */
+function constValueTypeRank(value) {
+    if (value === null) return 0;
+    if (typeof value === "boolean") return 1;
+    if (typeof value === "number") return 2;
+    if (typeof value === "string") return 3;
+    if (Array.isArray(value)) return 4;
+    return 5; // object
+}
+
+/**
+ * Compare two ConstValues with a stable total order.
+ * Type precedence: null < boolean < number < string < array < object.
+ * @param {ConstValue | null} a
+ * @param {ConstValue | null} b
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+function compareConstValue(a, b) {
+    const rankA = constValueTypeRank(a);
+    const rankB = constValueTypeRank(b);
+    if (rankA !== rankB) {
+        return rankA - rankB;
+    }
+
+    if (a === null) {
+        // Both are null (rank 0).
+        return 0;
+    }
+
+    if (typeof a === "boolean" && typeof b === "boolean") {
+        // false < true
+        if (a === b) return 0;
+        return a ? 1 : -1;
+    }
+
+    if (typeof a === "number" && typeof b === "number") {
+        return a - b;
+    }
+
+    if (typeof a === "string" && typeof b === "string") {
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return 0;
+    }
+
+    if (Array.isArray(a) && Array.isArray(b)) {
+        const minLen = Math.min(a.length, b.length);
+        for (let i = 0; i < minLen; i++) {
+            const aVal = a[i];
+            const bVal = b[i];
+            if (aVal === undefined || bVal === undefined) {
+                throw new Error("compareConstValue: unexpected undefined array element");
+            }
+            const cmp = compareConstValue(aVal, bVal);
+            if (cmp !== 0) return cmp;
+        }
+        return a.length - b.length;
+    }
+
+    // Both are objects (non-array, non-null).
+    if (a !== null && typeof a === "object" && !Array.isArray(a) &&
+        b !== null && typeof b === "object" && !Array.isArray(b)) {
+        const sortedEntriesA = Object.entries(a).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
+        const sortedEntriesB = Object.entries(b).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
+        const minLen = Math.min(sortedEntriesA.length, sortedEntriesB.length);
+        for (let i = 0; i < minLen; i++) {
+            const entryA = sortedEntriesA[i];
+            const entryB = sortedEntriesB[i];
+            if (entryA === undefined || entryB === undefined) {
+                throw new Error("compareConstValue: unexpected undefined entry");
+            }
+            const [kA, vA] = entryA;
+            const [kB, vB] = entryB;
+            if (kA < kB) return -1;
+            if (kA > kB) return 1;
+            const cmp = compareConstValue(vA, vB);
+            if (cmp !== 0) return cmp;
+        }
+        return sortedEntriesA.length - sortedEntriesB.length;
+    }
+
+    return 0;
+}
+
+/**
+ * Compare two NodeKey values with a stable total order.
+ * Order: compare head lexicographically, then args.length, then each arg.
+ * @param {NodeKey} a
+ * @param {NodeKey} b
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+function compareNodeKey(a, b) {
+    const headA = nodeNameToString(a.head);
+    const headB = nodeNameToString(b.head);
+    if (headA < headB) return -1;
+    if (headA > headB) return 1;
+
+    if (a.args.length !== b.args.length) {
+        return a.args.length - b.args.length;
+    }
+
+    for (let i = 0; i < a.args.length; i++) {
+        const aArg = a.args[i];
+        const bArg = b.args[i];
+        if (aArg === undefined || bArg === undefined) {
+            throw new Error("compareNodeKey: unexpected undefined arg at index " + String(i));
+        }
+        const cmp = compareConstValue(aArg, bArg);
+        if (cmp !== 0) return cmp;
+    }
+
+    return 0;
+}
+
+/**
+ * Compare two NodeKeyStrings by deserializing them and delegating to compareNodeKey.
+ * This is the canonical comparator for sorted revdeps arrays.
+ * @param {NodeKeyString} a
+ * @param {NodeKeyString} b
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+function compareNodeKeyStringByNodeKey(a, b) {
+    return compareNodeKey(deserializeNodeKey(a), deserializeNodeKey(b));
+}
+
 module.exports = {
     serializeNodeKey,
     deserializeNodeKey,
     createNodeKeyFromPattern,
+    compareConstValue,
+    compareNodeKey,
+    compareNodeKeyStringByNodeKey,
 };

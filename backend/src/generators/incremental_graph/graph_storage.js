@@ -4,6 +4,7 @@
  */
 
 const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
+const { compareNodeKeyStringByNodeKey } = require("./node_key");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -76,6 +77,30 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
  * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
  * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
  */
+
+/**
+ * Find the insertion index for a node in a sorted array using binary search.
+ * @param {NodeKeyString[]} sortedArray - The sorted array to search in
+ * @param {NodeKeyString} node - The node to find the insertion index for
+ * @param {(a: NodeKeyString, b: NodeKeyString) => number} compareFn - Comparator function
+ * @returns {{ index: number, found: boolean }}
+ */
+function findInsertionIndex(sortedArray, node, compareFn) {
+    let lo = 0;
+    let hi = sortedArray.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        const midVal = sortedArray[mid];
+        if (midVal === undefined) {
+            throw new Error("findInsertionIndex: unexpected undefined element at index " + String(mid));
+        }
+        const cmp = compareFn(midVal, node);
+        if (cmp === 0) return { index: mid, found: true };
+        if (cmp < 0) lo = mid + 1;
+        else hi = mid;
+    }
+    return { index: lo, found: false };
+}
 
 /**
  * Creates a transactional database view for batch-consistent reads.
@@ -261,18 +286,24 @@ function makeGraphStorage(rootDatabase) {
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
-        // For each input, add this node to its dependents array
+        // For each input, add this node to its dependents array (maintaining sorted order)
         for (const input of inputs) {
             // Get existing dependents for this input (use batch-consistent read)
             const existingDependents = await batch.revdeps.get(input);
 
             if (existingDependents !== undefined) {
-                // Check if this node is already in the dependents list
-                if (existingDependents.includes(node)) {
+                // Use binary search to find position or detect duplicate
+                const { index, found } = findInsertionIndex(existingDependents, node, compareNodeKeyStringByNodeKey);
+                if (found) {
                     continue; // Already indexed, skip
                 }
-                // Add this node to the existing dependents array
-                batch.revdeps.put(input, [...existingDependents, node]);
+                // Insert at sorted position
+                const newDependents = [
+                    ...existingDependents.slice(0, index),
+                    node,
+                    ...existingDependents.slice(index),
+                ];
+                batch.revdeps.put(input, newDependents);
             } else {
                 // Create a new dependents array with just this node
                 batch.revdeps.put(input, [node]);
