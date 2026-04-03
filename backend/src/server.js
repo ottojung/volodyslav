@@ -8,6 +8,7 @@ const transcribeAllRouter = routes.transcribeAll;
 const periodicRouter = routes.periodic;
 const entriesRouter = routes.entries;
 const configRouter = routes.config;
+const ontologyRouter = routes.ontology;
 const syncRouter = routes.sync;
 const graphRouter = routes.graph;
 const versionRouter = routes.version;
@@ -50,6 +51,7 @@ async function addRoutes(capabilities, app) {
     app.use(`${basePath}/api`, periodicRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, entriesRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, configRouter.makeRouter(capabilities));
+    app.use(`${basePath}/api`, ontologyRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, syncRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, graphRouter.makeRouter(capabilities));
     app.use(`${basePath}/api`, versionRouter.makeRouter(capabilities));

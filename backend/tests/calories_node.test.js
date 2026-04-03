@@ -155,7 +155,8 @@ describe("calories(e) node", () => {
         expect(result).toEqual({ type: "calories", value: 250 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
             expect.objectContaining({ id: "1", input: "food: a bowl of pasta" }),
-            [expect.objectContaining({ id: "1", input: "food: a bowl of pasta" })]
+            [expect.objectContaining({ id: "1", input: "food: a bowl of pasta" })],
+            null
         );
     });
 
@@ -176,7 +177,8 @@ describe("calories(e) node", () => {
             [
                 expect.objectContaining({ id: "1", input: "text prep #lunch" }),
                 expect.objectContaining({ id: "2", input: "food lunch #lunch" }),
-            ]
+            ],
+            null
         );
     });
 
@@ -203,7 +205,8 @@ describe("calories(e) node", () => {
         expect(result).toEqual({ type: "calories", value: "N/A" });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
             expect.objectContaining({ id: "1", input: "sleep 8 hours" }),
-            [expect.objectContaining({ id: "1", input: "sleep 8 hours" })]
+            [expect.objectContaining({ id: "1", input: "sleep 8 hours" })],
+            null
         );
     });
 
@@ -218,7 +221,8 @@ describe("calories(e) node", () => {
         expect(result).toEqual({ type: "calories", value: 0 });
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledWith(
             expect.objectContaining({ id: "1", input: "a cup of plain tea" }),
-            [expect.objectContaining({ id: "1", input: "a cup of plain tea" })]
+            [expect.objectContaining({ id: "1", input: "a cup of plain tea" })],
+            null
         );
     });
 
@@ -260,12 +264,14 @@ describe("calories(e) node", () => {
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenNthCalledWith(
             1,
             expect.objectContaining({ id: "1", input: "food: a slice of bread" }),
-            [expect.objectContaining({ id: "1", input: "food: a slice of bread" })]
+            [expect.objectContaining({ id: "1", input: "food: a slice of bread" })],
+            null
         );
         expect(capabilities.aiCalories.estimateCalories).toHaveBeenNthCalledWith(
             2,
             expect.objectContaining({ id: "1", input: "food: a large pizza" }),
-            [expect.objectContaining({ id: "1", input: "food: a large pizza" })]
+            [expect.objectContaining({ id: "1", input: "food: a large pizza" })],
+            null
         );
     });
 

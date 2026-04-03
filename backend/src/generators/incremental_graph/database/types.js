@@ -241,8 +241,14 @@ function versionToString(Version) {
  */
 
 /**
+ * @typedef {object} OntologyEntry
+ * @property {'ontology'} type - The type of the entry
+ * @property {import('../../../ontology/structure').Ontology | null} ontology - The ontology or null if not found
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} ComputedValue
  */
 
 /**

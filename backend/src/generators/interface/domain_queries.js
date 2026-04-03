@@ -129,6 +129,21 @@ async function internalGetDiarySummary(interfaceInstance) {
 }
 
 /**
+ * @param {InterfaceQueryAccess} interfaceInstance
+ * @returns {Promise<import('../../ontology/structure').Ontology | null>}
+ */
+async function internalGetOntology(interfaceInstance) {
+    await interfaceInstance.ensureInitialized();
+    const result = await interfaceInstance
+        ._requireInitializedGraph()
+        .pull("ontology");
+    if (result.type !== "ontology") {
+        throw new Error(`Expected ontology entry but got type: ${result.type}`);
+    }
+    return result.ontology;
+}
+
+/**
  * Returns an async iterator over events in sorted date order.
  *
  * ## Two-phase iteration for speed
@@ -389,6 +404,7 @@ module.exports = {
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetDiarySummary,
+    internalGetOntology,
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,

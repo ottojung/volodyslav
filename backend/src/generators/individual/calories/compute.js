@@ -5,6 +5,7 @@
 /** @typedef {import('../../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
 /** @typedef {import('../../../event').SerializedEvent} SerializedEvent */
 /** @typedef {import('../../../ai/calories').AICalories} AICalories */
+/** @typedef {import('../../../ontology/structure').Ontology} Ontology */
 
 /**
  * @typedef {object} CaloriesCapabilities
@@ -21,10 +22,11 @@
  *
  * @param {string} targetEventId - The event ID whose calories are being estimated
  * @param {Array<SerializedEvent>} contextEvents - The serialized basic context events
+ * @param {Ontology | null} ontology - Optional ontology for richer AI context
  * @param {CaloriesCapabilities} capabilities - Capabilities providing the AI estimator
  * @returns {Promise<CaloriesEntry>}
  */
-async function computeCaloriesForEvent(targetEventId, contextEvents, capabilities) {
+async function computeCaloriesForEvent(targetEventId, contextEvents, ontology, capabilities) {
     if (contextEvents.length === 0) {
         capabilities.logger.logDebug(
             {},
@@ -50,7 +52,7 @@ async function computeCaloriesForEvent(targetEventId, contextEvents, capabilitie
         },
         "Computing calories for event basic context",
     );
-    const value = await capabilities.aiCalories.estimateCalories(targetEvent, contextEvents);
+    const value = await capabilities.aiCalories.estimateCalories(targetEvent, contextEvents, ontology);
     capabilities.logger.logInfo(
         {
             target_event_id: targetEventId,

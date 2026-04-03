@@ -8,6 +8,7 @@
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 /** @typedef {import('../individual/all_events/wrapper').AllEventsBox} AllEventsBox */
 /** @typedef {import('../individual/config/wrapper').ConfigBox} ConfigBox */
+/** @typedef {import('../individual/ontology/wrapper').OntologyBox} OntologyBox */
 
 const {
     internalEnsureInitialized,
@@ -27,6 +28,7 @@ const {
     internalPullGraphNode,
     internalSetConfig,
     internalSetDiarySummary,
+    internalSetOntology,
     internalUpdate,
 } = require("./graph_api");
 const {
@@ -37,6 +39,7 @@ const {
     internalGetCaloriesForEventId,
     internalGetConfig,
     internalGetDiarySummary,
+    internalGetOntology,
     internalGetEvent,
     internalGetEventBasicContext,
     internalGetEventTranscriptionForAudioPath,
@@ -83,6 +86,12 @@ class InterfaceClass {
     _diarySummaryBox;
 
     /**
+     * Boxed ontology captured by the ontology computor.
+     * @type {OntologyBox | null}
+     */
+    _ontologyBox;
+
+    /**
      * @constructor
      * @param {() => GeneratorsCapabilities} getCapabilities - Lazy getter for capabilities
      */
@@ -93,6 +102,7 @@ class InterfaceClass {
         this._allEventsBox = null;
         this._configBox = null;
         this._diarySummaryBox = null;
+        this._ontologyBox = null;
     }
 
     /**
@@ -146,6 +156,21 @@ class InterfaceClass {
      */
     async getDiarySummary() {
         return await internalGetDiarySummary(this);
+    }
+
+    /**
+     * @param {import('../../ontology/structure').Ontology | null} ontology
+     * @returns {Promise<void>}
+     */
+    async setOntology(ontology) {
+        await internalSetOntology(this, ontology);
+    }
+
+    /**
+     * @returns {Promise<import('../../ontology/structure').Ontology | null>}
+     */
+    async getOntology() {
+        return await internalGetOntology(this);
     }
 
     /**

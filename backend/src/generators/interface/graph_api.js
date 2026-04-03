@@ -9,6 +9,7 @@
  * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
  * @property {import('../individual/config/wrapper').ConfigBox | null} _configBox
  * @property {import('../individual/diary_most_important_info_summary/wrapper').DiarySummaryBox | null} _diarySummaryBox
+ * @property {import('../individual/ontology/wrapper').OntologyBox | null} _ontologyBox
  */
 
 /**
@@ -59,6 +60,21 @@ async function internalSetDiarySummary(interfaceInstance, value) {
     await interfaceInstance._requireInitializedGraph().invalidate("diary_most_important_info_summary");
     // Immediately pull to persist the new value to the database so it survives restarts.
     await interfaceInstance._requireInitializedGraph().pull("diary_most_important_info_summary");
+}
+
+/**
+ * @param {InterfaceGraphAccess} interfaceInstance
+ * @param {import('../../ontology/structure').Ontology | null} ontology
+ * @returns {Promise<void>}
+ */
+async function internalSetOntology(interfaceInstance, ontology) {
+    await interfaceInstance.ensureInitialized();
+    if (interfaceInstance._ontologyBox === null) {
+        throw new Error("Impossible: expected ontology box to be initialized");
+    }
+    interfaceInstance._ontologyBox.value = ontology;
+    await interfaceInstance._requireInitializedGraph().invalidate("ontology");
+    await interfaceInstance._requireInitializedGraph().pull("ontology");
 }
 
 /**
@@ -173,5 +189,6 @@ module.exports = {
     internalPullGraphNode,
     internalSetConfig,
     internalSetDiarySummary,
+    internalSetOntology,
     internalUpdate,
 };
