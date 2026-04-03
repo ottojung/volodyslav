@@ -23,8 +23,6 @@ const LIVE_DIARY_SUBLEVEL = "live_diary";
 const LIVE_DIARY_BINARY_SUBLEVEL = "binary";
 const FRAGMENT_INDEX_SUBLEVEL = "fragment_index";
 
-const LAST_FRAGMENT_KEY = stringToTempKey("last_fragment");
-const LAST_FRAGMENT_FORMAT_KEY = stringToTempKey("last_fragment_mime");
 const LAST_WINDOW_TRANSCRIPT_KEY = stringToTempKey("last_window_transcript");
 const RUNNING_TRANSCRIPT_KEY = stringToTempKey("running_transcript");
 const ASKED_QUESTIONS_KEY = stringToTempKey("asked_questions");
@@ -87,29 +85,6 @@ async function writeCurrentSessionId(temporary, sessionId) {
         type: "audio_session_index",
         sessionId,
     });
-}
-
-/**
- * Read the stored last audio fragment for a session.
- * Returns null if none stored.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @returns {Promise<Buffer | null>}
- */
-async function readLastFragment(temporary, sessionId) {
-    const entry = await liveDiaryBinarySublevel(temporary, sessionId).get(LAST_FRAGMENT_KEY);
-    return entry === undefined ? null : entry;
-}
-
-/**
- * Write the last audio fragment for a session.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {Buffer} fragment
- * @returns {Promise<void>}
- */
-async function writeLastFragment(temporary, sessionId, fragment) {
-    await liveDiaryBinarySublevel(temporary, sessionId).put(LAST_FRAGMENT_KEY, fragment);
 }
 
 /**
@@ -213,63 +188,6 @@ async function clearPendingQuestions(temporary, sessionId) {
         type: "live_diary_questions",
         questions: [],
     });
-}
-
-/**
- * Commit question-generation side effects for a session.
- * @param {Temporary} temporary
- * @param {string} sessionId
- * @param {string[]} askedQuestions
- * @param {Array<{text: string, intent: string}>} newQuestions
- * @param {number} cumulativeWordCount
- * @returns {Promise<void>}
- */
-async function commitQuestionGenerationResult(
-    temporary,
-    sessionId,
-    askedQuestions,
-    newQuestions,
-    cumulativeWordCount
-) {
-    const sublevel = liveDiarySessionSublevel(temporary, sessionId);
-    if (newQuestions.length === 0) {
-        await sublevel.put(WORDS_SINCE_LAST_QUESTION_KEY, {
-            type: "live_diary_string",
-            value: String(cumulativeWordCount),
-        });
-        return;
-    }
-
-    const existingPending = await readPendingQuestions(temporary, sessionId);
-    await sublevel.batch([
-        {
-            type: "put",
-            key: ASKED_QUESTIONS_KEY,
-            value: {
-                type: "live_diary_questions",
-                questions: [
-                    ...askedQuestions.map((text) => ({ text, intent: "" })),
-                    ...newQuestions.map((q) => ({ text: q.text, intent: "" })),
-                ],
-            },
-        },
-        {
-            type: "put",
-            key: PENDING_QUESTIONS_KEY,
-            value: {
-                type: "live_diary_questions",
-                questions: [...existingPending, ...newQuestions],
-            },
-        },
-        {
-            type: "put",
-            key: WORDS_SINCE_LAST_QUESTION_KEY,
-            value: {
-                type: "live_diary_string",
-                value: "0",
-            },
-        },
-    ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -524,7 +442,6 @@ async function commitPullState(temporary, sessionId, state) {
 // ---------------------------------------------------------------------------
 
 module.exports = {
-    LAST_FRAGMENT_FORMAT_KEY,
     LAST_WINDOW_TRANSCRIPT_KEY,
     RUNNING_TRANSCRIPT_KEY,
     ASKED_QUESTIONS_KEY,
@@ -533,8 +450,6 @@ module.exports = {
     TRANSCRIBED_UNTIL_MS_KEY,
     readCurrentSessionId,
     writeCurrentSessionId,
-    readLastFragment,
-    writeLastFragment,
     readStringField,
     writeStringField,
     readAskedQuestions,
@@ -542,7 +457,6 @@ module.exports = {
     readPendingQuestions,
     appendPendingQuestions,
     clearPendingQuestions,
-    commitQuestionGenerationResult,
     computeContentHash,
     writeFragmentIndex,
     readFragmentIndex,
