@@ -132,4 +132,4 @@ For each modifier, consider describing:
 
 ## Editing the Ontology
 
-Navigate to **Manage Ontology** from the home screen. You can add, edit, or remove type and modifier entries, then click **Save Ontology**. Changes take effect for all future AI computations. Cached calorie estimates for existing events are automatically invalidated when the ontology changes.
+Navigate to **Manage Ontology** from the home screen. You can add, edit, or remove type and modifier entries, then click **Save Ontology**. Changes take effect for all future AI computations. Cached calorie estimates for existing events are not automatically invalidated or recomputed just because the ontology changes.
