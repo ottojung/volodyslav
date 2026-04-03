@@ -14,6 +14,7 @@ const {
     validatePcmParams,
     validateUploadChunkParams,
     AudioSessionChunkValidationError,
+    AudioSessionConflictError,
 } = require("../audio_recording_session");
 const {
     computeContentHash,
@@ -97,6 +98,12 @@ async function ingestFragment(capabilities, sessionId, params) {
     }
 
     const session = await getSession(capabilities, sessionId);
+    if (session.status === "stopped") {
+        throw new AudioSessionConflictError(
+            `Cannot upload chunk to finalized session: ${sessionId}`,
+            sessionId
+        );
+    }
     const formatMismatch = session.sampleRateHz !== 0 && (
         session.sampleRateHz !== sampleRateHz ||
         session.channels !== channels ||

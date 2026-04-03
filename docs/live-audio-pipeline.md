@@ -56,7 +56,11 @@ The watermark is the boundary: everything before it has already been transcribed
 
 ### Stage 2: Gap Detection
 
-Scan the fragment timeline from the watermark to the current time (`deadlineMs = now`). Conceptually, the fragments should form a contiguous sequence. Holes in this sequence are **gaps**.
+Scan the fragment timeline from the watermark to the caller-provided `deadlineMs`. Conceptually, the fragments should form a contiguous sequence. Holes in this sequence are **gaps**.
+
+`deadlineMs` is an input to the pull cycle:
+- in `GET /live-questions`, the backend currently uses `Number.MAX_SAFE_INTEGER`, so all uploaded fragments are eligible regardless of wall-clock time;
+- other callers can pass a smaller deadline to bound processing to an earlier point.
 
 Each gap is tracked with a `firstObservedAtMs` timestamp. Gaps come in two states:
 

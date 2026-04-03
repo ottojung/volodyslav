@@ -6,8 +6,8 @@
  */
 
 const { ingestFragment } = require("../src/live_diary/ingest_fragment");
-const { writeTranscribedUntilMs } = require("../src/live_diary/session_state");
-const { startSession, uploadChunk } = require("../src/audio_recording_session");
+const { writeTranscribedUntilMs, readFragmentIndex } = require("../src/live_diary/session_state");
+const { startSession, stopSession, uploadChunk } = require("../src/audio_recording_session");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 const { buildTestPcmBuffer, TEST_PCM_FORMAT } = require("./pcm_helpers");
@@ -70,6 +70,13 @@ describe("ingestFragment — basic acceptance", () => {
         const caps = await makeCapabilitiesWithSession();
         const result = await ingestFragment(caps, SESSION_ID, makeParams({ startMs: 1_000, endMs: 1_000 }));
         expect(result.status).toBe("accepted");
+    });
+
+    it("throws conflict for a stopped session and does not write fragment index", async () => {
+        const caps = await makeCapabilitiesWithSession();
+        await stopSession(caps, SESSION_ID);
+        await expect(ingestFragment(caps, SESSION_ID, makeParams())).rejects.toThrow("Cannot upload chunk to finalized session");
+        expect(await readFragmentIndex(caps.temporary, SESSION_ID, 0)).toBeNull();
     });
 });
 
