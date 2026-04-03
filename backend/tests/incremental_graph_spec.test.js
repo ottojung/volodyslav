@@ -1394,14 +1394,6 @@ describe("Inspection interface", () => {
             },
         ]);
 
-        if (
-            typeof g.getFreshness !== "function" ||
-            typeof g.listMaterializedNodes !== "function"
-        ) {
-            // Optional interface; skip if absent
-            return;
-        }
-
         // missing before materialization
         const f0 = await g.getFreshness("b");
         expect(["missing", "up-to-date", "potentially-outdated"]).toContain(f0);
@@ -1431,11 +1423,6 @@ describe("Inspection interface", () => {
                 hasSideEffects: false,
             },
         ]);
-
-        if (typeof g.listMaterializedNodes !== "function") {
-            // Optional interface; skip if absent
-            return;
-        }
 
         // Initially empty
         const list0 = await g.listMaterializedNodes();
@@ -1470,11 +1457,6 @@ describe("Inspection interface", () => {
                 hasSideEffects: false,
             },
         ]);
-
-        if (typeof g.listMaterializedNodes !== "function") {
-            // Optional interface; skip if absent
-            return;
-        }
 
         // Initially empty
         const list0 = await g.listMaterializedNodes();

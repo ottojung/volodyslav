@@ -652,7 +652,7 @@ Three modes are defined:
 
 | Mode | Description |
 |------|-------------|
-| `observe` | Read-oriented operations including `invalidate`. Multiple `observe`-mode callers may execute concurrently. |
+| `observe` | Non-`pull` graph operations (inspection reads plus `invalidate`). Multiple `observe`-mode callers may execute concurrently. |
 | `pull` | Recomputation operations. Multiple `pull`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
 | `exclusive` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
 

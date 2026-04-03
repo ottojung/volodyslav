@@ -297,7 +297,7 @@ All `GET` endpoints in this API **must never** call `pull()`,
 `pullWithStatus()`, or any method that may trigger recomputation. They may only
 call:
 
-- `graph.headIndex` — to resolve schema info
+- `graph.getSchemas()` and `graph.getSchemaByHead(head)` — to enumerate schemas and resolve schema info
 - `graph.listMaterializedNodes()` — to enumerate instances
 - `graph.getFreshness(head, args)` — to get freshness of one node
 - `graph.getValue(head, args)` — to read a cached value without triggering recomputation
