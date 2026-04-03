@@ -182,7 +182,10 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         assemblerFragments.push({ ...frag, pcm });
     }
 
-    if (hasMissingBinaryInWindow) { await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps); return { status: "degraded_transcription" }; }
+    if (hasMissingBinaryInWindow) {
+        await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
+        return { status: "degraded_transcription" };
+    }
 
     let combinedPcm;
     try {
