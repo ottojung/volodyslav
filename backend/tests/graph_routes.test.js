@@ -60,14 +60,14 @@ function makeMockInterface({
 } = {}) {
     return {
         headIndex,
-        debugGetSchemas: jest.fn().mockImplementation(() => Array.from(headIndex.values())),
-        debugGetSchemaByHead: jest.fn().mockImplementation((head) => headIndex.get(head) ?? null),
-        debugListMaterializedNodes: jest.fn().mockResolvedValue(materialized),
-        debugGetFreshness: jest.fn().mockImplementation(async (head, args) => {
+        getSchemas: jest.fn().mockImplementation(() => Array.from(headIndex.values())),
+        getSchemaByHead: jest.fn().mockImplementation((head) => headIndex.get(head) ?? null),
+        listMaterializedNodes: jest.fn().mockResolvedValue(materialized),
+        getFreshness: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
             return freshness.get(key) ?? "missing";
         }),
-        debugGetValue: jest.fn().mockImplementation(async (head, args) => {
+        getValue: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
             return values.get(key);
         }),
@@ -105,11 +105,11 @@ function makeTestApp(mockGraph) {
     const iface = {
         isInitialized: jest.fn(() => mockGraph !== null),
         ensureInitialized: jest.fn().mockResolvedValue(undefined),
-        debugGetSchemas: jest.fn(() => mockGraph === null ? [] : mockGraph.debugGetSchemas()),
-        debugGetSchemaByHead: jest.fn((head) => mockGraph === null ? null : mockGraph.debugGetSchemaByHead(head)),
-        debugListMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.debugListMaterializedNodes()),
-        debugGetFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.debugGetFreshness(head, args)),
-        debugGetValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.debugGetValue(head, args)),
+        getSchemas: jest.fn(() => mockGraph === null ? [] : mockGraph.getSchemas()),
+        getSchemaByHead: jest.fn((head) => mockGraph === null ? null : mockGraph.getSchemaByHead(head)),
+        listMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.listMaterializedNodes()),
+        getFreshness: jest.fn(async (head, args) => mockGraph === null ? "missing" : await mockGraph.getFreshness(head, args)),
+        getValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.getValue(head, args)),
         pullGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.pull(head, args)),
         invalidateGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.invalidate(head, args)),
         getCreationTime: jest.fn(async (head, args) => {

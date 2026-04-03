@@ -84,9 +84,9 @@ describe("Incremental graph persistence and restart", () => {
             expect(computeCalls).toEqual(["B", "C"]);
 
             // All should be up-to-date
-            expect(await graph1.debugGetFreshness("A")).toBe("up-to-date");
-            expect(await graph1.debugGetFreshness("B")).toBe("up-to-date");
-            expect(await graph1.debugGetFreshness("C")).toBe("up-to-date");
+            expect(await graph1.getFreshness("A")).toBe("up-to-date");
+            expect(await graph1.getFreshness("B")).toBe("up-to-date");
+            expect(await graph1.getFreshness("C")).toBe("up-to-date");
 
             // *** RESTART ***
             computeCalls.length = 0;
@@ -97,8 +97,8 @@ describe("Incremental graph persistence and restart", () => {
             await graph2.invalidate("A");
 
             // B and C should be potentially-outdated
-            expect(await graph2.debugGetFreshness("B")).toBe("potentially-outdated");
-            expect(await graph2.debugGetFreshness("C")).toBe("potentially-outdated");
+            expect(await graph2.getFreshness("B")).toBe("potentially-outdated");
+            expect(await graph2.getFreshness("C")).toBe("potentially-outdated");
 
             // Pull C - B should return Unchanged and propagate up-to-date to C
             const result2 = await graph2.pull("C");
@@ -106,8 +106,8 @@ describe("Incremental graph persistence and restart", () => {
             expect(computeCalls).toEqual(["B"]); // Only B computed, C was marked up-to-date via propagation
 
             // Both B and C should be up-to-date now
-            expect(await graph2.debugGetFreshness("B")).toBe("up-to-date");
-            expect(await graph2.debugGetFreshness("C")).toBe("up-to-date");
+            expect(await graph2.getFreshness("B")).toBe("up-to-date");
+            expect(await graph2.getFreshness("C")).toBe("up-to-date");
 
             await db.close();
         });
@@ -151,14 +151,14 @@ describe("Incremental graph persistence and restart", () => {
 
             // Create graph with schema1
             const graph1 = makeIncrementalGraph(capabilities, db, schemas1);
-            const version1 = graph1.debugGetDbVersion();
+            const version1 = graph1.getDbVersion();
 
             cellA.value = { value: 10 };
             await graph1.invalidate("A");
 
             // Create graph with schema2 (different schema)
             const graph2 = makeIncrementalGraph(capabilities, db, schemas2);
-            const version2 = graph2.debugGetDbVersion();
+            const version2 = graph2.getDbVersion();
 
             // Both graphs use the same dbVersion since they share the same database
             expect(version1).toBe(version2);

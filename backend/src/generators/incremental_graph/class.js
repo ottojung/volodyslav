@@ -27,12 +27,12 @@ const {
 } = require("./compiled_node");
 const { makeGraphStorage } = require("./graph_storage");
 const {
-    internalDebugGetDbVersion,
-    internalDebugGetFreshness,
-    internalDebugGetSchemaByHead,
-    internalDebugGetSchemas,
-    internalDebugGetValue,
-    internalDebugListMaterializedNodes,
+    internalGetDbVersion,
+    internalGetFreshness,
+    internalGetSchemaByHead,
+    internalGetSchemas,
+    internalGetValue,
+    internalListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
 } = require("./inspection");
@@ -203,8 +203,8 @@ class IncrementalGraphClass {
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
-    async debugGetFreshness(head, bindings = []) {
-        return await internalDebugGetFreshness(this, head, bindings);
+    async getFreshness(head, bindings = []) {
+        return await internalGetFreshness(this, head, bindings);
     }
 
     /**
@@ -212,31 +212,31 @@ class IncrementalGraphClass {
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<ComputedValue | undefined>}
      */
-    async debugGetValue(head, bindings = []) {
-        return await internalDebugGetValue(this, head, bindings);
+    async getValue(head, bindings = []) {
+        return await internalGetValue(this, head, bindings);
     }
 
     /** @returns {Array<CompiledNode>} */
-    debugGetSchemas() {
-        return internalDebugGetSchemas(this);
+    getSchemas() {
+        return internalGetSchemas(this);
     }
 
     /**
      * @param {string} head
      * @returns {CompiledNode | null}
      */
-    debugGetSchemaByHead(head) {
-        return internalDebugGetSchemaByHead(this, head);
+    getSchemaByHead(head) {
+        return internalGetSchemaByHead(this, head);
     }
 
     /** @returns {Promise<Array<[string, Array<ConstValue>]>>} */
-    async debugListMaterializedNodes() {
-        return await internalDebugListMaterializedNodes(this);
+    async listMaterializedNodes() {
+        return await internalListMaterializedNodes(this);
     }
 
     /** @returns {string} */
-    debugGetDbVersion() {
-        return internalDebugGetDbVersion(this);
+    getDbVersion() {
+        return internalGetDbVersion(this);
     }
 
     /**

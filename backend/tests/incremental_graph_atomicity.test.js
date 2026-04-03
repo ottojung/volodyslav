@@ -43,7 +43,7 @@ describe("incremental_graph atomicity without external batches", () => {
 
         await expect(graph.pull("derived")).rejects.toThrow("derived-fails");
         expect(sourceComputations).toBe(1);
-        expect(await graph.debugGetFreshness("source")).toBe("up-to-date");
+        expect(await graph.getFreshness("source")).toBe("up-to-date");
         expect(await graph.pull("source")).toEqual({
             type: "all_events",
             events: [],

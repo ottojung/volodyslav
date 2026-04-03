@@ -119,13 +119,13 @@ describe("runDiarySummaryPipeline", () => {
         // Materialize transcription once, then simulate stale freshness.
         await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
         const graph = capabilities.interface._requireInitializedGraph();
-        const originalDebugGetFreshness = graph.debugGetFreshness.bind(graph);
-        const debugGetFreshnessSpy = jest.spyOn(graph, "debugGetFreshness");
-        debugGetFreshnessSpy.mockImplementation(async (head, args = []) => {
+        const originalGetFreshness = graph.getFreshness.bind(graph);
+        const getFreshnessSpy = jest.spyOn(graph, "getFreshness");
+        getFreshnessSpy.mockImplementation(async (head, args = []) => {
             if (head === "transcription" && args[0] === relativeAssetPath) {
                 return "potentially-outdated";
             }
-            return await originalDebugGetFreshness(head, args);
+            return await originalGetFreshness(head, args);
         });
 
         const result = await runDiarySummaryPipeline(capabilities);

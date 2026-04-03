@@ -30,7 +30,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
  */
-async function internalDebugGetFreshness(
+async function internalGetFreshness(
     incrementalGraph,
     head,
     bindings = []
@@ -60,7 +60,7 @@ async function internalDebugGetFreshness(
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<import('./types').ComputedValue | undefined>}
  */
-async function internalDebugGetValue(incrementalGraph, head, bindings = []) {
+async function internalGetValue(incrementalGraph, head, bindings = []) {
     return withObserveMode(incrementalGraph.sleeper, async () => {
         const nodeName = stringToNodeName(head);
         const compiledNode = incrementalGraph.headIndex.get(nodeName);
@@ -80,7 +80,7 @@ async function internalDebugGetValue(incrementalGraph, head, bindings = []) {
  * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @returns {Array<CompiledNode>}
  */
-function internalDebugGetSchemas(incrementalGraph) {
+function internalGetSchemas(incrementalGraph) {
     return Array.from(incrementalGraph.headIndex.values());
 }
 
@@ -89,7 +89,7 @@ function internalDebugGetSchemas(incrementalGraph) {
  * @param {string} head
  * @returns {CompiledNode | null}
  */
-function internalDebugGetSchemaByHead(incrementalGraph, head) {
+function internalGetSchemaByHead(incrementalGraph, head) {
     const nodeName = stringToNodeName(head);
     return incrementalGraph.headIndex.get(nodeName) ?? null;
 }
@@ -98,7 +98,7 @@ function internalDebugGetSchemaByHead(incrementalGraph, head) {
  * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @returns {Promise<Array<[string, Array<ConstValue>]>>}
  */
-async function internalDebugListMaterializedNodes(incrementalGraph) {
+async function internalListMaterializedNodes(incrementalGraph) {
     return withObserveMode(incrementalGraph.sleeper, async () => {
         const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
         return materializedNodes.map((nodeKey) => {
@@ -112,7 +112,7 @@ async function internalDebugListMaterializedNodes(incrementalGraph) {
  * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @returns {string}
  */
-function internalDebugGetDbVersion(incrementalGraph) {
+function internalGetDbVersion(incrementalGraph) {
     return versionToString(incrementalGraph.dbVersion);
 }
 
@@ -179,12 +179,12 @@ async function internalGetModificationTime(
 }
 
 module.exports = {
-    internalDebugGetDbVersion,
-    internalDebugGetFreshness,
-    internalDebugGetSchemaByHead,
-    internalDebugGetSchemas,
-    internalDebugGetValue,
-    internalDebugListMaterializedNodes,
+    internalGetDbVersion,
+    internalGetFreshness,
+    internalGetSchemaByHead,
+    internalGetSchemas,
+    internalGetValue,
+    internalListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
 };

@@ -332,7 +332,7 @@ async function internalIsTranscribed(interfaceInstance, eventId) {
 
     // At least one audio path must have an up-to-date transcription.
     for (const audioPath of audioListResult.audioPaths) {
-        const freshness = await graph.debugGetFreshness("transcription", [audioPath]);
+        const freshness = await graph.getFreshness("transcription", [audioPath]);
         if (freshness === "up-to-date") {
             return true;
         }
@@ -375,7 +375,7 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
     /** @type {string[]} */
     const transcribedParts = [];
     for (const audioPath of audioListResult.audioPaths) {
-        const freshness = await graph.debugGetFreshness("transcription", [audioPath]);
+        const freshness = await graph.getFreshness("transcription", [audioPath]);
         if (freshness !== "up-to-date") {
             continue;
         }

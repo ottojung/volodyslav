@@ -14,11 +14,11 @@ const {
  * @typedef {object} GraphRouteInterface
  * @property {() => boolean} isInitialized
  * @property {() => Promise<void>} ensureInitialized
- * @property {() => Array<CompiledNode>} debugGetSchemas
- * @property {(head: string) => CompiledNode | null} debugGetSchemaByHead
- * @property {() => Promise<Array<[string, Array<ConstValue>]>>} debugListMaterializedNodes
- * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} debugGetFreshness
- * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} debugGetValue
+ * @property {() => Array<CompiledNode>} getSchemas
+ * @property {(head: string) => CompiledNode | null} getSchemaByHead
+ * @property {() => Promise<Array<[string, Array<ConstValue>]>>} listMaterializedNodes
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} getFreshness
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} getValue
  * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<void>} invalidateGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
@@ -55,7 +55,7 @@ function formatSchema(compiledNode) {
 async function handleGetSchemas(capabilities, _req, res) {
     await capabilities.interface.ensureInitialized();
 
-    const schemas = capabilities.interface.debugGetSchemas().map(formatSchema);
+    const schemas = capabilities.interface.getSchemas().map(formatSchema);
     res.json(schemas);
 }
 
@@ -74,7 +74,7 @@ async function handleGetSchemaByHead(capabilities, req, res) {
         return;
     }
 
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;
@@ -92,10 +92,10 @@ async function handleGetSchemaByHead(capabilities, req, res) {
 async function handleGetNodes(capabilities, _req, res) {
     await capabilities.interface.ensureInitialized();
 
-    const materialized = await capabilities.interface.debugListMaterializedNodes();
+    const materialized = await capabilities.interface.listMaterializedNodes();
     const result = [];
     for (const [head, args] of materialized) {
-        const freshness = await capabilities.interface.debugGetFreshness(head, args);
+        const freshness = await capabilities.interface.getFreshness(head, args);
         if (freshness !== "missing") {
             const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
             result.push({ head, args, freshness, createdAt, modifiedAt });
@@ -120,7 +120,7 @@ async function handleGetNodesByHead(capabilities, req, res) {
         return;
     }
 
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;
@@ -128,21 +128,21 @@ async function handleGetNodesByHead(capabilities, req, res) {
 
     if (compiledNode.arity === 0) {
         // Arity-0: return single instance with value
-        const freshness = await capabilities.interface.debugGetFreshness(head, []);
+        const freshness = await capabilities.interface.getFreshness(head, []);
         if (freshness === "missing") {
             res.status(404).json({ error: `Node not materialized: ${JSON.stringify(head)}` });
             return;
         }
-        const value = await capabilities.interface.debugGetValue(head, []);
+        const value = await capabilities.interface.getValue(head, []);
         const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, []);
         res.json({ head, args: [], freshness, value, createdAt, modifiedAt });
     } else {
         // Arity-N: return list of all materialized instances without values
-        const materialized = await capabilities.interface.debugListMaterializedNodes();
+        const materialized = await capabilities.interface.listMaterializedNodes();
         const result = [];
         for (const [nodeHead, args] of materialized) {
             if (nodeHead === head) {
-                const freshness = await capabilities.interface.debugGetFreshness(nodeHead, args);
+                const freshness = await capabilities.interface.getFreshness(nodeHead, args);
                 if (freshness !== "missing") {
                     const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, nodeHead, args);
                     result.push({ head, args, freshness, createdAt, modifiedAt });
@@ -168,7 +168,7 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
         return;
     }
 
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;
@@ -187,14 +187,14 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
         return;
     }
 
-    const freshness = await capabilities.interface.debugGetFreshness(head, args);
+    const freshness = await capabilities.interface.getFreshness(head, args);
     if (freshness === "missing") {
         const displayKey = `${head}(${args.join(",")})`;
         res.status(404).json({ error: `Node not materialized: ${JSON.stringify(displayKey)}` });
         return;
     }
 
-    const value = await capabilities.interface.debugGetValue(head, args);
+    const value = await capabilities.interface.getValue(head, args);
     const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
     res.json({ head, args, freshness, value, createdAt, modifiedAt });
 }
@@ -211,7 +211,7 @@ async function handlePullNodeByHead(capabilities, req, res) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
     }
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;
@@ -236,7 +236,7 @@ async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
         return;
     }
     const args = getArgsFromRequest(req);
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;
@@ -264,7 +264,7 @@ async function handleInvalidateNodeByHead(capabilities, req, res) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
     }
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;
@@ -289,7 +289,7 @@ async function handleInvalidateNodeByHeadAndArgs(capabilities, req, res) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
     }
-    const compiledNode = capabilities.interface.debugGetSchemaByHead(head);
+    const compiledNode = capabilities.interface.getSchemaByHead(head);
     if (compiledNode === null) {
         res.status(404).json({ error: `Unknown node: ${JSON.stringify(head)}` });
         return;

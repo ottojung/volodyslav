@@ -43,7 +43,7 @@ function decodeUrlArg(segment) {
  */
 /**
  * @typedef {object} PullInterface
- * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} debugGetFreshness
+ * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} getFreshness
  * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getCreationTime
  * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getModificationTime
@@ -138,7 +138,7 @@ function getArgsFromRequest(req) {
  */
 async function pullNode(capabilities, head, args) {
     const value = await capabilities.interface.pullGraphNode(head, args);
-    const freshness = await capabilities.interface.debugGetFreshness(head, args);
+    const freshness = await capabilities.interface.getFreshness(head, args);
     const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
     return { head, args, freshness, value, createdAt, modifiedAt };
 }

@@ -298,10 +298,10 @@ All `GET` endpoints in this API **must never** call `pull()`,
 call:
 
 - `graph.headIndex` — to resolve schema info
-- `graph.debugListMaterializedNodes()` — to enumerate instances
-- `graph.debugGetFreshness(head, args)` — to get freshness of one node
-- `graph.debugGetValue(head, args)` — to read a cached value without triggering recomputation
-- `graph.debugGetTimestamps(head, args)` — to read timestamps without triggering recomputation
+- `graph.listMaterializedNodes()` — to enumerate instances
+- `graph.getFreshness(head, args)` — to get freshness of one node
+- `graph.getValue(head, args)` — to read a cached value without triggering recomputation
+- `graph.getCreationTime(head, args)` and `graph.getModificationTime(head, args)` — to read timestamps without triggering recomputation
 
 This protects against accidentally triggering expensive computors (e.g. OpenAI
 API calls for `calories`) merely by browsing the inspection endpoints. The

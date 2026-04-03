@@ -632,7 +632,7 @@ describe("IncrementalGraph concurrency", () => {
 
             let inspectionCompleted = false;
             const inspectionPromise = graph
-                .debugListMaterializedNodes()
+                .listMaterializedNodes()
                 .then(() => {
                     inspectionCompleted = true;
                 });
@@ -673,7 +673,7 @@ describe("IncrementalGraph concurrency", () => {
             const invalidatePromise = graph.invalidate("source").then(() => {
                 invalidateDone = true;
             });
-            const inspectPromise = graph.debugGetValue("source").then(() => {
+            const inspectPromise = graph.getValue("source").then(() => {
                 inspectDone = true;
             });
             await new Promise((resolve) => setTimeout(resolve, 20));
