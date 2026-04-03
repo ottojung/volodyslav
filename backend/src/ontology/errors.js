@@ -1,5 +1,5 @@
 /**
- * Base class for config deserialization errors
+ * Base class for ontology deserialization errors
  */
 class TryDeserializeError extends Error {
     /**

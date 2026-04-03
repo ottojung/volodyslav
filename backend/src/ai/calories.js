@@ -100,12 +100,13 @@ function makeCaloriesEntryText(targetEvent, contextEvents) {
 }
 
 /**
- * Extracts the event type from an event input string (first word before space or end).
+ * Extracts the event type from an event input string.
+ * The type is the first whitespace-delimited word (e.g. "food" from "food: pizza").
  * @param {SerializedEvent} event
  * @returns {string}
  */
 function extractEventType(event) {
-    return event.input.split(" ")[0] || "";
+    return event.input.split(" ")[0];
 }
 
 /**

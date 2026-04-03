@@ -132,6 +132,9 @@ function App() {
           <Link to="/config">
             <Button colorPalette="gray" variant="outline" w="200px">Manage Config</Button>
           </Link>
+          <Link to="/ontology">
+            <Button colorPalette="teal" variant="outline" w="200px">Manage Ontology</Button>
+          </Link>
         </VStack>
 
         <Separator />
