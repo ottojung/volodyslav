@@ -79,6 +79,7 @@ async function seedRangeWithPreAgedGap(capabilities, nowMs = 1_000_000) {
         endMs: 30_000,
         contentHash: "frag-1",
         ingestedAtMs: nowMs - 4_000,
+        // Intentional mismatch vs sequence 0 to force assembler format failure.
         sampleRateHz: 44_100,
         channels: TEST_PCM_FORMAT.channels,
         bitDepth: TEST_PCM_FORMAT.bitDepth,
