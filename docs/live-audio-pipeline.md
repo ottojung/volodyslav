@@ -144,7 +144,7 @@ Previously asked questions are passed to the AI so it does not repeat them.
 
 All state updates — the watermark, gap list, last-window transcript, running transcript, last-range metadata, and (optionally) question state — are written in a **single LevelDB batch**. This prevents partial writes: a process crash cannot leave the watermark advanced without the corresponding transcript or question state.
 
-If question generation fails, **no state is committed** (including the watermark), so the next pull retries the same audio range and attempts question generation again.
+If question generation fails, the pipeline does **not** commit the watermark, transcripts, last-range metadata, or question state, so the next pull retries the same audio range and attempts question generation again. Updated `known_gaps` may still be persisted on degraded exits so retry behavior keeps accurate gap-aging information.
 
 ---
 

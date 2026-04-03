@@ -8,7 +8,13 @@
  * @module live_diary/ingest_fragment
  */
 
-const { getSession, markSessionExists, validatePcmParams } = require("../audio_recording_session");
+const {
+    getSession,
+    markSessionExists,
+    validatePcmParams,
+    validateUploadChunkParams,
+    AudioSessionChunkValidationError,
+} = require("../audio_recording_session");
 const {
     computeContentHash,
     writeFragmentIndex,
@@ -68,7 +74,19 @@ async function ingestFragment(capabilities, sessionId, params) {
     const { temporary } = capabilities;
     const { pcm, sampleRateHz, channels, bitDepth, startMs, endMs, sequence } = params;
 
-    // Validate PCM parameters.
+    // Validate the same shape constraints as uploadChunk so ingestion and
+    // binary storage cannot disagree about whether a fragment is valid.
+    const uploadError = validateUploadChunkParams(params);
+    if (uploadError !== null) {
+        capabilities.logger.logWarning(
+            { sessionId, sequence, error: uploadError },
+            "Live diary ingest: invalid upload parameters"
+        );
+        return { status: "invalid_pcm" };
+    }
+
+    // Preserve explicit PCM validation log message for compatibility with
+    // existing diagnostics.
     const pcmError = validatePcmParams(pcm, sampleRateHz, channels, bitDepth);
     if (pcmError !== null) {
         capabilities.logger.logWarning(
@@ -78,16 +96,18 @@ async function ingestFragment(capabilities, sessionId, params) {
         return { status: "invalid_pcm" };
     }
 
-    // Validate timing.
-    if (endMs < startMs) {
-        capabilities.logger.logWarning(
-            { sessionId, sequence, startMs, endMs },
-            "Live diary ingest: fragment has invalid duration (endMs < startMs)"
+    const session = await getSession(capabilities, sessionId);
+    const formatMismatch = session.sampleRateHz !== 0 && (
+        session.sampleRateHz !== sampleRateHz ||
+        session.channels !== channels ||
+        session.bitDepth !== bitDepth
+    );
+    if (formatMismatch) {
+        throw new AudioSessionChunkValidationError(
+            `PCM format mismatch: expected ${session.sampleRateHz}Hz/${session.channels}ch/${session.bitDepth}bit, ` +
+            `got ${sampleRateHz}Hz/${channels}ch/${bitDepth}bit`
         );
-        return { status: "invalid_pcm" };
     }
-
-    await getSession(capabilities, sessionId);
 
     const contentHash = computeContentHash(pcm);
 

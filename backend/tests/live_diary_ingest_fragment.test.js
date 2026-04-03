@@ -7,7 +7,7 @@
 
 const { ingestFragment } = require("../src/live_diary/ingest_fragment");
 const { writeTranscribedUntilMs } = require("../src/live_diary/session_state");
-const { startSession } = require("../src/audio_recording_session");
+const { startSession, uploadChunk } = require("../src/audio_recording_session");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 const { buildTestPcmBuffer, TEST_PCM_FORMAT } = require("./pcm_helpers");
@@ -57,6 +57,12 @@ describe("ingestFragment — basic acceptance", () => {
     it("returns invalid_pcm when endMs < startMs", async () => {
         const caps = await makeCapabilitiesWithSession();
         const result = await ingestFragment(caps, SESSION_ID, makeParams({ startMs: 5_000, endMs: 0 }));
+        expect(result.status).toBe("invalid_pcm");
+    });
+
+    it("returns invalid_pcm when sequence is out of upload bounds", async () => {
+        const caps = await makeCapabilitiesWithSession();
+        const result = await ingestFragment(caps, SESSION_ID, makeParams({ sequence: 1_000_000 }));
         expect(result.status).toBe("invalid_pcm");
     });
 
@@ -127,6 +133,14 @@ describe("ingestFragment — non-identical duplicate below watermark", () => {
             makeParams({ pcm: differentPcm, startMs: 10_000, endMs: 20_000, sequence: 1 })
         );
         expect(result.status).toBe("accepted");
+    });
+
+    it("throws on format mismatch with established audio session format", async () => {
+        const caps = await makeCapabilitiesWithSession();
+        await uploadChunk(caps, SESSION_ID, makeParams({ sampleRateHz: 16_000, channels: 1, bitDepth: 16 }));
+        await expect(
+            ingestFragment(caps, SESSION_ID, makeParams({ sequence: 1, sampleRateHz: 44_100, channels: 1, bitDepth: 16 }))
+        ).rejects.toThrow("PCM format mismatch");
     });
 });
 
