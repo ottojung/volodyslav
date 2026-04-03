@@ -118,27 +118,33 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, i
                     sequence: sequenceNum,
                 });
 
-                // Store fragment timing metadata in the live diary index (ingestion-only,
-                // no AI processing).  Errors here are non-fatal: the binary is already stored
-                // and the fragment will still be assembled during the next pull cycle.
-                ingestLiveDiaryFragment(capabilities, sessionId, {
-                    pcm: pcmFile.buffer,
-                    sampleRateHz: sampleRateHzNum,
-                    channels: channelsNum,
-                    bitDepth: bitDepthNum,
-                    startMs: startMsNum,
-                    endMs: endMsNum,
-                    sequence: sequenceNum,
-                }).catch((/** @type {unknown} */ err) => {
+                // Await ingestion so that the fragment index entry is durable before
+                // this response is sent.  The client may immediately call /live-questions,
+                // which triggers a pull cycle — if the index entry is not yet written the
+                // pull cycle will miss this fragment.
+                try {
+                    await ingestLiveDiaryFragment(capabilities, sessionId, {
+                        pcm: pcmFile.buffer,
+                        sampleRateHz: sampleRateHzNum,
+                        channels: channelsNum,
+                        bitDepth: bitDepthNum,
+                        startMs: startMsNum,
+                        endMs: endMsNum,
+                        sequence: sequenceNum,
+                    });
+                } catch (ingestErr) {
+                    // Non-fatal: the binary PCM is already stored by pushAudioFragment.
+                    // The fragment index entry may be missing, causing it to be absent
+                    // from the next pull cycle, but this is recoverable on retry.
                     capabilities.logger.logError(
                         {
                             sessionId,
                             sequence: sequenceNum,
-                            error: err instanceof Error ? err.message : String(err),
+                            error: ingestErr instanceof Error ? ingestErr.message : String(ingestErr),
                         },
                         "push-pcm: live diary ingestion failed (non-fatal)"
                     );
-                });
+                }
 
                 capabilities.logger.logDebug(
                     {

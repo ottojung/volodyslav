@@ -1,7 +1,7 @@
 /**
  * Internal pull cycle implementation for the cadence-agnostic live diary pipeline.
  *
- * Contains the core `_runPullCycle` function (runs with the per-session lock held).
+ * Contains the core `_runPullCycle` function.
  * I/O helpers (`transcribeBuffer`, `loadFragmentPcm`) live in `pull_helpers.js`.
  *
  * This module is package-private: it must only be imported by `pull_service.js`.
@@ -19,11 +19,10 @@ const {
     readAskedQuestions,
     readPendingQuestions,
     commitQuestionGenerationResult,
+    commitPullState,
     listFragmentIndex,
     readTranscribedUntilMs,
-    writeTranscribedUntilMs,
     readLastTranscribedRange,
-    writeLastTranscribedRange,
     readKnownGaps,
     writeKnownGaps,
 } = require("./session_state");
@@ -47,6 +46,7 @@ const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
+/** @typedef {import('./session_state').LastTranscribedRange} LastTranscribedRange */
 
 /**
  * @typedef {object} Capabilities
@@ -58,7 +58,7 @@ const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
  */
 
 /**
- * @typedef {'ok' | 'no_candidates' | 'blocked_at_watermark' | 'lock_held'
+ * @typedef {'ok' | 'no_candidates' | 'blocked_at_watermark'
  *   | 'degraded_transcription' | 'degraded_question_generation'} PullStatus
  */
 
@@ -69,11 +69,11 @@ const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
  */
 
 // ---------------------------------------------------------------------------
-// Main pull cycle (runs with lock held)
+// Main pull cycle
 // ---------------------------------------------------------------------------
 
 /**
- * Internal pull cycle implementation (runs with lock held).
+ * Internal pull cycle implementation.
  * @param {Capabilities} capabilities
  * @param {string} sessionId
  * @param {number} deadlineMs
@@ -230,10 +230,19 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         "Pull cycle: transcription result"
     );
 
+    // Compute the new last-range metadata (clamped to the actual new region).
+    const newLastRange = _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs);
+
     if (!newWindowTranscript) {
-        await writeTranscribedUntilMs(temporary, sessionId, processableEndMs);
-        await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
-        await _updateLastRange(temporary, sessionId, candidates, transcribedUntilMs, processableEndMs);
+        // Silent window — commit watermark + gaps but not transcript changes.
+        const existingRunning = await readStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY);
+        await commitPullState(temporary, sessionId, {
+            transcribedUntilMs: processableEndMs,
+            knownGaps: gapScan.updatedGaps,
+            lastRange: newLastRange,
+            lastWindowTranscript: "",
+            runningTranscript: existingRunning,
+        });
         capabilities.logger.logDebug(
             { sessionId },
             "Pull cycle: silent window — watermark advanced without transcript update"
@@ -278,15 +287,6 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         ? programmaticRecombination(runningTranscript, merged)
         : merged;
 
-    capabilities.logger.logDebug(
-        {
-            sessionId,
-            runningTranscriptLength: updatedRunningTranscript.length,
-            suffix: updatedRunningTranscript.slice(-532),
-        },
-        "Pull cycle: running transcript updated (532-char suffix shown)"
-    );
-
     // 10. Word count and question generation.
     const newTranscriptPortion =
         runningTranscript && updatedRunningTranscript.startsWith(runningTranscript)
@@ -296,13 +296,18 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     const storedWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
     const cumulativeWordCount = (parseInt(storedWordCount, 10) || 0) + fragmentWordCount;
 
-    await writeStringField(temporary, sessionId, LAST_WINDOW_TRANSCRIPT_KEY, newWindowTranscript);
-    await writeStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY, updatedRunningTranscript);
-    await writeTranscribedUntilMs(temporary, sessionId, processableEndMs);
-    await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
-    await _updateLastRange(temporary, sessionId, candidates, transcribedUntilMs, processableEndMs);
+    // Shared state bundle to commit atomically once questions are handled.
+    /** @type {import('./session_state').PullStateCommit} */
+    const stateBundle = {
+        transcribedUntilMs: processableEndMs,
+        knownGaps: gapScan.updatedGaps,
+        lastRange: newLastRange,
+        lastWindowTranscript: newWindowTranscript,
+        runningTranscript: updatedRunningTranscript,
+    };
 
     if (cumulativeWordCount < 10) {
+        await commitPullState(temporary, sessionId, stateBundle);
         await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
         capabilities.logger.logDebug(
             { sessionId, cumulativeWordCount },
@@ -313,6 +318,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
 
     const existingPending = await readPendingQuestions(temporary, sessionId);
     if (existingPending.length > 0) {
+        await commitPullState(temporary, sessionId, stateBundle);
         await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
         capabilities.logger.logDebug(
             { sessionId, pendingCount: existingPending.length },
@@ -336,7 +342,9 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
             stepTimeoutMs
         );
     } catch (error) {
-        await writeStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY, String(cumulativeWordCount));
+        // Do NOT advance the watermark on question generation failure so the
+        // next pull cycle can retry transcription + question generation for
+        // the same audio range.
         if (isLiveDiaryStepTimeoutError(error)) {
             capabilities.logger.logWarning(
                 { sessionId, timeoutMs: error.timeoutMs, step: error.step },
@@ -358,6 +366,8 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         "Pull cycle: question generation result"
     );
 
+    // Commit all pull state + questions atomically only after successful generation.
+    await commitPullState(temporary, sessionId, stateBundle);
     await commitQuestionGenerationResult(
         temporary,
         sessionId,
@@ -370,27 +380,28 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
 }
 
 /**
- * Persist the last-transcribed-range metadata from the current pull's new fragments.
- * @param {Temporary} temporary
- * @param {string} sessionId
+ * Compute the last-transcribed-range metadata from the current pull's fragments.
+ * Clamps firstStartMs to transcribedUntilMs so that already-transcribed audio
+ * is not counted in the new region (which would inflate the overlap estimate).
+ * Returns null if there are no new fragments in the processable range.
  * @param {import('../temporary/database/types').LiveDiaryFragmentIndexEntry[]} candidates
  * @param {number} transcribedUntilMs
  * @param {number} processableEndMs
- * @returns {Promise<void>}
+ * @returns {LastTranscribedRange | null}
  */
-async function _updateLastRange(temporary, sessionId, candidates, transcribedUntilMs, processableEndMs) {
+function _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs) {
     const newFragments = candidates.filter(
         (f) => f.startMs < processableEndMs && f.endMs > transcribedUntilMs
     );
-    if (newFragments.length === 0) return;
+    if (newFragments.length === 0) return null;
     const firstNewFrag = newFragments[0];
     const lastNewFrag = newFragments[newFragments.length - 1];
-    if (firstNewFrag === undefined || lastNewFrag === undefined) return;
-    await writeLastTranscribedRange(temporary, sessionId, {
-        firstStartMs: firstNewFrag.startMs,
+    if (firstNewFrag === undefined || lastNewFrag === undefined) return null;
+    return {
+        firstStartMs: Math.max(firstNewFrag.startMs, transcribedUntilMs),
         lastEndMs: Math.min(lastNewFrag.endMs, processableEndMs),
         fragmentCount: newFragments.length,
-    });
+    };
 }
 
 module.exports = {

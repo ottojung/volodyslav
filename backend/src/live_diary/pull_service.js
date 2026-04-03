@@ -1,10 +1,13 @@
 /**
  * Lazy pull orchestrator for the cadence-agnostic live diary pipeline.
  *
- * Exports `pullLiveDiaryProcessing` — the public entry point that:
- *   1. Acquires a per-session lock.
- *   2. Delegates to `_runPullCycle` (see pull_cycle.js).
- *   3. Releases the lock in the finally block.
+ * Exports `pullLiveDiaryProcessing` — the public entry point that delegates
+ * to `_runPullCycle` (see pull_cycle.js).
+ *
+ * Mutual exclusion is guaranteed by the caller: `pullLiveDiaryProcessing`
+ * is always invoked through the per-session `processingQueues` promise chain
+ * in `audio_recording_session_analysis_queue.js`, so concurrent pulls for the
+ * same session cannot interleave within a single Node.js process.
  *
  * No eager per-push transcription.  Pull is triggered by the questioner
  * deadline (GET /live-questions endpoint).
@@ -12,10 +15,6 @@
  * @module live_diary/pull_service
  */
 
-const {
-    acquirePullLock,
-    releasePullLock,
-} = require("./session_state");
 const {
     DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS,
 } = require("./step_timeout");
@@ -39,7 +38,7 @@ const { _runPullCycle } = require("./pull_cycle");
  */
 
 /**
- * @typedef {'ok' | 'no_candidates' | 'blocked_at_watermark' | 'lock_held'
+ * @typedef {'ok' | 'no_candidates' | 'blocked_at_watermark'
  *   | 'degraded_transcription' | 'degraded_question_generation'} PullStatus
  */
 
@@ -55,6 +54,11 @@ const { _runPullCycle } = require("./pull_cycle");
  * All state changes are committed atomically at the end of a successful pull.
  * On any failure the watermark is NOT advanced, ensuring idempotent retry.
  *
+ * Mutual exclusion: callers must ensure only one pull runs per session at a
+ * time.  The `enqueuePendingQuestionsFetch` in
+ * `audio_recording_session_analysis_queue.js` provides this guarantee via the
+ * per-session `processingQueues` promise chain.
+ *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
  * @param {number} deadlineMs - Upper bound of the data range to process.
@@ -68,24 +72,8 @@ async function pullLiveDiaryProcessing(
     deadlineMs,
     stepTimeoutMs = DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS
 ) {
-    const { temporary } = capabilities;
     const nowMs = capabilities.datetime.now().toMillis();
-
-    // 1. Acquire lock.
-    const locked = await acquirePullLock(temporary, sessionId, nowMs);
-    if (!locked) {
-        capabilities.logger.logDebug(
-            { sessionId, deadlineMs },
-            "Pull cycle skipped: lock already held by another pull"
-        );
-        return { status: "lock_held" };
-    }
-
-    try {
-        return await _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTimeoutMs);
-    } finally {
-        await releasePullLock(temporary, sessionId);
-    }
+    return _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTimeoutMs);
 }
 
 module.exports = {

@@ -460,7 +460,47 @@ async function writeKnownGaps(temporary, sessionId, gaps) {
 }
 
 // ---------------------------------------------------------------------------
-// Pull lock
+// Atomic pull-state commit
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {object} PullStateCommit
+ * @property {number} transcribedUntilMs - New watermark.
+ * @property {import('../temporary/database/types').LiveDiaryGap[]} knownGaps - Updated gap list.
+ * @property {LastTranscribedRange | null} lastRange - Updated last-range metadata (null to leave unchanged).
+ * @property {string} lastWindowTranscript - New last-window transcript.
+ * @property {string} runningTranscript - New running transcript.
+ */
+
+/**
+ * Atomically commit all pull-cycle state updates in a single batch.
+ *
+ * Writing all fields in one batch ensures that a crash between individual
+ * puts cannot leave the session in an inconsistent state (e.g., watermark
+ * advanced but transcript not updated).
+ *
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @param {PullStateCommit} state
+ * @returns {Promise<void>}
+ */
+async function commitPullState(temporary, sessionId, state) {
+    const sublevel = liveDiarySessionSublevel(temporary, sessionId);
+    /** @type {Array<{type: 'put', key: import('../temporary/database/types').TempKey, value: import('../temporary/database/types').TempEntry} | {type: 'del', key: import('../temporary/database/types').TempKey}>} */
+    const ops = [
+        { type: "put", key: TRANSCRIBED_UNTIL_MS_KEY, value: { type: "live_diary_string", value: String(state.transcribedUntilMs) } },
+        { type: "put", key: KNOWN_GAPS_KEY, value: { type: "live_diary_gaps", gaps: state.knownGaps } },
+        { type: "put", key: LAST_WINDOW_TRANSCRIPT_KEY, value: { type: "live_diary_string", value: state.lastWindowTranscript } },
+        { type: "put", key: RUNNING_TRANSCRIPT_KEY, value: { type: "live_diary_string", value: state.runningTranscript } },
+    ];
+    if (state.lastRange !== null) {
+        ops.push({ type: "put", key: LAST_TRANSCRIBED_RANGE_KEY, value: { type: "live_diary_last_range", firstStartMs: state.lastRange.firstStartMs, lastEndMs: state.lastRange.lastEndMs, fragmentCount: state.lastRange.fragmentCount } });
+    }
+    await sublevel.batch(ops);
+}
+
+// ---------------------------------------------------------------------------
+// Pull lock (kept for potential future use / crash recovery)
 // ---------------------------------------------------------------------------
 
 /**
@@ -528,6 +568,7 @@ module.exports = {
     writeLastTranscribedRange,
     readKnownGaps,
     writeKnownGaps,
+    commitPullState,
     acquirePullLock,
     releasePullLock,
 };

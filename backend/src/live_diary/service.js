@@ -18,11 +18,6 @@
  * @module live_diary/service
  */
 
-const os = require("os");
-const path = require("path");
-const fsp = require("fs/promises");
-const fs = require("fs");
-const crypto = require("crypto");
 const {
     markSessionExists,
     validatePcmParams,
@@ -41,7 +36,7 @@ const {
     readPendingQuestions,
     commitQuestionGenerationResult,
 } = require("./session_state");
-const { buildWav, extensionForMime } = require("./wav_utils");
+const { buildWav } = require("./wav_utils");
 const {
     DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS,
     isLiveDiaryStepTimeoutError,
@@ -52,6 +47,7 @@ const {
     appendRemovedTailWord,
     deduplicateQuestions,
 } = require("./text_processing");
+const { transcribeBuffer } = require("./transcribe_utils");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
@@ -68,54 +64,6 @@ const {
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  */
-
-
-// ---------------------------------------------------------------------------
-// Transcription helper
-// ---------------------------------------------------------------------------
-
-/**
- * Write a Buffer to a named temp file, transcribe it, then delete the temp file.
- * Returns the raw transcript string (trimmed).
- * @param {Buffer} audioBuffer
- * @param {string} mimeType
- * @param {Capabilities} capabilities
- * @returns {Promise<string>}
- */
-async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
-    const ext = extensionForMime(mimeType);
-    const randomHex = crypto.randomBytes(8).toString("hex");
-    const tmpFile = path.join(os.tmpdir(), `diary-live-${randomHex}.${ext}`);
-
-    try {
-        await fsp.writeFile(tmpFile, audioBuffer);
-
-        const fileStream = fs.createReadStream(tmpFile);
-
-        // Wait for the file to be opened before calling the transcription service.
-        await new Promise((resolve, reject) => {
-            fileStream.once("open", resolve);
-            fileStream.once("error", reject);
-        });
-
-        let result;
-        try {
-            result = await capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream);
-        } finally {
-            fileStream.destroy();
-        }
-
-        return result.structured.transcript.trim();
-    } finally {
-        fsp.unlink(tmpFile).catch(() => {
-            // Best-effort cleanup.
-        });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Question deduplication
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Public service function

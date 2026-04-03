@@ -43,7 +43,6 @@ const GAP_ABANDON_MS = 30_000;
  * @param {number} params.deadlineMs - Upper bound for this pull (usually Date.now()).
  * @param {LiveDiaryGap[]} params.knownGaps - Previously observed gaps.
  * @param {number} params.nowMs - Current wall-clock time (used for gap aging).
- * @param {number} [params.gapWaitMs] - Override for GAP_WAIT_MS.
  * @param {number} [params.gapAbandonMs] - Override for GAP_ABANDON_MS.
  * @returns {GapScanResult}
  */
@@ -54,7 +53,6 @@ function scanGaps(params) {
         deadlineMs,
         knownGaps,
         nowMs,
-        gapWaitMs = GAP_WAIT_MS,
         gapAbandonMs = GAP_ABANDON_MS,
     } = params;
 
@@ -72,9 +70,11 @@ function scanGaps(params) {
         };
     }
 
-    // Build a mutable copy of knownGaps keyed by "startMs-endMs" for fast lookup.
-    /** @type {Map<string, LiveDiaryGap>} */
-    const gapMap = new Map(knownGaps.map((g) => [`${g.startMs}-${g.endMs}`, { ...g }]));
+    // Build a mutable copy of knownGaps keyed by startMs for fast lookup.
+    // Using startMs as the key allows correct matching even when a later fragment
+    // partially fills a previously observed gap (changing only the effective endMs).
+    /** @type {Map<number, LiveDiaryGap>} */
+    const gapMap = new Map(knownGaps.map((g) => [g.startMs, { ...g }]));
 
     let coveredUntilMs = transcribedUntilMs;
     let hasDegradedGap = false;
@@ -90,8 +90,9 @@ function scanGaps(params) {
         }
 
         // There is a gap: [coveredUntilMs, fragStart).
-        const gapKey = `${coveredUntilMs}-${fragStart}`;
-        let gap = gapMap.get(gapKey);
+        // Key by startMs only so that partial fills update the existing record
+        // instead of creating a fresh entry with a reset firstObservedAtMs.
+        let gap = gapMap.get(coveredUntilMs);
 
         if (gap === undefined) {
             // First observation — register as waiting.
@@ -101,7 +102,16 @@ function scanGaps(params) {
                 firstObservedAtMs: nowMs,
                 status: "waiting",
             };
-            gapMap.set(gapKey, gap);
+            gapMap.set(coveredUntilMs, gap);
+        } else {
+            // Update endMs to reflect the new (possibly smaller) gap extent because
+            // a fragment partially filled the gap.  Note: if the original gap was
+            // [A, C] and a new fragment covers [B, C] (B > A), we now track [A, B].
+            // Any remaining tail [D, C] where D > fragEnd will be detected as a
+            // separate, fresh gap entry when the scan advances past fragEnd in a
+            // future iteration — losing the original aging history for that tail.
+            // This is an acceptable tradeoff for the initial implementation.
+            gap.endMs = fragStart;
         }
 
         const gapAge = nowMs - gap.firstObservedAtMs;
@@ -109,7 +119,6 @@ function scanGaps(params) {
         if (gap.status === "waiting" && gapAge >= gapAbandonMs) {
             // Age the gap to abandoned.
             gap.status = "abandoned";
-            gapMap.set(gapKey, gap);
         }
 
         if (gap.status === "abandoned") {
@@ -119,16 +128,8 @@ function scanGaps(params) {
             continue;
         }
 
-        // Gap is still waiting.
-        if (gapAge < gapWaitMs) {
-            // Too young — block progress.
-            if (coveredUntilMs === transcribedUntilMs) {
-                blockedAtWatermark = true;
-            }
-            break;
-        }
-
-        // Gap age is between gapWaitMs and gapAbandonMs — still waiting, block progress.
+        // Gap is still waiting (either too young or past gapWaitMs but not yet abandoned).
+        // Either way, stop here and block progress.
         if (coveredUntilMs === transcribedUntilMs) {
             blockedAtWatermark = true;
         }
