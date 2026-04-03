@@ -26,8 +26,8 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
+const { ingestFragment } = require("../live_diary");
 const {
-    enqueueAnalysis,
     enqueueInitialQuestions,
     enqueuePendingQuestionsFetch,
     dequeueSession,
@@ -101,7 +101,7 @@ function makeRouter(capabilities) {
         capabilities,
         upload,
         pushAudioFragment,
-        enqueueAnalysis,
+        ingestFragment,
         isAudioSessionChunkValidationError,
         isAudioSessionNotFoundError,
         isAudioSessionConflictError

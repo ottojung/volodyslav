@@ -12,12 +12,12 @@
  * @param {AudioRouterCapabilities} capabilities
  * @param {import('multer').Multer} upload
  * @param {Function} pushAudioFragment
- * @param {Function} enqueueAnalysis
+ * @param {Function} ingestLiveDiaryFragment
  * @param {Function} isAudioSessionChunkValidationError
  * @param {Function} isAudioSessionNotFoundError
  * @param {Function} isAudioSessionConflictError
  */
-function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, enqueueAnalysis, isAudioSessionChunkValidationError, isAudioSessionNotFoundError, isAudioSessionConflictError) {
+function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, ingestLiveDiaryFragment, isAudioSessionChunkValidationError, isAudioSessionNotFoundError, isAudioSessionConflictError) {
     router.post(
         "/audio-recording-session/:sessionId/push-pcm",
         (req, res, next) => {
@@ -107,6 +107,7 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, e
                     "push-pcm: validated, storing PCM fragment"
                 );
 
+                // Store binary PCM via audio-session service.
                 const result = await pushAudioFragment(capabilities, sessionId, {
                     pcm: pcmFile.buffer,
                     sampleRateHz: sampleRateHzNum,
@@ -117,12 +118,27 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, e
                     sequence: sequenceNum,
                 });
 
-                enqueueAnalysis(capabilities, sessionId, {
+                // Store fragment timing metadata in the live diary index (ingestion-only,
+                // no AI processing).  Errors here are non-fatal: the binary is already stored
+                // and the fragment will still be assembled during the next pull cycle.
+                ingestLiveDiaryFragment(capabilities, sessionId, {
                     pcm: pcmFile.buffer,
                     sampleRateHz: sampleRateHzNum,
                     channels: channelsNum,
                     bitDepth: bitDepthNum,
-                }, sequenceNum);
+                    startMs: startMsNum,
+                    endMs: endMsNum,
+                    sequence: sequenceNum,
+                }).catch((/** @type {unknown} */ err) => {
+                    capabilities.logger.logError(
+                        {
+                            sessionId,
+                            sequence: sequenceNum,
+                            error: err instanceof Error ? err.message : String(err),
+                        },
+                        "push-pcm: live diary ingestion failed (non-fatal)"
+                    );
+                });
 
                 capabilities.logger.logDebug(
                     {
@@ -130,7 +146,7 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, e
                         sequence: sequenceNum,
                         fragmentCount: result.session.fragmentCount,
                     },
-                    "push-pcm: fragment stored, AI analysis queued"
+                    "push-pcm: fragment stored, live diary fragment ingested"
                 );
 
                 return res.json({ success: true, ...result, questions: [], status: "accepted" });

@@ -460,6 +460,9 @@ async function pushAudio(
     return { questions: newQuestions, status: "ok" };
 }
 
+const { ingestFragment } = require("./ingest_fragment");
+
 module.exports = {
     pushAudio,
+    ingestFragment,
 };

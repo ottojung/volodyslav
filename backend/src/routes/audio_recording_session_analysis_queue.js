@@ -11,6 +11,7 @@ const {
     pushAudio: pushLiveDiaryAudio,
     generateInitialQuestionsAndPush,
     getPendingQuestions: getLiveDiaryPendingQuestions,
+    pullLiveDiaryProcessing,
 } = require("../live_diary");
 
 /** @typedef {import('../logger').Logger} Logger */
@@ -19,11 +20,13 @@ const {
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 /** @typedef {import('../generators').Interface} Interface */
+/** @typedef {import('../datetime').Datetime} Datetime */
 
 /**
  * @typedef {object} Capabilities
  * @property {Logger} logger
  * @property {Temporary} temporary
+ * @property {Datetime} datetime
  * @property {AITranscription} aiTranscription
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
@@ -153,18 +156,84 @@ function enqueueInitialQuestions(capabilities, sessionId) {
 }
 
 /**
+ * Enqueue a pull cycle for a session.
+ *
+ * Chains `pullLiveDiaryProcessing` onto the per-session promise queue.
+ * Non-blocking: callers do not wait for the pull to complete.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @param {number} deadlineMs
+ * @returns {void}
+ */
+function enqueuePull(capabilities, sessionId, deadlineMs) {
+    const existing = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
+    const next = existing.then(async () => {
+        try {
+            const result = await pullLiveDiaryProcessing(capabilities, sessionId, deadlineMs);
+            capabilities.logger.logDebug(
+                { sessionId, deadlineMs, status: result.status, degradedGap: result.degradedGap },
+                "Live diary pull cycle completed"
+            );
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    sessionId,
+                    error: error instanceof Error ? error.message : String(error),
+                    stack: error instanceof Error ? error.stack : undefined,
+                },
+                "Live diary pull cycle failed"
+            );
+        }
+    });
+    processingQueues.set(sessionId, next);
+    next.finally(() => {
+        if (processingQueues.get(sessionId) === next) {
+            processingQueues.delete(sessionId);
+        }
+    }).catch(() => {
+        capabilities.logger.logError(
+            { sessionId },
+            "Unexpected error in live diary pull cycle queue"
+        );
+    });
+}
+
+/**
  * Enqueue fetching+clearing pending live diary questions.
  *
- * This serializes the read/clear consume operation with all other per-session
- * live-diary writes so pending-question updates cannot be lost due to races.
+ * Triggers a pull cycle before reading questions so that the caller receives
+ * up-to-date questions generated from all fragments up to the current deadline.
+ * The pull runs in the same per-session queue to avoid races with other writers.
+ *
+ * Uses Number.MAX_SAFE_INTEGER as deadlineMs so that all uploaded fragments
+ * (regardless of their startMs/endMs timestamps) are eligible for the pull.
  *
  * @param {Capabilities} capabilities
  * @param {string} sessionId
  * @returns {Promise<Array<{text: string, intent: string}>>}
  */
 function enqueuePendingQuestionsFetch(capabilities, sessionId) {
+    // Use MAX_SAFE_INTEGER so the pull considers all uploaded fragments,
+    // regardless of whether their timestamps match wall-clock time.
+    const deadlineMs = Number.MAX_SAFE_INTEGER;
     const existing = (processingQueues.get(sessionId) ?? Promise.resolve()).catch(() => Promise.resolve());
-    const readPromise = existing.then(() => getLiveDiaryPendingQuestions(capabilities, sessionId));
+    const readPromise = existing
+        .then(async () => {
+            // Run a pull cycle inline so questions are generated before we read them.
+            try {
+                await pullLiveDiaryProcessing(capabilities, sessionId, deadlineMs);
+            } catch (error) {
+                capabilities.logger.logError(
+                    {
+                        sessionId,
+                        error: error instanceof Error ? error.message : String(error),
+                    },
+                    "Live diary pull cycle failed during question fetch"
+                );
+            }
+        })
+        .then(() => getLiveDiaryPendingQuestions(capabilities, sessionId));
     const next = readPromise.then(
         () => undefined,
         () => undefined
@@ -181,6 +250,8 @@ function enqueuePendingQuestionsFetch(capabilities, sessionId) {
 module.exports = {
     enqueueAnalysis,
     enqueueInitialQuestions,
+    enqueuePull,
     enqueuePendingQuestionsFetch,
     dequeueSession,
 };
+

@@ -29,6 +29,14 @@ class DateTimeClass {
     }
 
     /**
+     * Returns this DateTime's value as milliseconds since the Unix epoch.
+     * @returns {number}
+     */
+    toMillis() {
+        return this._luxonDateTime.toMillis();
+    }
+
+    /**
      * @returns {number}
      */
     get year() {
