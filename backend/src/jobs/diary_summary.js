@@ -17,31 +17,37 @@ const { getType: getEventType } = require("../event");
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
 
+// ---------------------------------------------------------------------------
+// Diary summary run state types
+// ---------------------------------------------------------------------------
+
 /**
- * @callback OnEntryQueued
- * @param {string} eventId - The event ID of the entry that will be processed.
- * @returns {void}
+ * @typedef {{ eventId: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
  */
 
 /**
- * @callback OnEntryProcessed
- * @param {string} eventId - The event ID of the entry that was processed.
- * @param {"success" | "error"} status - The outcome.
- * @returns {void}
+ * @typedef {{ status: "idle" }} IdleDiarySummaryRunState
  */
 
 /**
- * @typedef {object} DiarySummaryPipelineCallbacks
- * @property {OnEntryQueued} [onEntryQueued] - Called when an entry is determined to need processing.
- * @property {OnEntryProcessed} [onEntryProcessed] - Called after each entry is processed.
+ * @typedef {{ status: "running", started_at: string, entries: DiarySummaryRunEntry[] }} RunningDiarySummaryRunState
  */
 
 /**
- * Discriminated union of progress events emitted by the diary summary pipeline.
- * Used as the callback event type `C` for the ExclusiveProcess.
- *
- * @typedef {{ type: "entryQueued", eventId: string } | { type: "entryProcessed", eventId: string, status: "success" | "error" }} DiarySummaryEvent
+ * @typedef {{ status: "success", started_at: string, finished_at: string, entries: DiarySummaryRunEntry[], summary: DiaryMostImportantInfoSummaryEntry }} SuccessfulDiarySummaryRunState
  */
+
+/**
+ * @typedef {{ status: "error", started_at: string, finished_at: string, entries: DiarySummaryRunEntry[], error: string }} FailedDiarySummaryRunState
+ */
+
+/**
+ * @typedef {IdleDiarySummaryRunState | RunningDiarySummaryRunState | SuccessfulDiarySummaryRunState | FailedDiarySummaryRunState} DiarySummaryRunState
+ */
+
+// ---------------------------------------------------------------------------
+// Exclusive process
+// ---------------------------------------------------------------------------
 
 /**
  * Argument type for `diarySummaryExclusiveProcess`.
@@ -54,29 +60,90 @@ const { getType: getEventType } = require("../event");
 /**
  * Shared ExclusiveProcess for the diary summary pipeline.
  *
- * The procedure receives `fanOut` (the class-managed fan-out callback) and
- * `{ capabilities }` directly.  `capabilities` is passed as part of the
- * argument so no module-level variable is needed.
+ * The procedure uses `mutateState` to transition the state through:
+ * `idle → running → success | error`.
+ *
+ * The first `mutateState` call in the procedure is synchronous, so by the time
+ * `invoke` returns the state is already `"running"`.
  *
  * Both the hourly scheduled job and the POST /diary-summary/run route use this
  * instance.  A second concurrent invocation *attaches* to the already-running
- * computation instead of starting a new one, and its per-caller callback is
- * automatically registered in the fan-out set so it receives all subsequent
- * progress events.
- *
- * No queuing — all concurrent calls always attach.
+ * computation — no queuing needed.
  */
 const diarySummaryExclusiveProcess = makeExclusiveProcess({
+    /** @type {DiarySummaryRunState} */
+    initialState: { status: "idle" },
     /**
-     * @param {(event: DiarySummaryEvent) => void} fanOut
+     * @param {(fn: (state: DiarySummaryRunState) => DiarySummaryRunState | Promise<DiarySummaryRunState>) => Promise<void>} mutateState
      * @param {DiarySummaryArg} arg
      * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
      */
-    procedure: (fanOut, { capabilities }) => {
-        return _runDiarySummaryPipelineUnlocked(capabilities, {
-            onEntryQueued: (eventId) => fanOut({ type: "entryQueued", eventId }),
-            onEntryProcessed: (eventId, status) => fanOut({ type: "entryProcessed", eventId, status }),
-        });
+    procedure: (mutateState, { capabilities }) => {
+        const started_at = capabilities.datetime.now().toISOString();
+
+        // Sync transformer → state updated synchronously before invoke returns.
+        mutateState(() => ({
+            status: "running",
+            started_at,
+            entries: [],
+        }));
+
+        capabilities.logger.logInfo({ started_at }, "Diary summary pipeline started in background");
+
+        const callbacks = {
+            /** @param {string} eventId */
+            onEntryQueued: (eventId) => {
+                mutateState((current) => {
+                    if (current.status !== "running") return current;
+                    return { ...current, entries: [...current.entries, { eventId, status: "pending" }] };
+                });
+            },
+            /**
+             * @param {string} eventId
+             * @param {"success" | "error"} status
+             */
+            onEntryProcessed: (eventId, status) => {
+                mutateState((current) => {
+                    if (current.status !== "running") return current;
+                    return {
+                        ...current,
+                        entries: current.entries.map((e) =>
+                            e.eventId === eventId && e.status === "pending" ? { ...e, status } : e
+                        ),
+                    };
+                });
+            },
+        };
+
+        return _runDiarySummaryPipelineUnlocked(capabilities, callbacks)
+            .then((summary) => {
+                const finished_at = capabilities.datetime.now().toISOString();
+                mutateState((current) => ({
+                    status: "success",
+                    started_at,
+                    finished_at,
+                    entries: current.status === "running" ? current.entries : [],
+                    summary,
+                }));
+                capabilities.logger.logInfo(
+                    { started_at, finished_at },
+                    "Diary summary pipeline finished successfully"
+                );
+                return summary;
+            })
+            .catch((error) => {
+                const finished_at = capabilities.datetime.now().toISOString();
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                mutateState(() => ({
+                    status: "error",
+                    started_at,
+                    finished_at,
+                    entries: [],
+                    error: errorMessage,
+                }));
+                capabilities.logger.logError({ error, errorMessage }, "Diary summary pipeline failed");
+                throw error;
+            });
     },
     // All concurrent calls attach to the same run — no queuing needed.
     conflictor: () => "attach",
@@ -85,37 +152,15 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
 /**
  * Runs the diary summary pipeline.
  *
- * Steps:
- *  1. Read current summary from graph.
- *  2. Iterate all diary events in ascending date order.
- *  3. For each event, check `Interface.isTranscribed(eventId)` to skip events
- *     that have un-transcribed audio (avoiding new AI calls).
- *  4. Call `Interface.entryDiaryContent(eventId)` to get typed text and any
- *     available transcribed audio recording text.
- *  5. For each new diary content entry, call the AI summarizer and advance the watermarks.
- *  6. Persist the updated summary back to the graph after each fold.
- *
  * Uses a shared ExclusiveProcess so that a second concurrent invocation attaches
- * to the already-running computation instead of starting a new one.  Progress
- * events are forwarded to all concurrent callers via the native fan-out.  Any
- * error propagates to all callers.
+ * to the already-running computation instead of starting a new one.  Any error
+ * propagates to all callers.
  *
  * @param {Capabilities} capabilities
- * @param {DiarySummaryPipelineCallbacks} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
-function runDiarySummaryPipeline(capabilities, callbacks) {
-    /** @type {((event: DiarySummaryEvent) => void) | undefined} */
-    const callerCallback = callbacks
-        ? (event) => {
-            if (event.type === "entryQueued") {
-                callbacks.onEntryQueued?.(event.eventId);
-            } else if (event.type === "entryProcessed") {
-                callbacks.onEntryProcessed?.(event.eventId, event.status);
-            }
-        }
-        : undefined;
-    return diarySummaryExclusiveProcess.invoke({ capabilities }, callerCallback).result;
+function runDiarySummaryPipeline(capabilities) {
+    return diarySummaryExclusiveProcess.invoke({ capabilities }).result;
 }
 
 /**

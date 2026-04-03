@@ -3,12 +3,20 @@ const expressApp = require("../src/express_app");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
-jest.mock("../src/sync", () => ({
-    synchronizeAll: jest.fn(),
-    isSynchronizeAllError: jest.fn((error) => error?.name === "SynchronizeAllError"),
-}));
+/** @type {{ status: import("../src/sync").SyncState["status"] }} */
+let mockState = { status: "idle" };
 
-const { synchronizeAll } = require("../src/sync");
+jest.mock("../src/sync", () => {
+    return {
+        synchronizeAllExclusiveProcess: {
+            invoke: jest.fn().mockImplementation(() => {}),
+            getState: jest.fn().mockImplementation(() => mockState),
+        },
+        isSynchronizeAllError: jest.fn((error) => error?.name === "SynchronizeAllError"),
+    };
+});
+
+const { synchronizeAllExclusiveProcess } = require("../src/sync");
 const { makeRouter } = require("../src/routes/sync");
 
 function getTestCapabilities() {
@@ -17,20 +25,6 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     return capabilities;
-}
-
-function makeDeferred() {
-    /** @type {(value?: unknown) => void} */
-    let resolve = () => {};
-    /** @type {(reason?: unknown) => void} */
-    let reject = () => {};
-
-    const promise = new Promise((innerResolve, innerReject) => {
-        resolve = innerResolve;
-        reject = innerReject;
-    });
-
-    return { promise, resolve, reject };
 }
 
 async function makeApp() {
@@ -49,149 +43,81 @@ async function makeAppWithCapabilities() {
 
 describe("sync route", () => {
     beforeEach(() => {
-        synchronizeAll.mockReset();
+        mockState = { status: "idle" };
+        synchronizeAllExclusiveProcess.invoke.mockClear();
+        synchronizeAllExclusiveProcess.getState.mockClear();
     });
 
-    it("starts sync in the background and reports progress over GET /api/sync", async () => {
-        const deferred = makeDeferred();
-        synchronizeAll.mockReturnValue(deferred.promise);
-        const app = await makeApp();
-
-        const startResponse = await request(app).post("/api/sync").send({});
-
-        expect(startResponse.statusCode).toBe(202);
-        expect(startResponse.body.status).toBe("running");
-
-        const runningResponse = await request(app).get("/api/sync");
-        expect(runningResponse.statusCode).toBe(202);
-        expect(runningResponse.body.status).toBe("running");
-
-        deferred.resolve();
-        await new Promise((resolve) => setImmediate(resolve));
-
-        const finishedResponse = await request(app).get("/api/sync");
-        expect(finishedResponse.statusCode).toBe(200);
-        expect(finishedResponse.body.status).toBe("success");
-    });
-
-    it("returns detailed error information after a failed background sync", async () => {
-        synchronizeAll.mockRejectedValue({
-            name: "SynchronizeAllError",
-            errors: [
-                {
-                    name: "GeneratorsSyncError",
-                    message: "Generators database sync failed: git push failed",
-                    cause: new Error("git push failed"),
-                },
-            ],
+    it("POST /sync calls invoke and returns the current state", async () => {
+        synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
+            mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
         });
         const app = await makeApp();
 
-        const startResponse = await request(app)
-            .post("/api/sync")
-            .send({ reset_to_hostname: "test-host" });
-        expect(startResponse.statusCode).toBe(202);
+        const response = await request(app).post("/api/sync").send({});
 
-        await new Promise((resolve) => setImmediate(resolve));
+        expect(response.statusCode).toBe(202);
+        expect(response.body.status).toBe("running");
+        expect(synchronizeAllExclusiveProcess.invoke).toHaveBeenCalledWith(
+            expect.objectContaining({ options: {} }),
+        );
+    });
 
-        const failedResponse = await request(app).get("/api/sync");
-        expect(failedResponse.statusCode).toBe(500);
-        expect(failedResponse.body).toMatchObject({
+    it("GET /sync returns the current state", async () => {
+        mockState = {
+            status: "success",
+            started_at: "2024-01-01T00:00:00.000Z",
+            finished_at: "2024-01-01T00:00:01.000Z",
+            steps: [],
+        };
+        const app = await makeApp();
+
+        const response = await request(app).get("/api/sync");
+
+        expect(response.statusCode).toBe(200);
+        expect(response.body.status).toBe("success");
+    });
+
+    it("GET /sync returns 202 when running", async () => {
+        mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
+        const app = await makeApp();
+
+        const response = await request(app).get("/api/sync");
+
+        expect(response.statusCode).toBe(202);
+        expect(response.body.status).toBe("running");
+    });
+
+    it("GET /sync returns 500 when in error state", async () => {
+        mockState = {
             status: "error",
-            reset_to_hostname: "test-host",
-            error: {
-                message: "Sync failed: Generators database sync failed: git push failed",
-                details: [
-                    {
-                        name: "GeneratorsSyncError",
-                        message: "Generators database sync failed: git push failed",
-                        causes: ["git push failed"],
-                    },
-                ],
-            },
-        });
-    });
-
-    it("includes an empty steps array in the initial running state", async () => {
-        const deferred = makeDeferred();
-        synchronizeAll.mockReturnValue(deferred.promise);
+            started_at: "2024-01-01T00:00:00.000Z",
+            finished_at: "2024-01-01T00:00:01.000Z",
+            error: { message: "Sync failed", details: [] },
+            steps: [],
+        };
         const app = await makeApp();
 
-        const startResponse = await request(app).post("/api/sync").send({});
+        const response = await request(app).get("/api/sync");
 
-        expect(startResponse.statusCode).toBe(202);
-        expect(startResponse.body.steps).toEqual([]);
-
-        deferred.resolve();
+        expect(response.statusCode).toBe(500);
+        expect(response.body.status).toBe("error");
     });
 
-    it("reports completed steps via the onStepComplete callback during sync", async () => {
-        const deferred = makeDeferred();
-
-        synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
-            onStepComplete?.({ name: "generators", status: "success" });
-            return deferred.promise;
-        });
-
+    it("idle state returns 200", async () => {
+        mockState = { status: "idle" };
         const app = await makeApp();
-        await request(app).post("/api/sync").send({});
 
-        const runningResponse = await request(app).get("/api/sync");
-        expect(runningResponse.statusCode).toBe(202);
-        expect(runningResponse.body.steps).toEqual([
-            { name: "generators", status: "success" },
-        ]);
+        const response = await request(app).get("/api/sync");
 
-        deferred.resolve();
+        expect(response.statusCode).toBe(200);
+        expect(response.body.status).toBe("idle");
     });
 
-    it("includes completed steps in the final success state", async () => {
-        synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
-            onStepComplete?.({ name: "generators", status: "success" });
-            onStepComplete?.({ name: "assets", status: "success" });
-            return Promise.resolve();
+    it("POST /sync passes reset_to_hostname in options to invoke", async () => {
+        synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
+            mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
         });
-
-        const app = await makeApp();
-        await request(app).post("/api/sync").send({});
-        await new Promise((resolve) => setImmediate(resolve));
-
-        const finishedResponse = await request(app).get("/api/sync");
-        expect(finishedResponse.statusCode).toBe(200);
-        expect(finishedResponse.body.steps).toEqual([
-            { name: "generators", status: "success" },
-            { name: "assets", status: "success" },
-        ]);
-    });
-
-    it("includes completed steps in the final error state", async () => {
-        synchronizeAll.mockImplementation((_capabilities, _options, onStepComplete) => {
-            onStepComplete?.({ name: "generators", status: "error" });
-            return Promise.reject({
-                name: "SynchronizeAllError",
-                errors: [
-                    {
-                        name: "GeneratorsSyncError",
-                        message: "Generators database sync failed",
-                        cause: new Error("db error"),
-                    },
-                ],
-            });
-        });
-
-        const app = await makeApp();
-        await request(app).post("/api/sync").send({});
-        await new Promise((resolve) => setImmediate(resolve));
-
-        const failedResponse = await request(app).get("/api/sync");
-        expect(failedResponse.statusCode).toBe(500);
-        expect(failedResponse.body.steps).toEqual([
-            { name: "generators", status: "error" },
-        ]);
-    });
-
-    it("starts sync with reset_to_hostname when a custom hostname is provided", async () => {
-        synchronizeAll.mockResolvedValue(undefined);
         const app = await makeApp();
 
         const response = await request(app)
@@ -199,10 +125,8 @@ describe("sync route", () => {
             .send({ reset_to_hostname: "alice" });
 
         expect(response.statusCode).toBe(202);
-        expect(synchronizeAll).toHaveBeenCalledWith(
-            expect.anything(),
-            { resetToHostname: "alice" },
-            expect.any(Function)
+        expect(synchronizeAllExclusiveProcess.invoke).toHaveBeenCalledWith(
+            expect.objectContaining({ options: { resetToHostname: "alice" } }),
         );
     });
 

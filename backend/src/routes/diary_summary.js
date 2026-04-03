@@ -1,128 +1,9 @@
 const express = require("express");
-const { runDiarySummaryPipeline } = require("../jobs");
+const { runDiarySummaryPipeline, diarySummaryExclusiveProcess } = require("../jobs");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
-
-/**
- * @typedef {{ eventId: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
- */
-
-/**
- * @typedef {{ status: "idle" }} IdleDiarySummaryRunState
- */
-
-/**
- * @typedef {{ status: "running", started_at: string, entries: DiarySummaryRunEntry[] }} RunningDiarySummaryRunState
- */
-
-/**
- * @typedef {{ status: "success", started_at: string, finished_at: string, entries: DiarySummaryRunEntry[], summary: DiaryMostImportantInfoSummaryEntry }} SuccessfulDiarySummaryRunState
- */
-
-/**
- * @typedef {{ status: "error", started_at: string, finished_at: string, entries: DiarySummaryRunEntry[], error: string }} FailedDiarySummaryRunState
- */
-
-/**
- * @typedef {IdleDiarySummaryRunState | RunningDiarySummaryRunState | SuccessfulDiarySummaryRunState | FailedDiarySummaryRunState} DiarySummaryRunState
- */
-
-/**
- * Creates a controller that manages the background diary summary pipeline run.
- * @param {Capabilities} capabilities
- * @returns {{ getState: () => DiarySummaryRunState, start: () => DiarySummaryRunState }}
- */
-function makeDiarySummaryController(capabilities) {
-    /** @type {DiarySummaryRunState} */
-    let currentState = { status: "idle" };
-
-    /**
-     * @returns {DiarySummaryRunState}
-     */
-    function start() {
-        if (currentState.status === "running") {
-            return currentState;
-        }
-
-        const started_at = capabilities.datetime.now().toISOString();
-
-        /** @type {RunningDiarySummaryRunState} */
-        const runningState = { status: "running", started_at, entries: [] };
-        currentState = runningState;
-
-        capabilities.logger.logInfo(
-            { started_at },
-            "Diary summary pipeline started in background"
-        );
-
-        /** @param {string} eventId */
-        const onEntryQueued = (eventId) => {
-            if (currentState === runningState) {
-                runningState.entries.push({ eventId, status: "pending" });
-            }
-        };
-
-        /**
-         * @param {string} eventId
-         * @param {"success" | "error"} status
-         */
-        const onEntryProcessed = (eventId, status) => {
-            if (currentState === runningState) {
-                const entry = runningState.entries.find((e) => e.eventId === eventId && e.status === "pending");
-                if (entry !== undefined) {
-                    entry.status = status;
-                }
-            }
-        };
-
-        void runDiarySummaryPipeline(capabilities, { onEntryQueued, onEntryProcessed })
-            .then((summary) => {
-                if (currentState !== runningState) {
-                    return;
-                }
-
-                const finished_at = capabilities.datetime.now().toISOString();
-                currentState = {
-                    status: "success",
-                    started_at,
-                    finished_at,
-                    entries: runningState.entries,
-                    summary,
-                };
-                capabilities.logger.logInfo(
-                    { started_at, finished_at },
-                    "Diary summary pipeline finished successfully"
-                );
-            })
-            .catch((error) => {
-                if (currentState !== runningState) {
-                    return;
-                }
-
-                const finished_at = capabilities.datetime.now().toISOString();
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                currentState = {
-                    status: "error",
-                    started_at,
-                    finished_at,
-                    entries: runningState.entries,
-                    error: errorMessage,
-                };
-                capabilities.logger.logError(
-                    { error, errorMessage },
-                    "Diary summary pipeline failed"
-                );
-            });
-
-        return currentState;
-    }
-
-    return {
-        getState: () => currentState,
-        start,
-    };
-}
+/** @typedef {import('../jobs/diary_summary').DiarySummaryRunState} DiarySummaryRunState */
 
 /**
  * @param {import('express').Response} res
@@ -168,7 +49,6 @@ async function handleGetDiarySummary(capabilities, _req, res) {
  */
 function makeRouter(capabilities) {
     const router = express.Router();
-    const controller = makeDiarySummaryController(capabilities);
 
     router.get("/diary-summary", async (req, res) => {
         await handleGetDiarySummary(capabilities, req, res);
@@ -191,11 +71,13 @@ function makeRouter(capabilities) {
             return;
         }
 
-        return sendDiarySummaryRunState(res, controller.start());
+        diarySummaryExclusiveProcess.invoke({ capabilities });
+        // State is already "running" (set synchronously by procedure's first mutateState call).
+        return sendDiarySummaryRunState(res, diarySummaryExclusiveProcess.getState());
     });
 
     router.get("/diary-summary/run", async (_req, res) => {
-        return sendDiarySummaryRunState(res, controller.getState());
+        return sendDiarySummaryRunState(res, diarySummaryExclusiveProcess.getState());
     });
 
     return router;

@@ -176,3 +176,20 @@ export async function fetchSyncHostnames() {
         return [];
     }
 }
+
+/**
+ * Calls GET /api/sync to retrieve the current sync state.
+ * @returns {Promise<SyncResponse>}
+ */
+export async function fetchSyncState() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/sync`);
+        if (!response.ok) {
+            return { status: "idle" };
+        }
+        const data = await readSyncResponse(response);
+        return data ?? { status: "idle" };
+    } catch {
+        return { status: "idle" };
+    }
+}
