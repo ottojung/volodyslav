@@ -152,8 +152,49 @@ function tempKeyToString(key) {
  */
 
 /**
+ * Live diary fragment index entry — timing + format metadata for one ingested fragment.
+ * Binary PCM is stored separately in the audio-session chunk sublevel.
+ * @typedef {object} LiveDiaryFragmentIndexEntry
+ * @property {'live_diary_fragment_index'} type
+ * @property {number} sequence
+ * @property {number} startMs
+ * @property {number} endMs
+ * @property {string} contentHash - SHA-256 hex of the raw PCM bytes
+ * @property {number} ingestedAtMs - wall-clock timestamp when first ingested
+ * @property {number} sampleRateHz
+ * @property {number} channels
+ * @property {number} bitDepth
+ */
+
+/**
+ * A single gap record in the known-gaps list.
+ * @typedef {object} LiveDiaryGap
+ * @property {number} startMs
+ * @property {number} endMs
+ * @property {number} firstObservedAtMs
+ * @property {'waiting'|'abandoned'} status
+ */
+
+/**
+ * Live diary known-gaps list entry.
+ * @typedef {object} LiveDiaryGapsEntry
+ * @property {'live_diary_gaps'} type
+ * @property {LiveDiaryGap[]} gaps
+ */
+
+/**
+ * Live diary last-transcribed-range metadata.
+ * Used to compute boundary-sufficient overlap for the next pull.
+ * @typedef {object} LiveDiaryLastRangeEntry
+ * @property {'live_diary_last_range'} type
+ * @property {number} firstStartMs
+ * @property {number} lastEndMs
+ * @property {number} fragmentCount
+ */
+
+/**
  * The union of all value types stored in the temporary database.
- * @typedef {DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry} TempEntry
+ * @typedef {DoneEntry | RuntimeStateEntry | AudioSessionMetaEntry | AudioSessionIndexEntry | LiveDiaryIndexEntry | LiveDiaryStringEntry | LiveDiaryQuestionsEntry | LiveDiaryFragmentIndexEntry | LiveDiaryGapsEntry | LiveDiaryLastRangeEntry} TempEntry
  */
 
 module.exports = {

@@ -26,8 +26,8 @@ const {
     isAudioSessionConflictError,
     isAudioSessionFinalizeError,
 } = require("../audio_recording_session");
+const { ingestFragment } = require("../live_diary");
 const {
-    enqueueAnalysis,
     enqueueInitialQuestions,
     enqueuePendingQuestionsFetch,
     dequeueSession,
@@ -41,6 +41,10 @@ const {
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
 /** @typedef {import('../generators').Interface} Interface */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
@@ -52,6 +56,10 @@ const {
  * @property {AIDiaryQuestions} aiDiaryQuestions
  * @property {AITranscriptRecombination} aiTranscriptRecombination
  * @property {Interface} interface
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileReader} reader
+ * @property {FileDeleter} deleter
  */
 
 /**
@@ -101,7 +109,7 @@ function makeRouter(capabilities) {
         capabilities,
         upload,
         pushAudioFragment,
-        enqueueAnalysis,
+        ingestFragment,
         isAudioSessionChunkValidationError,
         isAudioSessionNotFoundError,
         isAudioSessionConflictError

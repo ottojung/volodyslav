@@ -32,7 +32,6 @@ async function makeApp(capabilities) {
  * on slow CI runners.
  */
 const PROCESSING_FLUSH_DELAY_MS = 300;
-const LONG_TRANSCRIPTION_DELAY_MS = 60;
 
 async function flushProcessing() {
     await new Promise((resolve) => setTimeout(resolve, PROCESSING_FLUSH_DELAY_MS));
@@ -155,10 +154,8 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
             .post("/api/audio-recording-session/start")
             .send({ sessionId });
 
-        // First fragment — stores but background processing finds no previous fragment.
+        // Push two fragments — ingestion only, no AI processing yet.
         await sendPcmFragment(app, sessionId, 1);
-
-        // Second fragment — push-pcm responds immediately (async processing queued).
         const res = await sendPcmFragment(app, sessionId, 2);
 
         expect(res.statusCode).toBe(200);
@@ -166,24 +163,24 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
         expect(res.body.status).toBe("accepted");
         expect(res.body.questions).toEqual([]);
 
-        // Wait for background AI processing to complete.
-        await flushProcessing();
+        // Transcription must NOT have been called during push (lazy architecture).
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).not.toHaveBeenCalled();
 
-        // Transcription was called once (for the overlap window formed by fragments 1+2).
-        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
-        // Question generation was called once.
-        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
-
-        // Questions are now available via the live-questions polling endpoint.
+        // GET /live-questions triggers the pull cycle inline and returns questions.
         const liveRes = await request(app)
             .get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(liveRes.statusCode).toBe(200);
         expect(liveRes.body.success).toBe(true);
         expect(Array.isArray(liveRes.body.questions)).toBe(true);
         expect(liveRes.body.questions.length).toBeGreaterThan(0);
+
+        // Transcription was called once (for the window covering both fragments).
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
+        // Question generation was called once.
+        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
     });
 
-    it("calls recombination when a second window is available (third fragment)", async () => {
+    it("calls recombination when a second pull window follows a first (lazy pull)", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
         const sessionId = "session-three-frags";
@@ -191,15 +188,19 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
         await request(app)
             .post("/api/audio-recording-session/start")
             .send({ sessionId });
-        for (let i = 1; i <= 3; i++) {
-            await sendPcmFragment(app, sessionId, i);
-        }
 
-        // Wait for all background processing to complete.
-        await flushProcessing();
+        // Push two fragments and trigger first pull.
+        await sendPcmFragment(app, sessionId, 1);
+        await sendPcmFragment(app, sessionId, 2);
+        // First GET: processes fragments 1+2, no prior window → no recombination.
+        await request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(1);
+        expect(capabilities.aiTranscriptRecombination.recombineOverlap).not.toHaveBeenCalled();
 
-        // Fragments 2: transcription(1+2) → first window. No recombination (no previous window).
-        // Fragments 3: transcription(2+3) → second window. Recombination(window1, window2) called.
+        // Push fragment 3 and trigger second pull (with overlap from pull 1).
+        await sendPcmFragment(app, sessionId, 3);
+        // Second GET: processes fragment 3 with overlap → recombination called.
+        await request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(capabilities.aiTranscription.transcribeStreamPreciseDetailed).toHaveBeenCalledTimes(2);
         expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalledTimes(1);
     });
@@ -226,10 +227,8 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
             .post("/api/audio-recording-session/start")
             .send({ sessionId });
 
-        // First fragment.
+        // Push two fragments — ingestion only, no AI.
         await sendPcmFragment(app, sessionId, 1);
-
-        // Second fragment — transcription returns empty string.
         const res = await sendPcmFragment(app, sessionId, 2);
 
         expect(res.statusCode).toBe(200);
@@ -237,8 +236,7 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
         expect(res.body.status).toBe("accepted");
         expect(res.body.questions).toEqual([]);
 
-        // Wait for background processing and check no questions appear.
-        await flushProcessing();
+        // GET /live-questions triggers pull; transcription returns "" → no questions.
         const liveRes = await request(app)
             .get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(liveRes.statusCode).toBe(200);
@@ -266,41 +264,19 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
         expect(res.body.status).toBe("accepted");
         expect(res.body.questions).toEqual([]);
 
-        // Wait for background processing; transcription error is non-fatal.
-        await flushProcessing();
+        // GET /live-questions triggers pull; transcription fails (non-fatal) → empty questions.
         const liveRes = await request(app)
             .get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(liveRes.statusCode).toBe(200);
         expect(liveRes.body.questions).toEqual([]);
     });
 
-    it("continues processing newer fragments when one fragment transcription hangs", async () => {
+    it("produces questions via live-questions even when transcription returns slowly", async () => {
         const capabilities = getTestCapabilities();
-        let transcribeCallCount = 0;
         capabilities.aiTranscription.transcribeStreamPreciseDetailed = jest
             .fn()
             .mockImplementation(async () => {
-                transcribeCallCount += 1;
-                if (transcribeCallCount === 2) {
-                    return new Promise((resolve) => {
-                        setTimeout(() => {
-                            resolve({
-                                text: "late transcript that came in after a long delay now",
-                                provider: "Google",
-                                model: "mocked",
-                                finishReason: "STOP",
-                                finishMessage: null,
-                                candidateTokenCount: 0,
-                                usageMetadata: null,
-                                modelVersion: null,
-                                responseId: null,
-                                structured: { transcript: "late transcript that came in after a long delay now", coverage: "full", warnings: [], unclearAudio: false },
-                                rawResponse: null,
-                            });
-                        }, LONG_TRANSCRIPTION_DELAY_MS);
-                    });
-                }
-                const t = `this is a good and valid transcript number ${transcribeCallCount} from the recording`;
+                const t = "this is a good and valid transcript from the recording session";
                 return {
                     text: t,
                     provider: "Google",
@@ -326,14 +302,12 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
             await sendPcmFragment(app, sessionId, i);
         }
 
-        await flushProcessing();
-
+        // GET /live-questions triggers a single pull cycle across all 4 fragments.
         const liveRes = await request(app)
             .get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(liveRes.statusCode).toBe(200);
         expect(liveRes.body.success).toBe(true);
         expect(Array.isArray(liveRes.body.questions)).toBe(true);
-        // Despite fragment 3 timing out, fragment 4 should still produce questions.
         expect(liveRes.body.questions.length).toBeGreaterThan(0);
     });
 
@@ -349,15 +323,21 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
             .post("/api/audio-recording-session/start")
             .send({ sessionId });
 
-        for (let i = 1; i <= 3; i++) {
-            await sendPcmFragment(app, sessionId, i);
-        }
+        // Push two fragments and run first pull (no recombination on first pull).
+        await sendPcmFragment(app, sessionId, 1);
+        await sendPcmFragment(app, sessionId, 2);
+        const lq1 = await request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalledTimes(1);
+        expect(lq1.body.questions.length).toBeGreaterThan(0);
 
-        // Wait for background processing.
-        await flushProcessing();
-
-        // By the third call, recombination threw but question generation still ran from the raw window transcript.
-        expect(capabilities.aiDiaryQuestions.generateQuestions).toHaveBeenCalled();
+        // Push a third fragment; second pull has overlap and tries recombination (which fails),
+        // but the system gracefully falls back to the raw window transcript.
+        await sendPcmFragment(app, sessionId, 3);
+        const lq2 = await request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
+        // Recombination was attempted for the second window.
+        expect(capabilities.aiTranscriptRecombination.recombineOverlap).toHaveBeenCalled();
+        // The route responded successfully even though recombination threw.
+        expect(lq2.statusCode).toBe(200);
     });
 
     it("deduplicates questions across successive calls within the same session via live-questions", async () => {
@@ -375,28 +355,23 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
         const pollLiveQuestions = () =>
             request(app).get(`/api/audio-recording-session/${sessionId}/live-questions`);
 
-        // Fragment 1: only stores the PCM (background: no previous fragment, no AI).
+        // Push fragment 1; first GET triggers first pull → question generated and returned.
         await sendPcmFragment(app, sessionId, 1);
-        await flushProcessing();
         const lq1 = await pollLiveQuestions();
-        expect(lq1.body.questions).toHaveLength(0);
+        expect(lq1.body.questions).toHaveLength(1);
+        expect(lq1.body.questions[0].text).toBe("How are you?");
 
-        // Fragment 2: first overlap window available — question is new, should appear.
-        await sendPcmFragment(app, sessionId, 2);
-        await flushProcessing();
+        // Second GET with no new fragment: pull finds no new audio → no new questions.
         const lq2 = await pollLiveQuestions();
-        expect(lq2.body.questions).toHaveLength(1);
-        expect(lq2.body.questions[0].text).toBe("How are you?");
+        expect(lq2.body.questions).toHaveLength(0);
 
-        // Fragment 3: same question returned by AI, but already asked — deduplicated out.
-        await sendPcmFragment(app, sessionId, 3);
-        await flushProcessing();
+        // Push fragment 2; same question returned by AI but already asked → deduplicated out.
+        await sendPcmFragment(app, sessionId, 2);
         const lq3 = await pollLiveQuestions();
         expect(lq3.body.questions).toHaveLength(0);
 
-        // Fragment 4: still deduplicated.
-        await sendPcmFragment(app, sessionId, 4);
-        await flushProcessing();
+        // Fragment 3: still deduplicated.
+        await sendPcmFragment(app, sessionId, 3);
         const lq4 = await pollLiveQuestions();
         expect(lq4.body.questions).toHaveLength(0);
     });
@@ -414,14 +389,12 @@ describe("POST /api/audio-recording-session/:sessionId/push-pcm", () => {
             await sendPcmFragment(app, sessionId, i);
         }
 
-        await flushProcessing();
-
-        // First poll returns questions.
+        // First poll: triggers pull, generates questions, returns them.
         const first = await request(app)
             .get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(first.body.questions.length).toBeGreaterThan(0);
 
-        // Second poll returns empty (questions were consumed).
+        // Second poll: watermark advanced past all fragments, no new audio → empty.
         const second = await request(app)
             .get(`/api/audio-recording-session/${sessionId}/live-questions`);
         expect(second.body.questions).toHaveLength(0);

@@ -8,7 +8,7 @@ It covers all major diary-related paths currently implemented:
 
 1. **Manual text diary entry** (`POST /api/entries`).
 2. **Interactive audio diary recording** (frontend recorder + chunk/session backend).
-3. **Live diary questioning** during recording (`POST /api/audio-recording-session/:sessionId/push-audio`).
+3. **Live diary questioning** during recording (lazy pull pipeline — see [Live Audio Pipeline](./live-audio-pipeline.md)).
 4. **Background diary-audio ingestion** from a watched filesystem directory (`processDiaryAudios`).
 5. **Diary enrichment** through computed additional properties (transcription, calories, context).
 
@@ -86,10 +86,12 @@ Audio recording session state is stored in temporary LevelDB keyspace `audio_ses
 - current-session index.
 Live prompting state is stored per session under `audio_session/sessions/<sessionId>/live_diary/*`:
 
-- last fragment,
+- fragment index (timing + content hash per uploaded fragment),
 - last overlap-window transcript,
 - running transcript,
-- asked questions.
+- asked questions,
+- gap tracking state,
+- watermark (`transcribedUntilMs`).
 
 A notable design decision: **single-current-session semantics** are enforced through the shared `audio_session/index/current_session_id`.
 
@@ -136,7 +138,7 @@ On start:
 1. Generate session ID.
 2. Persist session ID in localStorage.
 3. Start backend session (`POST /audio-recording-session/start`).
-4. Push audio fragments periodically via `POST /audio-recording-session/:sessionId/push-audio`.
+4. Push PCM audio fragments periodically via `POST /audio-recording-session/:sessionId/push-pcm`.
 
 On stop:
 
@@ -156,7 +158,7 @@ with an attached file named `diary-audio.<ext>`.
 `audio_recording_session/service.js` is a persistent state machine:
 
 - `startSession`: create/touch session metadata.
-- `uploadChunk` (called by the push-audio route): validate sequence/times, store fragment blob, update counters.
+- `uploadChunk` (called by the push-pcm route): validate sequence/times, store fragment blob, update counters.
 - `stopSession`: lexical-order concatenate chunk blobs into final audio.
 - `fetchFinalAudio`: return finalized blob + mime type.
 - `discardSession`: cleanup.
@@ -178,47 +180,11 @@ with an attached file named `diary-audio.<ext>`.
 
 ## Path C: Live Diary Questioning During Recording
 
-This is a parallel assistant pipeline, not the durable entry write path itself.
+The live questioning pipeline is cadence-agnostic: PCM fragments are uploaded via `POST /api/audio-recording-session/:sessionId/push-pcm` and indexed immediately, while transcription and question generation happen lazily when the client calls `GET /api/audio-recording-session/:sessionId/live-questions`.
 
-### Frontend behavior
-
-`useAudioRecorder` pushes each nominal 10s fragment to:
-
-`POST /api/audio-recording-session/:sessionId/push-audio`
-
-and `useDiaryLiveQuestioningController` displays returned question generations. If calls fail, UI continues and can show transient “catching up” state.
-
-### Backend behavior
-
-`live_diary/service.pushAudio`:
-
-1. Enforces single-current-session cleanup.
-2. For first fragment: stores and returns no questions.
-3. For subsequent fragments:
-   - combine previous+current fragment into an overlap window,
-   - transcribe window,
-   - recombine overlap with previous window transcript (LLM with fallback),
-   - merge into running transcript (programmatic dedup),
-   - generate diary questions from running transcript,
-   - deduplicate against previously asked questions,
-   - persist asked questions.
-
-### Core implementation choices
-
-- **Two-stage overlap control**:
-  - window-level recombination (AI, fallback to raw),
-  - running-level programmatic recombination.
-- **Persistent live state** in temporary DB (shared `audio_session` namespace) so backend restarts do not erase progress.
-- **Graceful degradation with explicit status**: transcription/question-generation failures
-  return an empty questions array with a structured `status` field so callers can
-  distinguish genuine emptiness from a degraded pipeline (see Failure Semantics below).
-- **Unicode-aware question deduplication** prevents repeated prompts from near-duplicate
-  transcripts across all languages, including non-Latin scripts such as Ukrainian Cyrillic.
-  Normalization uses NFKD decomposition, Unicode-aware lowercasing, and Unicode-category
-  punctuation/symbol removal — not an ASCII-only character allowlist.
+See **[docs/live-audio-pipeline.md](./live-audio-pipeline.md)** for a full conceptual description of all pipeline algorithms (gap detection, overlap planning, PCM assembly, LLM recombination, atomic state commit, failure semantics, and the concurrency model).
 
 ---
-
 ## Path D: Background Filesystem Diary Ingestion
 
 This path supports unattended ingestion of externally produced audio files (e.g., from external recorder workflows).
@@ -306,14 +272,7 @@ Common patterns across diary modules:
 
 1. **Shape validation at route boundaries** (session IDs, mime types, sequence numbers, fragment numbers).
 2. **Specific error classes** in deeper services (e.g., audio session not found/conflict/finalize errors).
-3. **Fail-soft UX for live features with explicit status**: push-audio returns a `{ questions, status }`
-   object rather than a bare array.  The `status` field distinguishes:
-   - `ok` — pipeline succeeded (questions may still be empty if the AI found nothing new or audio was silent),
-   - `empty_result` — first fragment, no overlap window available yet,
-   - `degraded_transcription` — transcription failed; questions array is empty,
-   - `degraded_question_generation` — question generation failed; questions array is empty.
-   The HTTP response (`POST /api/audio-recording-session/:sessionId/push-audio`) includes this `status` field so clients
-   can observe degraded pipeline states without guessing from empty results.
+3. **Fail-soft UX for live features without an explicit degraded-status field**: the pull cycle (triggered by `GET /api/audio-recording-session/:sessionId/live-questions`) returns `{ success: true, questions }`; when the pipeline is degraded, this is represented by `questions` being an empty array rather than a distinct status value. See [docs/live-audio-pipeline.md](./live-audio-pipeline.md) for failure and retry semantics.
 4. **Fail-safe persistence semantics**: cleanup on transaction failure and deletion only after durable write.
 
 This combination gives robust day-to-day operation for a personal tool without over-engineering adversarial protections.
@@ -330,8 +289,8 @@ This combination gives robust day-to-day operation for a personal tool without o
 
 ### Live questioning
 
-- Sequence is validated as non-negative integer (0-based).
-- Service computes windows from “last fragment + new fragment,” so the effective sequence dependency is local, not global reassembly.
+- Fragment sequence numbers are non-negative integers (0-based).
+- The pull cycle assembles a PCM window from the fragment index and processes it lazily on demand. See [docs/live-audio-pipeline.md](./live-audio-pipeline.md) for details.
 
 ### Entry listing and diary search
 

@@ -12,12 +12,12 @@
  * @param {AudioRouterCapabilities} capabilities
  * @param {import('multer').Multer} upload
  * @param {Function} pushAudioFragment
- * @param {Function} enqueueAnalysis
+ * @param {Function} ingestLiveDiaryFragment
  * @param {Function} isAudioSessionChunkValidationError
  * @param {Function} isAudioSessionNotFoundError
  * @param {Function} isAudioSessionConflictError
  */
-function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, enqueueAnalysis, isAudioSessionChunkValidationError, isAudioSessionNotFoundError, isAudioSessionConflictError) {
+function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, ingestLiveDiaryFragment, isAudioSessionChunkValidationError, isAudioSessionNotFoundError, isAudioSessionConflictError) {
     router.post(
         "/audio-recording-session/:sessionId/push-pcm",
         (req, res, next) => {
@@ -104,9 +104,39 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, e
                         startMs: startMsNum,
                         endMs: endMsNum,
                     },
-                    "push-pcm: validated, storing PCM fragment"
+                    "push-pcm: validated, checking live diary index before storing PCM"
                 );
 
+                // Check the live diary index BEFORE writing the binary PCM chunk.
+                // If the ingestor rejects the fragment (duplicate_rejected), we must
+                // not overwrite the already-transcribed binary chunk — doing so would
+                // corrupt the final audio assembly for the session.
+                const ingestResult = await ingestLiveDiaryFragment(capabilities, sessionId, {
+                    pcm: pcmFile.buffer,
+                    sampleRateHz: sampleRateHzNum,
+                    channels: channelsNum,
+                    bitDepth: bitDepthNum,
+                    startMs: startMsNum,
+                    endMs: endMsNum,
+                    sequence: sequenceNum,
+                });
+
+                if (ingestResult.status === "invalid_pcm") {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Fragment rejected by live diary indexer: invalid PCM or timing",
+                    });
+                }
+
+                if (ingestResult.status === "duplicate_rejected") {
+                    return res.status(409).json({
+                        success: false,
+                        error: "Non-identical duplicate fragment rejected: already transcribed",
+                    });
+                }
+
+                // Store binary PCM via audio-session service.  Only reached when
+                // ingest accepted or no-op'd (exact duplicate — safe to overwrite).
                 const result = await pushAudioFragment(capabilities, sessionId, {
                     pcm: pcmFile.buffer,
                     sampleRateHz: sampleRateHzNum,
@@ -117,20 +147,14 @@ function registerPushPcmRoute(router, capabilities, upload, pushAudioFragment, e
                     sequence: sequenceNum,
                 });
 
-                enqueueAnalysis(capabilities, sessionId, {
-                    pcm: pcmFile.buffer,
-                    sampleRateHz: sampleRateHzNum,
-                    channels: channelsNum,
-                    bitDepth: bitDepthNum,
-                }, sequenceNum);
-
                 capabilities.logger.logDebug(
                     {
                         sessionId,
                         sequence: sequenceNum,
                         fragmentCount: result.session.fragmentCount,
+                        ingestStatus: ingestResult.status,
                     },
-                    "push-pcm: fragment stored, AI analysis queued"
+                    "push-pcm: fragment stored, live diary fragment ingested"
                 );
 
                 return res.json({ success: true, ...result, questions: [], status: "accepted" });

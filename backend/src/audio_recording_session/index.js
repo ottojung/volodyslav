@@ -16,4 +16,5 @@ module.exports = {
     ...keys,
     parseAudioMimeType: helpers.parseAudioMimeType,
     validatePcmParams: helpers.validatePcmParams,
+    validateUploadChunkParams: helpers.validateUploadChunkParams,
 };
