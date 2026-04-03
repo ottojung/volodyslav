@@ -13,6 +13,7 @@ const { stringToNodeKeyString } = require("./database");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
+const { compareNodeKeyStringByNodeKey } = require("./node_key");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -175,8 +176,9 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
     // Write reverse-deps for all non-deleted input nodes.
     for (const [inputStr, depSet] of newRevdeps) {
         const inputKey = stringToNodeKeyString(inputStr);
+        const dependents = [...depSet].sort(compareNodeKeyStringByNodeKey);
         ops.push(
-            newStorage.revdeps.putOp(inputKey, [...depSet])
+            newStorage.revdeps.putOp(inputKey, dependents)
         );
     }
 
