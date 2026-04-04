@@ -107,13 +107,12 @@ function findInsertionIndex(sortedArray, node, compareFn) {
  * Implements read-your-writes semantics within a batch.
  * @template TValue
  * @param {import('./database/typed_database').GenericDatabase<TValue>} db - The underlying database
- * @param {Map<DatabaseKey, TValue | undefined> | null} cache - Optional in-memory cache for read optimization
  * @param {Array<DatabasePutOperation<TValue> | DatabaseDelOperation<TValue>>} operations - Array to append operations to
  * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
  * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations
  * @returns {BatchDatabaseOps<TValue>}
  */
-function makeTxDb(db, cache, operations, pendingPuts, pendingDels) {
+function makeTxDb(db, operations, pendingPuts, pendingDels) {
     return {
         /**
          * Queue a put operation and record in overlay.
@@ -124,9 +123,6 @@ function makeTxDb(db, cache, operations, pendingPuts, pendingDels) {
             pendingPuts.set(key, value);
             pendingDels.delete(key);
             operations.push(db.putOp(key, value));
-            if (cache !== null) {
-                cache.set(key, value);
-            }
         },
 
         /**
@@ -137,9 +133,6 @@ function makeTxDb(db, cache, operations, pendingPuts, pendingDels) {
             pendingDels.add(key);
             pendingPuts.delete(key);
             operations.push(db.delOp(key));
-            if (cache !== null) {
-                cache.delete(key);
-            }
         },
 
         /**
@@ -157,15 +150,8 @@ function makeTxDb(db, cache, operations, pendingPuts, pendingDels) {
             if (pendingPuts.has(key)) {
                 return pendingPuts.get(key);
             }
-            if (cache !== null && cache.has(key)) {
-                return cache.get(key);
-            }
             // Fall back to underlying database
-            const ret = await db.get(key);
-            if (cache !== null) {
-                cache.set(key, ret);
-            }
-            return ret;
+            return await db.get(key);
         },
     };
 }
@@ -223,17 +209,14 @@ function makeBatchBuilder(schemaStorage) {
         /** @type {Set<DatabaseKey>} */
         const timestampsDels = new Set();
 
-        /** @type {Map<DatabaseKey, Freshness | undefined>} */
-        const freshnessCache = new Map();
-
         /** @type {BatchBuilder} */
         const builder = {
-            values: makeTxDb(schemaStorage.values, null, valuesOps, valuesPuts, valuesDels),
-            freshness: makeTxDb(schemaStorage.freshness, freshnessCache, freshnessOps, freshnessPuts, freshnessDels),
-            inputs: makeTxDb(schemaStorage.inputs, null, inputsOps, inputsPuts, inputsDels),
-            revdeps: makeTxDb(schemaStorage.revdeps, null, revdepsOps, revdepsPuts, revdepsDels),
-            counters: makeTxDb(schemaStorage.counters, null, countersOps, countersPuts, countersDels),
-            timestamps: makeTxDb(schemaStorage.timestamps, null, timestampsOps, timestampsPuts, timestampsDels),
+            values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
+            freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
+            inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
+            revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
+            counters: makeTxDb(schemaStorage.counters, countersOps, countersPuts, countersDels),
+            timestamps: makeTxDb(schemaStorage.timestamps, timestampsOps, timestampsPuts, timestampsDels),
         };
 
         const value = await fn(builder);
