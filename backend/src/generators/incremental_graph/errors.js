@@ -471,6 +471,43 @@ function isMissingTimestamp(object) {
     return object instanceof MissingTimestamp;
 }
 
+class InvalidBindingsError extends Error {
+    /**
+     * @param {string} nodeName
+     * @param {Set<string>} expectedKeys
+     * @param {Set<string>} actualKeys
+     */
+    constructor(nodeName, expectedKeys, actualKeys) {
+        super(
+            `Invalid bindings for node '${nodeName}': expected keys [${[...expectedKeys].join(", ")}] but got keys [${[...actualKeys].join(", ")}]`
+        );
+        this.name = "InvalidBindingsError";
+        this.nodeName = nodeName;
+        this.expectedKeys = expectedKeys;
+        this.actualKeys = actualKeys;
+    }
+}
+
+/**
+ * Constructs an InvalidBindings error.
+ * @param {string} nodeName
+ * @param {Set<string>} expectedKeys
+ * @param {Set<string>} actualKeys
+ * @returns {InvalidBindingsError}
+ */
+function makeInvalidBindingsError(nodeName, expectedKeys, actualKeys) {
+    return new InvalidBindingsError(nodeName, expectedKeys, actualKeys);
+}
+
+/**
+ * Type guard for InvalidBindingsError.
+ * @param {unknown} object
+ * @returns {object is InvalidBindingsError}
+ */
+function isInvalidBindingsError(object) {
+    return object instanceof InvalidBindingsError;
+}
+
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -498,4 +535,6 @@ module.exports = {
     isInvalidNodeDef,
     makeMissingTimestampError,
     isMissingTimestamp,
+    makeInvalidBindingsError,
+    isInvalidBindingsError,
 };

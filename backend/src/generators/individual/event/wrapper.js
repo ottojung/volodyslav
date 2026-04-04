@@ -9,9 +9,9 @@ const computor = async (inputs, oldValue, bindings) => {
         throw new Error("Expected input of type all_events for event(e) computor");
     }
     const allEvents = firstInput.events;
-    const firstBinding = bindings[0];
+    const firstBinding = bindings.e;
     if (firstBinding === undefined || typeof firstBinding !== "string") {
-        throw new Error("Expected first binding to be a string for event(e) computor, got " + JSON.stringify(firstBinding));
+        throw new Error("Expected binding 'e' to be a string for event(e) computor, got " + JSON.stringify(firstBinding));
     }
     if (oldValue !== undefined && oldValue.type !== "event") {
         throw new Error("Expected oldValue to be of type event or undefined for event(e) computor, got " + JSON.stringify(oldValue));

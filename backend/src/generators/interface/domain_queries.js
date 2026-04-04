@@ -24,7 +24,7 @@ async function internalGetCaloriesForEventId(interfaceInstance, eventId) {
     await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
-        .pull("calories", [eventId]);
+        .pull("calories", {e: eventId});
     if (result.type !== "calories") {
         throw new Error(`Expected calories entry but got type: ${result.type}`);
     }
@@ -45,7 +45,7 @@ async function internalGetEventTranscriptionForAudioPath(
     await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
-        .pull("event_transcription", [eventId, audioPath]);
+        .pull("event_transcription", {e: eventId, a: audioPath});
     if (result.type !== "event_transcription") {
         throw new Error(
             `Expected event_transcription entry but got type: ${result.type}`
@@ -63,7 +63,7 @@ async function internalGetBasicContextForEventId(interfaceInstance, eventId) {
     await interfaceInstance.ensureInitialized();
     const result = await interfaceInstance
         ._requireInitializedGraph()
-        .pull("basic_context", [eventId]);
+        .pull("basic_context", {e: eventId});
     if (result.type !== "basic_context") {
         throw new Error(`Expected basic_context entry but got type: ${result.type}`);
     }
@@ -191,7 +191,7 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
     const cacheNodeHead =
         order === "dateAscending" ? "first_entries" : "last_entries";
 
-    const cacheEntry = await graph.pull(cacheNodeHead, [SORTED_EVENTS_CACHE_SIZE]);
+    const cacheEntry = await graph.pull(cacheNodeHead, {n: SORTED_EVENTS_CACHE_SIZE});
     if (cacheEntry.type !== cacheNodeHead) {
         throw new Error(
             `Expected ${cacheNodeHead} entry but got type: ${cacheEntry.type}`
@@ -291,7 +291,7 @@ async function internalGetEvent(interfaceInstance, eventId) {
     try {
         const result = await interfaceInstance
             ._requireInitializedGraph()
-            .pull("event", [eventId]);
+            .pull("event", {e: eventId});
         if (result.type !== "event") {
             throw new Error(`Expected event entry but got type: ${result.type}`);
         }
@@ -320,7 +320,7 @@ async function internalIsTranscribed(interfaceInstance, eventId) {
     await interfaceInstance.ensureInitialized();
     const graph = interfaceInstance._requireInitializedGraph();
 
-    const audioListResult = await graph.pull("event_audios_list", [eventId]);
+    const audioListResult = await graph.pull("event_audios_list", {e: eventId});
     if (audioListResult.type !== "event_audios_list") {
         throw new Error(`Expected event_audios_list entry but got type: ${audioListResult.type}`);
     }
@@ -332,7 +332,7 @@ async function internalIsTranscribed(interfaceInstance, eventId) {
 
     // At least one audio path must have an up-to-date transcription.
     for (const audioPath of audioListResult.audioPaths) {
-        const freshness = await graph.getFreshness("transcription", [audioPath]);
+        const freshness = await graph.getFreshness("transcription", {a: audioPath});
         if (freshness === "up-to-date") {
             return true;
         }
@@ -360,14 +360,14 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
     const graph = interfaceInstance._requireInitializedGraph();
 
     // Pull the typed description.
-    const descriptionResult = await graph.pull("entry_description", [eventId]);
+    const descriptionResult = await graph.pull("entry_description", {e: eventId});
     if (descriptionResult.type !== "entry_description") {
         throw new Error(`Expected entry_description entry but got type: ${descriptionResult.type}`);
     }
     const typedText = descriptionResult.description;
 
     // Pull materialized transcriptions, combining multiple into one string.
-    const audioListResult = await graph.pull("event_audios_list", [eventId]);
+    const audioListResult = await graph.pull("event_audios_list", {e: eventId});
     if (audioListResult.type !== "event_audios_list") {
         throw new Error(`Expected event_audios_list entry but got type: ${audioListResult.type}`);
     }
@@ -375,11 +375,11 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
     /** @type {string[]} */
     const transcribedParts = [];
     for (const audioPath of audioListResult.audioPaths) {
-        const freshness = await graph.getFreshness("transcription", [audioPath]);
+        const freshness = await graph.getFreshness("transcription", {a: audioPath});
         if (freshness !== "up-to-date") {
             continue;
         }
-        const transcriptionResult = await graph.pull("event_transcription", [eventId, audioPath]);
+        const transcriptionResult = await graph.pull("event_transcription", {e: eventId, a: audioPath});
         if (transcriptionResult.type !== "event_transcription") {
             continue;
         }

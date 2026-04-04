@@ -108,73 +108,73 @@ async function internalListMaterializedNodes(interfaceInstance) {
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+ * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
  * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
  */
-async function internalGetFreshness(interfaceInstance, head, args = []) {
+async function internalGetFreshness(interfaceInstance, head, bindings = {}) {
     await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
-        .getFreshness(head, args);
+        .getFreshness(head, bindings);
 }
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+ * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
  * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
  */
-async function internalGetValue(interfaceInstance, head, args = []) {
+async function internalGetValue(interfaceInstance, head, bindings = {}) {
     await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().getValue(head, args);
+    return await interfaceInstance._requireInitializedGraph().getValue(head, bindings);
 }
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+ * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
  * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
  */
-async function internalPullGraphNode(interfaceInstance, head, args = []) {
+async function internalPullGraphNode(interfaceInstance, head, bindings = {}) {
     await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().pull(head, args);
+    return await interfaceInstance._requireInitializedGraph().pull(head, bindings);
 }
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+ * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
  * @returns {Promise<void>}
  */
-async function internalInvalidateGraphNode(interfaceInstance, head, args = []) {
+async function internalInvalidateGraphNode(interfaceInstance, head, bindings = {}) {
     await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().invalidate(head, args);
+    return await interfaceInstance._requireInitializedGraph().invalidate(head, bindings);
 }
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+ * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
  * @returns {Promise<import('../../datetime').DateTime>}
  */
-async function internalGetCreationTime(interfaceInstance, head, args = []) {
+async function internalGetCreationTime(interfaceInstance, head, bindings = {}) {
     await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
-        .getCreationTime(head, args);
+        .getCreationTime(head, bindings);
 }
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
- * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+ * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
  * @returns {Promise<import('../../datetime').DateTime>}
  */
-async function internalGetModificationTime(interfaceInstance, head, args = []) {
+async function internalGetModificationTime(interfaceInstance, head, bindings = {}) {
     await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
-        .getModificationTime(head, args);
+        .getModificationTime(head, bindings);
 }
 
 module.exports = {

@@ -2,7 +2,7 @@
  * @type {import('../../incremental_graph/types').NodeDefComputor}
  */
 const computor = async (inputs, _oldValue, bindings) => {
-    const n = bindings[0];
+    const n = bindings.n;
     if (typeof n !== "number" || !Number.isInteger(n) || n < 0) {
         throw new Error(
             `Expected non-negative integer binding n for first_entries(n) but got: ${JSON.stringify(n)}`

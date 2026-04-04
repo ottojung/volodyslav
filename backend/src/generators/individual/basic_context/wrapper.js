@@ -11,10 +11,10 @@ const computor = async (inputs, oldValue, bindings) => {
     }
     const allEvents = firstInput.events;
 
-    const firstBinding = bindings[0];
+    const firstBinding = bindings.e;
     if (firstBinding === undefined || typeof firstBinding !== "string") {
         throw new Error(
-            "Expected first binding to be a string for basic_context(e) computor, got " +
+            "Expected binding 'e' to be a string for basic_context(e) computor, got " +
                 JSON.stringify(firstBinding)
         );
     }

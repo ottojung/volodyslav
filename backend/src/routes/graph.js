@@ -17,12 +17,13 @@ const {
  * @property {() => Array<CompiledNode>} getSchemas
  * @property {(head: string) => CompiledNode | null} getSchemaByHead
  * @property {() => Promise<Array<[string, Array<ConstValue>]>>} listMaterializedNodes
- * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} getFreshness
- * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} getValue
- * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
- * @property {(head: string, args?: Array<ConstValue>) => Promise<void>} invalidateGraphNode
- * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
- * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../datetime').DateTime>} getModificationTime
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} getFreshness
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<unknown>} getValue
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<unknown>} pullGraphNode
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<void>} invalidateGraphNode
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<import('../datetime').DateTime>} getCreationTime
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<import('../datetime').DateTime>} getModificationTime
+ * @property {(head: string, args: Array<ConstValue>) => Record<string, ConstValue>} positionalToBindings
  */
 
 /**
@@ -95,9 +96,10 @@ async function handleGetNodes(capabilities, _req, res) {
     const materialized = await capabilities.interface.listMaterializedNodes();
     const result = [];
     for (const [head, args] of materialized) {
-        const freshness = await capabilities.interface.getFreshness(head, args);
+        const bindings = capabilities.interface.positionalToBindings(head, args);
+        const freshness = await capabilities.interface.getFreshness(head, bindings);
         if (freshness !== "missing") {
-            const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
+            const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, bindings);
             result.push({ head, args, freshness, createdAt, modifiedAt });
         }
     }
@@ -128,13 +130,13 @@ async function handleGetNodesByHead(capabilities, req, res) {
 
     if (compiledNode.arity === 0) {
         // Arity-0: return single instance with value
-        const freshness = await capabilities.interface.getFreshness(head, []);
+        const freshness = await capabilities.interface.getFreshness(head, {});
         if (freshness === "missing") {
             res.status(404).json({ error: `Node not materialized: ${JSON.stringify(head)}` });
             return;
         }
-        const value = await capabilities.interface.getValue(head, []);
-        const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, []);
+        const value = await capabilities.interface.getValue(head, {});
+        const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, {});
         res.json({ head, args: [], freshness, value, createdAt, modifiedAt });
     } else {
         // Arity-N: return list of all materialized instances without values
@@ -142,9 +144,10 @@ async function handleGetNodesByHead(capabilities, req, res) {
         const result = [];
         for (const [nodeHead, args] of materialized) {
             if (nodeHead === head) {
-                const freshness = await capabilities.interface.getFreshness(nodeHead, args);
+                const bindings = capabilities.interface.positionalToBindings(nodeHead, args);
+                const freshness = await capabilities.interface.getFreshness(nodeHead, bindings);
                 if (freshness !== "missing") {
-                    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, nodeHead, args);
+                    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, nodeHead, bindings);
                     result.push({ head, args, freshness, createdAt, modifiedAt });
                 }
             }
@@ -187,15 +190,16 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
         return;
     }
 
-    const freshness = await capabilities.interface.getFreshness(head, args);
+    const bindings = capabilities.interface.positionalToBindings(head, args);
+    const freshness = await capabilities.interface.getFreshness(head, bindings);
     if (freshness === "missing") {
         const displayKey = `${head}(${args.join(",")})`;
         res.status(404).json({ error: `Node not materialized: ${JSON.stringify(displayKey)}` });
         return;
     }
 
-    const value = await capabilities.interface.getValue(head, args);
-    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
+    const value = await capabilities.interface.getValue(head, bindings);
+    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, bindings);
     res.json({ head, args, freshness, value, createdAt, modifiedAt });
 }
 
@@ -273,7 +277,7 @@ async function handleInvalidateNodeByHead(capabilities, req, res) {
         res.status(400).json({ error: formatArityMismatchMessage(head, compiledNode.arity, 0) });
         return;
     }
-    await capabilities.interface.invalidateGraphNode(head, []);
+    await capabilities.interface.invalidateGraphNode(head, {});
     res.json({ success: true });
 }
 
@@ -303,7 +307,8 @@ async function handleInvalidateNodeByHeadAndArgs(capabilities, req, res) {
         res.status(400).json({ error: formatArityMismatchMessage(head, compiledNode.arity, args.length) });
         return;
     }
-    await capabilities.interface.invalidateGraphNode(head, args);
+    const bindings = capabilities.interface.positionalToBindings(head, args);
+    await capabilities.interface.invalidateGraphNode(head, bindings);
     res.json({ success: true });
 }
 

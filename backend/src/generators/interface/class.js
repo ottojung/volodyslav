@@ -47,6 +47,10 @@ const {
     internalEntryDiaryContent,
 } = require("./domain_queries");
 
+const { stringToNodeName } = require("../incremental_graph/database");
+const { makeInvalidNodeError } = require("../incremental_graph/errors");
+const { positionalToBindingsMap } = require("../incremental_graph/shared");
+
 /** Interface that encapsulates incremental-graph operations. */
 class InterfaceClass {
     /**
@@ -197,58 +201,71 @@ class InterfaceClass {
 
     /**
      * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
      * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
      */
-    async getFreshness(head, args = []) {
-        return await internalGetFreshness(this, head, args);
+    async getFreshness(head, bindings = {}) {
+        return await internalGetFreshness(this, head, bindings);
     }
 
     /**
      * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
      * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
      */
-    async getValue(head, args = []) {
-        return await internalGetValue(this, head, args);
+    async getValue(head, bindings = {}) {
+        return await internalGetValue(this, head, bindings);
     }
 
     /**
      * Pulls one concrete graph node for the graph API.
      * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
      * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
      */
-    async pullGraphNode(head, args = []) {
-        return await internalPullGraphNode(this, head, args);
+    async pullGraphNode(head, bindings = {}) {
+        return await internalPullGraphNode(this, head, bindings);
     }
 
     /**
      * Invalidates one concrete graph node for the graph API.
      * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
      * @returns {Promise<void>}
      */
-    async invalidateGraphNode(head, args = []) {
-        return await internalInvalidateGraphNode(this, head, args);
+    async invalidateGraphNode(head, bindings = {}) {
+        return await internalInvalidateGraphNode(this, head, bindings);
     }
 
     /**
      * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
      * @returns {Promise<import('../../datetime').DateTime>}
      */
-    async getCreationTime(head, args = []) {
-        return await internalGetCreationTime(this, head, args);
+    async getCreationTime(head, bindings = {}) {
+        return await internalGetCreationTime(this, head, bindings);
     }
 
     /**
      * @param {string} head
-     * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
+     * @param {Record<string, import('../incremental_graph/types').ConstValue>} [bindings={}]
      * @returns {Promise<import('../../datetime').DateTime>}
      */
-    async getModificationTime(head, args = []) {
-        return await internalGetModificationTime(this, head, args);
+    async getModificationTime(head, bindings = {}) {
+        return await internalGetModificationTime(this, head, bindings);
+    }
+
+    /**
+     * Convert positional args to key-value bindings map for a given node head.
+     * @param {string} head
+     * @param {Array<import('../incremental_graph/types').ConstValue>} positionalArgs
+     * @returns {Record<string, import('../incremental_graph/types').ConstValue>}
+     */
+    positionalToBindings(head, positionalArgs) {
+        const nodeNameTyped = stringToNodeName(head);
+        const compiledNode = this._requireInitializedGraph().headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        return positionalToBindingsMap(compiledNode, positionalArgs);
     }
 
     /**

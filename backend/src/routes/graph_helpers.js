@@ -38,15 +38,15 @@ function decodeUrlArg(segment) {
 
 /**
  * @typedef {object} TimestampReader
- * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getCreationTime
- * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getModificationTime
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<DateTime>} getCreationTime
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<DateTime>} getModificationTime
  */
 /**
  * @typedef {object} PullInterface
- * @property {(head: string, args?: Array<ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} getFreshness
- * @property {(head: string, args?: Array<ConstValue>) => Promise<unknown>} pullGraphNode
- * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getCreationTime
- * @property {(head: string, args?: Array<ConstValue>) => Promise<DateTime>} getModificationTime
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<import('../generators/incremental_graph/types').FreshnessStatus>} getFreshness
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<unknown>} pullGraphNode
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<DateTime>} getCreationTime
+ * @property {(head: string, bindings?: Record<string, ConstValue>) => Promise<DateTime>} getModificationTime
  */
 
 /**
@@ -63,13 +63,13 @@ function formatArityMismatchMessage(head, expected, received) {
 /**
  * @param {TimestampReader} graph
  * @param {string} head
- * @param {Array<ConstValue>} args
+ * @param {Record<string, ConstValue>} bindings
  * @returns {Promise<{createdAt: string | null, modifiedAt: string | null}>}
  */
-async function fetchTimestamps(graph, head, args) {
+async function fetchTimestamps(graph, head, bindings) {
     try {
-        const createdAt = (await graph.getCreationTime(head, args)).toISOString();
-        const modifiedAt = (await graph.getModificationTime(head, args)).toISOString();
+        const createdAt = (await graph.getCreationTime(head, bindings)).toISOString();
+        const modifiedAt = (await graph.getModificationTime(head, bindings)).toISOString();
         return { createdAt, modifiedAt };
     } catch (err) {
         if (isMissingTimestamp(err)) {
@@ -131,15 +131,16 @@ function getArgsFromRequest(req) {
 }
 
 /**
- * @param {{ interface: PullInterface }} capabilities
+ * @param {{ interface: PullInterface & { positionalToBindings: (head: string, args: Array<ConstValue>) => Record<string, ConstValue> } }} capabilities
  * @param {string} head
  * @param {Array<ConstValue>} args
  * @returns {Promise<object>}
  */
 async function pullNode(capabilities, head, args) {
-    const value = await capabilities.interface.pullGraphNode(head, args);
-    const freshness = await capabilities.interface.getFreshness(head, args);
-    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
+    const bindings = capabilities.interface.positionalToBindings(head, args);
+    const value = await capabilities.interface.pullGraphNode(head, bindings);
+    const freshness = await capabilities.interface.getFreshness(head, bindings);
+    const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, bindings);
     return { head, args, freshness, value, createdAt, modifiedAt };
 }
 

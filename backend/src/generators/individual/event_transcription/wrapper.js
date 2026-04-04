@@ -21,9 +21,9 @@ const makeComputor = (capabilities) => async (inputs, _oldValue, bindings) => {
     if (!transcriptionEntry || transcriptionEntry.type !== "transcription") {
         throw new Error("Expected transcription input for event_transcription(e, a) computor");
     }
-    const audioPath = bindings[1];
+    const audioPath = bindings.a;
     if (typeof audioPath !== "string") {
-        throw new Error("Expected audio path binding at position 1 for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
+        throw new Error("Expected binding 'a' (audio path) to be a string for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
     }
     return computeEventTranscription(
         capabilities,

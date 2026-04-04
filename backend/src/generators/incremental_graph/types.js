@@ -25,7 +25,7 @@
  * Receives inputs, optional old value, and positional bindings array.
  * Bindings are matched to argument positions by position (not by variable name).
  * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
- * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>} NodeDefComputor
+ * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Record<string, ConstValue>) => Promise<ComputedValue | Unchanged>} NodeDefComputor
  */
 
 /**

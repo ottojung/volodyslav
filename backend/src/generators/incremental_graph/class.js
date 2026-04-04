@@ -25,6 +25,8 @@ const {
     validateNoOverlap,
     validateSingleArityPerHead,
 } = require("./compiled_node");
+const { stringToNodeName } = require("./database");
+const { makeInvalidNodeError } = require("./errors");
 const { makeGraphStorage } = require("./graph_storage");
 const {
     internalGetDbVersion,
@@ -51,6 +53,7 @@ const {
     internalUnsafePull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
+const { bindingsMapToPositional, positionalToBindingsMap } = require("./shared");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -112,20 +115,28 @@ class IncrementalGraphClass {
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} bindings
+     * @param {Record<string, ConstValue>} bindings
      * @returns {Promise<void>}
      */
     async unsafeInvalidate(nodeName, bindings) {
-        await internalUnsafeInvalidate(this, nodeName, bindings);
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        await internalUnsafeInvalidate(this, nodeName, positionalBindings);
     }
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<void>}
      */
-    async invalidate(nodeName, bindings = []) {
-        await internalInvalidate(this, nodeName, bindings);
+    async invalidate(nodeName, bindings = {}) {
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        await internalInvalidate(this, nodeName, positionalBindings);
     }
 
     /**
@@ -154,29 +165,40 @@ class IncrementalGraphClass {
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} bindings
+     * @param {Record<string, ConstValue>} bindings
      * @returns {Promise<ComputedValue>}
      */
     async unsafePull(nodeName, bindings) {
-        return await internalUnsafePull(this, nodeName, bindings);
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalUnsafePull(this, nodeName, positionalBindings);
     }
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<ComputedValue>}
      */
-    async pull(nodeName, bindings = []) {
-        return await internalPull(this, nodeName, bindings);
+    async pull(nodeName, bindings = {}) {
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalPull(this, nodeName, positionalBindings);
     }
 
     /**
      * @param {import('./types').NodeName} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName, bindings = []) {
-        return await internalSafePullWithStatus(this, nodeName, bindings);
+    async pullWithStatus(nodeName, bindings = {}) {
+        const compiledNode = this.headIndex.get(nodeName);
+        if (!compiledNode) throw makeInvalidNodeError(nodeName);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalSafePullWithStatus(this, nodeName, positionalBindings);
     }
 
     /**
@@ -200,20 +222,28 @@ class IncrementalGraphClass {
 
     /**
      * @param {string} head
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
-    async getFreshness(head, bindings = []) {
-        return await internalGetFreshness(this, head, bindings);
+    async getFreshness(head, bindings = {}) {
+        const nodeNameTyped = stringToNodeName(head);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalGetFreshness(this, head, positionalBindings);
     }
 
     /**
      * @param {string} head
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<ComputedValue | undefined>}
      */
-    async getValue(head, bindings = []) {
-        return await internalGetValue(this, head, bindings);
+    async getValue(head, bindings = {}) {
+        const nodeNameTyped = stringToNodeName(head);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalGetValue(this, head, positionalBindings);
     }
 
     /** @returns {Array<CompiledNode>} */
@@ -241,20 +271,28 @@ class IncrementalGraphClass {
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<DateTime>}
      */
-    async getCreationTime(nodeName, bindings = []) {
-        return await internalGetCreationTime(this, nodeName, bindings);
+    async getCreationTime(nodeName, bindings = {}) {
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalGetCreationTime(this, nodeName, positionalBindings);
     }
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
+     * @param {Record<string, ConstValue>} [bindings={}]
      * @returns {Promise<DateTime>}
      */
-    async getModificationTime(nodeName, bindings = []) {
-        return await internalGetModificationTime(this, nodeName, bindings);
+    async getModificationTime(nodeName, bindings = {}) {
+        const nodeNameTyped = stringToNodeName(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
+        if (!compiledNode) throw makeInvalidNodeError(nodeNameTyped);
+        const positionalBindings = bindingsMapToPositional(compiledNode, bindings);
+        return await internalGetModificationTime(this, nodeName, positionalBindings);
     }
 }
 

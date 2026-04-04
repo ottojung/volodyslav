@@ -8,6 +8,7 @@ const {
 } = require("./compiled_node");
 const { renderExpr } = require("./expr");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
+const { positionalToBindingsMap } = require("./shared");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
@@ -52,7 +53,7 @@ function internalGetOrCreateConcreteNode(
             inputs: jsonInputs,
             /** @type {ConcreteNodeComputor} */
             computor: (inputs, oldValue) =>
-                compiledNode.source.computor(inputs, oldValue, []),
+                compiledNode.source.computor(inputs, oldValue, {}),
         };
         incrementalGraph.concreteInstantiations.set(
             concreteKeyString,
@@ -77,8 +78,10 @@ function internalGetOrCreateConcreteNode(
         output: concreteKeyString,
         inputs: concreteInputs,
         /** @type {ConcreteNodeComputor} */
-        computor: (inputValues, oldValue) =>
-            compiledNode.source.computor(inputValues, oldValue, bindings),
+        computor: (inputValues, oldValue) => {
+            const bindingsMap = positionalToBindingsMap(compiledNode, bindings);
+            return compiledNode.source.computor(inputValues, oldValue, bindingsMap);
+        },
     };
 
     incrementalGraph.concreteInstantiations.set(concreteKeyString, concreteNode);

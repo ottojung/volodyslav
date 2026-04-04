@@ -10,9 +10,9 @@ const { computeTranscriptionForAssetPath } = require("./compute");
  */
 function makeComputor(capabilities) {
     return async (_inputs, _oldValue, bindings) => {
-        const firstBinding = bindings[0];
+        const firstBinding = bindings.a;
         if (typeof firstBinding !== "string") {
-            throw new Error("Expected first binding to be a string for transcription(a) computor, got " + JSON.stringify(firstBinding));
+            throw new Error("Expected binding 'a' to be a string for transcription(a) computor, got " + JSON.stringify(firstBinding));
         }
         return computeTranscriptionForAssetPath(
             firstBinding,
