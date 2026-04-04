@@ -1,5 +1,5 @@
 const express = require("express");
-const { runDiarySummaryPipeline, diarySummaryExclusiveProcess } = require("../jobs");
+const { diarySummaryExclusiveProcess } = require("../jobs");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */

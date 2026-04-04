@@ -275,9 +275,7 @@ describe("ExclusiveProcess", () => {
 
             const handle = ep.invoke(undefined);
             expect(handle.isInitiator).toBe(true);
-            if (handle.isInitiator) {
-                expect(handle.mutateState).toBe(procedureMutateState);
-            }
+            expect(handle).toHaveProperty('mutateState', procedureMutateState);
             deferred.resolve();
         });
     });
@@ -393,9 +391,7 @@ describe("ExclusiveProcess", () => {
             const h2 = ep.invoke(undefined);
 
             expect(h2.isInitiator).toBe(false);
-            if (!h2.isInitiator) {
-                expect(h2.currentState).toEqual({ status: "running" });
-            }
+            expect(h2).toHaveProperty('currentState', { status: "running" });
 
             deferred.resolve();
             await h2.result;
@@ -506,7 +502,7 @@ describe("ExclusiveProcess", () => {
             let callIndex = 0;
             const ep = makeExclusiveProcess({
                 initialState: { count: 0 },
-                procedure: (mutateState, type) => {
+                procedure: (mutateState, _type) => {
                     mutateState((s) => ({ count: s.count + 1 }));
                     return [deferred1, deferred2][callIndex++].promise;
                 },
@@ -518,9 +514,7 @@ describe("ExclusiveProcess", () => {
             const h2 = ep.invoke("B"); // queued
 
             expect(h2.isInitiator).toBe(false);
-            if (!h2.isInitiator) {
-                expect(h2.currentState).toEqual({ count: 1 });
-            }
+            expect(h2).toHaveProperty('currentState', { count: 1 });
 
             deferred1.resolve();
             await new Promise((r) => setImmediate(r));

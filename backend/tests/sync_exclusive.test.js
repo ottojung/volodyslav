@@ -144,10 +144,10 @@ describe("sync — ExclusiveProcess adoption", () => {
 
             const state = synchronizeAllExclusiveProcess.getState();
             expect(state.status).toBe("success");
-            if (state.status === "success") {
-                expect(state.steps).toContainEqual({ name: "generators", status: "success" });
-                expect(state.steps).toContainEqual({ name: "assets", status: "success" });
-            }
+            expect(state).toHaveProperty('steps', expect.arrayContaining([
+                { name: "generators", status: "success" },
+                { name: "assets", status: "success" },
+            ]));
         });
 
         it("state transitions to error on failure", async () => {

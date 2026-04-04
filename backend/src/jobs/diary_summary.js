@@ -166,7 +166,7 @@ function runDiarySummaryPipeline(capabilities) {
 /**
  * Internal (unlocked) implementation of the pipeline.
  * @param {Capabilities} capabilities
- * @param {DiarySummaryPipelineCallbacks} [callbacks]
+ * @param {{ onEntryQueued?: (eventId: string) => void, onEntryProcessed?: (eventId: string, status: "success" | "error") => void }} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
 async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {

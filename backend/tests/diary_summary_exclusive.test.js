@@ -160,9 +160,7 @@ describe("diary summary — ExclusiveProcess adoption", () => {
 
             const state = diarySummaryExclusiveProcess.getState();
             expect(state.status).toBe("error");
-            if (state.status === "error") {
-                expect(state.error).toContain("pipeline-crash");
-            }
+            expect(state).toHaveProperty('error', expect.stringContaining("pipeline-crash"));
         });
 
         it("subscribers receive state updates during the run", async () => {

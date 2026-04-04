@@ -7,6 +7,7 @@ import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 jest.mock("../src/Sync/api.js", () => ({
     postSync: jest.fn(),
     fetchSyncHostnames: jest.fn(),
+    fetchSyncState: jest.fn().mockResolvedValue({ status: "idle" }),
 }));
 
 jest.mock("../src/version_api.js", () => ({
