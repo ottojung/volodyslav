@@ -117,12 +117,12 @@ describe("runDiarySummaryPipeline", () => {
         const [relativeAssetPath] = await writeDiaryEventWithAssets(capabilities, "1", ["memo.mp3"]);
 
         // Materialize transcription once, then simulate stale freshness.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        await capabilities.interface.pullGraphNode("transcription", {a: relativeAssetPath});
         const graph = capabilities.interface._requireInitializedGraph();
         const originalGetFreshness = graph.getFreshness.bind(graph);
         const getFreshnessSpy = jest.spyOn(graph, "getFreshness");
-        getFreshnessSpy.mockImplementation(async (head, args = []) => {
-            if (head === "transcription" && args[0] === relativeAssetPath) {
+        getFreshnessSpy.mockImplementation(async (head, args = {}) => {
+            if (head === "transcription" && args.a === relativeAssetPath) {
                 return "potentially-outdated";
             }
             return await originalGetFreshness(head, args);
@@ -146,7 +146,7 @@ describe("runDiarySummaryPipeline", () => {
         );
 
         // Materialize transcription(a) by pulling it directly.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        await capabilities.interface.pullGraphNode("transcription", {a: relativeAssetPath});
 
         const result = await runDiarySummaryPipeline(capabilities);
 
@@ -170,7 +170,7 @@ describe("runDiarySummaryPipeline", () => {
         );
 
         // Materialize transcription(a) by pulling it directly.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        await capabilities.interface.pullGraphNode("transcription", {a: relativeAssetPath});
 
         // First run: processes the entry.
         const first = await runDiarySummaryPipeline(capabilities);
@@ -200,8 +200,8 @@ describe("runDiarySummaryPipeline", () => {
         );
 
         // Materialize transcriptions by pulling them directly.
-        await capabilities.interface.pullGraphNode("transcription", [olderPath]);
-        await capabilities.interface.pullGraphNode("transcription", [newerPath]);
+        await capabilities.interface.pullGraphNode("transcription", {a: olderPath});
+        await capabilities.interface.pullGraphNode("transcription", {a: newerPath});
 
         const result = await runDiarySummaryPipeline(capabilities);
 
@@ -224,8 +224,8 @@ describe("runDiarySummaryPipeline", () => {
         );
 
         // Materialize transcriptions by pulling them directly.
-        await capabilities.interface.pullGraphNode("transcription", [p1]);
-        await capabilities.interface.pullGraphNode("transcription", [p2]);
+        await capabilities.interface.pullGraphNode("transcription", {a: p1});
+        await capabilities.interface.pullGraphNode("transcription", {a: p2});
 
         const setDiarySummarySpy = jest.spyOn(capabilities.interface, "setDiarySummary");
 
@@ -280,7 +280,7 @@ describe("runDiarySummaryPipeline", () => {
             capabilities, "1", ["memo.mp3"], fromISOString("2024-01-01T00:00:00.000Z")
         );
         // Materialize transcription(a) by pulling it directly.
-        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+        await capabilities.interface.pullGraphNode("transcription", {a: relativeAssetPath});
 
         // Launch two pipeline runs concurrently.
         const [r1, r2] = await Promise.all([

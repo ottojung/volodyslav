@@ -90,7 +90,7 @@ describe("transcription(a) node", () => {
         );
         const result = await iface._incrementalGraph.pull(
             "transcription",
-            [relativeAssetPath],
+            {a: relativeAssetPath},
         );
 
         expect(result).toMatchObject({
@@ -123,8 +123,8 @@ describe("transcription(a) node", () => {
             "1",
             ["memo.mp3"],
         );
-        const first = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
-        const second = await iface._incrementalGraph.pull("transcription", [relativeAssetPath]);
+        const first = await iface._incrementalGraph.pull("transcription", {a: relativeAssetPath});
+        const second = await iface._incrementalGraph.pull("transcription", {a: relativeAssetPath});
 
         expect(first).toEqual(second);
         expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
@@ -135,7 +135,7 @@ describe("transcription(a) node", () => {
         const iface = capabilities.interface;
         await iface.ensureInitialized();
         await expect(
-            iface._incrementalGraph.pull("transcription", ["../escape.mp3"])
+            iface._incrementalGraph.pull("transcription", {a: "../escape.mp3"})
         ).rejects.toThrow("Invalid asset path for transcription: ../escape.mp3");
         expect(capabilities.aiTranscription.transcribeStream).not.toHaveBeenCalled();
     });
@@ -154,7 +154,7 @@ describe("event_transcription(e, a) node", () => {
         );
         const result = await iface._incrementalGraph.pull(
             "event_transcription",
-            ["1", relativeAssetPath],
+            {e: "1", a: relativeAssetPath},
         );
 
         expect(result).toMatchObject({
@@ -179,7 +179,7 @@ describe("event_transcription(e, a) node", () => {
         const [audioPath2] = await writeDiaryEventWithAssets(capabilities, "2", ["memo2.mp3"]);
         // Attempt to combine event "1" with event "2"'s audio path
         await expect(
-            iface._incrementalGraph.pull("event_transcription", ["1", audioPath2])
+            iface._incrementalGraph.pull("event_transcription", {e: "1", a: audioPath2})
         ).rejects.toThrow(`Audio path ${audioPath2} is not associated with event 1`);
     });
 
@@ -193,8 +193,8 @@ describe("event_transcription(e, a) node", () => {
             "1",
             ["memo.mp3"],
         );
-        const first = await iface._incrementalGraph.pull("event_transcription", ["1", relativeAssetPath]);
-        const second = await iface._incrementalGraph.pull("event_transcription", ["1", relativeAssetPath]);
+        const first = await iface._incrementalGraph.pull("event_transcription", {e: "1", a: relativeAssetPath});
+        const second = await iface._incrementalGraph.pull("event_transcription", {e: "1", a: relativeAssetPath});
 
         expect(first).toMatchObject({ type: "event_transcription" });
         expect(second).toMatchObject({ type: "event_transcription" });

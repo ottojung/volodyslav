@@ -151,8 +151,8 @@ describe("interface.getSortedEvents() async iterator", () => {
         await writeEventsAndUpdate(capabilities, makeSequentialEvents(SORTED_EVENTS_CACHE_SIZE));
 
         // Pull the small cache nodes directly to get the reference ordering.
-        const lastEntries = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
-        const firstEntries = await iface._incrementalGraph.pull("first_entries", [SORTED_EVENTS_CACHE_SIZE]);
+        const lastEntries = await iface._incrementalGraph.pull("last_entries", {n: SORTED_EVENTS_CACHE_SIZE});
+        const firstEntries = await iface._incrementalGraph.pull("first_entries", {n: SORTED_EVENTS_CACHE_SIZE});
         expect(lastEntries.type).toBe("last_entries");
         expect(firstEntries.type).toBe("first_entries");
 

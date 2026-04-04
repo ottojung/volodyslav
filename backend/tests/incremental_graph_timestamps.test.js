@@ -189,7 +189,7 @@ describe("generators/incremental_graph timestamps", () => {
                     inputs: [],
                     computor: async (_inputs, _old, bindings) => ({
                         type: "meta_events",
-                        meta_events: [{ id: bindings[0] }],
+                        meta_events: [{ id: bindings.x }],
                     }),
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -198,14 +198,14 @@ describe("generators/incremental_graph timestamps", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
-            await graph.invalidate("item", ["a"]);
-            await graph.pull("item", ["a"]);
+            await graph.invalidate("item", {x: "a"});
+            await graph.pull("item", {x: "a"});
 
-            await graph.invalidate("item", ["b"]);
-            await graph.pull("item", ["b"]);
+            await graph.invalidate("item", {x: "b"});
+            await graph.pull("item", {x: "b"});
 
-            const timeA = await graph.getCreationTime("item", ["a"]);
-            const timeB = await graph.getCreationTime("item", ["b"]);
+            const timeA = await graph.getCreationTime("item", {x: "a"});
+            const timeB = await graph.getCreationTime("item", {x: "b"});
 
             expect(isDateTime(timeA)).toBe(true);
             expect(isDateTime(timeB)).toBe(true);
@@ -229,13 +229,13 @@ describe("generators/incremental_graph timestamps", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
-            await graph.invalidate("item", ["existing"]);
-            await graph.pull("item", ["existing"]);
+            await graph.invalidate("item", {x: "existing"});
+            await graph.pull("item", {x: "existing"});
 
             // "missing" was never computed
             let error = null;
             try {
-                await graph.getCreationTime("item", ["missing"]);
+                await graph.getCreationTime("item", {x: "missing"});
             } catch (err) {
                 error = err;
             }

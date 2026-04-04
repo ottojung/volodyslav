@@ -13,6 +13,7 @@ const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { isInvalidBindingsError } = require("../src/generators/incremental_graph/errors");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -51,7 +52,7 @@ describe("Bound variables in computors", () => {
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
                         // Computor should receive bindings with x
-                        return { value: inputs[0].value, x: bindings[0] };
+                        return { value: inputs[0].value, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -65,7 +66,7 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull with bindings
-            const result = await graph.pull("derived", ["test"]);
+            const result = await graph.pull("derived", {x: "test"});
 
             expect(result).toEqual({ value: 42, x: "test" });
 
@@ -92,8 +93,8 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings[0] });
-                        return { value: inputs[0].value, x: bindings[0] };
+                        computorCallLog.push({ x: bindings.x });
+                        return { value: inputs[0].value, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -105,8 +106,8 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull with different bindings - should compute each separately
-            const result1 = await graph.pull("derived", ["first"]);
-            const result2 = await graph.pull("derived", ["second"]);
+            const result1 = await graph.pull("derived", {x: "first"});
+            const result2 = await graph.pull("derived", {x: "second"});
 
             expect(result1).toEqual({ value: 1, x: "first" });
             expect(result2).toEqual({ value: 1, x: "second" });
@@ -139,8 +140,8 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings[0] });
-                        return { value: inputs[0].value, x: bindings[0] };
+                        computorCallLog.push({ x: bindings.x });
+                        return { value: inputs[0].value, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -152,8 +153,8 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull same bindings twice
-            const result1 = await graph.pull("derived", ["test"]);
-            const result2 = await graph.pull("derived", ["test"]);
+            const result1 = await graph.pull("derived", {x: "test"});
+            const result2 = await graph.pull("derived", {x: "test"});
 
             expect(result1).toEqual({ value: 1, x: "test" });
             expect(result2).toEqual({ value: 1, x: "test" });
@@ -186,8 +187,8 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings[0], value: inputs[0].value  });
-                        return { value: inputs[0].value, x: bindings[0] };
+                        computorCallLog.push({ x: bindings.x, value: inputs[0].value  });
+                        return { value: inputs[0].value, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -199,8 +200,8 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull with two different bindings
-            await graph.pull("derived", ["first"]);
-            await graph.pull("derived", ["second"]);
+            await graph.pull("derived", {x: "first"});
+            await graph.pull("derived", {x: "second"});
 
             expect(computorCallLog).toHaveLength(2);
             computorCallLog.length = 0; // clear log
@@ -210,8 +211,8 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull again - both should recompute
-            const result1 = await graph.pull("derived", ["first"]);
-            const result2 = await graph.pull("derived", ["second"]);
+            const result1 = await graph.pull("derived", {x: "first"});
+            const result2 = await graph.pull("derived", {x: "second"});
 
             expect(result1).toEqual({ value: 2, x: "first" });
             expect(result2).toEqual({ value: 2, x: "second" });
@@ -241,7 +242,7 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value, x: bindings[0] };
+                        return { value: inputs[0].value, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -253,8 +254,8 @@ describe("Bound variables in computors", () => {
             await graph1.invalidate("source");
 
             // Materialize instances with different bindings
-            await graph1.pull("derived", ["first"]);
-            await graph1.pull("derived", ["second"]);
+            await graph1.pull("derived", {x: "first"});
+            await graph1.pull("derived", {x: "second"});
 
             await db1.close();
 
@@ -263,8 +264,8 @@ describe("Bound variables in computors", () => {
             const graph2 = makeIncrementalGraph(capabilities, db2, schemas);
 
             // Pull should get cached values
-            const result1 = await graph2.pull("derived", ["first"]);
-            const result2 = await graph2.pull("derived", ["second"]);
+            const result1 = await graph2.pull("derived", {x: "first"});
+            const result2 = await graph2.pull("derived", {x: "second"});
 
             expect(result1).toEqual({ value: 1, x: "first" });
             expect(result2).toEqual({ value: 1, x: "second" });
@@ -292,7 +293,7 @@ describe("Bound variables in computors", () => {
                     output: "middle(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value * 2, x: bindings[0] };
+                        return { value: inputs[0].value * 2, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -301,7 +302,7 @@ describe("Bound variables in computors", () => {
                     output: "final(x)",
                     inputs: ["middle(x)"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value + 1, x: bindings[0] };
+                        return { value: inputs[0].value + 1, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -312,7 +313,7 @@ describe("Bound variables in computors", () => {
             sourceCell.value = { value: 10 };
             await graph.invalidate("source");
 
-            const result = await graph.pull("final", ["deep"]);
+            const result = await graph.pull("final", {x: "deep"});
 
             expect(result).toEqual({ value: 21, x: "deep" });
 
@@ -344,7 +345,7 @@ describe("Bound variables in computors", () => {
                     output: `layer1_${i}(x)`,
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `l1_${i}(${inputs[0].value + i}, ${bindings[0]})` };
+                        return { value: `l1_${i}(${inputs[0].value + i}, ${bindings.x})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -355,7 +356,7 @@ describe("Bound variables in computors", () => {
                     inputs: [ `layer1_1(x)`, `layer1_2(x)`, `layer1_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
                         const sum = stringJoin(inputs.map(input => input.value));
-                        return { value: `l2_${i}(${sum}, ${bindings[0]})` };
+                        return { value: `l2_${i}(${sum}, ${bindings.x})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -366,7 +367,7 @@ describe("Bound variables in computors", () => {
                     inputs: [ `layer2_1(x)`, `layer2_2(x)`, `layer2_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
                         const sum = stringJoin(inputs.map(input => input.value));
-                        return { value: `l3_${i}(${sum}, ${bindings[0]})` };
+                        return { value: `l3_${i}(${sum}, ${bindings.x})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -378,7 +379,7 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull one of the deepest nodes
-            const result = await graph.pull("layer3_2", ["7"]);
+            const result = await graph.pull("layer3_2", {x: "7"});
 
             // Manually compute expected value
             expect(result).toEqual({ value: "l3_2(l2_1(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_2(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_3(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), 7)" });
@@ -396,7 +397,7 @@ describe("Bound variables in computors", () => {
                     output: "g(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `g(${bindings[0]})` };
+                        return { value: `g(${bindings.x})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -405,7 +406,7 @@ describe("Bound variables in computors", () => {
                     output: "h(y)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `h(${bindings[0]})` };
+                        return { value: `h(${bindings.y})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -424,7 +425,7 @@ describe("Bound variables in computors", () => {
             const graph = makeIncrementalGraph(capabilities, db, schemas);
 
             // Pull f with specific bindings
-            const result = await graph.pull("f", ["A", "B"]);
+            const result = await graph.pull("f", {x: "A", y: "B"});
 
             expect(result).toEqual({ value: "f(g(A), h(B))" });
 
@@ -457,7 +458,7 @@ describe("Bound variables in computors", () => {
                     output: "k(x)",
                     inputs: ["s1"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `k(${bindings[0]}, ${inputs[0].value})` };
+                        return { value: `k(${bindings.x}, ${inputs[0].value})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -466,7 +467,7 @@ describe("Bound variables in computors", () => {
                     output: "g(x, z)",
                     inputs: ["k(x)"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `g(${inputs[0].value}, ${bindings[1]})` };
+                        return { value: `g(${inputs[0].value}, ${bindings.z})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -475,7 +476,7 @@ describe("Bound variables in computors", () => {
                     output: "h(y)",
                     inputs: ["s2"],
                     computor: (inputs, _oldValue, bindings) => {
-                        return { value: `h(${bindings[0]}, ${inputs[0].value})` };
+                        return { value: `h(${bindings.y}, ${inputs[0].value})` };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -494,7 +495,7 @@ describe("Bound variables in computors", () => {
             const graph = makeIncrementalGraph(capabilities, db, schemas);
 
             // Pull f with specific bindings
-            const result = await graph.pull("f", ["A", "B", "C"]);
+            const result = await graph.pull("f", {x: "A", y: "B", z: "C"});
 
             expect(result).toEqual({ value: "f(g(k(A, s1), C), h(B, s2))" });
 
@@ -523,8 +524,8 @@ describe("Bound variables in computors", () => {
                     output: "expensive(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings[0] });
-                        return { value: inputs[0].value, x: bindings[0] };
+                        computorCallLog.push({ x: bindings.x });
+                        return { value: inputs[0].value, x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -563,7 +564,7 @@ describe("Bound variables in computors", () => {
             await graph.invalidate("source");
 
             // Pull top - should compute expensive only once even though two consumers depend on it
-            await graph.pull("top", ["shared"]);
+            await graph.pull("top", {x: "shared"});
 
             // expensive(x) should only be computed once
             expect(computorCallLog).toHaveLength(1);
@@ -583,7 +584,7 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { x: bindings[0] };
+                        return { x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -593,9 +594,14 @@ describe("Bound variables in computors", () => {
             const graph = makeIncrementalGraph(capabilities, db, schemas);
 
             // Pull without required binding
-            await expect(graph.pull("derived")).rejects.toThrow(
-                /Arity mismatch: nodeName 'derived' expects 1 arguments but received 0 bindings/
-            );
+            let error = null;
+            try {
+                await graph.pull("derived");
+            } catch (err) {
+                error = err;
+            }
+            expect(error).not.toBeNull();
+            expect(isInvalidBindingsError(error)).toBe(true);
 
             await db.close();
         });
@@ -609,7 +615,7 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { x: bindings[0] };
+                        return { x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -618,10 +624,15 @@ describe("Bound variables in computors", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, schemas);
 
-            // Pull with wrong number of bindings (arity mismatch)
-            await expect(graph.pull("derived", [1, 2])).rejects.toThrow(
-                /Arity mismatch: nodeName 'derived' expects 1 arguments but received 2 bindings/
-            );
+            // Pull with wrong keys (key mismatch)
+            let error = null;
+            try {
+                await graph.pull("derived", {x: 1, extra: 2});
+            } catch (err) {
+                error = err;
+            }
+            expect(error).not.toBeNull();
+            expect(isInvalidBindingsError(error)).toBe(true);
 
             await db.close();
         });
@@ -635,7 +646,7 @@ describe("Bound variables in computors", () => {
                     output: "source(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { x: bindings[0] };
+                        return { x: bindings.x };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,

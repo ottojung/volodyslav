@@ -40,11 +40,11 @@ describe("default graph computor wiring", () => {
             .rejects
             .toThrow("Expected first input of type basic_context for calories(e) computor");
 
-        await expect(findNode(graph, "transcription(a)").computor([], undefined, [123]))
+        await expect(findNode(graph, "transcription(a)").computor([], undefined, {a: 123}))
             .rejects
-            .toThrow("Expected first binding to be a string for transcription(a) computor, got 123");
-        await expect(individual.transcription.makeComputor(capabilities)([], undefined, [123]))
+            .toThrow("Expected binding 'a' to be a string for transcription(a) computor, got 123");
+        await expect(individual.transcription.makeComputor(capabilities)([], undefined, {a: 123}))
             .rejects
-            .toThrow("Expected first binding to be a string for transcription(a) computor, got 123");
+            .toThrow("Expected binding 'a' to be a string for transcription(a) computor, got 123");
     });
 });

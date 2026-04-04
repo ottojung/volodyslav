@@ -524,7 +524,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
         ]);
 
         await expect(g.pull("id(1,2)")).rejects.toMatchObject({
-            name: "InvalidNodeNameError",
+            name: "InvalidNodeError",
         });
     });
 
@@ -541,7 +541,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
         ]);
 
         await expect(g.pull("id(x)")).rejects.toMatchObject({
-            name: "SchemaPatternNotAllowedError",
+            name: "InvalidNodeError",
         });
     });
 
@@ -558,7 +558,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
         ]);
 
         await expect(g.pull("id()")).rejects.toMatchObject({
-            name: "SchemaPatternNotAllowedError",
+            name: "InvalidNodeError",
         });
     });
 });
@@ -579,7 +579,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         // In the new API, "event_context(e)" is a schema pattern with variables
         // The public API rejects schema patterns, throwing SchemaPatternNotAllowedError
         await expect(g.pull("event_context(e)")).rejects.toMatchObject({
-            name: "SchemaPatternNotAllowedError",
+            name: "InvalidNodeError",
         });
     });
 
@@ -599,7 +599,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         // The public API rejects schema patterns, throwing SchemaPatternNotAllowedError
         await expect(g.invalidate("event_context(e)")).rejects.toMatchObject(
             {
-                name: "SchemaPatternNotAllowedError",
+                name: "InvalidNodeError",
             }
         );
     });
@@ -611,7 +611,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         ]);
 
         await expect(g.pull("invalid-name")).rejects.toMatchObject({
-            name: "InvalidNodeNameError",
+            name: "InvalidNodeError",
         });
     });
 
@@ -622,7 +622,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         ]);
 
         await expect(g.invalidate("invalid-name")).rejects.toMatchObject({
-            name: "InvalidNodeNameError",
+            name: "InvalidNodeError",
         });
     });
 

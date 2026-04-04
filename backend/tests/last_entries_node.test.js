@@ -33,7 +33,7 @@ describe("last_entries(n) graph node", () => {
         await writeEventsAndUpdate(capabilities, events);
 
         const descResult = await iface._incrementalGraph.pull("sorted_events_descending");
-        const cacheResult = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
+        const cacheResult = await iface._incrementalGraph.pull("last_entries", {n: SORTED_EVENTS_CACHE_SIZE});
 
         // Should be the same as the full descending list when count < cache size
         expect(cacheResult.type).toBe("last_entries");
@@ -48,7 +48,7 @@ describe("last_entries(n) graph node", () => {
         const iface = capabilities.interface;
         await iface.ensureInitialized();
 
-        const result = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
+        const result = await iface._incrementalGraph.pull("last_entries", {n: SORTED_EVENTS_CACHE_SIZE});
         expect(result.type).toBe("last_entries");
         expect(result.n).toBe(SORTED_EVENTS_CACHE_SIZE);
         expect(result.events).toHaveLength(0);
@@ -62,7 +62,7 @@ describe("last_entries(n) graph node", () => {
         const events = makeSequentialEvents(SORTED_EVENTS_CACHE_SIZE + 10);
         await writeEventsAndUpdate(capabilities, events);
 
-        const result = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
+        const result = await iface._incrementalGraph.pull("last_entries", {n: SORTED_EVENTS_CACHE_SIZE});
         expect(result.events).toHaveLength(SORTED_EVENTS_CACHE_SIZE);
     });
 
@@ -74,7 +74,7 @@ describe("last_entries(n) graph node", () => {
         const events = makeSequentialEvents(SORTED_EVENTS_CACHE_SIZE);
         await writeEventsAndUpdate(capabilities, events);
 
-        const result = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
+        const result = await iface._incrementalGraph.pull("last_entries", {n: SORTED_EVENTS_CACHE_SIZE});
         expect(result.events).toHaveLength(SORTED_EVENTS_CACHE_SIZE);
     });
 
@@ -86,7 +86,7 @@ describe("last_entries(n) graph node", () => {
         const events = makeSequentialEvents(5);
         await writeEventsAndUpdate(capabilities, events);
 
-        const result = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
+        const result = await iface._incrementalGraph.pull("last_entries", {n: SORTED_EVENTS_CACHE_SIZE});
         const dates = result.events.map((e) => fromISOString(e.date));
         for (let i = 1; i < dates.length; i++) {
             expect(dates[i - 1].isAfterOrEqual(dates[i])).toBe(true);
@@ -100,7 +100,7 @@ describe("last_entries(n) graph node", () => {
 
         await writeEventsAndUpdate(capabilities, makeSequentialEvents(10));
 
-        const result = await iface._incrementalGraph.pull("last_entries", [3]);
+        const result = await iface._incrementalGraph.pull("last_entries", {n: 3});
         expect(result.type).toBe("last_entries");
         expect(result.n).toBe(3);
         expect(result.events).toHaveLength(3);

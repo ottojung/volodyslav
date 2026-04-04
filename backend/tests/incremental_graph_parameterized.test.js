@@ -58,7 +58,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isSchemaPatternNotAllowed(error)).toBe(true);
+            expect(isInvalidNode(error)).toBe(true);
 
             // Try to invalidate with an identifier that looks like a pattern
             await expect(
@@ -72,7 +72,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isSchemaPatternNotAllowed(error)).toBe(true);
+            expect(isInvalidNode(error)).toBe(true);
 
             await db.close();
         });
