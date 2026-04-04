@@ -13,7 +13,6 @@ import {
 } from "./audio_helpers.js";
 import { useAudioRecorderPersistence } from "./useAudioRecorder_persistence.js";
 import { useAudioRecorderStateRefs } from "./useAudioRecorder_state_refs.js";
-import { useAudioChunkCollector } from "./useAudioChunkCollector.js";
 import { useRecordingTimer } from "./useRecordingTimer.js";
 import { createRecorderCallbacks } from "./useAudioRecorder_recorder_callbacks.js";
 import { createAudioRecorderActionHandlers } from "./useAudioRecorder_action_handlers.js";
@@ -86,9 +85,6 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
     const pcmUploadedCountRef = useRef(0);
     /** @type {import("react").MutableRefObject<Promise<void>>} */
     const uploadQueueRef = useRef(Promise.resolve());
-
-    const { resetCollector } =
-        useAudioChunkCollector();
 
     const {
         audioBlobRef,
@@ -206,7 +202,6 @@ export function useAudioRecorder({ onQuestions = null } = {}) {
         setNote,
         setAnalyser,
         setRecorderState,
-        resetCollector,
         audioUrl,
     });
 
