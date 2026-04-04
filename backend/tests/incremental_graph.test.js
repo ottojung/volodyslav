@@ -203,8 +203,8 @@ describe("generators/incremental_graph", () => {
             expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
-            const input1Freshness = await graph.debugGetFreshness("input1");
-            const output1Freshness = await graph.debugGetFreshness("output1");
+            const input1Freshness = await graph.getFreshness("input1");
+            const output1Freshness = await graph.getFreshness("output1");
             expect(input1Freshness).toBe("up-to-date");
             expect(output1Freshness).toBe("up-to-date");
 
@@ -270,7 +270,7 @@ describe("generators/incremental_graph", () => {
 
             // Should keep existing value and mark as clean
             expect(result.data).toBe("existing_value");
-            const output1Freshness = await graph.debugGetFreshness("output1");
+            const output1Freshness = await graph.getFreshness("output1");
             expect(output1Freshness).toBe("up-to-date");
 
             await db.close();
@@ -346,10 +346,10 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
 
             // All should be clean after pull
-            const input1Freshness = await graph.debugGetFreshness("input1");
-            const level1Freshness = await graph.debugGetFreshness("level1");
-            const level2Freshness = await graph.debugGetFreshness("level2");
-            const level3Freshness = await graph.debugGetFreshness("level3");
+            const input1Freshness = await graph.getFreshness("input1");
+            const level1Freshness = await graph.getFreshness("level1");
+            const level2Freshness = await graph.getFreshness("level2");
+            const level3Freshness = await graph.getFreshness("level3");
             expect(input1Freshness).toBe("up-to-date");
             expect(level1Freshness).toBe("up-to-date");
             expect(level2Freshness).toBe("up-to-date");
@@ -440,9 +440,9 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["level1"]);
 
             // All should be clean after pull
-            const level1Freshness = await graph.debugGetFreshness("level1");
-            const level2Freshness = await graph.debugGetFreshness("level2");
-            const level3Freshness = await graph.debugGetFreshness("level3");
+            const level1Freshness = await graph.getFreshness("level1");
+            const level2Freshness = await graph.getFreshness("level2");
+            const level3Freshness = await graph.getFreshness("level3");
             expect(level1Freshness).toBe("up-to-date");
             expect(level2Freshness).toBe("up-to-date");
             expect(level3Freshness).toBe("up-to-date");
@@ -519,10 +519,10 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
             // All should be clean
-            const inputFreshness = await graph.debugGetFreshness("input");
-            const leftFreshness = await graph.debugGetFreshness("left");
-            const rightFreshness = await graph.debugGetFreshness("right");
-            const outputFreshness = await graph.debugGetFreshness("output");
+            const inputFreshness = await graph.getFreshness("input");
+            const leftFreshness = await graph.getFreshness("left");
+            const rightFreshness = await graph.getFreshness("right");
+            const outputFreshness = await graph.getFreshness("output");
             expect(inputFreshness).toBe("up-to-date");
             expect(leftFreshness).toBe("up-to-date");
             expect(rightFreshness).toBe("up-to-date");
@@ -601,7 +601,7 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
             // All should be clean
-            const outputFreshness = await graph.debugGetFreshness("output");
+            const outputFreshness = await graph.getFreshness("output");
             expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
@@ -785,9 +785,9 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["middle"]);
 
             // All should be clean
-            const inputFreshness = await graph.debugGetFreshness("input");
-            const middleFreshness = await graph.debugGetFreshness("middle");
-            const outputFreshness = await graph.debugGetFreshness("output");
+            const inputFreshness = await graph.getFreshness("input");
+            const middleFreshness = await graph.getFreshness("middle");
+            const outputFreshness = await graph.getFreshness("output");
             expect(inputFreshness).toBe("up-to-date");
             expect(middleFreshness).toBe("up-to-date");
             expect(outputFreshness).toBe("up-to-date");
@@ -834,8 +834,8 @@ describe("generators/incremental_graph", () => {
             expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
-            const input1Freshness = await graph.debugGetFreshness("input1");
-            const output1Freshness = await graph.debugGetFreshness("output1");
+            const input1Freshness = await graph.getFreshness("input1");
+            const output1Freshness = await graph.getFreshness("output1");
             expect(input1Freshness).toBe("up-to-date");
             expect(output1Freshness).toBe("up-to-date");
 
@@ -1283,7 +1283,7 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual([]); // No recomputation due to counter optimization
 
             // Output should now be clean
-            const outputFreshness = await graph.debugGetFreshness("output");
+            const outputFreshness = await graph.getFreshness("output");
             expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
@@ -1719,8 +1719,8 @@ describe("generators/incremental_graph", () => {
         });
     });
 
-    describe("Debug Interface", () => {
-        test("debugGetFreshness returns correct status", async () => {
+    describe("Inspection Interface", () => {
+        test("getFreshness returns correct status", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -1745,23 +1745,23 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
             // Initially missing
-            expect(await graph.debugGetFreshness("node1")).toBe("missing");
+            expect(await graph.getFreshness("node1")).toBe("missing");
 
             node1Cell.value = { val: 10 };
             await graph.invalidate("node1");
-            expect(await graph.debugGetFreshness("node1")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("node1")).toBe("potentially-outdated");
             
             // node2 should be missing (not yet materialized, so not marked outdated)
-            expect(await graph.debugGetFreshness("node2")).toBe("missing");
+            expect(await graph.getFreshness("node2")).toBe("missing");
 
             // Pull node2 -> up-to-date
             await graph.pull("node2");
-            expect(await graph.debugGetFreshness("node2")).toBe("up-to-date");
+            expect(await graph.getFreshness("node2")).toBe("up-to-date");
 
             await db.close();
         });
 
-        test("debugListMaterializedNodes lists all materialized nodes", async () => {
+        test("listMaterializedNodes lists all materialized nodes", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -1787,19 +1787,19 @@ describe("generators/incremental_graph", () => {
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
             // Initially empty
-            expect(await graph.debugListMaterializedNodes()).toEqual([]);
+            expect(await graph.listMaterializedNodes()).toEqual([]);
 
             node1Cell.value = { val: 10 };
             await graph.invalidate("node1");
             
-            const nodes = await graph.debugListMaterializedNodes();
+            const nodes = await graph.listMaterializedNodes();
             expect(nodes).toContainEqual(["node1", []]);
             expect(nodes).not.toContainEqual(["node2", []]);
 
             // Pull node2
             await graph.pull("node2");
             
-            const nodes2 = await graph.debugListMaterializedNodes();
+            const nodes2 = await graph.listMaterializedNodes();
             expect(nodes2).toContainEqual(["node1", []]);
             expect(nodes2).toContainEqual(["node2", []]);
             expect(nodes2.length).toBe(2);

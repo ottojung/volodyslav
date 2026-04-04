@@ -81,8 +81,8 @@ async function internalSetOntology(interfaceInstance, ontology) {
  * @param {InterfaceGraphAccess} interfaceInstance
  * @returns {Array<import('../incremental_graph/types').CompiledNode>}
  */
-function internalDebugGetSchemas(interfaceInstance) {
-    return interfaceInstance._requireInitializedGraph().debugGetSchemas();
+function internalGetSchemas(interfaceInstance) {
+    return interfaceInstance._requireInitializedGraph().getSchemas();
 }
 
 /**
@@ -90,19 +90,19 @@ function internalDebugGetSchemas(interfaceInstance) {
  * @param {string} head
  * @returns {import('../incremental_graph/types').CompiledNode | null}
  */
-function internalDebugGetSchemaByHead(interfaceInstance, head) {
-    return interfaceInstance._requireInitializedGraph().debugGetSchemaByHead(head);
+function internalGetSchemaByHead(interfaceInstance, head) {
+    return interfaceInstance._requireInitializedGraph().getSchemaByHead(head);
 }
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
  * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
  */
-async function internalDebugListMaterializedNodes(interfaceInstance) {
+async function internalListMaterializedNodes(interfaceInstance) {
     await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
-        .debugListMaterializedNodes();
+        .listMaterializedNodes();
 }
 
 /**
@@ -111,11 +111,11 @@ async function internalDebugListMaterializedNodes(interfaceInstance) {
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
  */
-async function internalDebugGetFreshness(interfaceInstance, head, args = []) {
+async function internalGetFreshness(interfaceInstance, head, args = []) {
     await interfaceInstance.ensureInitialized();
     return await interfaceInstance
         ._requireInitializedGraph()
-        .debugGetFreshness(head, args);
+        .getFreshness(head, args);
 }
 
 /**
@@ -124,9 +124,9 @@ async function internalDebugGetFreshness(interfaceInstance, head, args = []) {
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
  * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
  */
-async function internalDebugGetValue(interfaceInstance, head, args = []) {
+async function internalGetValue(interfaceInstance, head, args = []) {
     await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().debugGetValue(head, args);
+    return await interfaceInstance._requireInitializedGraph().getValue(head, args);
 }
 
 /**
@@ -178,11 +178,11 @@ async function internalGetModificationTime(interfaceInstance, head, args = []) {
 }
 
 module.exports = {
-    internalDebugGetFreshness,
-    internalDebugGetSchemaByHead,
-    internalDebugGetSchemas,
-    internalDebugGetValue,
-    internalDebugListMaterializedNodes,
+    internalGetFreshness,
+    internalGetSchemaByHead,
+    internalGetSchemas,
+    internalGetValue,
+    internalListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
     internalInvalidateGraphNode,

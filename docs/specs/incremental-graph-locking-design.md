@@ -20,8 +20,8 @@ The target behavior is:
 
 1. `invalidate()` is exclusive with any `pull()`, but not with other
    `invalidate()` calls.
-2. Inspection reads such as `debugGetValue()` and
-   `debugListMaterializedNodes()` are allowed to run concurrently with
+2. Inspection reads such as `getValue()` and
+   `listMaterializedNodes()` are allowed to run concurrently with
    `invalidate()`.
 3. `pull()` is exclusive with inspection reads.
 4. `pull()` is exclusive with other `pull()` calls on the same node.

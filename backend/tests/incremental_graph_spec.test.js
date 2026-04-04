@@ -677,13 +677,13 @@ describe("pull/set concrete-ness & node existence errors", () => {
         expect(b1).toEqual({ n: 6 });
         
         // Verify b is up-to-date
-        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("b")).resolves.toBe("up-to-date");
         
         // Now invalidate b directly (non-source node)
         await g.invalidate("b");
         
         // b should now be potentially-outdated
-        await expect(g.debugGetFreshness("b")).resolves.toBe("potentially-outdated");
+        await expect(g.getFreshness("b")).resolves.toBe("potentially-outdated");
         
         // Pulling b should recompute it
         const b2 = await g.pull("b");
@@ -862,34 +862,34 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
             { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("missing");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
-        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("a")).resolves.toBe("missing");
+        await expect(g.getFreshness("b")).resolves.toBe("missing");
+        await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("potentially-outdated");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
-        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
+        await expect(g.getFreshness("b")).resolves.toBe("missing");
+        await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
         expect(bC.counter.calls).toBe(1);
         expect(cC.counter.calls).toBe(1);
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("c")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("b")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("c")).resolves.toBe("up-to-date");
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("potentially-outdated");
-        await expect(g.debugGetFreshness("b")).resolves.toBe(
+        await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
+        await expect(g.getFreshness("b")).resolves.toBe(
             "potentially-outdated"
         );
-        await expect(g.debugGetFreshness("c")).resolves.toBe(
+        await expect(g.getFreshness("c")).resolves.toBe(
             "potentially-outdated"
         );
 
@@ -898,10 +898,10 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         expect(bC.counter.calls).toBe(2); // one recompute
         expect(cC.counter.calls).toBe(1); // no recompute yet
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("b")).resolves.toBe("up-to-date");
         // Must still be potentially-outdated because c not recomputed yet.
-        await expect(g.debugGetFreshness("c")).resolves.toBe(
+        await expect(g.getFreshness("c")).resolves.toBe(
             "potentially-outdated"
         );
     });
@@ -938,35 +938,35 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
             { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("missing");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
-        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("a")).resolves.toBe("missing");
+        await expect(g.getFreshness("b")).resolves.toBe("missing");
+        await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("potentially-outdated");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
-        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
+        await expect(g.getFreshness("b")).resolves.toBe("missing");
+        await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
         expect(bC.counter.calls).toBe(1);
         expect(cC.counter.calls).toBe(1);
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("c")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("b")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("c")).resolves.toBe("up-to-date");
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
         await g.pull("a");
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe(
+        await expect(g.getFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("b")).resolves.toBe(
             "potentially-outdated"
         );
-        await expect(g.debugGetFreshness("c")).resolves.toBe(
+        await expect(g.getFreshness("c")).resolves.toBe(
             "potentially-outdated"
         );
 
@@ -975,10 +975,10 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         expect(bC.counter.calls).toBe(2); // one recompute
         expect(cC.counter.calls).toBe(1); // no recompute yet
 
-        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.getFreshness("b")).resolves.toBe("up-to-date");
         // Must still be potentially-outdated because c not recomputed yet.
-        await expect(g.debugGetFreshness("c")).resolves.toBe(
+        await expect(g.getFreshness("c")).resolves.toBe(
             "potentially-outdated"
         );
     });
@@ -1008,7 +1008,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         }
 
         async function fr(nodeName) {
-            return g.debugGetFreshness(nodeName);
+            return g.getFreshness(nodeName);
         }
 
         const aC = unoptimizedComputor("a");
@@ -1115,7 +1115,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         }
 
         async function fr(nodeName) {
-            return g.debugGetFreshness(nodeName);
+            return g.getFreshness(nodeName);
         }
 
         const aC = unoptimizedComputor("a");
@@ -1371,8 +1371,8 @@ describe("Unchanged semantics (observable storage behavior)", () => {
     });
 });
 
-describe("Optional debug interface (only if implementation provides it)", () => {
-    test("debugGetFreshness and debugListMaterializedNodes behave if present", async () => {
+describe("Inspection interface", () => {
+    test("getFreshness and listMaterializedNodes behave correctly", async () => {
         const db = new InMemoryDatabase();
 
         const aCell = { value: { n: 0 } };
@@ -1394,32 +1394,24 @@ describe("Optional debug interface (only if implementation provides it)", () => 
             },
         ]);
 
-        if (
-            typeof g.debugGetFreshness !== "function" ||
-            typeof g.debugListMaterializedNodes !== "function"
-        ) {
-            // Optional interface; skip if absent
-            return;
-        }
-
         // missing before materialization
-        const f0 = await g.debugGetFreshness("b");
+        const f0 = await g.getFreshness("b");
         expect(["missing", "up-to-date", "potentially-outdated"]).toContain(f0);
 
         aCell.value = { n: 1 };
         await g.invalidate("a");
         await g.pull("b");
 
-        const list = await g.debugListMaterializedNodes();
+        const list = await g.listMaterializedNodes();
         expect(Array.isArray(list)).toBe(true);
         expect(list).toContainEqual(["a", []]);
         expect(list).toContainEqual(["b", []]);
 
-        const fb = await g.debugGetFreshness("b");
+        const fb = await g.getFreshness("b");
         expect(fb).toBe("up-to-date");
     });
 
-    test("invalidate() on source node must include it in debugListMaterializedNodes", async () => {
+    test("invalidate() on source node must include it in listMaterializedNodes", async () => {
         const db = new InMemoryDatabase();
         const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
@@ -1432,20 +1424,15 @@ describe("Optional debug interface (only if implementation provides it)", () => 
             },
         ]);
 
-        if (typeof g.debugListMaterializedNodes !== "function") {
-            // Optional interface; skip if absent
-            return;
-        }
-
         // Initially empty
-        const list0 = await g.debugListMaterializedNodes();
+        const list0 = await g.listMaterializedNodes();
         expect(list0).not.toContainEqual(["source", []]);
 
         // After set, source must be materialized
         sourceCell.value = { n: 42 };
         await g.invalidate("source");
 
-        const list1 = await g.debugListMaterializedNodes();
+        const list1 = await g.listMaterializedNodes();
         expect(list1).toContainEqual(["source", []]);
 
         // Also verify that the node is properly indexed (has an inputs record)
@@ -1459,7 +1446,7 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         expect(inputsRecord).toEqual([]);
     });
 
-    test("pull() on leaf node (inputs=[]) must include it in debugListMaterializedNodes", async () => {
+    test("pull() on leaf node (inputs=[]) must include it in listMaterializedNodes", async () => {
         const db = new InMemoryDatabase();
         const g = buildGraph(db, [
             {
@@ -1471,20 +1458,15 @@ describe("Optional debug interface (only if implementation provides it)", () => 
             },
         ]);
 
-        if (typeof g.debugListMaterializedNodes !== "function") {
-            // Optional interface; skip if absent
-            return;
-        }
-
         // Initially empty
-        const list0 = await g.debugListMaterializedNodes();
+        const list0 = await g.listMaterializedNodes();
         expect(list0).not.toContainEqual(["leaf", []]);
 
         // After pull, leaf must be materialized
         const value = await g.pull("leaf");
         expect(value).toEqual({ n: 0 });
 
-        const list1 = await g.debugListMaterializedNodes();
+        const list1 = await g.listMaterializedNodes();
         expect(list1).toContainEqual(["leaf", []]);
 
         // Also verify that the node is properly indexed (has an inputs record)

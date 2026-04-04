@@ -85,7 +85,7 @@ describe("generators/interface", () => {
             expect(result.events[0].id).toBe("event-1");
             expect(result.events[1].id).toBe("event-2");
 
-            const freshness = await iface.debugGetFreshness("all_events");
+            const freshness = await iface.getFreshness("all_events");
             expect(freshness).toBe("up-to-date");
         });
 
@@ -127,7 +127,7 @@ describe("generators/interface", () => {
             expect(result).toBeDefined();
             expect(result.events).toHaveLength(0);
 
-            const freshness = await iface.debugGetFreshness("all_events");
+            const freshness = await iface.getFreshness("all_events");
             expect(freshness).toBe("up-to-date");
         });
 
@@ -142,14 +142,14 @@ describe("generators/interface", () => {
             await iface.update([makeEvent("event-2", "second")]);
 
             // With the fix, update() immediately pulls, so the node is always up-to-date.
-            await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
+            await expect(iface.getFreshness("all_events")).resolves.toBe(
                 "up-to-date"
             );
             await expect(iface.pullGraphNode("all_events")).resolves.toMatchObject({
                 type: "all_events",
                 events: [{ id: "event-2" }],
             });
-            await expect(iface.debugGetFreshness("all_events")).resolves.toBe(
+            await expect(iface.getFreshness("all_events")).resolves.toBe(
                 "up-to-date"
             );
         });

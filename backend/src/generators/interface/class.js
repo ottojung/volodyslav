@@ -17,11 +17,11 @@ const {
     internalSynchronizeDatabase,
 } = require("./lifecycle");
 const {
-    internalDebugGetFreshness,
-    internalDebugGetSchemaByHead,
-    internalDebugGetSchemas,
-    internalDebugGetValue,
-    internalDebugListMaterializedNodes,
+    internalGetFreshness,
+    internalGetSchemaByHead,
+    internalGetSchemas,
+    internalGetValue,
+    internalListMaterializedNodes,
     internalGetCreationTime,
     internalGetModificationTime,
     internalInvalidateGraphNode,
@@ -176,23 +176,23 @@ class InterfaceClass {
     /**
      * @returns {Array<import('../incremental_graph/types').CompiledNode>}
      */
-    debugGetSchemas() {
-        return internalDebugGetSchemas(this);
+    getSchemas() {
+        return internalGetSchemas(this);
     }
 
     /**
      * @param {string} head
      * @returns {import('../incremental_graph/types').CompiledNode | null}
      */
-    debugGetSchemaByHead(head) {
-        return internalDebugGetSchemaByHead(this, head);
+    getSchemaByHead(head) {
+        return internalGetSchemaByHead(this, head);
     }
 
     /**
      * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
      */
-    async debugListMaterializedNodes() {
-        return await internalDebugListMaterializedNodes(this);
+    async listMaterializedNodes() {
+        return await internalListMaterializedNodes(this);
     }
 
     /**
@@ -200,8 +200,8 @@ class InterfaceClass {
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
      * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
      */
-    async debugGetFreshness(head, args = []) {
-        return await internalDebugGetFreshness(this, head, args);
+    async getFreshness(head, args = []) {
+        return await internalGetFreshness(this, head, args);
     }
 
     /**
@@ -209,8 +209,8 @@ class InterfaceClass {
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
      * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
      */
-    async debugGetValue(head, args = []) {
-        return await internalDebugGetValue(this, head, args);
+    async getValue(head, args = []) {
+        return await internalGetValue(this, head, args);
     }
 
     /**
