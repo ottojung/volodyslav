@@ -34,7 +34,6 @@ import { saveSessionId, clearSessionId } from "./recording_storage.js";
  * @property {import('react').Dispatch<import('react').SetStateAction<string>>} setNote
  * @property {import('react').Dispatch<import('react').SetStateAction<AnalyserNode | null>>} setAnalyser
  * @property {import('react').Dispatch<import('react').SetStateAction<RecorderState>>} setRecorderState
- * @property {() => void} resetCollector
  * @property {string} audioUrl
  */
 
@@ -63,7 +62,6 @@ export function createAudioRecorderActionHandlers(params) {
         setNote,
         setAnalyser,
         setRecorderState,
-        resetCollector,
         audioUrl,
     } = params;
 
@@ -80,7 +78,6 @@ export function createAudioRecorderActionHandlers(params) {
             sequenceRef.current = -1;
             pcmUploadedCountRef.current = 0;
             uploadQueueRef.current = Promise.resolve();
-            resetCollector();
             if (audioUrl) {
                 setAudioUrl("");
             }
@@ -152,7 +149,6 @@ export function createAudioRecorderActionHandlers(params) {
             audioBlobRef.current = null;
             restoredOffsetMsRef.current = 0;
             sequenceRef.current = -1;
-            resetCollector();
             if (isRecorder(recorderRef.current)) {
                 recorderRef.current.discard();
             }
