@@ -13,7 +13,7 @@ jest.mock("../src/api_base_url.js", () => ({
     API_BASE_URL: "/api",
 }));
 
-import { postSync, fetchSyncHostnames } from "../src/Sync/api.js";
+import { postSync, fetchSyncHostnames, fetchSyncState } from "../src/Sync/api.js";
 
 function makeResponse(status, data) {
     return {
@@ -218,5 +218,41 @@ describe("postSync", () => {
 
         expect(global.fetch).toHaveBeenCalledWith("/api/sync/hostnames");
         expect(result).toEqual(["alice", "test-host"]);
+    });
+
+    it("fetchSyncState returns parsed error state from 500 response", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(500, {
+            status: "error",
+            error: {
+                message: "Sync failed",
+                details: [],
+            },
+            steps: [{ name: "generators", status: "error" }],
+        }));
+
+        let result;
+        await act(async () => {
+            result = await fetchSyncState();
+        });
+
+        expect(result).toEqual({
+            status: "error",
+            error: {
+                message: "Sync failed",
+                details: [],
+            },
+            steps: [{ name: "generators", status: "error" }],
+        });
+    });
+
+    it("fetchSyncState returns idle for unexpected response status", async () => {
+        global.fetch.mockResolvedValueOnce(makeResponse(418, { anything: true }));
+
+        let result;
+        await act(async () => {
+            result = await fetchSyncState();
+        });
+
+        expect(result).toEqual({ status: "idle" });
     });
 });

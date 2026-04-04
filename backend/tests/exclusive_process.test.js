@@ -16,29 +16,35 @@ function makeDeferred() {
     return { promise, resolve, reject };
 }
 
-// Helper: make a procedure that ignores fanOut and runs a simple async fn.
-// procedure: (fanOut, arg) => Promise<T>
+// Helper: make a procedure that ignores mutateState and runs a simple async fn.
+// procedure: (mutateState, arg) => Promise<T>
 function simpleProcedure(fn) {
-    return (_fanOut, arg) => fn(arg);
+    return (_mutateState, arg) => fn(arg);
 }
 
 describe("ExclusiveProcess", () => {
     describe("makeExclusiveProcess", () => {
         it("returns an ExclusiveProcess instance", () => {
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => Promise.resolve()),
+                conflictor: () => "attach",
+            });
             expect(isExclusiveProcess(ep)).toBe(true);
         });
 
         it("creates independent instances that do not share state", () => {
             const deferred = makeDeferred();
-            const ep1 = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
-            const ep2 = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep1 = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
+            const ep2 = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
 
             const h1 = ep1.invoke(undefined);
             expect(h1.isInitiator).toBe(true);
@@ -53,28 +59,265 @@ describe("ExclusiveProcess", () => {
         it("procedure receives the argument", async () => {
             let received;
             const ep = makeExclusiveProcess({
-                procedure: (_fanOut, arg) => {
+                initialState: undefined,
+                procedure: (_mutateState, arg) => {
                     received = arg;
                     return Promise.resolve();
                 },
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
             await ep.invoke("hello").result;
             expect(received).toBe("hello");
         });
 
-        it("procedure receives the fanOut callback", async () => {
-            const events = [];
+        it("procedure receives a mutateState function that updates state", async () => {
             const ep = makeExclusiveProcess({
-                procedure: (fanOut, _arg) => {
-                    fanOut("event-1");
-                    fanOut("event-2");
+                initialState: "initial",
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => "updated-1");
+                    mutateState(() => "updated-2");
                     return Promise.resolve();
                 },
-            conflictor: () => "attach",
+                conflictor: () => "attach",
+            });
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe("updated-2");
         });
-            await ep.invoke(undefined, (e) => events.push(e)).result;
-            expect(events).toEqual(["event-1", "event-2"]);
+    });
+
+    describe("getState", () => {
+        it("returns the initialState before any run", () => {
+            const ep = makeExclusiveProcess({
+                initialState: { status: "idle" },
+                procedure: simpleProcedure(() => Promise.resolve()),
+                conflictor: () => "attach",
+            });
+            expect(ep.getState()).toEqual({ status: "idle" });
+        });
+
+        it("reflects sync state update before invoke returns", () => {
+            const deferred = makeDeferred();
+            const ep = makeExclusiveProcess({
+                initialState: { status: "idle" },
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => ({ status: "running" }));
+                    return deferred.promise;
+                },
+                conflictor: () => "attach",
+            });
+
+            ep.invoke(undefined);
+            // State updated synchronously by the first mutateState call in procedure.
+            expect(ep.getState()).toEqual({ status: "running" });
+
+            deferred.resolve();
+        });
+
+        it("reflects async state updates after the transformer promise resolves", async () => {
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: async (mutateState, _arg) => {
+                    await mutateState(() => Promise.resolve(1));
+                    await mutateState(() => Promise.resolve(2));
+                },
+                conflictor: () => "attach",
+            });
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(2);
+        });
+
+        it("serializes non-awaited async mutateState calls in invocation order", async () => {
+            const deferredFirst = makeDeferred();
+            const deferredSecond = makeDeferred();
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    const first = mutateState(() => deferredFirst.promise.then(() => 1));
+                    const second = mutateState(() => deferredSecond.promise.then(() => 2));
+                    deferredSecond.resolve();
+                    deferredFirst.resolve();
+                    return Promise.all([first, second]).then(() => undefined);
+                },
+                conflictor: () => "attach",
+            });
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(2);
+        });
+
+        it("state persists after run completes", async () => {
+            const ep = makeExclusiveProcess({
+                initialState: { status: "idle" },
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => ({ status: "running" }));
+                    return Promise.resolve().then(() => {
+                        mutateState(() => ({ status: "done" }));
+                    });
+                },
+                conflictor: () => "attach",
+            });
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toEqual({ status: "done" });
+        });
+    });
+
+    describe("mutateState", () => {
+        it("sync transformer updates state synchronously", () => {
+            const deferred = makeDeferred();
+            let capturedStateMidRun;
+            const ep = makeExclusiveProcess({
+                initialState: "before",
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => "after");
+                    capturedStateMidRun = ep.getState();
+                    return deferred.promise;
+                },
+                conflictor: () => "attach",
+            });
+
+            ep.invoke(undefined);
+            expect(capturedStateMidRun).toBe("after");
+            deferred.resolve();
+        });
+
+        it("subscribers receive the new state after each sync mutation", async () => {
+            const states = [];
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => 1);
+                    mutateState(() => 2);
+                    return Promise.resolve();
+                },
+                conflictor: () => "attach",
+            });
+
+            ep.invoke(undefined, (s) => states.push(s));
+            await new Promise((r) => setImmediate(r));
+
+            expect(states).toEqual([1, 2]);
+        });
+
+        it("subscribers registered by attachers receive subsequent state updates", async () => {
+            let doMutate;
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    return new Promise((resolve) => {
+                        doMutate = () => {
+                            mutateState(() => 42);
+                            resolve();
+                        };
+                    });
+                },
+                conflictor: () => "attach",
+            });
+
+            const initiatorStates = [];
+            const attacherStates = [];
+
+            ep.invoke(undefined, (s) => initiatorStates.push(s));
+            ep.invoke(undefined, (s) => attacherStates.push(s));
+
+            doMutate();
+            await new Promise((r) => setImmediate(r));
+
+            expect(initiatorStates).toEqual([42]);
+            expect(attacherStates).toEqual([42]);
+        });
+
+        it("a throwing subscriber does not abort notifications for subsequent subscribers", async () => {
+            const received = [];
+            let doMutate;
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    return new Promise((resolve) => {
+                        doMutate = () => {
+                            mutateState(() => 99);
+                            resolve();
+                        };
+                    });
+                },
+                conflictor: () => "attach",
+            });
+
+            ep.invoke(undefined, (_s) => { throw new Error("subscriber error"); });
+            ep.invoke(undefined, (s) => received.push(s));
+
+            doMutate();
+            await new Promise((r) => setImmediate(r));
+
+            expect(received).toEqual([99]);
+        });
+
+        it("subscribers are cleared between runs", async () => {
+            const firstRunStates = [];
+            const secondRunStates = [];
+            let runCount = 0;
+            const deferreds = [makeDeferred(), makeDeferred()];
+
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    const d = deferreds[runCount++];
+                    d.promise.then(() => mutateState(() => runCount * 10));
+                    return d.promise.then(() => undefined);
+                },
+                conflictor: () => "attach",
+            });
+
+            const h1 = ep.invoke(undefined, (s) => firstRunStates.push(s));
+            deferreds[0].resolve();
+            await h1.result;
+
+            const h2 = ep.invoke(undefined, (s) => secondRunStates.push(s));
+            deferreds[1].resolve();
+            await h2.result;
+
+            expect(firstRunStates).toEqual([10]);
+            expect(secondRunStates).toEqual([20]);
+        });
+
+        it("ignores late mutateState calls after run completion", async () => {
+            let lateMutate = () => Promise.resolve();
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => 1);
+                    lateMutate = () => mutateState(() => 999);
+                    return Promise.resolve();
+                },
+                conflictor: () => "attach",
+            });
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(1);
+
+            await lateMutate();
+            expect(ep.getState()).toBe(1);
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(1);
+        });
+
+        it("initiator handle exposes the same mutateState passed to the procedure", () => {
+            const deferred = makeDeferred();
+            let procedureMutateState;
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    procedureMutateState = mutateState;
+                    return deferred.promise;
+                },
+                conflictor: () => "attach",
+            });
+
+            const handle = ep.invoke(undefined);
+            expect(handle.isInitiator).toBe(true);
+            expect(handle).toHaveProperty('mutateState', procedureMutateState);
+            deferred.resolve();
         });
     });
 
@@ -82,12 +325,13 @@ describe("ExclusiveProcess", () => {
         it("starts the procedure and returns an initiator handle", async () => {
             let called = false;
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure(async () => {
                     called = true;
                     return 42;
                 }),
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             const handle = ep.invoke(undefined);
 
@@ -99,9 +343,11 @@ describe("ExclusiveProcess", () => {
 
         it("resets to idle after a successful run", async () => {
             let run = 0;
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve(++run)),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => Promise.resolve(++run)),
+                conflictor: () => "attach",
+            });
 
             await ep.invoke(undefined).result;
 
@@ -113,11 +359,12 @@ describe("ExclusiveProcess", () => {
         it("resets to idle after a failed run", async () => {
             let fail = true;
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure(() =>
                     fail ? Promise.reject(new Error("boom")) : Promise.resolve("recovered")
                 ),
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             await ep.invoke(undefined).result.catch(() => {});
 
@@ -130,12 +377,13 @@ describe("ExclusiveProcess", () => {
         it("handles a rejected async procedure and resets the same ep to idle", async () => {
             let fail = true;
             const ep = makeExclusiveProcess({
-                procedure: async (_fanOut, _arg) => {
+                initialState: undefined,
+                procedure: async (_mutateState, _arg) => {
                     if (fail) throw new Error("async error");
                     return "ok";
                 },
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             const handle = ep.invoke(undefined);
             expect(handle.isInitiator).toBe(true);
@@ -152,9 +400,11 @@ describe("ExclusiveProcess", () => {
     describe("invoke — running process (attaching)", () => {
         it("returns an attacher handle when a run is already in progress", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -166,11 +416,35 @@ describe("ExclusiveProcess", () => {
             await Promise.all([h1.result, h2.result]);
         });
 
+        it("attacher handle has currentState set to state at invocation time", async () => {
+            const deferred = makeDeferred();
+            const ep = makeExclusiveProcess({
+                initialState: { status: "idle" },
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => ({ status: "running" }));
+                    return deferred.promise;
+                },
+                conflictor: () => "attach",
+            });
+
+            ep.invoke(undefined);
+            // State is now "running" (set synchronously)
+            const h2 = ep.invoke(undefined);
+
+            expect(h2.isInitiator).toBe(false);
+            expect(h2).toHaveProperty('currentState', { status: "running" });
+
+            deferred.resolve();
+            await h2.result;
+        });
+
         it("attacher shares the same result promise as the initiator", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -186,12 +460,13 @@ describe("ExclusiveProcess", () => {
             const deferred = makeDeferred();
             let procedureCallCount = 0;
             const ep = makeExclusiveProcess({
-                procedure: (_fanOut, _arg) => {
+                initialState: undefined,
+                procedure: (_mutateState, _arg) => {
                     procedureCallCount++;
                     return deferred.promise;
                 },
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             ep.invoke(undefined);
             ep.invoke(undefined);
@@ -206,9 +481,11 @@ describe("ExclusiveProcess", () => {
 
         it("multiple attachers all receive the same result", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
 
             const handles = [
                 ep.invoke(undefined),
@@ -231,146 +508,6 @@ describe("ExclusiveProcess", () => {
         });
     });
 
-    describe("native callback fan-out", () => {
-        it("fanOut distributes events to all callers (initiator + attachers)", async () => {
-            const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({
-                procedure: (fanOut, _arg) => {
-                    deferred.promise.then(() => {
-                        fanOut("event-A");
-                        fanOut("event-B");
-                    });
-                    return deferred.promise.then(() => "done");
-                },
-            conflictor: () => "attach",
-        });
-
-            const cb1 = [];
-            const cb2 = [];
-            const cb3 = [];
-
-            const h1 = ep.invoke(undefined, (e) => cb1.push(e));
-            const h2 = ep.invoke(undefined, (e) => cb2.push(e));
-            const h3 = ep.invoke(undefined, (e) => cb3.push(e));
-
-            deferred.resolve();
-            await Promise.all([h1.result, h2.result, h3.result]);
-
-            expect(cb1).toEqual(["event-A", "event-B"]);
-            expect(cb2).toEqual(["event-A", "event-B"]);
-            expect(cb3).toEqual(["event-A", "event-B"]);
-        });
-
-        it("fanOut does not call callbacks of callers that haven't registered one", async () => {
-            const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({
-                procedure: (fanOut, _arg) => {
-                    deferred.promise.then(() => fanOut("event"));
-                    return deferred.promise.then(() => "done");
-                },
-            conflictor: () => "attach",
-        });
-
-            const cb1 = [];
-            ep.invoke(undefined, (e) => cb1.push(e));
-            ep.invoke(undefined); // no callback
-            ep.invoke(undefined, null); // explicit null
-
-            deferred.resolve();
-            await deferred.promise;
-            await new Promise((r) => setImmediate(r));
-
-            // Only cb1 should receive events
-            expect(cb1).toEqual(["event"]);
-        });
-
-        it("callbacks registered by attachers receive events emitted after attachment", async () => {
-            let emitEvent;
-            const ep = makeExclusiveProcess({
-                procedure: (fanOut, _arg) => {
-                    return new Promise((resolve) => {
-                        emitEvent = (e) => {
-                            fanOut(e);
-                            resolve("done");
-                        };
-                    });
-                },
-            conflictor: () => "attach",
-        });
-
-            const cb1 = [];
-            const cb2 = [];
-
-            ep.invoke(undefined, (e) => cb1.push(e));
-            // Attach after run starts
-            ep.invoke(undefined, (e) => cb2.push(e));
-
-            emitEvent("late-event");
-
-            await new Promise((r) => setImmediate(r));
-
-            expect(cb1).toEqual(["late-event"]);
-            expect(cb2).toEqual(["late-event"]);
-        });
-
-        it("a throwing callback does not abort fan-out for subsequent callbacks", async () => {
-            const events = [];
-            let emitEvent;
-            const ep = makeExclusiveProcess({
-                procedure: async (fanOut, _arg) => {
-                    await new Promise((resolve) => {
-                        emitEvent = () => {
-                            fanOut("event");
-                            resolve();
-                        };
-                    });
-                    return "done";
-                },
-                conflictor: () => "attach",
-            });
-
-            // First callback throws; second should still receive the event.
-            ep.invoke(undefined, (_e) => { throw new Error("callback error"); });
-            ep.invoke(undefined, (e) => events.push(e)); // attaches
-
-            // Emit after both callers are registered.
-            emitEvent();
-            await new Promise((r) => setImmediate(r));
-
-            expect(events).toEqual(["event"]);
-        });
-
-        it("callbacks are cleared between runs of the same EP", async () => {
-            const firstRunEvents = [];
-            const secondRunEvents = [];
-            let runCount = 0;
-            const deferreds = [makeDeferred(), makeDeferred()];
-
-            const ep = makeExclusiveProcess({
-                procedure: (fanOut, _arg) => {
-                    const d = deferreds[runCount++];
-                    d.promise.then(() => fanOut(`event-${runCount}`));
-                    return d.promise.then(() => "done");
-                },
-            conflictor: () => "attach",
-        });
-
-            // First run with callback
-            const h1 = ep.invoke(undefined, (e) => firstRunEvents.push(e));
-            deferreds[0].resolve();
-            await h1.result;
-
-            // Second run with a DIFFERENT callback
-            const h2 = ep.invoke(undefined, (e) => secondRunEvents.push(e));
-            deferreds[1].resolve();
-            await h2.result;
-
-            // Each run only received events from its own run
-            expect(firstRunEvents).toEqual(["event-1"]);
-            expect(secondRunEvents).toEqual(["event-2"]);
-        });
-    });
-
     describe("conflictor", () => {
         it("queues a conflicting call instead of attaching", async () => {
             const deferred1 = makeDeferred();
@@ -378,6 +515,7 @@ describe("ExclusiveProcess", () => {
             let callIndex = 0;
             const deferreds = [deferred1, deferred2];
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure((_type) => deferreds[callIndex++].promise),
                 conflictor: (current, incoming) => current !== incoming ? "queue" : "attach",
             });
@@ -399,13 +537,40 @@ describe("ExclusiveProcess", () => {
             await expect(h2.result).resolves.toBe("result-B");
         });
 
+        it("queued attacher handle has currentState set to state at queue time", async () => {
+            const deferred1 = makeDeferred();
+            const deferred2 = makeDeferred();
+            let callIndex = 0;
+            const ep = makeExclusiveProcess({
+                initialState: { count: 0 },
+                procedure: (mutateState, _type) => {
+                    mutateState((s) => ({ count: s.count + 1 }));
+                    return [deferred1, deferred2][callIndex++].promise;
+                },
+                conflictor: (current, incoming) => current !== incoming ? "queue" : "attach",
+            });
+
+            ep.invoke("A");
+            // State is now { count: 1 } (sync update)
+            const h2 = ep.invoke("B"); // queued
+
+            expect(h2.isInitiator).toBe(false);
+            expect(h2).toHaveProperty('currentState', { count: 1 });
+
+            deferred1.resolve();
+            await new Promise((r) => setImmediate(r));
+            deferred2.resolve();
+            await h2.result;
+        });
+
         it("last-write-wins for arg when multiple conflicting calls queue up", async () => {
             const deferred1 = makeDeferred();
             const deferred2 = makeDeferred();
             let callIndex = 0;
             const capturedArgs = [];
             const ep = makeExclusiveProcess({
-                procedure: (_fanOut, type) => {
+                initialState: undefined,
+                procedure: (_mutateState, type) => {
                     capturedArgs.push(type);
                     return [deferred1, deferred2][callIndex++].promise;
                 },
@@ -428,24 +593,25 @@ describe("ExclusiveProcess", () => {
             await Promise.all([h2a.result, h2b.result]);
         });
 
-        it("all queued callers' callbacks receive events from the queued run", async () => {
+        it("all queued callers' subscribers receive state notifications from the queued run", async () => {
             const deferred1 = makeDeferred();
             const deferred2 = makeDeferred();
             let callIndex = 0;
             const ep = makeExclusiveProcess({
-                procedure: (fanOut, arg) => {
+                initialState: "initial",
+                procedure: (mutateState, arg) => {
                     const d = [deferred1, deferred2][callIndex++];
-                    d.promise.then(() => fanOut(`event-from-${arg}`));
+                    d.promise.then(() => mutateState(() => `state-from-${arg}`));
                     return d.promise.then(() => `done-${arg}`);
                 },
                 conflictor: (cur, nw) => cur !== nw ? "queue" : "attach",
             });
 
-            const eventsB = [];
-            const eventsC = [];
+            const statesB = [];
+            const statesC = [];
             ep.invoke("A");
-            const h2a = ep.invoke("B", (e) => eventsB.push(e)); // first queued
-            const h2b = ep.invoke("C", (e) => eventsC.push(e)); // overwrites arg, composes cb
+            const h2a = ep.invoke("B", (s) => statesB.push(s)); // first queued
+            const h2b = ep.invoke("C", (s) => statesC.push(s)); // overwrites arg, composes subscriber
 
             // Both h2a and h2b share the same pending promise
             expect(h2a.result).toBe(h2b.result);
@@ -455,17 +621,19 @@ describe("ExclusiveProcess", () => {
 
             deferred2.resolve();
             await Promise.all([h2a.result, h2b.result]);
+            await new Promise((r) => setImmediate(r));
 
-            // Both queued callers received the event from the queued run
-            expect(eventsB).toEqual(["event-from-C"]);
-            expect(eventsC).toEqual(["event-from-C"]);
+            // Both queued callers received state from the queued run (arg C)
+            expect(statesB).toEqual(["state-from-C"]);
+            expect(statesC).toEqual(["state-from-C"]);
         });
 
         it("compatible call attaches even when conflictor is defined", async () => {
             const deferred = makeDeferred();
             let calls = 0;
             const ep = makeExclusiveProcess({
-                procedure: (_fanOut, _arg) => { calls++; return deferred.promise; },
+                initialState: undefined,
+                procedure: (_mutateState, _arg) => { calls++; return deferred.promise; },
                 conflictor: (cur, nw) => cur !== nw ? "queue" : "attach",
             });
 
@@ -483,6 +651,7 @@ describe("ExclusiveProcess", () => {
             const deferred2 = makeDeferred();
             let callIndex = 0;
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure((_v) => [deferred1, deferred2][callIndex++].promise),
                 conflictor: (c, n) => c !== n ? "queue" : "attach",
             });
@@ -504,9 +673,10 @@ describe("ExclusiveProcess", () => {
     describe("error propagation", () => {
         it("propagates errors to the initiator", async () => {
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure(() => Promise.reject(new Error("failure"))),
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             const handle = ep.invoke(undefined);
 
@@ -515,9 +685,11 @@ describe("ExclusiveProcess", () => {
 
         it("propagates errors to all attachers", async () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -535,11 +707,12 @@ describe("ExclusiveProcess", () => {
         it("allows a fresh run after a crash", async () => {
             let fail = true;
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure(() =>
                     fail ? Promise.reject(new Error("crash")) : Promise.resolve("fresh")
                 ),
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             const h1 = ep.invoke(undefined);
             await h1.result.catch(() => {});
@@ -554,11 +727,12 @@ describe("ExclusiveProcess", () => {
             const deferred = makeDeferred();
             let fail = true;
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure(() =>
                     fail ? deferred.promise : Promise.resolve("new-run")
                 ),
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
 
             const h1 = ep.invoke(undefined);
             const h2 = ep.invoke(undefined);
@@ -578,9 +752,11 @@ describe("ExclusiveProcess", () => {
 
     describe("isExclusiveProcess type guard", () => {
         it("returns true for an ExclusiveProcess", () => {
-            expect(isExclusiveProcess(makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()),
-            conflictor: () => "attach",
-        }))).toBe(true);
+            expect(isExclusiveProcess(makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => Promise.resolve()),
+                conflictor: () => "attach",
+            }))).toBe(true);
         });
 
         it("returns false for non-ExclusiveProcess values", () => {
@@ -593,13 +769,28 @@ describe("ExclusiveProcess", () => {
     });
 
     describe("isExclusiveProcessHandle type guard", () => {
-        it("returns true for a handle returned by invoke", () => {
+        it("returns true for an initiator handle returned by invoke", () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
             const handle = ep.invoke(undefined);
             expect(isExclusiveProcessHandle(handle)).toBe(true);
+            deferred.resolve();
+        });
+
+        it("returns true for an attacher handle returned by invoke", () => {
+            const deferred = makeDeferred();
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
+            ep.invoke(undefined);
+            const attacher = ep.invoke(undefined);
+            expect(isExclusiveProcessHandle(attacher)).toBe(true);
             deferred.resolve();
         });
 
@@ -613,35 +804,42 @@ describe("ExclusiveProcess", () => {
 
     describe("isRunning", () => {
         it("returns false when the process is idle", () => {
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve()),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => Promise.resolve()),
+                conflictor: () => "attach",
+            });
             expect(ep.isRunning()).toBe(false);
         });
 
         it("returns true while a computation is active", () => {
             const deferred = makeDeferred();
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => deferred.promise),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => deferred.promise),
+                conflictor: () => "attach",
+            });
             ep.invoke(undefined);
             expect(ep.isRunning()).toBe(true);
             deferred.resolve();
         });
 
         it("returns false after a successful run completes", async () => {
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(() => Promise.resolve("done")),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(() => Promise.resolve("done")),
+                conflictor: () => "attach",
+            });
             await ep.invoke(undefined).result;
             expect(ep.isRunning()).toBe(false);
         });
 
         it("returns false after a failed run completes", async () => {
             const ep = makeExclusiveProcess({
+                initialState: undefined,
                 procedure: simpleProcedure(() => Promise.reject(new Error("fail"))),
-            conflictor: () => "attach",
-        });
+                conflictor: () => "attach",
+            });
             await ep.invoke(undefined).result.catch(() => {});
             expect(ep.isRunning()).toBe(false);
         });
@@ -650,9 +848,11 @@ describe("ExclusiveProcess", () => {
     describe("sequential runs", () => {
         it("allows a second run after the first completes", async () => {
             let runCount = 0;
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(async () => ++runCount),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(async () => ++runCount),
+                conflictor: () => "attach",
+            });
 
             const h1 = ep.invoke(undefined);
             await h1.result;
@@ -667,9 +867,11 @@ describe("ExclusiveProcess", () => {
 
         it("processes sequential invocations correctly", async () => {
             let runCount = 0;
-            const ep = makeExclusiveProcess({ procedure: simpleProcedure(async () => ++runCount),
-            conflictor: () => "attach",
-        });
+            const ep = makeExclusiveProcess({
+                initialState: undefined,
+                procedure: simpleProcedure(async () => ++runCount),
+                conflictor: () => "attach",
+            });
             const results = [];
 
             for (let i = 0; i < 3; i++) {

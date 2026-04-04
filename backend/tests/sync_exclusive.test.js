@@ -119,6 +119,76 @@ describe("sync — ExclusiveProcess adoption", () => {
             await synchronizeAll(capabilities);
             expect(synchronizeAllExclusiveProcess.isRunning()).toBe(false);
         });
+
+        it("state transitions from running to success", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred = makeDeferred();
+
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockReturnValue(deferred.promise);
+
+            synchronizeAll(capabilities);
+            expect(synchronizeAllExclusiveProcess.getState().status).toBe("running");
+
+            deferred.resolve();
+            await new Promise((r) => setImmediate(r));
+
+            expect(synchronizeAllExclusiveProcess.getState().status).toBe("success");
+        });
+
+        it("state includes completed steps after a successful sync", async () => {
+            const capabilities = getTestCapabilities();
+
+            await synchronizeAll(capabilities);
+
+            const state = synchronizeAllExclusiveProcess.getState();
+            expect(state.status).toBe("success");
+            expect(state).toHaveProperty('steps', expect.arrayContaining([
+                { name: "generators", status: "success" },
+                { name: "assets", status: "success" },
+            ]));
+        });
+
+        it("state transitions to error on failure", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred = makeDeferred();
+
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockReturnValue(deferred.promise);
+
+            const p1 = synchronizeAll(capabilities);
+            deferred.reject(new Error("db-crash"));
+            await p1.catch(() => {});
+            await new Promise((r) => setImmediate(r));
+
+            const state = synchronizeAllExclusiveProcess.getState();
+            expect(state.status).toBe("error");
+            expect(state).toHaveProperty("steps", expect.arrayContaining([
+                { name: "generators", status: "error" },
+            ]));
+        });
+
+        it("subscribers receive running state immediately after invoke", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred = makeDeferred();
+
+            capabilities.interface.synchronizeDatabase = jest
+                .fn()
+                .mockReturnValue(deferred.promise);
+
+            const receivedStates = [];
+            synchronizeAllExclusiveProcess.invoke({ capabilities }, (s) => receivedStates.push(s));
+
+            // First subscriber notification happens synchronously (running state)
+            // then further notifications happen asynchronously
+            deferred.resolve();
+            await new Promise((r) => setImmediate(r));
+
+            const runningState = receivedStates.find((s) => s.status === "running");
+            expect(runningState).toBeDefined();
+        });
     });
 
     describe("P1 — conflicting options are queued, not silently ignored", () => {
@@ -233,29 +303,6 @@ describe("sync — ExclusiveProcess adoption", () => {
 
             deferred.resolve();
             await Promise.all([p1, p2]);
-        });
-
-        it("step callbacks are forwarded to attached callers", async () => {
-            const capabilities = getTestCapabilities();
-            const deferred = makeDeferred();
-
-            capabilities.interface.synchronizeDatabase = jest
-                .fn()
-                .mockImplementation(() => deferred.promise);
-
-            const initiatorSteps = [];
-            const attacherSteps = [];
-
-            const p1 = synchronizeAll(capabilities, undefined, (step) => initiatorSteps.push(step));
-            const p2 = synchronizeAll(capabilities, undefined, (step) => attacherSteps.push(step));
-
-            expect(p1).toBe(p2);
-
-            deferred.resolve();
-            await Promise.all([p1, p2]);
-
-            expect(initiatorSteps).toContainEqual({ name: "generators", status: "success" });
-            expect(attacherSteps).toContainEqual({ name: "generators", status: "success" });
         });
     });
 

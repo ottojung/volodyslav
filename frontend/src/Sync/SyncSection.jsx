@@ -11,7 +11,7 @@ import {
   List,
   HStack,
 } from '@chakra-ui/react';
-import { postSync, fetchSyncHostnames } from './api.js';
+import { postSync, fetchSyncHostnames, fetchSyncState } from './api.js';
 import { SyncStepList } from './SyncStepList.jsx';
 
 /** @typedef {{ name: string, message: string, causes: string[] }} SyncErrorDetail */
@@ -65,6 +65,59 @@ export function SyncSection() {
   const [syncError, setSyncError] = useState(makeEmptySyncError());
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [syncSteps, setSyncSteps] = useState(makeEmptySyncSteps());
+
+  // On mount, check the current sync state so the UI reflects any in-progress
+  // or recently finished sync (e.g. one started by the hourly job or by the
+  // user on another page).
+  useEffect(() => {
+    let isMounted = true;
+
+    async function attachToExistingSync() {
+      const state = await fetchSyncState();
+      if (!isMounted) return;
+
+      if (state.status === 'running') {
+        setSyncState('loading');
+        setSyncSteps(state.steps || []);
+        // Attach to the running sync and poll until it finishes.
+        const result = await postSync(state.reset_to_hostname, (steps) => {
+          if (isMounted) setSyncSteps(steps);
+        });
+        if (!isMounted) return;
+        if (result.success) {
+          setSyncState('success');
+          setSyncSuccessMessage(makeSyncSuccessMessage(result.resetToHostname));
+          setSyncSteps(result.steps || []);
+        } else {
+          setSyncState('error');
+          setSyncSuccessMessage('');
+          setSyncSteps(result.steps || []);
+          setSyncError({
+            message: result.error || 'Sync failed',
+            details: result.details || [],
+          });
+        }
+      } else if (state.status === 'success') {
+        setSyncState('success');
+        setSyncSuccessMessage(makeSyncSuccessMessage(state.reset_to_hostname));
+        setSyncSteps(state.steps || []);
+      } else if (state.status === 'error') {
+        setSyncState('error');
+        setSyncSuccessMessage('');
+        setSyncSteps(state.steps || []);
+        setSyncError({
+          message: state.error?.message || 'Sync failed',
+          details: state.error?.details || [],
+        });
+      }
+    }
+
+    void attachToExistingSync();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (syncMode !== 'reset-to-hostname') {

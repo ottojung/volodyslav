@@ -3,6 +3,38 @@ const { makeExclusiveProcess } = require("../exclusive_process");
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 // ---------------------------------------------------------------------------
+// Sync state types
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {{ name: string, message: string, causes: string[] }} SyncErrorDetail
+ */
+
+/**
+ * @typedef {{ message: string, details: SyncErrorDetail[] }} SyncErrorResponse
+ */
+
+/**
+ * @typedef {{ status: "idle" }} IdleSyncState
+ */
+
+/**
+ * @typedef {{ status: "running", started_at: string, reset_to_hostname?: string, steps: SyncStepResult[] }} RunningSyncState
+ */
+
+/**
+ * @typedef {{ status: "success", started_at: string, finished_at: string, reset_to_hostname?: string, steps: SyncStepResult[] }} SuccessfulSyncState
+ */
+
+/**
+ * @typedef {{ status: "error", started_at: string, finished_at: string, reset_to_hostname?: string, error: SyncErrorResponse, steps: SyncStepResult[] }} FailedSyncState
+ */
+
+/**
+ * @typedef {IdleSyncState | RunningSyncState | SuccessfulSyncState | FailedSyncState} SyncState
+ */
+
+// ---------------------------------------------------------------------------
 // Per-destination error types
 // ---------------------------------------------------------------------------
 
@@ -68,6 +100,61 @@ function isSynchronizeAllError(object) {
  */
 
 /**
+ * @param {unknown} error
+ * @returns {string[]}
+ */
+function describeErrorCauses(error) {
+    /** @type {string[]} */
+    const causes = [];
+    let current = error;
+
+    while (current !== undefined) {
+        if (current instanceof Error) {
+            causes.push(current.message);
+            current = "cause" in current ? current.cause : undefined;
+            continue;
+        }
+
+        causes.push(String(current));
+        break;
+    }
+
+    return causes;
+}
+
+/**
+ * @param {unknown} error
+ * @returns {SyncErrorResponse}
+ */
+function makeSyncErrorResponse(error) {
+    if (isSynchronizeAllError(error)) {
+        const details = error.errors.map((entry) => ({
+            name: entry.name,
+            message: entry.message,
+            causes: describeErrorCauses(entry.cause),
+        }));
+        return {
+            message: `Sync failed: ${details.map((entry) => entry.message).join("; ")}`,
+            details,
+        };
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+        message: `Sync failed: ${message}`,
+        details: [
+            {
+                name: error instanceof Error ? error.name : "Error",
+                message,
+                causes: error instanceof Error && "cause" in error
+                    ? describeErrorCauses(error.cause)
+                    : [],
+            },
+        ],
+    };
+}
+
+/**
  * Returns `"queue"` if the incoming options conflict with the current run's
  * options.  A conflict occurs when the new caller wants to reset to a specific
  * hostname that differs from what the current run is doing (either the current
@@ -98,25 +185,85 @@ function _syncConflictor(initiating, attaching) {
  *
  * Both the hourly scheduled job and the POST /sync route use this instance.
  *
- * The procedure receives `fanOut` (the class-managed fan-out callback, used
- * as `onStepComplete`) and `{ capabilities, options }` directly.
+ * The procedure uses `mutateState` to transition the state through:
+ * `idle → running → success | error`.
+ *
+ * The first `mutateState` call in the procedure is synchronous, so by the time
+ * `invoke` returns the state is already `"running"`.
  *
  * Behaviour when a second call arrives while a run is active:
- * - **Compatible options** (same `resetToHostname` or none) → attaches; the
- *   attacher's `onStepComplete` is registered in the native fan-out.
+ * - **Compatible options** (same `resetToHostname` or none) → attaches to the
+ *   current run; both share the same state updates.
  * - **Conflicting options** (wants a reset the current run isn't doing) →
  *   queued: after the current run ends a fresh run starts with the queued
- *   options; last-write-wins when multiple conflicting calls queue up, but
- *   all queued callers' callbacks are composed so everyone receives events.
+ *   options; last-write-wins when multiple conflicting calls queue up.
  */
 const synchronizeAllExclusiveProcess = makeExclusiveProcess({
+    /** @type {SyncState} */
+    initialState: { status: "idle" },
     /**
-     * @param {(step: SyncStepResult) => void} fanOut
+     * @param {(fn: (state: SyncState) => SyncState | Promise<SyncState>) => Promise<void>} mutateState
      * @param {SyncArg} arg
      * @returns {Promise<void>}
      */
-    procedure: (fanOut, { capabilities, options }) => {
-        return _synchronizeAllUnlocked(capabilities, options, fanOut);
+    procedure: (mutateState, { capabilities, options }) => {
+        const started_at = capabilities.datetime.now().toISOString();
+        const reset_to_hostname = options?.resetToHostname;
+        const runningHostname = capabilities.environment.hostname();
+
+        // Sync transformer → state is updated synchronously before invoke returns.
+        mutateState(() => ({
+            status: "running",
+            started_at,
+            reset_to_hostname,
+            steps: [],
+        }));
+
+        capabilities.logger.logInfo(
+            { started_at, reset_to_hostname, runningHostname },
+            "Sync started in background"
+        );
+
+        /** @param {SyncStepResult} step */
+        const onStepComplete = (step) => {
+            mutateState((current) => {
+                if (current.status !== "running") return current;
+                return { ...current, steps: [...current.steps, step] };
+            });
+        };
+
+        return _synchronizeAllUnlocked(capabilities, options, onStepComplete)
+            .then(() => {
+                const finished_at = capabilities.datetime.now().toISOString();
+                mutateState((current) => ({
+                    status: "success",
+                    started_at,
+                    finished_at,
+                    reset_to_hostname,
+                    steps: current.status === "running" ? current.steps : [],
+                }));
+                capabilities.logger.logInfo(
+                    { started_at, finished_at, reset_to_hostname, runningHostname },
+                    "Sync finished successfully"
+                );
+            })
+            .catch((error) => {
+                const finished_at = capabilities.datetime.now().toISOString();
+                const syncError = makeSyncErrorResponse(error);
+                mutateState((current) => ({
+                    status: "error",
+                    started_at,
+                    finished_at,
+                    reset_to_hostname,
+                    error: syncError,
+                    steps: current.status === "running" ? current.steps : [],
+                }));
+                capabilities.logger.logError(
+                    { error: syncError.message, details: syncError.details },
+                    "Errors during synchronization"
+                );
+                throw error;
+            });
     },
     conflictor: _syncConflictor,
 });
@@ -137,12 +284,11 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
  *
  * @param {Capabilities} capabilities
  * @param {{ resetToHostname?: string }} [options]
- * @param {(step: SyncStepResult) => void} [onStepComplete]
  * @returns {Promise<void>}
  * @throws {SynchronizeAllError}
  */
-function synchronizeAll(capabilities, options, onStepComplete) {
-    return synchronizeAllExclusiveProcess.invoke({ capabilities, options }, onStepComplete).result;
+function synchronizeAll(capabilities, options) {
+    return synchronizeAllExclusiveProcess.invoke({ capabilities, options }).result;
 }
 
 /**

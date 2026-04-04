@@ -2,8 +2,7 @@
  * Integration tests for the ExclusiveProcess adoption in the diary-summary
  * pipeline.  Validates that the scheduled job and the HTTP route share the
  * same exclusive process — i.e. a second concurrent invocation attaches to
- * the already-running computation rather than starting a new one, and that
- * callbacks are forwarded to all concurrent callers.
+ * the already-running computation rather than starting a new one.
  */
 
 const request = require("supertest");
@@ -128,10 +127,8 @@ describe("diary summary — ExclusiveProcess adoption", () => {
             await runDiarySummaryPipeline(capabilities);
             expect(diarySummaryExclusiveProcess.isRunning()).toBe(false);
         });
-    });
 
-    describe("P2 — callbacks forwarded to attached callers", () => {
-        it("attacher's callback is added to fan-out and receives all subsequent events", async () => {
+        it("state transitions to running on invoke and to success after completion", async () => {
             const capabilities = getTestCapabilities();
             const deferred = makeDeferred();
 
@@ -139,53 +136,75 @@ describe("diary summary — ExclusiveProcess adoption", () => {
                 .fn()
                 .mockReturnValue(deferred.promise.then(() => undefined));
 
-            const initiatorQueued = [];
-            const attacherQueued = [];
-
-            // Both callers join before the run completes.
-            const p1 = runDiarySummaryPipeline(capabilities, {
-                onEntryQueued: (eventId) => initiatorQueued.push(eventId),
-            });
-            const p2 = runDiarySummaryPipeline(capabilities, {
-                onEntryQueued: (eventId) => attacherQueued.push(eventId),
-            });
-
-            expect(p1).toBe(p2);
+            runDiarySummaryPipeline(capabilities);
+            expect(diarySummaryExclusiveProcess.getState().status).toBe("running");
 
             deferred.resolve();
-            await Promise.all([p1, p2]);
+            await new Promise((r) => setImmediate(r));
 
-            // Both should have been registered in the fan-out.
-            // (No diary events in the mock so no notifications fire, but we
-            //  verify that both promises resolved and the EP is idle.)
-            expect(diarySummaryExclusiveProcess.isRunning()).toBe(false);
+            expect(diarySummaryExclusiveProcess.getState().status).toBe("success");
         });
 
-        it("route controller receives entry progress from a job-initiated run", async () => {
+        it("state transitions to error on failure", async () => {
             const capabilities = getTestCapabilities();
-            const runDeferred = makeDeferred();
+            const firstSummary = {
+                type: "diary_most_important_info_summary",
+                markdown: "",
+                summaryDate: null,
+                processedEntries: {},
+                updatedAt: null,
+                model: "gpt-5.4",
+                version: "1",
+            };
+            const diaryEvent = {
+                id: { identifier: "event-1" },
+                date: { toISOString: () => "2024-03-01T00:00:00.000Z" },
+                input: "diary [audiorecording]",
+            };
+
+            capabilities.interface.ensureInitialized = jest.fn().mockResolvedValue(undefined);
+            capabilities.interface.getDiarySummary = jest
+                .fn()
+                .mockResolvedValueOnce(firstSummary)
+                .mockRejectedValue(new Error("pipeline-crash"));
+            capabilities.interface.getSortedEvents = jest.fn().mockReturnValue([diaryEvent].values());
+            capabilities.interface.isTranscribed = jest.fn().mockResolvedValue(true);
+            capabilities.interface.entryDiaryContent = jest.fn().mockResolvedValue({
+                typedText: "today I wrote a note",
+                transcribedAudioRecording: "",
+            });
+            capabilities.aiDiarySummary.updateSummary = jest
+                .fn()
+                .mockResolvedValue({
+                    summaryMarkdown: "## Summary",
+                });
+
+            const p1 = runDiarySummaryPipeline(capabilities);
+            await p1.catch(() => {});
+            await new Promise((r) => setImmediate(r));
+
+            const state = diarySummaryExclusiveProcess.getState();
+            expect(state.status).toBe("error");
+            expect(state).toHaveProperty('error', expect.stringContaining("pipeline-crash"));
+            expect(state).toHaveProperty("entries", [{ eventId: "event-1", status: "error" }]);
+        });
+
+        it("subscribers receive state updates during the run", async () => {
+            const capabilities = getTestCapabilities();
+            const deferred = makeDeferred();
 
             capabilities.interface.ensureInitialized = jest
                 .fn()
-                .mockReturnValue(runDeferred.promise.then(() => undefined));
+                .mockReturnValue(deferred.promise.then(() => undefined));
 
-            // Job starts the pipeline.
-            const jobPromise = runDiarySummaryPipeline(capabilities);
+            const receivedStates = [];
+            diarySummaryExclusiveProcess.invoke({ capabilities }, (s) => receivedStates.push(s));
 
-            // Route joins.
-            const app = expressApp.make();
-            app.use("/api", makeRouter(capabilities));
-            await request(app).post("/api/diary-summary/run").send();
-
-            // Let the pipeline finish.
-            runDeferred.resolve();
-            await jobPromise;
+            deferred.resolve();
             await new Promise((r) => setImmediate(r));
 
-            // Route should show success.
-            const resp = await request(app).get("/api/diary-summary/run");
-            expect(resp.statusCode).toBe(200);
-            expect(resp.body.status).toBe("success");
+            const hasRunningState = receivedStates.some((s) => s.status === "running");
+            expect(hasRunningState).toBe(true);
         });
     });
 
@@ -265,6 +284,33 @@ describe("diary summary — ExclusiveProcess adoption", () => {
 
             deferred.resolve();
             await jobPromise;
+        });
+
+        it("route controller receives correct state from a job-initiated run", async () => {
+            const capabilities = getTestCapabilities();
+            const runDeferred = makeDeferred();
+
+            capabilities.interface.ensureInitialized = jest
+                .fn()
+                .mockReturnValue(runDeferred.promise.then(() => undefined));
+
+            // Job starts the pipeline.
+            const jobPromise = runDiarySummaryPipeline(capabilities);
+
+            // Route joins.
+            const app = expressApp.make();
+            app.use("/api", makeRouter(capabilities));
+            await request(app).post("/api/diary-summary/run").send();
+
+            // Let the pipeline finish.
+            runDeferred.resolve();
+            await jobPromise;
+            await new Promise((r) => setImmediate(r));
+
+            // Route should show success.
+            const resp = await request(app).get("/api/diary-summary/run");
+            expect(resp.statusCode).toBe(200);
+            expect(resp.body.status).toBe("success");
         });
     });
 });
