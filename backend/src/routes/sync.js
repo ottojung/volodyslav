@@ -82,7 +82,13 @@ function makeRouter(capabilities) {
             "Sync endpoint called"
         );
 
-        synchronizeAllExclusiveProcess.invoke({ capabilities, options });
+        const syncHandle = synchronizeAllExclusiveProcess.invoke({ capabilities, options });
+        syncHandle.result.catch((error) => {
+            capabilities.logger.logError(
+                { error, resetToHostname, method: req.method, url: req.originalUrl, client_ip: req.ip },
+                "Background sync failed"
+            );
+        });
         // State is already "running" (set synchronously by procedure's first mutateState call).
         return sendSyncState(res, synchronizeAllExclusiveProcess.getState());
     });

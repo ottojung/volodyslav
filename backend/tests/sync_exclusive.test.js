@@ -165,6 +165,9 @@ describe("sync — ExclusiveProcess adoption", () => {
 
             const state = synchronizeAllExclusiveProcess.getState();
             expect(state.status).toBe("error");
+            expect(state).toHaveProperty("steps", expect.arrayContaining([
+                { name: "generators", status: "error" },
+            ]));
         });
 
         it("subscribers receive running state immediately after invoke", async () => {

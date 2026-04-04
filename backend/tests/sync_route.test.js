@@ -9,7 +9,7 @@ let mockState = { status: "idle" };
 jest.mock("../src/sync", () => {
     return {
         synchronizeAllExclusiveProcess: {
-            invoke: jest.fn().mockImplementation(() => {}),
+            invoke: jest.fn().mockImplementation(() => ({ result: Promise.resolve() })),
             getState: jest.fn().mockImplementation(() => mockState),
         },
         isSynchronizeAllError: jest.fn((error) => error?.name === "SynchronizeAllError"),
@@ -51,6 +51,7 @@ describe("sync route", () => {
     it("POST /sync calls invoke and returns the current state", async () => {
         synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
             mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
+            return { result: Promise.resolve() };
         });
         const app = await makeApp();
 
@@ -61,6 +62,19 @@ describe("sync route", () => {
         expect(synchronizeAllExclusiveProcess.invoke).toHaveBeenCalledWith(
             expect.objectContaining({ options: {} }),
         );
+    });
+
+    it("POST /sync observes background rejection to avoid unhandled promise rejection", async () => {
+        synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
+            mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
+            return { result: Promise.reject(new Error("sync failed")) };
+        });
+        const app = await makeApp();
+
+        const response = await request(app).post("/api/sync").send({});
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(response.statusCode).toBe(202);
     });
 
     it("GET /sync returns the current state", async () => {
@@ -117,6 +131,7 @@ describe("sync route", () => {
     it("POST /sync passes reset_to_hostname in options to invoke", async () => {
         synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
             mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
+            return { result: Promise.resolve() };
         });
         const app = await makeApp();
 

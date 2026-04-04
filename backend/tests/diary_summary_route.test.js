@@ -250,6 +250,25 @@ describe("diary summary route", () => {
         expect(failedResponse.body.error).toBe("AI service unavailable");
     });
 
+    it("POST /diary-summary/run observes background rejection to avoid unhandled promise rejection", async () => {
+        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+            const result = Promise.reject(new Error("AI service unavailable"));
+            result.catch(() => {});
+            diarySummaryExclusiveProcess.getState.mockReturnValue({
+                status: "running",
+                started_at: TIMESTAMPS.started_at,
+                entries: [],
+            });
+            return { isInitiator: true, result };
+        });
+        const app = await makeApp();
+
+        const response = await request(app).post("/api/diary-summary/run").send();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(response.statusCode).toBe(202);
+    });
+
     it("returns idle state before any run has been triggered", async () => {
         const app = await makeApp();
 

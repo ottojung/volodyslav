@@ -159,7 +159,7 @@ class ExclusiveProcessClass {
          * composed so every queued caller receives state notifications.
          * @type {((state: S) => void | Promise<void>) | null}
          */
-        this._pendingCallback = null;
+        this._pendingSubscriber = null;
         /** @type {((value: T) => void) | null} */
         this._pendingResolve = null;
         /** @type {((reason: unknown) => void) | null} */
@@ -215,7 +215,7 @@ class ExclusiveProcessClass {
                         reject = rej;
                     });
                     this._pendingArgHolder = { value: arg };
-                    this._pendingCallback = sub;
+                    this._pendingSubscriber = sub;
                     this._pendingResolve = resolve;
                     this._pendingReject = reject;
                     this._pendingPromise = promise;
@@ -225,12 +225,12 @@ class ExclusiveProcessClass {
                     // compose subscribers so all queued callers receive notifications.
                     this._pendingArgHolder = { value: arg };
                     if (sub !== null) {
-                        const existing = this._pendingCallback;
+                        const existing = this._pendingSubscriber;
                         if (existing === null) {
-                            this._pendingCallback = sub;
+                            this._pendingSubscriber = sub;
                         } else {
                             const capturedExisting = existing;
-                            this._pendingCallback = (state) => {
+                            this._pendingSubscriber = (state) => {
                                 capturedExisting(state);
                                 sub(state);
                             };
@@ -302,29 +302,74 @@ class ExclusiveProcessClass {
         this._subscribers = subscribers;
 
         /**
+         * Promise chain used to serialize *queued* state mutations for this run
+         * so each transformer observes the latest committed state and commits in
+         * call order.
+         * @type {Promise<void>}
+         */
+        let pendingMutation = Promise.resolve();
+        /** @type {number} */
+        let pendingMutationCount = 0;
+
+        /**
          * Applies `fn` to the current state, writes the result, and notifies
          * all current subscribers.
          *
-         * - Sync transformer (fn returns a non-Promise): state updated
-         *   synchronously, subscribers notified fire-and-forget.
-         * - Async transformer (fn returns a Promise): awaited first, then state
-         *   updated, then subscribers notified fire-and-forget.
+         * Mutations are serialized per run, including async transformers, so
+         * concurrent callers cannot overwrite newer state with older results.
+         *
+         * For backwards-compatibility with the new API contract, if there is no
+         * pending mutation and `fn` is synchronous, the state update is still
+         * applied synchronously before `mutateState` returns.
          *
          * @param {(state: S) => S | Promise<S>} fn
          * @returns {Promise<void>}
          */
         const mutateState = (fn) => {
-            const fnResult = fn(this._state);
-            if (fnResult instanceof Promise) {
-                return fnResult.then((newState) => {
+            if (pendingMutationCount === 0) {
+                const fnResult = fn(this._state);
+                if (!(fnResult instanceof Promise)) {
+                    // Preserve synchronous update behavior for sync transformers.
+                    this._state = fnResult;
+                    this._notifySubscribers(subscribers, fnResult);
+                    return Promise.resolve();
+                }
+
+                pendingMutationCount += 1;
+                const asyncMutationPromise = fnResult.then((newState) => {
                     this._state = newState;
                     this._notifySubscribers(subscribers, newState);
                 });
+                pendingMutation = asyncMutationPromise.then(
+                    () => {
+                        pendingMutationCount -= 1;
+                    },
+                    () => {
+                        pendingMutationCount -= 1;
+                    }
+                );
+                return asyncMutationPromise;
             }
-            // Sync transformer: update state immediately, notify fire-and-forget.
-            this._state = fnResult;
-            this._notifySubscribers(subscribers, fnResult);
-            return Promise.resolve();
+
+            const mutationPromise = pendingMutation.then(() => {
+                return Promise.resolve(fn(this._state)).then((newState) => {
+                    this._state = newState;
+                    this._notifySubscribers(subscribers, newState);
+                });
+            });
+
+            pendingMutationCount += 1;
+            // Keep later mutations flowing even if this one fails, while still
+            // returning the original result to the current caller.
+            pendingMutation = mutationPromise.then(
+                () => {
+                    pendingMutationCount -= 1;
+                },
+                () => {
+                    pendingMutationCount -= 1;
+                }
+            );
+            return mutationPromise;
         };
 
         /** @type {(value: T) => void} */
@@ -371,7 +416,7 @@ class ExclusiveProcessClass {
         if (this._pendingPromise === null) return;
 
         const argHolder = this._pendingArgHolder;
-        const callback = this._pendingCallback;
+        const pendingSubscriber = this._pendingSubscriber;
         const pendingResolve = this._pendingResolve;
         const pendingReject = this._pendingReject;
 
@@ -383,12 +428,12 @@ class ExclusiveProcessClass {
         }
 
         this._pendingArgHolder = null;
-        this._pendingCallback = null;
+        this._pendingSubscriber = null;
         this._pendingResolve = null;
         this._pendingReject = null;
         this._pendingPromise = null;
 
-        const handle = this._startRun(argHolder.value, callback);
+        const handle = this._startRun(argHolder.value, pendingSubscriber);
         handle.result.then(pendingResolve, pendingReject);
     }
 }

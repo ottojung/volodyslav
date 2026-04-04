@@ -127,6 +127,25 @@ describe("ExclusiveProcess", () => {
             expect(ep.getState()).toBe(2);
         });
 
+        it("serializes non-awaited async mutateState calls in invocation order", async () => {
+            const deferredFirst = makeDeferred();
+            const deferredSecond = makeDeferred();
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    const first = mutateState(() => deferredFirst.promise.then(() => 1));
+                    const second = mutateState(() => deferredSecond.promise.then(() => 2));
+                    deferredSecond.resolve();
+                    deferredFirst.resolve();
+                    return Promise.all([first, second]).then(() => undefined);
+                },
+                conflictor: () => "attach",
+            });
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(2);
+        });
+
         it("state persists after run completes", async () => {
             const ep = makeExclusiveProcess({
                 initialState: { status: "idle" },

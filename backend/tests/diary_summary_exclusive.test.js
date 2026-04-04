@@ -147,20 +147,46 @@ describe("diary summary — ExclusiveProcess adoption", () => {
 
         it("state transitions to error on failure", async () => {
             const capabilities = getTestCapabilities();
-            const deferred = makeDeferred();
+            const firstSummary = {
+                type: "diary_most_important_info_summary",
+                markdown: "",
+                summaryDate: null,
+                processedEntries: {},
+                updatedAt: null,
+                model: "gpt-5.4",
+                version: "1",
+            };
+            const diaryEvent = {
+                id: { identifier: "event-1" },
+                date: { toISOString: () => "2024-03-01T00:00:00.000Z" },
+                input: "diary [audiorecording]",
+            };
 
-            capabilities.interface.ensureInitialized = jest
+            capabilities.interface.ensureInitialized = jest.fn().mockResolvedValue(undefined);
+            capabilities.interface.getDiarySummary = jest
                 .fn()
-                .mockReturnValue(deferred.promise.then(() => undefined));
+                .mockResolvedValueOnce(firstSummary)
+                .mockRejectedValue(new Error("pipeline-crash"));
+            capabilities.interface.getSortedEvents = jest.fn().mockReturnValue([diaryEvent].values());
+            capabilities.interface.isTranscribed = jest.fn().mockResolvedValue(true);
+            capabilities.interface.entryDiaryContent = jest.fn().mockResolvedValue({
+                typedText: "today I wrote a note",
+                transcribedAudioRecording: "",
+            });
+            capabilities.aiDiarySummary.updateSummary = jest
+                .fn()
+                .mockResolvedValue({
+                    summaryMarkdown: "## Summary",
+                });
 
             const p1 = runDiarySummaryPipeline(capabilities);
-            deferred.reject(new Error("pipeline-crash"));
             await p1.catch(() => {});
             await new Promise((r) => setImmediate(r));
 
             const state = diarySummaryExclusiveProcess.getState();
             expect(state.status).toBe("error");
             expect(state).toHaveProperty('error', expect.stringContaining("pipeline-crash"));
+            expect(state).toHaveProperty("entries", [{ eventId: "event-1", status: "error" }]);
         });
 
         it("subscribers receive state updates during the run", async () => {

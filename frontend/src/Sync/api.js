@@ -184,12 +184,14 @@ export async function fetchSyncHostnames() {
 export async function fetchSyncState() {
     try {
         const response = await fetch(`${API_BASE_URL}/sync`);
-        if (!response.ok) {
+        if (response.status !== 200 && response.status !== 202 && response.status !== 500) {
+            logger.warn("Unexpected sync state response status:", response.status);
             return { status: "idle" };
         }
         const data = await readSyncResponse(response);
         return data ?? { status: "idle" };
-    } catch {
+    } catch (error) {
+        logger.error("Error fetching sync state:", error);
         return { status: "idle" };
     }
 }

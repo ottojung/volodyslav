@@ -71,7 +71,14 @@ function makeRouter(capabilities) {
             return;
         }
 
-        diarySummaryExclusiveProcess.invoke({ capabilities });
+        const run = diarySummaryExclusiveProcess.invoke({ capabilities });
+        run.result.catch((error) => {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            capabilities.logger.logError(
+                { error, errorMessage },
+                "Diary summary background run failed"
+            );
+        });
         // State is already "running" (set synchronously by procedure's first mutateState call).
         return sendDiarySummaryRunState(res, diarySummaryExclusiveProcess.getState());
     });

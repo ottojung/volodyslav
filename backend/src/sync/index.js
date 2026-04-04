@@ -250,13 +250,13 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
             .catch((error) => {
                 const finished_at = capabilities.datetime.now().toISOString();
                 const syncError = makeSyncErrorResponse(error);
-                mutateState(() => ({
+                mutateState((current) => ({
                     status: "error",
                     started_at,
                     finished_at,
                     reset_to_hostname,
                     error: syncError,
-                    steps: [],
+                    steps: current.status === "running" ? current.steps : [],
                 }));
                 capabilities.logger.logError(
                     { error: syncError.message, details: syncError.details },

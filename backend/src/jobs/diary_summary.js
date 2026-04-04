@@ -134,11 +134,11 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
             .catch((error) => {
                 const finished_at = capabilities.datetime.now().toISOString();
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                mutateState(() => ({
+                mutateState((current) => ({
                     status: "error",
                     started_at,
                     finished_at,
-                    entries: [],
+                    entries: current.status === "running" ? current.entries : [],
                     error: errorMessage,
                 }));
                 capabilities.logger.logError({ error, errorMessage }, "Diary summary pipeline failed");
