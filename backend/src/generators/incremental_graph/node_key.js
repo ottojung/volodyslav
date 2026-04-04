@@ -215,7 +215,11 @@ function compareNodeKey(a, b) {
  * @returns {number} negative if a < b, 0 if equal, positive if a > b
  */
 function compareNodeKeyStringByNodeKey(a, b) {
-    return compareNodeKey(deserializeNodeKey(a), deserializeNodeKey(b));
+    const stringA = nodeKeyStringToString(a);
+    const stringB = nodeKeyStringToString(b);
+    if (stringA < stringB) return -1;
+    if (stringA > stringB) return 1;
+    else return 0;
 }
 
 module.exports = {
