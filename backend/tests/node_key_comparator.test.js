@@ -298,20 +298,20 @@ describe("compareNodeKeyStringByNodeKey", () => {
         expect(sorted1).toEqual(sorted2);
     });
 
-    test("nodes with numeric args are sorted numerically", () => {
+    test("nodes with numeric args are sorted lexicographically", () => {
         const a = nks("f", [1]);
         const b = nks("f", [2]);
         const c = nks("f", [10]);
         const sorted = [c, a, b].sort(compareNodeKeyStringByNodeKey);
-        expect(sorted).toEqual([a, b, c]);
+        expect(sorted).toEqual([c, a, b]);
     });
 
-    test("nodes with mixed arg types are sorted by type rank", () => {
+    test("nodes with mixed arg types are sorted lexicographically", () => {
         const withNull = nks("f", [null]);
         const withBool = nks("f", [false]);
         const withNum = nks("f", [1]);
         const withStr = nks("f", ["hello"]);
         const sorted = [withStr, withNum, withBool, withNull].sort(compareNodeKeyStringByNodeKey);
-        expect(sorted).toEqual([withNull, withBool, withNum, withStr]);
+        expect(sorted).toEqual([withStr, withNum, withBool, withNull]);
     });
 });
