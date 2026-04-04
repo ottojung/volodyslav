@@ -310,6 +310,8 @@ class ExclusiveProcessClass {
         let pendingMutation = Promise.resolve();
         /** @type {number} */
         let pendingMutationCount = 0;
+        /** @type {boolean} */
+        let isRunActive = true;
 
         /**
          * Applies `fn` to the current state, writes the result, and notifies
@@ -326,6 +328,10 @@ class ExclusiveProcessClass {
          * @returns {Promise<void>}
          */
         const mutateState = (fn) => {
+            if (!isRunActive) {
+                return Promise.resolve();
+            }
+
             if (pendingMutationCount === 0) {
                 const fnResult = fn(this._state);
                 if (!(fnResult instanceof Promise)) {
@@ -337,6 +343,7 @@ class ExclusiveProcessClass {
 
                 pendingMutationCount += 1;
                 const asyncMutationPromise = fnResult.then((newState) => {
+                    if (!isRunActive) return;
                     this._state = newState;
                     this._notifySubscribers(subscribers, newState);
                 });
@@ -352,7 +359,11 @@ class ExclusiveProcessClass {
             }
 
             const mutationPromise = pendingMutation.then(() => {
+                if (!isRunActive) {
+                    return;
+                }
                 return Promise.resolve(fn(this._state)).then((newState) => {
+                    if (!isRunActive) return;
                     this._state = newState;
                     this._notifySubscribers(subscribers, newState);
                 });
@@ -388,6 +399,7 @@ class ExclusiveProcessClass {
         procedurePromise.then(
             /** @param {T} result */
             (result) => {
+                isRunActive = false;
                 this._currentPromise = null;
                 this._currentArgHolder = null;
                 this._subscribers = [];
@@ -397,6 +409,7 @@ class ExclusiveProcessClass {
             },
             /** @param {unknown} error */
             (error) => {
+                isRunActive = false;
                 this._currentPromise = null;
                 this._currentArgHolder = null;
                 this._subscribers = [];

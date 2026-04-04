@@ -280,6 +280,28 @@ describe("ExclusiveProcess", () => {
             expect(secondRunStates).toEqual([20]);
         });
 
+        it("ignores late mutateState calls after run completion", async () => {
+            let lateMutate = () => Promise.resolve();
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    mutateState(() => 1);
+                    lateMutate = () => mutateState(() => 999);
+                    return Promise.resolve();
+                },
+                conflictor: () => "attach",
+            });
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(1);
+
+            await lateMutate();
+            expect(ep.getState()).toBe(1);
+
+            await ep.invoke(undefined).result;
+            expect(ep.getState()).toBe(1);
+        });
+
         it("initiator handle exposes the same mutateState passed to the procedure", () => {
             const deferred = makeDeferred();
             let procedureMutateState;
