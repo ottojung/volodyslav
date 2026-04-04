@@ -75,6 +75,7 @@ function migrationCallback(capabilities) {
         await keepNodeType("event_audios_list", storage);
         await keepNodeType("diary_most_important_info_summary", storage);
         await keepNodeType("entry_description", storage);
+        await keepNodeType("ontology", storage);
     };
 }
 
