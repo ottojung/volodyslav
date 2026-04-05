@@ -363,7 +363,7 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
             keyToRelativePath('!x!!values!{"head":"event","args":["%2E"]}')
         );
         expect(
-            keyToRelativePath('!x!!values!{"head":"event","args":[".."]}'  )
+            keyToRelativePath('!x!!values!{"head":"event","args":[".."]}')
         ).not.toBe(
             keyToRelativePath('!x!!values!{"head":"event","args":["%2E%2E"]}')
         );
@@ -435,7 +435,7 @@ describe('renderToFilesystem()', () => {
     test('dot-segment keys render to contained encoded paths', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!x!!values!{"head":"event","args":[".."]}'  , { type: 'event', value: 'safe' }],
+            ['!x!!values!{"head":"event","args":[".."]}', { type: 'event', value: 'safe' }],
             ['!_meta!..', 'meta-dotdot'],
         ]);
         try {

@@ -34,8 +34,8 @@
  * Segment encoding
  * ----------------
  * Key content is encoded as a single path segment. Only characters unsafe for
- * POSIX filenames require encoding: `/` -> `%2F`, `%` -> `%25` (to avoid
- * double-encoding), `!` -> `%21` (so round-tripping preserves LevelDB structure).
+ * POSIX filenames require encoding: `/` → `%2F`, `%` → `%25` (to avoid
+ * double-encoding), `!` → `%21` (so round-tripping preserves LevelDB structure).
  * The literal segments `.` and `..` are encoded as `%2E` and `%2E%2E` to prevent
  * directory traversal.
  *
@@ -66,7 +66,7 @@ const DOT_DOT_SEGMENT_PATTERN = /^%2e%2e$/i;
  *
  * Algorithm:
  *   1. Strip the leading `!`.
- *   2. Split on `!!` -- all segments but the last are pure sublevel names.
+ *   2. Split on `!!` — all segments but the last are pure sublevel names.
  *   3. Split the last segment on the FIRST `!` to separate the deepest
  *      sublevel name from the key content.  This preserves any `!` characters
  *      that may appear inside the key content itself.
@@ -142,7 +142,7 @@ function encodeSegment(s) {
     if (s === '..') {
         return DOT_DOT_SEGMENT_SENTINEL;
     }
-    // Encode '%' first to prevent double-encoding (e.g. '/' -> '%2F' -> '%252F').
+    // Encode '%' first to prevent double-encoding (e.g. '/' → '%2F' → '%252F').
     return s.replace(/%/g, '%25').replace(/\//g, '%2F').replace(/!/g, '%21');
 }
 
@@ -173,16 +173,16 @@ function decodeSegment(s) {
  *
  * Examples:
  *   !_meta!format
- *     -> _meta/format
+ *     → _meta/format
  *
  *   !x!!meta!version
- *     -> x/meta/version
+ *     → x/meta/version
  *
  *   !x!!values!{"head":"event","args":["abc"]}
- *     -> x/values/{"head":"event","args":["abc"]}
+ *     → x/values/{"head":"event","args":["abc"]}
  *
  *   !x!!values!{"head":"transcription","args":["/audio/x.mp3"]}
- *     -> x/values/{"head":"transcription","args":["%2Faudio%2Fx.mp3"]}
+ *     → x/values/{"head":"transcription","args":["%2Faudio%2Fx.mp3"]}
  *
  * @param {string} rawKey - Raw LevelDB key.
  * @returns {string} Relative filesystem path.
@@ -197,8 +197,8 @@ function keyToRelativePath(rawKey) {
  * This is the exact inverse of keyToRelativePath().
  *
  * Depth convention:
- *   - If the first segment is `_meta` -> depth 1 (1-level nesting)
- *   - Otherwise -> depth 2 (2-level nesting: namespace + sublevel)
+ *   - If the first segment is `_meta` → depth 1 (1-level nesting)
+ *   - Otherwise → depth 2 (2-level nesting: namespace + sublevel)
  *
  * The path must have exactly `depth + 1` segments: the sublevels followed by
  * the encoded key content as a single filename.
