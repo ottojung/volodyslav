@@ -58,7 +58,7 @@
  */
 
 const path = require('path');
-const { nodeKeyStringToString, nodeNameToString, stringToNodeName } = require('./types');
+const { nodeKeyStringToString } = require('./types');
 
 /** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -337,6 +337,20 @@ function requireNodeKey(sublevels, keyContent) {
 }
 
 /**
+ * Serialises a NodeKey head and args into the canonical JSON string stored
+ * as the key content in non-plain (data) sublevels.
+ *
+ * The produced string has the form: `{"head":"<name>","args":[...]}`
+ *
+ * @param {string} head - The node name (head).
+ * @param {Array<ConstValue>} args - The argument list.
+ * @returns {string} The canonical NodeKey JSON string.
+ */
+function buildNodeKeyContent(head, args) {
+    return JSON.stringify({ head, args });
+}
+
+/**
  * Converts a raw LevelDB key to a relative filesystem path.
  *
  * For NodeKey JSON stored in data sublevels (values, freshness, inputs,
@@ -417,11 +431,10 @@ function relativePathToKey(relPath) {
         keyContent = decodeSegment(keyComponents[0] ?? '');
     } else {
         // key is a NodeKey: first component is head, rest are args
-        const headU = keyComponents[0] ?? '';
-        const head = nodeNameToString(stringToNodeName(headU));
+        const head = keyComponents[0] ?? '';
         /** @type {Array<ConstValue>} */
         const args = keyComponents.slice(1).map(decodeArg);
-        keyContent = JSON.stringify({ head, args });
+        keyContent = buildNodeKeyContent(head, args);
     }
 
     return buildRawKey(sublevels, keyContent);
