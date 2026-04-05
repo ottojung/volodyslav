@@ -16,7 +16,7 @@
 const {
     createNodeKeyFromPattern,
     serializeNodeKey,
-} = require("../src/generators/incremental_graph/node_key");
+} = require("../src/generators/incremental_graph/database/node_key");
 const { functor } = require("../src/generators/incremental_graph/expr");
 const { isJsonKey } = require("./test_json_key_helper");
 

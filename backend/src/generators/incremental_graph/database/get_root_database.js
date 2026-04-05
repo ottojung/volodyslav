@@ -2,7 +2,7 @@
  * Root database initialization utilities.
  */
 
-const { pathToLiveDatabase } = require('../gitstore');
+const { pathToLiveDatabase } = require('./gitstore');
 const { makeRootDatabase } = require('./root_database');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */

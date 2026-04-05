@@ -2,7 +2,7 @@
 // This file contains the current migration callback.
 
 const { stringToNodeName } = require("./database");
-const { deserializeNodeKey } = require("./node_key");
+const { deserializeNodeKey } = require("./database");
 
 /**
  * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities

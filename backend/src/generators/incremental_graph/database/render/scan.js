@@ -14,11 +14,11 @@
 const path = require('path');
 const { relativePathToKey, parseValue } = require('./encoding');
 
-/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
-/** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../../../filesystem/dirscanner').DirScanner} DirScanner */
-/** @typedef {import('../../../logger').Logger} Logger */
+/** @typedef {import('../root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../../../logger').Logger} Logger */
 
 /**
  * Capabilities required by scanFromFilesystem.

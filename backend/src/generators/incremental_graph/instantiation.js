@@ -7,7 +7,7 @@ const {
     extractInputBindings,
 } = require("./compiled_node");
 const { renderExpr } = require("./expr");
-const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
+const { createNodeKeyFromPattern, serializeNodeKey } = require("./database");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */

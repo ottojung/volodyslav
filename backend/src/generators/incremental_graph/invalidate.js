@@ -16,7 +16,7 @@
 const { stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
-const { serializeNodeKey } = require("./node_key");
+const { serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**

@@ -50,7 +50,7 @@
 
 const { serializeNodeKey, deserializeNodeKey, nodeNameToString, stringToNodeName, stringToNodeKeyString, nodeKeyStringToString } = require('../node_key');
 
-/** @typedef {import('../types').ConstValue} ConstValue */
+/** @typedef {import('../../types').ConstValue} ConstValue */
 
 /**
  * Sublevel names that store plain string keys rather than NodeKey JSON keys.

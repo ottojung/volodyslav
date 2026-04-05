@@ -4,7 +4,7 @@
  */
 
 const { stringToNodeKeyString } = require("./database");
-const { deserializeNodeKey } = require("./node_key");
+const { deserializeNodeKey } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,

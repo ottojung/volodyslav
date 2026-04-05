@@ -19,12 +19,12 @@
 const path = require('path');
 const { keyToRelativePath, serializeValue } = require('./encoding');
 
-/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('../../../filesystem/writer').FileWriter} FileWriter */
-/** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../../../filesystem/deleter').FileDeleter} FileDeleter */
-/** @typedef {import('../../../logger').Logger} Logger */
+/** @typedef {import('../root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../../../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../../../../logger').Logger} Logger */
 
 /**
  * Capabilities required by renderToFilesystem.

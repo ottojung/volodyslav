@@ -14,7 +14,7 @@
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
-const { deserializeNodeKey } = require("./node_key");
+const { deserializeNodeKey } = require("./database");
 const { isUnchanged } = require("./unchanged");
 const { nodeKeyStringToString } = require("./database");
 /**
