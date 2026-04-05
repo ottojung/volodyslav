@@ -118,9 +118,6 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir, subleve
     const validatedEntries = [];
     for await (const [key, value] of rootDatabase._rawEntriesForSublevel(validatedSublevel)) {
         const fullRelPath = keyToRelativePath(key);
-        if (!fullRelPath.startsWith(sublevelPrefix)) {
-            continue;
-        }
         const relPath = fullRelPath.slice(sublevelPrefix.length);
         const content = serializeValue(value);
         validatedEntries.push({ relPath, content });

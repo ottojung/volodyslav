@@ -309,7 +309,7 @@ class RootDatabaseClass {
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
         const rawKeyPrefix = `!${sublevelName}!`;
         for await (const [key, value] of sublevel.iterator()) {
-            yield [rawKeyPrefix + String(key), value];
+            yield [rawKeyPrefix + key, value];
         }
     }
 
