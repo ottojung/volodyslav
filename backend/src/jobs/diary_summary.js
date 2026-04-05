@@ -22,7 +22,7 @@ const { getType: getEventType } = require("../event");
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {{ eventId: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
+ * @typedef {{ eventId: string, entryDate: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
  */
 
 /**
@@ -91,11 +91,14 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
         capabilities.logger.logInfo({ started_at }, "Diary summary pipeline started in background");
 
         const callbacks = {
-            /** @param {string} eventId */
-            onEntryQueued: (eventId) => {
+            /**
+             * @param {string} eventId
+             * @param {string} entryDate
+             */
+            onEntryQueued: (eventId, entryDate) => {
                 mutateState((current) => {
                     if (current.status !== "running") return current;
-                    return { ...current, entries: [...current.entries, { eventId, status: "pending" }] };
+                    return { ...current, entries: [...current.entries, { eventId, entryDate, status: "pending" }] };
                 });
             },
             /**
@@ -166,7 +169,7 @@ function runDiarySummaryPipeline(capabilities) {
 /**
  * Internal (unlocked) implementation of the pipeline.
  * @param {Capabilities} capabilities
- * @param {{ onEntryQueued?: (eventId: string) => void, onEntryProcessed?: (eventId: string, status: "success" | "error") => void }} [callbacks]
+ * @param {{ onEntryQueued?: (eventId: string, entryDate: string) => void, onEntryProcessed?: (eventId: string, status: "success" | "error") => void }} [callbacks]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
 async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
@@ -222,7 +225,7 @@ async function _runDiarySummaryPipelineUnlocked(capabilities, callbacks) {
         }
 
         // Signal that this entry is about to be processed.
-        callbacks?.onEntryQueued?.(eventId);
+        callbacks?.onEntryQueued?.(eventId, newEntryDateISO);
 
         // Call the AI summarizer.
         try {

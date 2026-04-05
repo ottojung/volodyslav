@@ -91,8 +91,8 @@ describe("runDiarySummary", () => {
 
     it("calls onProgress with intermediate entries while running", async () => {
         const summary = makeSummaryData();
-        const entries1 = [{ path: "assets/a.wav", status: "pending" }];
-        const entries2 = [{ path: "assets/a.wav", status: "success" }];
+        const entries1 = [{ eventId: "evt-a", entryDate: "2024-03-01T00:00:00.000Z", status: "pending" }];
+        const entries2 = [{ eventId: "evt-a", entryDate: "2024-03-01T00:00:00.000Z", status: "success" }];
         global.fetch
             .mockResolvedValueOnce(makeResponse(202, { status: "running", entries: entries1 }))
             .mockResolvedValueOnce(makeResponse(202, { status: "running", entries: entries1 }))
@@ -111,7 +111,7 @@ describe("runDiarySummary", () => {
     });
 
     it("calls onProgress with final entries on terminal error state", async () => {
-        const entries = [{ path: "assets/a.wav", status: "error" }];
+        const entries = [{ eventId: "evt-a", entryDate: "2024-03-01T00:00:00.000Z", status: "error" }];
         global.fetch
             .mockResolvedValueOnce(makeResponse(202, { status: "running", entries: [] }))
             .mockResolvedValueOnce(makeResponse(500, { status: "error", error: "AI service unavailable", entries }));

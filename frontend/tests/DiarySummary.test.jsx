@@ -143,14 +143,99 @@ describe("DiarySummary page", () => {
 
         const updatedSummary = makeSummary({ summaryDate: "2024-04-01T00:00:00.000Z" });
         runDiarySummary.mockImplementation((onProgress) => {
-            onProgress?.([{ path: "assets/audio.wav", status: "pending" }]);
+            onProgress?.([{ eventId: "evt-audio", entryDate: "2024-03-01T00:00:00.000Z", status: "pending" }]);
             return Promise.resolve({ success: true, summary: updatedSummary });
         });
 
         fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
 
         await waitFor(() => {
-            expect(screen.getByText("audio.wav")).toBeInTheDocument();
+            expect(screen.getByText("2024-03-01T00:00:00.000Z")).toBeInTheDocument();
         });
     });
+
+    it("does not crash or show white screen when run entries use eventId (regression test for path.split bug)", async () => {
+        fetchDiarySummary.mockResolvedValue(makeSummary());
+        renderDiarySummary();
+
+        await waitFor(() => {
+            expect(screen.getByText("Current snapshot")).toBeInTheDocument();
+        });
+
+        const updatedSummary = makeSummary({ summaryDate: "2024-04-01T00:00:00.000Z" });
+        // Simulate backend response: entries use eventId + entryDate, not path.
+        runDiarySummary.mockImplementation((onProgress) => {
+            onProgress?.([
+                { eventId: "abc123", entryDate: "2024-03-10T00:00:00.000Z", status: "pending" },
+                { eventId: "def456", entryDate: "2024-03-11T00:00:00.000Z", status: "success" },
+                { eventId: "ghi789", entryDate: "2024-03-12T00:00:00.000Z", status: "error" },
+            ]);
+            return Promise.resolve({ success: true, summary: updatedSummary });
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
+
+        // The page must NOT go blank — heading must still be visible.
+        await waitFor(() => {
+            expect(screen.getByRole("heading", { name: /Diary Summary/i })).toBeInTheDocument();
+            expect(screen.getByText("2024-03-10T00:00:00.000Z")).toBeInTheDocument();
+            expect(screen.getByText("2024-03-11T00:00:00.000Z")).toBeInTheDocument();
+            expect(screen.getByText("2024-03-12T00:00:00.000Z")).toBeInTheDocument();
+        });
+    });
+
+    it("shows notAnalyzer toast and resets running state without changing load state", async () => {
+        fetchDiarySummary.mockResolvedValue(makeSummary());
+        renderDiarySummary();
+
+        await waitFor(() => {
+            expect(screen.getByText("Current snapshot")).toBeInTheDocument();
+        });
+
+        runDiarySummary.mockResolvedValue({
+            success: false,
+            notAnalyzer: true,
+            currentHostname: "current-host",
+            analyzerHostname: "analyzer-host",
+            error: "This host (current-host) is not the analyzer. The analyzer is: analyzer-host",
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
+
+        await waitFor(() => {
+            // The button must no longer be loading.
+            expect(screen.getByRole("button", { name: /Update Summary/i })).toBeInTheDocument();
+            // The summary content must still be visible (load state unchanged).
+            expect(screen.getByText("Current snapshot")).toBeInTheDocument();
+        });
+    });
+
+    it("shows progress entries with success and error statuses after completed run", async () => {
+        fetchDiarySummary.mockResolvedValue(makeSummary());
+        renderDiarySummary();
+
+        await waitFor(() => {
+            expect(screen.getByText("Current snapshot")).toBeInTheDocument();
+        });
+
+        const updatedSummary = makeSummary({ summaryDate: "2024-04-01T00:00:00.000Z" });
+        runDiarySummary.mockImplementation((onProgress) => {
+            // Simulate final progress callback with completed entries.
+            onProgress?.([
+                { eventId: "e1", entryDate: "2024-03-01T00:00:00.000Z", status: "success" },
+                { eventId: "e2", entryDate: "2024-03-02T00:00:00.000Z", status: "error" },
+            ]);
+            return Promise.resolve({ success: true, summary: updatedSummary });
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: /Update Summary/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText("2024-03-01T00:00:00.000Z")).toBeInTheDocument();
+            expect(screen.getByText("2024-03-02T00:00:00.000Z")).toBeInTheDocument();
+            // Summary content updated.
+            expect(screen.getByText("Current snapshot")).toBeInTheDocument();
+        });
+    });
+
 });
