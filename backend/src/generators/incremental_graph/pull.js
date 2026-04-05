@@ -20,7 +20,7 @@
 const { nodeKeyStringToString, stringToNodeName } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
-const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
+const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**

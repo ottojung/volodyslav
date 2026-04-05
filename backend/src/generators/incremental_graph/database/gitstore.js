@@ -134,6 +134,9 @@ async function checkpointDatabase(
     let database;
 
     if (rootDatabase === undefined) {
+        // Lazy require to avoid a circular dependency at module load time:
+        // gitstore.js is required by database/index.js, so a top-level require
+        // of './index' here would create a cycle.
         const { getRootDatabase } = require('./index');
         ownedDatabase = await getRootDatabase(capabilities);
         database = ownedDatabase;

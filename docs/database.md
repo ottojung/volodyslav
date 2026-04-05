@@ -74,8 +74,7 @@ The algorithm depends on the key type:
 #### Data sublevels (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`)
 
 The stored key is a JSON-serialised NodeKey object `{"head":"...","args":[...]}`.
-It is decomposed into human-readable path segments, similar to how `/api/graph/nodes` encodes
-graph nodes in URLs:
+It is decomposed into human-readable path segments:
 
 ```
 !x!!values!{"head":"all_events","args":[]}
@@ -88,8 +87,8 @@ graph nodes in URLs:
   → x/values/transcription/%2Faudio%2Fx.mp3
 ```
 
-String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`, and `~` → `%7E`.
-In addition, literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
+String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
+Literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
 to prevent path traversal while keeping the key↔path mapping bijective. Non-string arguments
 (numbers, booleans, arrays, objects) are JSON-encoded and prefixed with `~` so they remain
 unambiguous even when string arguments begin with `~`.
@@ -114,7 +113,7 @@ It is used as a single percent-encoded path segment:
 4. **Reconstruct key**:
    - Plain string: decode the single remaining segment and reassemble the LevelDB key.
    - NodeKey: first remaining segment is the node head; subsequent segments are decoded arguments;
-     reassemble as `JSON.stringify({head, args})` and build the LevelDB key.
+     reassemble using `serializeNodeKey({head, args})` and build the LevelDB key.
 
 ### Bijection guarantee
 
@@ -125,7 +124,7 @@ relativePathToKey(keyToRelativePath(key)) === key   // for all valid keys
 ```
 
 The `!` character in argument values is encoded as `%21` before splitting, so it can never be
-mistaken for the LevelDB sublevel separator. This is the P1 fix from the initial implementation.
+mistaken for the LevelDB sublevel separator.
 
 ### Stale-key deletion (P2)
 

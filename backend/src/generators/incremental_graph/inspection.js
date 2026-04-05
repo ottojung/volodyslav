@@ -19,7 +19,7 @@ const {
     versionToString,
 } = require("./database");
 const { makeInvalidNodeError, makeMissingTimestampError } = require("./errors");
-const { deserializeNodeKey, serializeNodeKey } = require("./node_key");
+const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");
 const { withObserveMode } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");

@@ -14,18 +14,18 @@
  * - No mixing of expression syntax with embedded JSON
  */
 
-const { makeArityMismatchError } = require("./errors");
+const { makeArityMismatchError } = require("../errors");
 const {
     stringToNodeKeyString,
     nodeNameToString,
     stringToNodeName,
     nodeKeyStringToString,
-} = require("./database");
+} = require("./types");
 
-/** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./types').NodeName} NodeName */
-/** @typedef {import('./types').SchemaPattern} SchemaPattern */
+/** @typedef {import('../types').ConstValue} ConstValue */
+/** @typedef {import('../types').NodeKeyString} NodeKeyString */
+/** @typedef {import('../types').NodeName} NodeName */
+/** @typedef {import('../types').SchemaPattern} SchemaPattern */
 
 /**
  * A node key object for concrete nodes.
@@ -66,7 +66,7 @@ function deserializeNodeKey(serialized) {
  * @returns {NodeKey}
  */
 function createNodeKeyFromPattern(pattern, bindings) {
-    const { parseExpr } = require("./expr");
+    const { parseExpr } = require("../expr");
     const expr = parseExpr(pattern);
     const head = expr.name;
 
@@ -229,4 +229,8 @@ module.exports = {
     compareConstValue,
     compareNodeKey,
     compareNodeKeyStringByNodeKey,
+    nodeNameToString,
+    stringToNodeName,
+    stringToNodeKeyString,
+    nodeKeyStringToString,
 };

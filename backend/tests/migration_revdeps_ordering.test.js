@@ -6,8 +6,8 @@
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
-const { serializeNodeKey } = require("../src/generators/incremental_graph/node_key");
-const { compareNodeKeyStringByNodeKey } = require("../src/generators/incremental_graph/node_key");
+const { serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
+const { compareNodeKeyStringByNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { stringToNodeName } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");

@@ -8,7 +8,7 @@ const {
     compareConstValue,
     compareNodeKey,
     compareNodeKeyStringByNodeKey,
-} = require("../src/generators/incremental_graph/node_key");
+} = require("../src/generators/incremental_graph/database/node_key");
 const { stringToNodeName } = require("../src/generators/incremental_graph/database");
 
 /**

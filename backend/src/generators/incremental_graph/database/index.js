@@ -15,6 +15,14 @@ const {
 } = require('./gitstore');
 const { synchronizeNoLock } = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
+const {
+    serializeNodeKey,
+    deserializeNodeKey,
+    createNodeKeyFromPattern,
+    compareConstValue,
+    compareNodeKey,
+    compareNodeKeyStringByNodeKey,
+} = require('./node_key');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
@@ -48,4 +56,10 @@ module.exports = {
     scanFromFilesystem,
     keyToRelativePath,
     relativePathToKey,
+    serializeNodeKey,
+    deserializeNodeKey,
+    createNodeKeyFromPattern,
+    compareConstValue,
+    compareNodeKey,
+    compareNodeKeyStringByNodeKey,
 };

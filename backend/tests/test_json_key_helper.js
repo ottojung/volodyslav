@@ -3,7 +3,7 @@
  * Used by tests that need to assert on concrete node keys in storage.
  */
 
-const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/incremental_graph/node_key");
+const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { functor } = require("../src/generators/incremental_graph/expr");
 
 /**

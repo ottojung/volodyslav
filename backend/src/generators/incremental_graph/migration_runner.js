@@ -13,7 +13,7 @@ const { stringToNodeKeyString } = require("./database");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
-const { compareNodeKeyStringByNodeKey } = require("./node_key");
+const { compareNodeKeyStringByNodeKey } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
