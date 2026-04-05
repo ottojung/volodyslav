@@ -331,4 +331,51 @@ describe("runDiarySummaryPipeline", () => {
         // Watermark should be recorded keyed by event ID.
         expect(result.processedEntries["typed-1"]).toBeTruthy();
     });
+
+    test("onEntryQueued callback receives eventId and entryDate for each processed entry", async () => {
+        const capabilities = await getTestCapabilities();
+        await capabilities.interface.ensureInitialized();
+
+        const entryDate = fromISOString("2024-03-15T10:00:00.000Z");
+        const [relativeAssetPath] = await writeDiaryEventWithAssets(
+            capabilities,
+            "entry-date-test",
+            ["test.mp3"],
+            entryDate,
+        );
+
+        // Materialize transcription by pulling it directly.
+        await capabilities.interface.pullGraphNode("transcription", [relativeAssetPath]);
+
+        // Reach into the exclusive process to observe callbacks via the running state.
+        // The simplest way is to run the pipeline and check the resulting run state entries.
+        const { diarySummaryExclusiveProcess } = require("../src/jobs/diary_summary");
+
+        // Track state via subscriber.
+        /** @type {import('../src/jobs/diary_summary').DiarySummaryRunState[]} */
+        const states = [];
+        diarySummaryExclusiveProcess.invoke({ capabilities }, (state) => {
+            states.push(JSON.parse(JSON.stringify(state)));
+        });
+        await diarySummaryExclusiveProcess.invoke({ capabilities }).result;
+
+        // Find a state where the entry was pending (queued but not yet processed).
+        const pendingState = states.find(
+            (s) => s.status === "running" && s.entries.some((e) => e.status === "pending"),
+        );
+        expect(pendingState).toBeDefined();
+        const pendingEntry = pendingState.entries.find((e) => e.status === "pending");
+        expect(pendingEntry).toBeDefined();
+        expect(pendingEntry.eventId).toBe("entry-date-test");
+        expect(pendingEntry.entryDate).toBe(entryDate.toISOString());
+
+        // Find a state where the entry was successfully processed.
+        const finalState = diarySummaryExclusiveProcess.getState();
+        expect(finalState.status).toBe("success");
+        const processedEntry = finalState.entries.find((e) => e.eventId === "entry-date-test");
+        expect(processedEntry).toBeDefined();
+        expect(processedEntry.entryDate).toBe(entryDate.toISOString());
+        expect(processedEntry.status).toBe("success");
+    });
+
 });

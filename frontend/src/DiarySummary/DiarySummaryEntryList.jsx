@@ -42,11 +42,11 @@ export function DiarySummaryEntryList({ entries, isRunning }) {
         <VStack gap={1} align="stretch">
             {entries.map((entry, index) => {
                 const colorKey = entry.status;
-                const label = entry.path.split("/").pop() ?? entry.path;
+                const label = entry.entryDate;
 
                 return (
                     <HStack
-                        key={`${entry.path}-${index}`}
+                        key={`${entry.eventId}-${index}`}
                         gap={2}
                         px={2}
                         py={1}

@@ -15,7 +15,7 @@ const DIARY_SUMMARY_POLL_INTERVAL_MS = 1000;
  */
 
 /**
- * @typedef {{ path: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
+ * @typedef {{ eventId: string, entryDate: string, status: "pending" | "success" | "error" }} DiarySummaryRunEntry
  */
 
 /**
