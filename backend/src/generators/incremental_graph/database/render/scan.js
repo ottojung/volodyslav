@@ -12,7 +12,8 @@
  */
 
 const path = require('path');
-const { relativePathToKey, parseValue } = require('./encoding');
+const { relativePathToKey, parseValue, keyToRelativePath } = require('./encoding');
+const { validateTopLevelSublevel } = require('./sublevel');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -53,8 +54,9 @@ async function walkFilesRecursively(capabilities, dir) {
 }
 
 /**
- * Reads every file from a directory tree rooted at `path.join(inputDir, sublevel)`
- * and writes the corresponding key/value pairs into a LevelDB database.
+ * Reads every file from a directory tree rooted at `inputDir` and writes the
+ * corresponding key/value pairs into one top-level database sublevel while
+ * preserving all other top-level database sublevels.
  *
  * This function FIRST clears all existing entries from rootDatabase, then
  * imports the snapshot from the resolved directory.  This guarantees that keys
@@ -71,34 +73,45 @@ async function walkFilesRecursively(capabilities, dir) {
  *
  * @param {ScanCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.
- * @param {string} inputDir - Absolute path of the base directory to read from.
- * @param {string} sublevel - Subdirectory name within inputDir where files are read.
+ * @param {string} inputDir - Absolute path of the directory to read from.
+ * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta").
  * @returns {Promise<void>}
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {
-    const resolvedInputDir = path.join(inputDir, sublevel);
+    const validatedSublevel = validateTopLevelSublevel(sublevel);
+    const hasInputDirectory = await capabilities.checker.directoryExists(inputDir);
     // Phase 1: Walk, read, and parse all entries before mutating the database.
-    const allFiles = await walkFilesRecursively(capabilities, resolvedInputDir);
+    const allFiles = hasInputDirectory ? await walkFilesRecursively(capabilities, inputDir) : [];
 
     /** @type {Array<{ key: string, value: unknown }>} */
     const entries = [];
     let count = 0;
+    const sublevelPrefix = validatedSublevel + '/';
 
     for (const absPath of allFiles) {
-        const relPath = path.relative(resolvedInputDir, absPath);
+        const relPath = path.relative(inputDir, absPath);
         const normalizedRelPath = relPath.split(path.sep).join('/');
-        const key = relativePathToKey(normalizedRelPath);
+        const key = relativePathToKey(sublevelPrefix + normalizedRelPath);
         const content = await capabilities.reader.readFileAsText(absPath);
         const value = parseValue(content);
         entries.push({ key, value });
         count++;
     }
 
+    /** @type {Array<{ key: string, value: unknown }>} */
+    const preservedEntries = [];
+    for await (const [key, value] of rootDatabase._rawEntries()) {
+        const relPath = keyToRelativePath(key);
+        if (!relPath.startsWith(sublevelPrefix)) {
+            preservedEntries.push({ key, value });
+        }
+    }
+
     // Phase 2: After successful validation, clear and repopulate the database.
     await rootDatabase._rawDeleteAll();
-    await rootDatabase._rawPutAll(entries);
+    await rootDatabase._rawPutAll([...preservedEntries, ...entries]);
     capabilities.logger.logInfo(
-        { inputDir: resolvedInputDir, count },
+        { inputDir, sublevel: validatedSublevel, count },
         'Scanned database from filesystem'
     );
 }

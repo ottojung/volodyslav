@@ -18,6 +18,7 @@
 
 const path = require('path');
 const { keyToRelativePath, serializeValue } = require('./encoding');
+const { validateTopLevelSublevel } = require('./sublevel');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -88,11 +89,12 @@ async function clearRenderedSnapshot(capabilities, outputDir) {
     if (await capabilities.checker.directoryExists(outputDir)) {
         await capabilities.deleter.deleteDirectory(outputDir);
     }
+    await capabilities.creator.createDirectory(outputDir);
 }
 
 /**
- * Dumps every raw key/value pair from a LevelDB database to a directory tree
- * rooted at `path.join(outputDir, sublevel)`.
+ * Dumps every raw key/value pair from one top-level database sublevel to a
+ * directory tree rooted at `outputDir`.
  *
  * For each entry in the database:
  *   - The key is mapped to a relative file path via keyToRelativePath().
@@ -105,28 +107,33 @@ async function clearRenderedSnapshot(capabilities, outputDir) {
  *
  * @param {RenderCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to dump.
- * @param {string} outputDir - Absolute path of the base directory to write into.
- * @param {string} sublevel - Subdirectory name within outputDir where files are written.
+ * @param {string} outputDir - Absolute path of the directory to write into.
+ * @param {string} sublevel - Top-level database sublevel to render (e.g. "x", "_meta").
  * @returns {Promise<void>}
  */
 async function renderToFilesystem(capabilities, rootDatabase, outputDir, sublevel) {
-    const renderedDir = path.join(outputDir, sublevel);
+    const validatedSublevel = validateTopLevelSublevel(sublevel);
+    const sublevelPrefix = validatedSublevel + '/';
     /** @type {Array<{ relPath: string, content: string }>} */
     const validatedEntries = [];
     for await (const [key, value] of rootDatabase._rawEntries()) {
-        const relPath = keyToRelativePath(key);
+        const fullRelPath = keyToRelativePath(key);
+        if (!fullRelPath.startsWith(sublevelPrefix)) {
+            continue;
+        }
+        const relPath = fullRelPath.slice(sublevelPrefix.length);
         const content = serializeValue(value);
         validatedEntries.push({ relPath, content });
     }
 
-    await clearRenderedSnapshot(capabilities, renderedDir);
+    await clearRenderedSnapshot(capabilities, outputDir);
     for (const entry of validatedEntries) {
-        const absPath = resolveContainedPath(renderedDir, entry.relPath);
+        const absPath = resolveContainedPath(outputDir, entry.relPath);
         const file = await capabilities.creator.createFile(absPath);
         await capabilities.writer.writeFile(file, entry.content);
     }
     capabilities.logger.logInfo(
-        { outputDir: renderedDir, count: validatedEntries.length },
+        { outputDir, sublevel: validatedSublevel, count: validatedEntries.length },
         'Rendered database to filesystem'
     );
 }
