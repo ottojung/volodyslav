@@ -369,6 +369,13 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
             keyToRelativePath('!x!!values!{"head":"event","args":["%2E%2E"]}')
         );
     });
+
+    test('empty-string argument round-trips via a dedicated sentinel', () => {
+        const key = '!x!!values!{"head":"event","args":[""]}';
+        const rel = keyToRelativePath(key);
+        expect(rel).toBe('x/values/event/%00');
+        expect(relativePathToKey(rel)).toBe(key);
+    });
 });
 
 // ---------------------------------------------------------------------------

@@ -65,9 +65,11 @@ const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'meta']);
 const NON_STRING_ARG_PREFIX = '~';
 const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
 
-// Use uppercase sentinels as the canonical on-disk form for literal '.' and '..'
-// segments so renderToFilesystem() is deterministic; decode accepts lowercase
-// too so scanFromFilesystem() stays tolerant of manually created snapshots.
+// Use uppercase sentinels as the canonical on-disk form for special segments so
+// renderToFilesystem() is deterministic; decode accepts lowercase too so
+// scanFromFilesystem() stays tolerant of manually created snapshots.
+const EMPTY_SEGMENT_SENTINEL = '%00';
+const EMPTY_SEGMENT_PATTERN = /^%00$/i;
 const DOT_SEGMENT_SENTINEL = '%2E';
 const DOT_DOT_SEGMENT_SENTINEL = '%2E%2E';
 const DOT_SEGMENT_PATTERN = /^%2e$/i;
@@ -149,6 +151,9 @@ function buildRawKey(sublevels, keyContent) {
  * @returns {string}
  */
 function encodeSegment(s) {
+    if (s === '') {
+        return EMPTY_SEGMENT_SENTINEL;
+    }
     if (s === '.') {
         return DOT_SEGMENT_SENTINEL;
     }
@@ -169,6 +174,9 @@ function decodeSegment(s) {
     // filesystem snapshot, even though encodeSegment() always emits the
     // uppercase canonical sentinels defined above, so manually created
     // snapshots can still be imported reliably.
+    if (EMPTY_SEGMENT_PATTERN.test(s)) {
+        return '';
+    }
     if (DOT_SEGMENT_PATTERN.test(s)) {
         return '.';
     }
