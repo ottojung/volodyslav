@@ -851,9 +851,6 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         const dbA = await makeSeededDatabase(capA, seedEntries);
         const renderDir = path.join(tmpDir, 'render-dir');
 
-        await capA.creator.createDirectory(path.join(renderDir, 'x'));
-        await capA.creator.createDirectory(path.join(renderDir, 'y'));
-        await capA.creator.createDirectory(path.join(renderDir, '_meta'));
         await renderToFilesystem(capA, dbA, path.join(renderDir, 'x'), 'x');
         await renderToFilesystem(capA, dbA, path.join(renderDir, 'y'), 'y');
         await renderToFilesystem(capA, dbA, path.join(renderDir, '_meta'), '_meta');
@@ -1152,6 +1149,54 @@ describe('sublevel parameter', () => {
         const db = await getRootDatabase(capabilities);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, 'x')).rejects.toThrow();
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('scanFromFilesystem throws ScanInputDirMissingError when inputDir does not exist', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'does-not-exist', 'rendered', 'x');
+        const db = await getRootDatabase(capabilities);
+        try {
+            await expect(scanFromFilesystem(capabilities, db, inputDir, 'x')).rejects.toThrow(
+                'does not exist'
+            );
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('scanFromFilesystem does not mutate the database when inputDir is missing', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const db = await makeSeededDatabase(capabilities, [
+            ['!_meta!format', 'xy-v1'],
+            ['!x!!values!{"head":"event","args":["keep"]}', { keep: true }],
+        ]);
+        const before = await collectRawEntries(db);
+        const inputDir = path.join(tmpDir, 'absent-dir', 'rendered', 'x');
+        try {
+            await scanFromFilesystem(capabilities, db, inputDir, 'x');
+        } catch (_err) {
+            // expected
+        }
+        const after = await collectRawEntries(db);
+        expect(after).toEqual(before);
+        await db.close();
+    });
+
+    test('validateTopLevelSublevel rejects non-string sublevel argument', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        try {
+            // @ts-expect-error intentionally passing a non-string
+            await expect(renderToFilesystem(capabilities, db, path.join(tmpDir, 'out'), null)).rejects.toThrow(
+                'expected a string'
+            );
+            // @ts-expect-error intentionally passing a non-string
+            await expect(renderToFilesystem(capabilities, db, path.join(tmpDir, 'out'), 42)).rejects.toThrow(
+                'expected a string'
+            );
         } finally {
             await db.close();
         }

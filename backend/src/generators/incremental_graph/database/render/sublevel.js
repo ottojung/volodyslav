@@ -2,10 +2,13 @@
  * Validates and normalizes a top-level database sublevel name used by
  * renderToFilesystem/scanFromFilesystem.
  *
- * @param {string} sublevel
+ * @param {unknown} sublevel
  * @returns {string}
  */
 function validateTopLevelSublevel(sublevel) {
+    if (typeof sublevel !== 'string') {
+        throw new Error(`Invalid sublevel: expected a string, got ${typeof sublevel}`);
+    }
     if (sublevel.length === 0) {
         throw new Error('Invalid sublevel: must be a non-empty string');
     }

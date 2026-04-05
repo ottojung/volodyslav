@@ -276,6 +276,44 @@ class RootDatabaseClass {
     }
 
     /**
+     * Deletes all keys belonging to one top-level LevelDB sublevel.
+     * This is equivalent to iterating every key with the `!<sublevelName>!` prefix
+     * and deleting them, but delegates to abstract-level's `sublevel.clear()` so
+     * the operation is handled in a single efficient range-delete rather than a
+     * chunked batch.
+     *
+     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
+     * @returns {Promise<void>}
+     */
+    async _rawDeleteSublevel(sublevelName) {
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        await sublevel.clear();
+    }
+
+    /**
+     * Iterates over all raw key/value pairs belonging to one top-level LevelDB
+     * sublevel.  Unlike `_rawEntries()`, this method only reads the requested
+     * sublevel (via abstract-level's built-in range scoping) instead of scanning
+     * the entire database and filtering by prefix.
+     *
+     * Each yielded key is the full root-level key (e.g. `!x!!values!...` or
+     * `!_meta!format`) reconstructed by prepending `!<sublevelName>!` to the
+     * key returned by the sublevel iterator.
+     *
+     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
+     * @returns {AsyncIterable<[string, unknown]>}
+     */
+    async *_rawEntriesForSublevel(sublevelName) {
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        const rawKeyPrefix = `!${sublevelName}!`;
+        for await (const [key, value] of sublevel.iterator()) {
+            yield [rawKeyPrefix + String(key), value];
+        }
+    }
+
+    /**
      * Deletes all raw key/value pairs from the root LevelDB instance.
      * Used by scanFromFilesystem to ensure stale keys (present in the database
      * but absent from the snapshot directory) do not survive the restore.

@@ -12,7 +12,7 @@
  */
 
 const path = require('path');
-const { relativePathToKey, parseValue, keyToRelativePath } = require('./encoding');
+const { relativePathToKey, parseValue } = require('./encoding');
 const { validateTopLevelSublevel } = require('./sublevel');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
@@ -29,6 +29,33 @@ const { validateTopLevelSublevel } = require('./sublevel');
  * @property {DirScanner} scanner - Scans directory contents (non-recursive).
  * @property {Logger} logger - Logger for progress messages.
  */
+
+/**
+ * Thrown when the `inputDir` passed to scanFromFilesystem() does not exist on
+ * disk.  Callers must render (or otherwise create) the snapshot directory
+ * before scanning; a missing directory is treated as a programming error rather
+ * than an empty snapshot to prevent silent data loss.
+ */
+class ScanInputDirMissingError extends Error {
+    /**
+     * @param {string} inputDir
+     * @param {string} sublevel
+     */
+    constructor(inputDir, sublevel) {
+        super(`scanFromFilesystem: input directory does not exist: ${inputDir} (sublevel: ${sublevel})`);
+        this.name = 'ScanInputDirMissingError';
+        this.inputDir = inputDir;
+        this.sublevel = sublevel;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ScanInputDirMissingError}
+ */
+function isScanInputDirMissingError(object) {
+    return object instanceof ScanInputDirMissingError;
+}
 
 /**
  * Recursively collects the absolute paths of every file under `dir` using the
@@ -58,10 +85,10 @@ async function walkFilesRecursively(capabilities, dir) {
  * corresponding key/value pairs into one top-level database sublevel while
  * preserving all other top-level database sublevels.
  *
- * This function FIRST clears all existing entries from rootDatabase, then
- * imports the snapshot from the resolved directory.  This guarantees that keys
- * present in the database but absent from the snapshot (i.e., deleted entries)
- * do not survive, preserving the bijection guarantee.
+ * This function FIRST clears all existing entries for the requested sublevel,
+ * then imports the snapshot from the resolved directory.  This guarantees that
+ * keys present in the database but absent from the snapshot (i.e., deleted
+ * entries) do not survive, preserving the bijection guarantee.
  *
  * For each file found under the resolved input directory:
  *   - The path relative to that directory is converted back to a raw LevelDB
@@ -79,9 +106,16 @@ async function walkFilesRecursively(capabilities, dir) {
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {
     const validatedSublevel = validateTopLevelSublevel(sublevel);
-    const inputDirectoryExists = await capabilities.checker.directoryExists(inputDir);
+
+    // Fail fast: a missing input directory is a programming error, not an
+    // "empty snapshot".  Silently treating it as empty would delete all keys
+    // for this sublevel with no data written back.
+    if (!await capabilities.checker.directoryExists(inputDir)) {
+        throw new ScanInputDirMissingError(inputDir, validatedSublevel);
+    }
+
     // Phase 1: Walk, read, and parse all entries before mutating the database.
-    const allFiles = inputDirectoryExists ? await walkFilesRecursively(capabilities, inputDir) : [];
+    const allFiles = await walkFilesRecursively(capabilities, inputDir);
 
     /** @type {Array<{ key: string, value: unknown }>} */
     const entries = [];
@@ -98,18 +132,12 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
         count++;
     }
 
-    /** @type {Array<{ key: string, value: unknown }>} */
-    const preservedEntries = [];
-    for await (const [key, value] of rootDatabase._rawEntries()) {
-        const relPath = keyToRelativePath(key);
-        if (!relPath.startsWith(sublevelPathPrefix)) {
-            preservedEntries.push({ key, value });
-        }
-    }
-
-    // Phase 2: After successful validation, clear and repopulate the database.
-    await rootDatabase._rawDeleteAll();
-    await rootDatabase._rawPutAll([...preservedEntries, ...entries]);
+    // Phase 2: After successful validation, replace only this sublevel's data.
+    // _rawDeleteSublevel deletes only the keys for validatedSublevel (e.g. all
+    // !x!... or !_meta!... entries) without touching other sublevels, avoiding
+    // the need to read-and-rewrite the entire database.
+    await rootDatabase._rawDeleteSublevel(validatedSublevel);
+    await rootDatabase._rawPutAll(entries);
     capabilities.logger.logInfo(
         { inputDir, sublevel: validatedSublevel, count },
         'Scanned database from filesystem'
@@ -118,4 +146,5 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
 
 module.exports = {
     scanFromFilesystem,
+    isScanInputDirMissingError,
 };

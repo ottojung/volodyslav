@@ -116,7 +116,7 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir, subleve
     const sublevelPrefix = validatedSublevel + '/';
     /** @type {Array<{ relPath: string, content: string }>} */
     const validatedEntries = [];
-    for await (const [key, value] of rootDatabase._rawEntries()) {
+    for await (const [key, value] of rootDatabase._rawEntriesForSublevel(validatedSublevel)) {
         const fullRelPath = keyToRelativePath(key);
         if (!fullRelPath.startsWith(sublevelPrefix)) {
             continue;
