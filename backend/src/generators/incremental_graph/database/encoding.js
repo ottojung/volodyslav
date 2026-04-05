@@ -262,7 +262,7 @@ function requireStructuredKey(sublevels, keyContent) {
         return structuredKey;
     }
     throw new Error(
-        `Invalid database key content for sublevels '${sublevels.join('!!')}': expected NodeKey JSON, got ${keyContent}`
+        `Invalid database key content for sublevels '${sublevels.join('!!')}': expected structured JSON key, got ${keyContent}`
     );
 }
 

@@ -189,7 +189,7 @@ describe('keyToRelativePath()', () => {
 
     test('throws for non-plain sublevel key content that is not NodeKey JSON', () => {
         expect(() => keyToRelativePath('!x!!values!not-json')).toThrow(
-            'expected NodeKey JSON'
+            'expected structured JSON key'
         );
     });
 
@@ -573,7 +573,7 @@ describe('renderToFilesystem()', () => {
         try {
             await expect(
                 renderToFilesystem(capabilities, db, outputDir)
-            ).rejects.toThrow('expected NodeKey JSON');
+            ).rejects.toThrow('expected structured JSON key');
             const files = collectFiles(outputDir);
             expect(files).toEqual([
                 { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
