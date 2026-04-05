@@ -308,11 +308,11 @@ class RootDatabaseClass {
      * Iterate over all raw key/value pairs in the root LevelDB instance.
      * Yields every entry stored at the root level, including all sublevel-prefixed keys.
      * Used by renderToFilesystem to produce a complete snapshot.
-     * @returns {AsyncIterable<[NodeKeyString, *]>}
+     * @returns {AsyncIterable<[string, unknown]>}
      */
     async *_rawEntries() {
         for await (const [key, value] of this.db.iterator()) {
-            yield [key, value];
+            yield [String(key), value];
         }
     }
 

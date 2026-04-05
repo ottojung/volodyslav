@@ -6,13 +6,13 @@
  *
  * Design constraints
  * ------------------
- *  - No JSON.parse or JSON.stringify calls (delegated to render.js via parseValue).
+ *  - No JSON operations in this module; value parsing is delegated to encoding.js.
  *  - No `any` or `*` types; all values flow through the `unknown` type.
  *  - No type casting.
  */
 
 const path = require('path');
-const { relativePathToKey, parseValue } = require('./render');
+const { relativePathToKey, parseValue } = require('./encoding');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../filesystem/reader').FileReader} FileReader */

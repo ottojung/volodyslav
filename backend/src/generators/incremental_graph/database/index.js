@@ -14,8 +14,9 @@ const {
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
 const { synchronizeNoLock } = require('./synchronize');
-const { renderToFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
+const { renderToFilesystem } = require('./render');
 const { scanFromFilesystem } = require('./scan');
+const { keyToRelativePath, relativePathToKey } = require('./encoding');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
