@@ -18,6 +18,9 @@ function validateTopLevelSublevel(sublevel) {
     if (sublevel.includes('/') || sublevel.includes('\\')) {
         throw new Error(`Invalid sublevel '${sublevel}': path separators are not allowed`);
     }
+    if (sublevel.includes('!')) {
+        throw new Error(`Invalid sublevel '${sublevel}': "!" is reserved and not allowed`);
+    }
     return sublevel;
 }
 
