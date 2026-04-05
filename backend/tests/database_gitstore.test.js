@@ -109,8 +109,8 @@ function topLevelEntries(capabilities, gitDir) {
 function allTrackedFiles(capabilities, gitDir) {
     return execFileSync("git", [
         "--git-dir", gitDir,
-        "ls-tree", "-r", "--name-only", defaultBranch(capabilities),
-    ]).toString().trim().split("\n").filter(Boolean);
+        "ls-tree", "-r", "--name-only", "-z", defaultBranch(capabilities),
+    ]).toString().split("\0").filter(Boolean);
 }
 
 /**

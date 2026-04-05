@@ -101,7 +101,7 @@ async function collectRawEntries(db) {
 }
 
 // ---------------------------------------------------------------------------
-// keyToRelativePath() — unit tests for the new head/arg1/arg2 encoding
+// keyToRelativePath() — unit tests for the flat key-content encoding
 // ---------------------------------------------------------------------------
 
 describe('keyToRelativePath()', () => {
@@ -113,84 +113,86 @@ describe('keyToRelativePath()', () => {
         expect(keyToRelativePath('!x!!meta!version')).toBe('x/meta/version');
     });
 
-    test('zero-arg NodeKey', () => {
+    test('zero-arg key content encodes as a single filename', () => {
         expect(keyToRelativePath('!x!!values!{"head":"all_events","args":[]}')).toBe(
-            'x/values/all_events'
+            'x/values/{"head":"all_events","args":[]}'
         );
     });
 
-    test('one-arg NodeKey with plain string arg', () => {
+    test('one-arg key content encodes as a single filename', () => {
         expect(keyToRelativePath('!x!!values!{"head":"event","args":["abc123"]}')).toBe(
-            'x/values/event/abc123'
+            'x/values/{"head":"event","args":["abc123"]}'
         );
     });
 
-    test('one-arg NodeKey with "/" in arg', () => {
+    test('key content with "/" encodes "/" as %2F inside the filename', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"transcription","args":["/audio/file.mp3"]}'
-        )).toBe('x/values/transcription/%2Faudio%2Ffile.mp3');
+        )).toBe('x/values/{"head":"transcription","args":["%2Faudio%2Ffile.mp3"]}');
     });
 
-    test('one-arg NodeKey with "!" in arg (P1 fix)', () => {
+    test('key content with "!" encodes "!" as %21 inside the filename', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":["a!b"]}'
-        )).toBe('x/values/event/a%21b');
+        )).toBe('x/values/{"head":"event","args":["a%21b"]}');
     });
 
-    test('one-arg NodeKey with "!!" in arg keeps content intact', () => {
+    test('key content with "!!" encodes both "!" as %21 inside the filename', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":["a!!b"]}'
-        )).toBe('x/values/event/a%21%21b');
+        )).toBe('x/values/{"head":"event","args":["a%21%21b"]}');
     });
 
-    test('one-arg NodeKey with "%" in arg', () => {
+    test('key content with "%" encodes "%" as %25 inside the filename', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":["50%off"]}'
-        )).toBe('x/values/event/50%25off');
+        )).toBe('x/values/{"head":"event","args":["50%25off"]}');
     });
 
-    test('dot segments are escaped so they remain literal path values', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":[".",".."]}'
-        )).toBe('x/values/event/%2E/%2E%2E');
+    test('key content that is exactly ".." is encoded as %2E%2E', () => {
         expect(keyToRelativePath('!_meta!..')).toBe('_meta/%2E%2E');
     });
 
-    test('string arg beginning with "~" is escaped to stay distinct from non-string args', () => {
+    test('dot characters inside key content are not encoded', () => {
+        expect(keyToRelativePath(
+            '!x!!values!{"head":"event","args":[".",".."]}'
+        )).toBe('x/values/{"head":"event","args":[".",".."]}');
+    });
+
+    test('key content with tilde encodes as a single filename segment', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":["~42"]}'
-        )).toBe('x/values/event/~~42');
+        )).toBe('x/values/{"head":"event","args":["~42"]}');
     });
 
-    test('two-arg NodeKey', () => {
+    test('multi-arg key content encodes as a single filename', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}'
-        )).toBe('x/values/event_transcription/evtId/%2Faudio%2Fx.mp3');
+        )).toBe('x/values/{"head":"event_transcription","args":["evtId","%2Faudio%2Fx.mp3"]}');
     });
 
-    test('non-string arg (number) uses ~ prefix', () => {
-        const encodedPath = keyToRelativePath('!x!!values!{"head":"event","args":[42]}');
-        expect(encodedPath).toBe('x/values/event/~42');
-    });
-
-    test('different sublevel (freshness) uses same head/arg encoding', () => {
-        expect(keyToRelativePath('!x!!freshness!{"head":"all_events","args":[]}')).toBe(
-            'x/freshness/all_events'
+    test('numeric arg encodes as a single filename', () => {
+        expect(keyToRelativePath('!x!!values!{"head":"event","args":[42]}')).toBe(
+            'x/values/{"head":"event","args":[42]}'
         );
     });
 
-    test('mixed non-string args encode via JSON segments', () => {
+    test('different sublevel produces correct directory prefix', () => {
+        expect(keyToRelativePath('!x!!freshness!{"head":"all_events","args":[]}')).toBe(
+            'x/freshness/{"head":"all_events","args":[]}'
+        );
+    });
+
+    test('complex key content encodes as a single filename', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
         )).toBe(
-            'x/values/event/~true/~null/~{"nested":["x",1]}/~["a",2]'
+            'x/values/{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
         );
     });
 
-    test('throws for non-plain sublevel key content that is not NodeKey JSON', () => {
-        expect(() => keyToRelativePath('!x!!values!not-json')).toThrow(
-            'expected structured JSON key'
-        );
+    test('any key content (non-JSON) encodes as a single filename without error', () => {
+        expect(keyToRelativePath('!x!!values!not-json')).toBe('x/values/not-json');
     });
 
     test('throws for raw keys without the required leading "!"', () => {
@@ -225,70 +227,67 @@ describe('relativePathToKey()', () => {
         expect(relativePathToKey('x/meta/version')).toBe('!x!!meta!version');
     });
 
-    test('zero-arg NodeKey path', () => {
-        expect(relativePathToKey('x/values/all_events')).toBe(
+    test('JSON key content round-trips as-is', () => {
+        expect(relativePathToKey('x/values/{"head":"all_events","args":[]}')).toBe(
             '!x!!values!{"head":"all_events","args":[]}'
         );
     });
 
-    test('one-arg NodeKey with plain string', () => {
-        expect(relativePathToKey('x/values/event/abc123')).toBe(
+    test('plain string key content round-trips as-is', () => {
+        expect(relativePathToKey('x/values/{"head":"event","args":["abc123"]}')).toBe(
             '!x!!values!{"head":"event","args":["abc123"]}'
         );
     });
 
-    test('decodes "%2F" back to "/" in arg', () => {
-        expect(relativePathToKey('x/values/transcription/%2Faudio%2Ffile.mp3')).toBe(
+    test('decodes "%2F" back to "/" in key content', () => {
+        expect(relativePathToKey('x/values/{"head":"transcription","args":["%2Faudio%2Ffile.mp3"]}')).toBe(
             '!x!!values!{"head":"transcription","args":["/audio/file.mp3"]}'
         );
     });
 
-    test('decodes "%21" back to "!" in arg (P1 fix)', () => {
-        expect(relativePathToKey('x/values/event/a%21b')).toBe(
+    test('decodes "%21" back to "!" in key content', () => {
+        expect(relativePathToKey('x/values/{"head":"event","args":["a%21b"]}')).toBe(
             '!x!!values!{"head":"event","args":["a!b"]}'
         );
     });
 
-    test('decodes "%21%21" back to "!!" in arg', () => {
-        expect(relativePathToKey('x/values/event/a%21%21b')).toBe(
+    test('decodes "%21%21" back to "!!" in key content', () => {
+        expect(relativePathToKey('x/values/{"head":"event","args":["a%21%21b"]}')).toBe(
             '!x!!values!{"head":"event","args":["a!!b"]}'
         );
     });
 
-    test('decodes "%25" back to "%" in arg', () => {
-        expect(relativePathToKey('x/values/event/50%25off')).toBe(
+    test('decodes "%25" back to "%" in key content', () => {
+        expect(relativePathToKey('x/values/{"head":"event","args":["50%25off"]}')).toBe(
             '!x!!values!{"head":"event","args":["50%off"]}'
         );
     });
 
-    test('decodes escaped dot segments back to literal "." and ".."', () => {
-        expect(relativePathToKey('x/values/event/%2E/%2E%2E')).toBe(
-            '!x!!values!{"head":"event","args":[".",".."]}'
-        );
+    test('decodes "%2E%2E" back to ".." for the whole key content', () => {
         expect(relativePathToKey('_meta/%2E%2E')).toBe('!_meta!..');
     });
 
-    test('two-arg NodeKey path', () => {
-        expect(relativePathToKey('x/values/event_transcription/evtId/%2Faudio%2Fx.mp3')).toBe(
+    test('multi-arg key content round-trips', () => {
+        expect(relativePathToKey('x/values/{"head":"event_transcription","args":["evtId","%2Faudio%2Fx.mp3"]}')).toBe(
             '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}'
         );
     });
 
-    test('non-string arg with ~ prefix decodes to number', () => {
-        expect(relativePathToKey('x/values/event/~42')).toBe(
+    test('numeric key content round-trips', () => {
+        expect(relativePathToKey('x/values/{"head":"event","args":[42]}')).toBe(
             '!x!!values!{"head":"event","args":[42]}'
         );
     });
 
-    test('string arg with leading "~" remains a string', () => {
-        expect(relativePathToKey('x/values/event/~~42')).toBe(
+    test('tilde in key content round-trips', () => {
+        expect(relativePathToKey('x/values/{"head":"event","args":["~42"]}')).toBe(
             '!x!!values!{"head":"event","args":["~42"]}'
         );
     });
 
-    test('mixed JSON-encoded arg segments decode back to original values', () => {
+    test('complex key content round-trips', () => {
         expect(relativePathToKey(
-            'x/values/event/~true/~null/~{"nested":["x",1]}/~["a",2]'
+            'x/values/{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
         )).toBe(
             '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
         );
@@ -299,12 +298,12 @@ describe('relativePathToKey()', () => {
         expect(() => relativePathToKey('')).toThrow();
     });
 
-    test('throws when plain-key sublevels have extra path segments', () => {
+    test('throws when path has more segments than expected for depth', () => {
         expect(() => relativePathToKey('_meta/format/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
+            'expected exactly 2 segments for depth-1 nesting'
         );
         expect(() => relativePathToKey('x/meta/version/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
+            'expected exactly 3 segments for depth-2 nesting'
         );
     });
 });
@@ -364,7 +363,7 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
             keyToRelativePath('!x!!values!{"head":"event","args":["%2E"]}')
         );
         expect(
-            keyToRelativePath('!x!!values!{"head":"event","args":[".."]}')
+            keyToRelativePath('!x!!values!{"head":"event","args":[".."]}'  )
         ).not.toBe(
             keyToRelativePath('!x!!values!{"head":"event","args":["%2E%2E"]}')
         );
@@ -376,16 +375,16 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
 // ---------------------------------------------------------------------------
 
 describe('renderToFilesystem()', () => {
-    test('zero-arg node produces human-readable path without JSON blob', async () => {
+    test('key content stored as a single filename (not decomposed into subdirectories)', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
             ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
         ]);
         try {
-            const outputDir = path.join(tmpDir, 'render-readable');
+            const outputDir = path.join(tmpDir, 'render-flat');
             await renderToFilesystem(capabilities, db, outputDir);
             const files = collectFiles(outputDir);
-            const allEventsFile = files.find(f => f.relPath === 'x/values/all_events');
+            const allEventsFile = files.find(f => f.relPath === 'x/values/{"head":"all_events","args":[]}');
             expect(allEventsFile).toBeDefined();
         } finally {
             await db.close();
@@ -436,7 +435,7 @@ describe('renderToFilesystem()', () => {
     test('dot-segment keys render to contained encoded paths', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!x!!values!{"head":"event","args":[".."]}', { type: 'event', value: 'safe' }],
+            ['!x!!values!{"head":"event","args":[".."]}'  , { type: 'event', value: 'safe' }],
             ['!_meta!..', 'meta-dotdot'],
         ]);
         try {
@@ -446,7 +445,7 @@ describe('renderToFilesystem()', () => {
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/format', content: JSON.stringify('xy-v1') },
-                { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
+                { relPath: 'x/values/{"head":"event","args":[".."]}', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
         } finally {
             await db.close();
@@ -470,7 +469,7 @@ describe('renderToFilesystem()', () => {
             await renderToFilesystem(capabilities, db, outputDir);
 
             const files = collectFiles(outputDir);
-            const renderedFile = files.find(f => f.relPath === 'x/values/event/pretty');
+            const renderedFile = files.find(f => f.relPath === 'x/values/{"head":"event","args":["pretty"]}');
             expect(renderedFile).toBeDefined();
             expect(renderedFile.content).toBe(JSON.stringify(value, null, 2));
         } finally {
@@ -482,7 +481,7 @@ describe('renderToFilesystem()', () => {
         const { capabilities: firstCapabilities, tmpDir } = makeTestCapabilities();
         const { capabilities: secondCapabilities } = makeTestCapabilities();
         const outputDir = path.join(tmpDir, 'render-shrink');
-        const staleRelPath = 'x/values/stale_node';
+        const staleRelPath = 'x/values/{"head":"stale_node","args":[]}';
         const firstDb = await makeSeededDatabase(firstCapabilities, [
             ['!_meta!format', 'xy-v1'],
             ['!x!!values!{"head":"stale_node","args":[]}', { stale: true }],
@@ -557,27 +556,19 @@ describe('renderToFilesystem()', () => {
         }
     });
 
-    test('rejects non-NodeKey content in data sublevels without deleting an existing snapshot', async () => {
+    test('any key content (including non-JSON) renders as a flat filename', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
-        const outputDir = path.join(tmpDir, 'render-invalid-raw-key');
-        await capabilities.creator.createDirectory(path.join(outputDir, '_meta'));
-        const existingFile = await capabilities.creator.createFile(
-            path.join(outputDir, '_meta', 'format')
-        );
-        await capabilities.writer.writeFile(existingFile, JSON.stringify('previous-snapshot'));
+        const outputDir = path.join(tmpDir, 'render-non-json-key');
 
         const db = await makeSeededDatabase(capabilities, [
             ['!x!!values!{"head":"all_events","args":[]}', { ok: true }],
-            ['!x!!values!not-json', { broken: true }],
+            ['!x!!values!not-json', { also: true }],
         ]);
         try {
-            await expect(
-                renderToFilesystem(capabilities, db, outputDir)
-            ).rejects.toThrow('expected structured JSON key');
+            await renderToFilesystem(capabilities, db, outputDir);
             const files = collectFiles(outputDir);
-            expect(files).toEqual([
-                { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
-            ]);
+            expect(files.some(f => f.relPath === 'x/values/not-json')).toBe(true);
+            expect(files.some(f => f.relPath === 'x/values/{"head":"all_events","args":[]}')).toBe(true);
         } finally {
             await db.close();
         }
@@ -737,7 +728,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         try {
             const before = await collectRawEntries(db);
             await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow(
-                'plain-key sublevels require exactly one key segment'
+                'expected exactly 2 segments for depth-1 nesting'
             );
             const after = await collectRawEntries(db);
             expect(after).toEqual(before);
@@ -750,14 +741,14 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-partial-invalid-json');
         await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
-        await capabilities.creator.createDirectory(path.join(inputDir, 'x', 'values', 'event'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'x', 'values'));
 
         const validFile = await capabilities.creator.createFile(
             path.join(inputDir, '_meta', 'format')
         );
         await capabilities.writer.writeFile(validFile, JSON.stringify('xy-v1'));
         const invalidFile = await capabilities.creator.createFile(
-            path.join(inputDir, 'x', 'values', 'event', 'bad')
+            path.join(inputDir, 'x', 'values', 'bad-value')
         );
         await capabilities.writer.writeFile(invalidFile, '{not valid json');
 
@@ -1051,7 +1042,7 @@ describe('additional reliability tests', () => {
         const db = await getRootDatabase(capabilities);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow(
-                'plain-key sublevels require exactly one key segment'
+                'expected exactly 2 segments for depth-1 nesting'
             );
         } finally {
             await db.close();
