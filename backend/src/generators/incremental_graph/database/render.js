@@ -58,8 +58,10 @@
  */
 
 const path = require('path');
-const { nodeKeyStringToString } = require('./types');
+const { nodeKeyStringToString, stringToNodeName } = require('./types');
+const { serializeNodeKey } = require('../node_key');
 
+/** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
@@ -418,9 +420,12 @@ function relativePathToKey(relPath) {
         keyContent = decodeSegment(keyComponents[0] ?? '');
     } else {
         // key is a NodeKey: first component is head, rest are args
-        const head = keyComponents[0] ?? '';
+        const headU = keyComponents[0] ?? '';
+        const head = stringToNodeName(headU);
+        /** @type {Array<ConstValue>} */
         const args = keyComponents.slice(1).map(decodeArg);
-        keyContent = JSON.stringify({ head, args });
+        const key = { head, args };
+        keyContent = nodeKeyStringToString(serializeNodeKey(key));
     }
 
     return buildRawKey(sublevels, keyContent);
