@@ -249,7 +249,7 @@ function keyToRelativePath(rawKey) {
             return deserializeNodeKey(stringToNodeKeyString(keyContent));
         } catch (_err) {
             throw new Error(
-                `Invalid database key '${rawKey}': expected NodeKey JSON for sublevel '${lastSublevel}', got '${keyContent}'`
+                `Invalid database key: expected NodeKey JSON for sublevel '${lastSublevel}', got '${keyContent}'`
             );
         }
     })();

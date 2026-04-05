@@ -134,6 +134,8 @@ async function checkpointDatabase(
     let database;
 
     if (rootDatabase === undefined) {
+        // Lazy require to avoid a circular dependency:
+        // database/index.js → render → encoding.js → node_key.js → database/index.js
         const { getRootDatabase } = require('./database');
         ownedDatabase = await getRootDatabase(capabilities);
         database = ownedDatabase;
