@@ -19,7 +19,7 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
 } = require('./gitstore');
-const { scanFromFilesystem } = require('./render');
+const { scanFromFilesystem } = require('./scan');
 const { getRootDatabase } = require('./get_root_database');
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */

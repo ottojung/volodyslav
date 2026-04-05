@@ -58,8 +58,7 @@
  */
 
 const path = require('path');
-const { nodeKeyStringToString, stringToNodeName } = require('./types');
-const { serializeNodeKey } = require('../node_key');
+const { nodeKeyStringToString, nodeNameToString, stringToNodeName } = require('./types');
 
 /** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -73,13 +72,11 @@ const { serializeNodeKey } = require('../node_key');
 /** @typedef {import('../../../logger').Logger} Logger */
 
 /**
- * Capabilities required by renderToFilesystem and scanFromFilesystem.
+ * Capabilities required by renderToFilesystem.
  * @typedef {object} RenderCapabilities
  * @property {FileCreator} creator - Creates files (and parent directories) on disk.
  * @property {FileWriter} writer - Writes string content to an existing file.
- * @property {FileReader} reader - Reads file content as a UTF-8 string.
  * @property {FileChecker} checker - Checks whether a path is a file or directory.
- * @property {DirScanner} scanner - Scans directory contents (non-recursive).
  * @property {FileDeleter} deleter - Deletes files or directories.
  * @property {Logger} logger - Logger for progress messages.
  */
@@ -421,11 +418,10 @@ function relativePathToKey(relPath) {
     } else {
         // key is a NodeKey: first component is head, rest are args
         const headU = keyComponents[0] ?? '';
-        const head = stringToNodeName(headU);
+        const head = nodeNameToString(stringToNodeName(headU));
         /** @type {Array<ConstValue>} */
         const args = keyComponents.slice(1).map(decodeArg);
-        const key = { head, args };
-        keyContent = nodeKeyStringToString(serializeNodeKey(key));
+        keyContent = JSON.stringify({ head, args });
     }
 
     return buildRawKey(sublevels, keyContent);
@@ -447,28 +443,6 @@ async function clearRenderedSnapshot(capabilities, outputDir) {
 }
 
 /**
- * Recursively collects the absolute paths of every file under `dir` using the
- * capabilities pattern. Directories are traversed but not included in the result.
- *
- * @param {RenderCapabilities} capabilities
- * @param {string} dir - Root directory to walk.
- * @returns {Promise<string[]>} Absolute paths of all files found.
- */
-async function walkFilesRecursively(capabilities, dir) {
-    const children = await capabilities.scanner.scanDirectory(dir);
-    const files = [];
-    for (const child of children) {
-        if (await capabilities.checker.directoryExists(child.path)) {
-            const nested = await walkFilesRecursively(capabilities, child.path);
-            files.push(...nested);
-        } else if (await capabilities.checker.fileExists(child.path)) {
-            files.push(child.path);
-        }
-    }
-    return files;
-}
-
-/**
  * Dumps every raw key/value pair from a LevelDB database to a directory tree.
  *
  * For each entry in the database:
@@ -486,7 +460,7 @@ async function walkFilesRecursively(capabilities, dir) {
  * @returns {Promise<void>}
  */
 async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
-    /** @type {{ relPath: string, value: any }[]} */
+    /** @type {Array<{ relPath: string, value: unknown }>} */
     const validatedEntries = [];
     for await (const [key, value] of rootDatabase._rawEntries()) {
         const relPath = keyToRelativePath(nodeKeyStringToString(key));
@@ -506,59 +480,22 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
 }
 
 /**
- * Reads every file from a directory tree and writes the corresponding
- * key/value pairs into a LevelDB database.
+ * Parses a JSON-serialised database value read from a snapshot file.
  *
- * This function FIRST clears all existing entries from rootDatabase, then
- * imports the snapshot from inputDir.  This guarantees that keys present in
- * the database but absent from the snapshot (i.e., deleted entries) do not
- * survive, preserving the bijection guarantee.
+ * This function is the value-level counterpart of the JSON.stringify call
+ * inside renderToFilesystem().  It lives here so that scan.js can call it
+ * without containing any JSON operations directly.
  *
- * For each file found under `inputDir`:
- *   - The path relative to `inputDir` is converted back to a raw LevelDB
- *     key via relativePathToKey().
- *   - The file content is parsed as JSON and stored at that key.
- *
- * Calling scanFromFilesystem() on a directory produced by renderToFilesystem()
- * restores the database to exactly its original state (bijection guarantee).
- *
- * @param {RenderCapabilities} capabilities
- * @param {RootDatabase} rootDatabase - The database to populate.
- * @param {string} inputDir - Absolute path of the directory to read from.
- * @returns {Promise<void>}
+ * @param {string} content - The raw file content written by renderToFilesystem.
+ * @returns {unknown} The parsed value, to be stored back into the database.
  */
-async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
-    // Phase 1: Walk, read, and parse all entries before mutating the database.
-    const allFiles = await walkFilesRecursively(capabilities, inputDir);
-
-    // Use plain string keys here because relativePathToKey reconstructs raw
-    // root-level LevelDB keys, including sublevel prefixes such as `!x!!values!...`.
-    /** @type {{ key: string, value: any }[]} */
-    const entries = [];
-    let count = 0;
-
-    for (const absPath of allFiles) {
-        const relPath = path.relative(inputDir, absPath);
-        const normalizedRelPath = relPath.split(path.sep).join('/');
-        const key = relativePathToKey(normalizedRelPath);
-        const content = await capabilities.reader.readFileAsText(absPath);
-        const value = JSON.parse(content);
-        entries.push({ key, value });
-        count++;
-    }
-
-    // Phase 2: After successful validation, clear and repopulate the database.
-    await rootDatabase._rawDeleteAll();
-    await rootDatabase._rawPutAll(entries);
-    capabilities.logger.logInfo(
-        { inputDir, count },
-        'Scanned database from filesystem'
-    );
+function parseValue(content) {
+    return JSON.parse(content);
 }
 
 module.exports = {
     renderToFilesystem,
-    scanFromFilesystem,
+    parseValue,
     keyToRelativePath,
     relativePathToKey,
 };
