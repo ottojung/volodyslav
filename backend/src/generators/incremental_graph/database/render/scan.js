@@ -79,19 +79,19 @@ async function walkFilesRecursively(capabilities, dir) {
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {
     const validatedSublevel = validateTopLevelSublevel(sublevel);
-    const hasInputDirectory = await capabilities.checker.directoryExists(inputDir);
+    const inputDirectoryExists = await capabilities.checker.directoryExists(inputDir);
     // Phase 1: Walk, read, and parse all entries before mutating the database.
-    const allFiles = hasInputDirectory ? await walkFilesRecursively(capabilities, inputDir) : [];
+    const allFiles = inputDirectoryExists ? await walkFilesRecursively(capabilities, inputDir) : [];
 
     /** @type {Array<{ key: string, value: unknown }>} */
     const entries = [];
     let count = 0;
-    const sublevelPrefix = validatedSublevel + '/';
+    const sublevelPathPrefix = validatedSublevel + '/';
 
     for (const absPath of allFiles) {
         const relPath = path.relative(inputDir, absPath);
         const normalizedRelPath = relPath.split(path.sep).join('/');
-        const key = relativePathToKey(sublevelPrefix + normalizedRelPath);
+        const key = relativePathToKey(sublevelPathPrefix + normalizedRelPath);
         const content = await capabilities.reader.readFileAsText(absPath);
         const value = parseValue(content);
         entries.push({ key, value });
@@ -102,7 +102,7 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
     const preservedEntries = [];
     for await (const [key, value] of rootDatabase._rawEntries()) {
         const relPath = keyToRelativePath(key);
-        if (!relPath.startsWith(sublevelPrefix)) {
+        if (!relPath.startsWith(sublevelPathPrefix)) {
             preservedEntries.push({ key, value });
         }
     }
