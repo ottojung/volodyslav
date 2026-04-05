@@ -20,7 +20,7 @@ const {
     nodeNameToString,
     stringToNodeName,
     nodeKeyStringToString,
-} = require("./node_key_types");
+} = require("./database/types");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */

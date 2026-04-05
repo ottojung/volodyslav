@@ -100,7 +100,8 @@ async function collectRawEntries(db) {
     return map;
 }
 
-// keyToRelativePath() — unit tests for the structured head/arg path encoding
+// ---------------------------------------------------------------------------
+// keyToRelativePath() — unit tests for the new head/arg1/arg2 encoding
 // ---------------------------------------------------------------------------
 
 describe('keyToRelativePath()', () => {
@@ -148,7 +149,7 @@ describe('keyToRelativePath()', () => {
         )).toBe('x/values/event/50%25off');
     });
 
-    test('dot segments in args are escaped so they remain literal path values', () => {
+    test('dot segments are escaped so they remain literal path values', () => {
         expect(keyToRelativePath(
             '!x!!values!{"head":"event","args":[".",".."]}'
         )).toBe('x/values/event/%2E/%2E%2E');
@@ -186,8 +187,10 @@ describe('keyToRelativePath()', () => {
         );
     });
 
-    test('throws for non-NodeKey content in data sublevels', () => {
-        expect(() => keyToRelativePath('!x!!values!not-json')).toThrow();
+    test('throws for non-plain sublevel key content that is not NodeKey JSON', () => {
+        expect(() => keyToRelativePath('!x!!values!not-json')).toThrow(
+            'expected NodeKey JSON'
+        );
     });
 
     test('throws for raw keys without the required leading "!"', () => {
@@ -209,6 +212,7 @@ describe('keyToRelativePath()', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
 // relativePathToKey() — unit tests
 // ---------------------------------------------------------------------------
 
@@ -569,7 +573,7 @@ describe('renderToFilesystem()', () => {
         try {
             await expect(
                 renderToFilesystem(capabilities, db, outputDir)
-            ).rejects.toThrow();
+            ).rejects.toThrow('expected NodeKey JSON');
             const files = collectFiles(outputDir);
             expect(files).toEqual([
                 { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },

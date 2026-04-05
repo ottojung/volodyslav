@@ -12,7 +12,7 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
-} = require('./gitstore');
+} = require('../gitstore');
 const { synchronizeNoLock } = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('../render');
 

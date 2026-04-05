@@ -18,7 +18,7 @@ const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
-} = require('./gitstore');
+} = require('../gitstore');
 const { scanFromFilesystem } = require('../render');
 const { getRootDatabase } = require('./get_root_database');
 

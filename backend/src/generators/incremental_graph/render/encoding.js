@@ -244,7 +244,15 @@ function keyToRelativePath(rawKey) {
         return [...sublevels, encodeSegment(keyContent)].join('/');
     }
 
-    const nodeKey = deserializeNodeKey(stringToNodeKeyString(keyContent));
+    const nodeKey = (() => {
+        try {
+            return deserializeNodeKey(stringToNodeKeyString(keyContent));
+        } catch (_err) {
+            throw new Error(
+                `Invalid database key '${rawKey}': expected NodeKey JSON for sublevel '${lastSublevel}', got '${keyContent}'`
+            );
+        }
+    })();
     const headStr = nodeNameToString(nodeKey.head);
     const argSegments = nodeKey.args.map(encodeArg);
     return [...sublevels, headStr, ...argSegments].join('/');

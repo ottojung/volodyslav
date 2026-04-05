@@ -26,25 +26,25 @@
  */
 
 const path = require('path');
-const { transaction } = require('../../../gitstore');
-const { renderToFilesystem } = require('../render');
+const { transaction } = require('../../gitstore');
+const { renderToFilesystem } = require('./render');
 
-/** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
-/** @typedef {import('./root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
-/** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('../../../filesystem/deleter').FileDeleter} FileDeleter */
-/** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
-/** @typedef {import('../../../filesystem/writer').FileWriter} FileWriter */
-/** @typedef {import('../../../filesystem/dirscanner').DirScanner} DirScanner */
-/** @typedef {import('../../../logger').Logger} Logger */
-/** @typedef {import('../../../environment').Environment} Environment */
-/** @typedef {import('../../../datetime').Datetime} Datetime */
-/** @typedef {import('../../../sleeper').SleepCapability} SleepCapability */
-/** @typedef {import('../../../subprocess/command').Command} Command */
-/** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
-/** @typedef {import('../../../generators/interface').Interface} Interface */
+/** @typedef {import('../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
+/** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../filesystem/mover').FileMover} FileMover */
+/** @typedef {import('../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../logger').Logger} Logger */
+/** @typedef {import('../../environment').Environment} Environment */
+/** @typedef {import('../../datetime').Datetime} Datetime */
+/** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('../../subprocess/command').Command} Command */
+/** @typedef {import('../../level_database').LevelDatabase} LevelDatabase */
+/** @typedef {import('../../generators/interface').Interface} Interface */
 
 /**
  * @typedef {object} CheckpointCapabilities
@@ -134,7 +134,7 @@ async function checkpointDatabase(
     let database;
 
     if (rootDatabase === undefined) {
-        const { getRootDatabase } = require('./index');
+        const { getRootDatabase } = require('./database');
         ownedDatabase = await getRootDatabase(capabilities);
         database = ownedDatabase;
     } else {
