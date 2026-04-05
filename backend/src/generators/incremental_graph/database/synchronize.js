@@ -9,8 +9,8 @@
  * LevelDB is not written to while synchronization is in progress.
  */
 
-const path = require('path');
 const gitstore = require('../../../gitstore');
+const path = require('path');
 const { transaction } = gitstore;
 const workingRepository = gitstore.workingRepository;
 const isMergeHostBranchesError = gitstore.mergeHostBranches.isMergeHostBranchesError;
@@ -115,7 +115,14 @@ async function synchronizeNoLock(capabilities, options) {
                 await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
-                    path.join(workTree, DATABASE_SUBPATH)
+                    path.join(workTree, DATABASE_SUBPATH, 'x'),
+                    'x'
+                );
+                await scanFromFilesystem(
+                    capabilities,
+                    rootDatabase,
+                    path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                    '_meta'
                 );
             }
         );

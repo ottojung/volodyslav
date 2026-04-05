@@ -151,8 +151,18 @@ async function checkpointDatabase(
             initialState,
             async (store) => {
                 const workTree = await store.getWorkTree();
-                const renderedPath = path.join(workTree, DATABASE_SUBPATH);
-                await renderToFilesystem(capabilities, database, renderedPath);
+                await renderToFilesystem(
+                    capabilities,
+                    database,
+                    path.join(workTree, DATABASE_SUBPATH, 'x'),
+                    'x'
+                );
+                await renderToFilesystem(
+                    capabilities,
+                    database,
+                    path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                    '_meta'
+                );
                 await store.commit(message);
             }
         );
@@ -192,11 +202,32 @@ async function runMigrationInTransaction(
         "empty",
         async (store) => {
             const workTree = await store.getWorkTree();
-            const renderedPath = path.join(workTree, DATABASE_SUBPATH);
-            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workTree, DATABASE_SUBPATH, 'x'),
+                'x'
+            );
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                '_meta'
+            );
             await store.commit(preMessage);
             const result = await callback();
-            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workTree, DATABASE_SUBPATH, 'x'),
+                'x'
+            );
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                '_meta'
+            );
             await store.commit(postMessage);
             return result;
         }
