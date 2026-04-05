@@ -27,7 +27,7 @@
 
 const path = require('path');
 const { transaction } = require('../../../gitstore');
-const { renderToFilesystem } = require('./render');
+const { renderToFilesystem } = require('../render');
 
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */

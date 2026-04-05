@@ -14,7 +14,7 @@
 const path = require('path');
 const { relativePathToKey, parseValue } = require('./encoding');
 
-/** @typedef {import('./root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/dirscanner').DirScanner} DirScanner */
@@ -78,8 +78,6 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
     // Phase 1: Walk, read, and parse all entries before mutating the database.
     const allFiles = await walkFilesRecursively(capabilities, inputDir);
 
-    // Use plain string keys: relativePathToKey reconstructs raw root-level
-    // LevelDB keys including sublevel prefixes such as `!x!!values!...`.
     /** @type {Array<{ key: string, value: unknown }>} */
     const entries = [];
     let count = 0;

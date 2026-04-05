@@ -20,7 +20,7 @@ const {
     nodeNameToString,
     stringToNodeName,
     nodeKeyStringToString,
-} = require("./database");
+} = require("./node_key_types");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
@@ -229,4 +229,8 @@ module.exports = {
     compareConstValue,
     compareNodeKey,
     compareNodeKeyStringByNodeKey,
+    nodeNameToString,
+    stringToNodeName,
+    stringToNodeKeyString,
+    nodeKeyStringToString,
 };

@@ -1,5 +1,6 @@
 /**
- * Key encoding and value serialisation module for the incremental-graph database.
+ * Key encoding and value serialisation module for the incremental-graph database
+ * snapshot format.
  *
  * This module converts between the two representations of a database snapshot entry:
  *
@@ -10,34 +11,30 @@
  * ------------
  * LevelDB sublevel keys are structured as:
  *
- *   !namespace!!sublevel!keyContent
+ *   !namespace!!sublevel!{"head":"all_events","args":[]}
  *
  * The `!!` separator marks the boundary between nested sublevel names.
  * The actual stored key follows after the last `!` in the prefix chain.
  *
- * Key content is treated as an opaque string regardless of what it contains
- * (it may be a JSON object, a plain string, or any other format).
+ * Two types of stored key exist in this database:
  *
- * The on-disk path for a key with sublevel depth D is:
+ *   1. NodeKey JSON keys (data sublevels: values, freshness, inputs, revdeps,
+ *      counters, timestamps):
+ *        {"head":"event","args":["abc"]}
+ *      Encoded as: namespace/sublevel/event/abc
  *
- *   sub1/sub2/.../subD/<percent-encoded keyContent>
+ *   2. Plain string keys (meta sublevels: _meta, meta):
+ *        format, version
+ *      Encoded as: namespace/sublevel/format
  *
- * Depth convention
- * ----------------
- * This database always uses either:
- *   - 1-level nesting: the `_meta` root sublevel
- *   - 2-level nesting: namespace (`x` or `y`) + data or meta sublevel
- *
- * Depth is inferred from the first path segment when decoding:
- * if it is `_meta`, depth = 1; otherwise depth = 2.
- *
- * Segment encoding
- * ----------------
- * Key content is encoded as a single path segment. Only characters unsafe for
- * POSIX filenames require encoding: `/` → `%2F`, `%` → `%25` (to avoid
- * double-encoding), `!` → `%21` (so round-tripping preserves LevelDB structure).
- * The literal segments `.` and `..` are encoded as `%2E` and `%2E%2E` to prevent
- * directory traversal.
+ * Argument encoding
+ * -----------------
+ * String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`,
+ * `!` → `%21` (critical for bijection since `!` is the LevelDB separator).
+ * Non-string arguments (numbers, booleans, arrays, objects) are JSON-encoded
+ * and prefixed with `~` to distinguish them from plain strings.
+ * Literal dot-segment path components `.` and `..` are encoded as `%2E` and
+ * `%2E%2E` to prevent directory traversal.
  *
  * Value serialisation
  * -------------------
@@ -50,6 +47,23 @@
  * relativePathToKey are exact inverses:
  *   relativePathToKey(keyToRelativePath(key)) === key
  */
+
+const { serializeNodeKey, deserializeNodeKey, nodeNameToString, stringToNodeName, stringToNodeKeyString, nodeKeyStringToString } = require('../node_key');
+
+/** @typedef {import('../types').ConstValue} ConstValue */
+
+/**
+ * Sublevel names that store plain string keys rather than NodeKey JSON keys.
+ * @type {Set<string>}
+ */
+const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'meta']);
+
+/**
+ * Prefix used to distinguish non-string arguments from plain strings.
+ * A path segment starting with '~' holds a JSON-encoded non-string value.
+ */
+const NON_STRING_ARG_PREFIX = '~';
+const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
 
 // Use uppercase sentinels as the canonical on-disk form for literal '.' and '..'
 // segments so renderToFilesystem() is deterministic; decode accepts lowercase
@@ -66,10 +80,9 @@ const DOT_DOT_SEGMENT_PATTERN = /^%2e%2e$/i;
  *
  * Algorithm:
  *   1. Strip the leading `!`.
- *   2. Split on `!!` — all segments but the last are pure sublevel names.
- *   3. Split the last segment on the FIRST `!` to separate the deepest
- *      sublevel name from the key content.  This preserves any `!` characters
- *      that may appear inside the key content itself.
+ *   2. Scan left to right: on encountering `!!`, push current to sublevels and
+ *      reset; on encountering a single `!`, push current to sublevels and return
+ *      the rest as keyContent.
  *
  * @param {string} rawKey
  * @returns {{ sublevels: string[], keyContent: string }}
@@ -128,7 +141,7 @@ function buildRawKey(sublevels, keyContent) {
 }
 
 /**
- * Percent-encodes a string for use as a single filesystem path segment.
+ * Percent-encodes a plain string for use as a single filesystem path segment.
  * Encodes `%` first to avoid double-encoding, then `/` and `!`.
  * Segments that are exactly `.` or `..` are mapped to sentinels so they never
  * become literal filesystem traversal segments.
@@ -166,30 +179,75 @@ function decodeSegment(s) {
 }
 
 /**
+ * Encodes a single key argument value as a filesystem path segment.
+ *
+ * String arguments are percent-encoded directly.
+ * Non-string arguments (number, boolean, null, array, object) are
+ * JSON-serialized and prefixed with NON_STRING_ARG_PREFIX (`~`) so they
+ * can be distinguished from plain strings during decoding.
+ *
+ * @param {unknown} arg - A key argument value.
+ * @returns {string}
+ */
+function encodeArg(arg) {
+    if (typeof arg === 'string') {
+        if (arg.startsWith(NON_STRING_ARG_PREFIX)) {
+            // Escape a leading '~' in string args so "~42" stays distinct from
+            // the encoded non-string number 42, which is also prefixed with '~'.
+            return ESCAPED_STRING_ARG_PREFIX + encodeSegment(arg.slice(1));
+        }
+        return encodeSegment(arg);
+    }
+    return NON_STRING_ARG_PREFIX + encodeSegment(JSON.stringify(arg));
+}
+
+/**
+ * Decodes a path segment back to a key argument value.
+ * Inverse of encodeArg().
+ *
+ * @param {string} segment
+ * @returns {ConstValue}
+ */
+function decodeArg(segment) {
+    if (segment.startsWith(ESCAPED_STRING_ARG_PREFIX)) {
+        return NON_STRING_ARG_PREFIX + decodeSegment(
+            segment.slice(ESCAPED_STRING_ARG_PREFIX.length)
+        );
+    }
+    if (segment.startsWith(NON_STRING_ARG_PREFIX)) {
+        return JSON.parse(decodeSegment(segment.slice(NON_STRING_ARG_PREFIX.length)));
+    }
+    return decodeSegment(segment);
+}
+
+/**
  * Converts a raw LevelDB key to a relative filesystem path.
  *
- * The sublevels become the directory components and the key content becomes the
- * filename, percent-encoded so it is safe to use as a single path segment.
+ * For NodeKey JSON keys stored in data sublevels (values, freshness,
+ * inputs, revdeps, counters, timestamps), the stored key is decomposed into
+ * human-readable path segments using serializeNodeKey/deserializeNodeKey:
+ *   namespace/sublevel/head/arg1/arg2/...
  *
- * Examples:
- *   !_meta!format
- *     → _meta/format
- *
- *   !x!!meta!version
- *     → x/meta/version
- *
- *   !x!!values!{"head":"event","args":["abc"]}
- *     → x/values/{"head":"event","args":["abc"]}
- *
- *   !x!!values!{"head":"transcription","args":["/audio/x.mp3"]}
- *     → x/values/{"head":"transcription","args":["%2Faudio%2Fx.mp3"]}
+ * For plain string keys stored in meta sublevels (_meta, meta), the key
+ * is used as a single percent-encoded segment:
+ *   namespace/sublevel/key
  *
  * @param {string} rawKey - Raw LevelDB key.
  * @returns {string} Relative filesystem path.
  */
 function keyToRelativePath(rawKey) {
     const { sublevels, keyContent } = parseRawKey(rawKey);
-    return [...sublevels, encodeSegment(keyContent)].join('/');
+    const lastSublevel = sublevels[sublevels.length - 1] ?? '';
+    const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
+
+    if (isPlainKey) {
+        return [...sublevels, encodeSegment(keyContent)].join('/');
+    }
+
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(keyContent));
+    const headStr = nodeNameToString(nodeKey.head);
+    const argSegments = nodeKey.args.map(encodeArg);
+    return [...sublevels, headStr, ...argSegments].join('/');
 }
 
 /**
@@ -200,12 +258,13 @@ function keyToRelativePath(rawKey) {
  *   - If the first segment is `_meta` → depth 1 (1-level nesting)
  *   - Otherwise → depth 2 (2-level nesting: namespace + sublevel)
  *
- * The path must have exactly `depth + 1` segments: the sublevels followed by
- * the encoded key content as a single filename.
+ * Key type convention (determined by the last sublevel name):
+ *   - `_meta` or `meta` → plain string key
+ *   - All other sublevels → NodeKey JSON key
  *
  * @param {string} relPath - Relative path from keyToRelativePath().
  * @returns {string} Raw LevelDB key.
- * @throws {Error} If relPath does not have exactly `depth + 1` segments.
+ * @throws {Error} If relPath has fewer than two segments.
  */
 function relativePathToKey(relPath) {
     const segments = relPath.split('/');
@@ -215,16 +274,34 @@ function relativePathToKey(relPath) {
         );
     }
 
-    // Determine sublevel depth from the first segment.
+    // Determine sublevel depth from the first segment
     const depth = segments[0] === '_meta' ? 1 : 2;
-    if (segments.length !== depth + 1) {
+    if (segments.length < depth + 1) {
         throw new Error(
-            `Invalid database path '${relPath}': expected exactly ${depth + 1} segments for depth-${depth} nesting, got ${segments.length}.`
+            `Invalid database path '${relPath}': expected at least ${depth + 1} segments for depth-${depth} nesting.`
         );
     }
 
     const sublevels = segments.slice(0, depth);
-    const keyContent = decodeSegment(segments[depth] ?? '');
+    const keyComponents = segments.slice(depth);
+    const lastSublevel = sublevels[sublevels.length - 1] ?? '';
+    const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
+
+    let keyContent;
+    if (isPlainKey) {
+        if (keyComponents.length !== 1) {
+            throw new Error(
+                `Invalid database path '${relPath}': plain-key sublevels require exactly one key segment`
+            );
+        }
+        keyContent = decodeSegment(keyComponents[0] ?? '');
+    } else {
+        const headStr = keyComponents[0] ?? '';
+        const args = keyComponents.slice(1).map(decodeArg);
+        const nodeKey = { head: stringToNodeName(headStr), args };
+        keyContent = nodeKeyStringToString(serializeNodeKey(nodeKey));
+    }
+
     return buildRawKey(sublevels, keyContent);
 }
 
