@@ -976,7 +976,7 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Sublevel parameter tests
+// sublevel parameter tests
 // ---------------------------------------------------------------------------
 
 describe('sublevel parameter', () => {
@@ -1077,7 +1077,9 @@ describe('sublevel parameter', () => {
     });
 });
 
-
+// ---------------------------------------------------------------------------
+// Additional reliability tests
+// ---------------------------------------------------------------------------
 
 describe('additional reliability tests', () => {
     test('renderToFilesystem is idempotent when called twice on same outputDir', async () => {
