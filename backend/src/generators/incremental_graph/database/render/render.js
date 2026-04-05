@@ -91,7 +91,8 @@ async function clearRenderedSnapshot(capabilities, outputDir) {
 }
 
 /**
- * Dumps every raw key/value pair from a LevelDB database to a directory tree.
+ * Dumps every raw key/value pair from a LevelDB database to a directory tree
+ * rooted at `path.join(outputDir, sublevel)`.
  *
  * For each entry in the database:
  *   - The key is mapped to a relative file path via keyToRelativePath().
@@ -104,10 +105,12 @@ async function clearRenderedSnapshot(capabilities, outputDir) {
  *
  * @param {RenderCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to dump.
- * @param {string} outputDir - Absolute path of the directory to write into.
+ * @param {string} outputDir - Absolute path of the base directory to write into.
+ * @param {string} sublevel - Subdirectory name within outputDir where files are written.
  * @returns {Promise<void>}
  */
-async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
+async function renderToFilesystem(capabilities, rootDatabase, outputDir, sublevel) {
+    const renderedDir = path.join(outputDir, sublevel);
     /** @type {Array<{ relPath: string, content: string }>} */
     const validatedEntries = [];
     for await (const [key, value] of rootDatabase._rawEntries()) {
@@ -116,14 +119,14 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir) {
         validatedEntries.push({ relPath, content });
     }
 
-    await clearRenderedSnapshot(capabilities, outputDir);
+    await clearRenderedSnapshot(capabilities, renderedDir);
     for (const entry of validatedEntries) {
-        const absPath = resolveContainedPath(outputDir, entry.relPath);
+        const absPath = resolveContainedPath(renderedDir, entry.relPath);
         const file = await capabilities.creator.createFile(absPath);
         await capabilities.writer.writeFile(file, entry.content);
     }
     capabilities.logger.logInfo(
-        { outputDir, count: validatedEntries.length },
+        { outputDir: renderedDir, count: validatedEntries.length },
         'Rendered database to filesystem'
     );
 }

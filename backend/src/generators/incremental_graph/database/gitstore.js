@@ -151,8 +151,7 @@ async function checkpointDatabase(
             initialState,
             async (store) => {
                 const workTree = await store.getWorkTree();
-                const renderedPath = path.join(workTree, DATABASE_SUBPATH);
-                await renderToFilesystem(capabilities, database, renderedPath);
+                await renderToFilesystem(capabilities, database, workTree, DATABASE_SUBPATH);
                 await store.commit(message);
             }
         );
@@ -192,11 +191,10 @@ async function runMigrationInTransaction(
         "empty",
         async (store) => {
             const workTree = await store.getWorkTree();
-            const renderedPath = path.join(workTree, DATABASE_SUBPATH);
-            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await renderToFilesystem(capabilities, rootDatabase, workTree, DATABASE_SUBPATH);
             await store.commit(preMessage);
             const result = await callback();
-            await renderToFilesystem(capabilities, rootDatabase, renderedPath);
+            await renderToFilesystem(capabilities, rootDatabase, workTree, DATABASE_SUBPATH);
             await store.commit(postMessage);
             return result;
         }

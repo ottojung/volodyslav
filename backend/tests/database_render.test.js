@@ -390,8 +390,8 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-readable');
-            await renderToFilesystem(capabilities, db, outputDir);
-            const files = collectFiles(outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const files = collectFiles(path.join(outputDir, 'db'));
             const allEventsFile = files.find(f => f.relPath === 'x/values/all_events');
             expect(allEventsFile).toBeDefined();
         } finally {
@@ -407,8 +407,8 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-slash');
-            await renderToFilesystem(capabilities, db, outputDir);
-            const files = collectFiles(outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const files = collectFiles(path.join(outputDir, 'db'));
             expect(files.some(f => f.relPath.includes('%2F'))).toBe(true);
             // The filename should NOT contain literal '/'
             const fileRelPaths = files.map(f => f.relPath.split('/').pop());
@@ -428,8 +428,8 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-bang');
-            await renderToFilesystem(capabilities, db, outputDir);
-            const files = collectFiles(outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const files = collectFiles(path.join(outputDir, 'db'));
             const relPath = keyToRelativePath(keyWithBang);
             const matchedFile = files.find(f => f.relPath === relPath);
             expect(matchedFile).toBeDefined();
@@ -448,8 +448,8 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-dot-segments');
-            await renderToFilesystem(capabilities, db, outputDir);
-            const files = collectFiles(outputDir).sort((a, b) => a.relPath.localeCompare(b.relPath));
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const files = collectFiles(path.join(outputDir, 'db')).sort((a, b) => a.relPath.localeCompare(b.relPath));
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/format', content: JSON.stringify('xy-v1') },
@@ -474,9 +474,9 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-pretty');
-            await renderToFilesystem(capabilities, db, outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
 
-            const files = collectFiles(outputDir);
+            const files = collectFiles(path.join(outputDir, 'db'));
             const renderedFile = files.find(f => f.relPath === 'x/values/event/pretty');
             expect(renderedFile).toBeDefined();
             expect(renderedFile.content).toBe(JSON.stringify(value, null, 2));
@@ -500,8 +500,8 @@ describe('renderToFilesystem()', () => {
             path.join(isolatedTmpDir, 'results')
         );
         try {
-            await renderToFilesystem(firstCapabilities, firstDb, outputDir);
-            expect(collectFiles(outputDir).some(file => file.relPath === staleRelPath)).toBe(true);
+            await renderToFilesystem(firstCapabilities, firstDb, outputDir, 'db');
+            expect(collectFiles(path.join(outputDir, 'db')).some(file => file.relPath === staleRelPath)).toBe(true);
         } finally {
             await firstDb.close();
         }
@@ -519,8 +519,8 @@ describe('renderToFilesystem()', () => {
                         LIVE_DATABASE_WORKING_PATH
                     )
                 )).toBeTruthy();
-                await renderToFilesystem(secondCapabilities, secondDb, outputDir);
-                expect(collectFiles(outputDir).some(file => file.relPath === staleRelPath)).toBe(false);
+                await renderToFilesystem(secondCapabilities, secondDb, outputDir, 'db');
+                expect(collectFiles(path.join(outputDir, 'db')).some(file => file.relPath === staleRelPath)).toBe(false);
             } finally {
                 await secondDb.close();
             }
@@ -536,9 +536,9 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-content');
-            await renderToFilesystem(capabilities, db, outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
 
-            const files = collectFiles(outputDir);
+            const files = collectFiles(path.join(outputDir, 'db'));
             const metaFormatFile = files.find(f => f.relPath === '_meta/format');
             expect(metaFormatFile).toBeDefined();
             expect(JSON.parse(metaFormatFile.content)).toBe('test-marker');
@@ -554,9 +554,9 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-log');
-            await renderToFilesystem(capabilities, db, outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({ outputDir, count: expect.any(Number) }),
+                expect.objectContaining({ outputDir: path.join(outputDir, 'db'), count: expect.any(Number) }),
                 'Rendered database to filesystem'
             );
         } finally {
@@ -567,9 +567,9 @@ describe('renderToFilesystem()', () => {
     test('rejects non-NodeKey content in data sublevels without deleting an existing snapshot', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const outputDir = path.join(tmpDir, 'render-invalid-raw-key');
-        await capabilities.creator.createDirectory(path.join(outputDir, '_meta'));
+        await capabilities.creator.createDirectory(path.join(outputDir, 'db', '_meta'));
         const existingFile = await capabilities.creator.createFile(
-            path.join(outputDir, '_meta', 'format')
+            path.join(outputDir, 'db', '_meta', 'format')
         );
         await capabilities.writer.writeFile(existingFile, JSON.stringify('previous-snapshot'));
 
@@ -579,9 +579,9 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             await expect(
-                renderToFilesystem(capabilities, db, outputDir)
+                renderToFilesystem(capabilities, db, outputDir, 'db')
             ).rejects.toThrow('expected NodeKey JSON');
-            const files = collectFiles(outputDir);
+            const files = collectFiles(path.join(outputDir, 'db'));
             expect(files).toEqual([
                 { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
             ]);
@@ -593,9 +593,9 @@ describe('renderToFilesystem()', () => {
     test('rejects malformed raw key structure without deleting an existing snapshot', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const outputDir = path.join(tmpDir, 'render-malformed-raw-key');
-        await capabilities.creator.createDirectory(path.join(outputDir, '_meta'));
+        await capabilities.creator.createDirectory(path.join(outputDir, 'db', '_meta'));
         const existingFile = await capabilities.creator.createFile(
-            path.join(outputDir, '_meta', 'format')
+            path.join(outputDir, 'db', '_meta', 'format')
         );
         await capabilities.writer.writeFile(existingFile, JSON.stringify('previous-snapshot'));
 
@@ -604,9 +604,9 @@ describe('renderToFilesystem()', () => {
         ]);
         try {
             await expect(
-                renderToFilesystem(capabilities, db, outputDir)
+                renderToFilesystem(capabilities, db, outputDir, 'db')
             ).rejects.toThrow("expected a '!' separator before key content");
-            const files = collectFiles(outputDir);
+            const files = collectFiles(path.join(outputDir, 'db'));
             expect(files).toEqual([
                 { relPath: '_meta/format', content: JSON.stringify('previous-snapshot') },
             ]);
@@ -629,7 +629,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
             ['!_meta!format', 'xy-v1'],
         ]);
         const renderDir = path.join(tmpDir, 'stale-render');
-        await renderToFilesystem(capabilities, dbA, renderDir);
+        await renderToFilesystem(capabilities, dbA, renderDir, 'db');
         await dbA.close();
 
         // Open a fresh DB and inject a STALE key (not in the snapshot)
@@ -641,7 +641,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         expect(beforeScan.has('!x!!values!{"head":"stale_node","args":[]}')).toBe(true);
 
         // Scan from filesystem — this MUST delete the stale key
-        await scanFromFilesystem(capabilities, dbB, renderDir);
+        await scanFromFilesystem(capabilities, dbB, renderDir, 'db');
         const afterScan = await collectRawEntries(dbB);
 
         // Stale key must be gone
@@ -655,9 +655,9 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
 
         // Snapshot directory with ONE key
         const inputDir = path.join(tmpDir, 'scan-only-input');
-        fs.mkdirSync(path.join(inputDir, '_meta'), { recursive: true });
+        fs.mkdirSync(path.join(inputDir, 'db', '_meta'), { recursive: true });
         fs.writeFileSync(
-            path.join(inputDir, '_meta', 'format'),
+            path.join(inputDir, 'db', '_meta', 'format'),
             JSON.stringify('xy-v1')
         );
 
@@ -667,7 +667,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
             ['!x!!values!{"head":"extra","args":[]}', { extra: true }],
         ]);
 
-        await scanFromFilesystem(capabilities, db, inputDir);
+        await scanFromFilesystem(capabilities, db, inputDir, 'db');
         const entries = await collectRawEntries(db);
 
         // Only the scanned key should survive
@@ -681,17 +681,17 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
     test('logs a summary after scanning', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-log-in');
-        fs.mkdirSync(path.join(inputDir, '_meta'), { recursive: true });
+        fs.mkdirSync(path.join(inputDir, 'db', '_meta'), { recursive: true });
         fs.writeFileSync(
-            path.join(inputDir, '_meta', 'format'),
+            path.join(inputDir, 'db', '_meta', 'format'),
             JSON.stringify('xy-v1')
         );
 
         const db = await getRootDatabase(capabilities);
         try {
-            await scanFromFilesystem(capabilities, db, inputDir);
+            await scanFromFilesystem(capabilities, db, inputDir, 'db');
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({ inputDir, count: 1 }),
+                expect.objectContaining({ inputDir: path.join(inputDir, 'db'), count: 1 }),
                 'Scanned database from filesystem'
             );
         } finally {
@@ -702,9 +702,9 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
     test('invalid JSON snapshot leaves existing database unchanged', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-invalid-json');
-        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', '_meta'));
         const invalidFile = await capabilities.creator.createFile(
-            path.join(inputDir, '_meta', 'format')
+            path.join(inputDir, 'db', '_meta', 'format')
         );
         await capabilities.writer.writeFile(invalidFile, '{"broken":');
 
@@ -714,7 +714,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         ]);
         try {
             const before = await collectRawEntries(db);
-            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow();
+            await expect(scanFromFilesystem(capabilities, db, inputDir, 'db')).rejects.toThrow();
             const after = await collectRawEntries(db);
             expect(after).toEqual(before);
         } finally {
@@ -725,15 +725,15 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
     test('partially valid snapshot leaves existing database unchanged when one file path is malformed', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-partial-invalid-path');
-        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
-        await capabilities.creator.createDirectory(path.join(inputDir, '_meta', 'format'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', '_meta', 'format'));
 
         const validFile = await capabilities.creator.createFile(
-            path.join(inputDir, '_meta', 'version')
+            path.join(inputDir, 'db', '_meta', 'version')
         );
         await capabilities.writer.writeFile(validFile, JSON.stringify('v1'));
         const invalidFile = await capabilities.creator.createFile(
-            path.join(inputDir, '_meta', 'format', 'extra')
+            path.join(inputDir, 'db', '_meta', 'format', 'extra')
         );
         await capabilities.writer.writeFile(invalidFile, JSON.stringify('broken'));
 
@@ -743,7 +743,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         ]);
         try {
             const before = await collectRawEntries(db);
-            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow(
+            await expect(scanFromFilesystem(capabilities, db, inputDir, 'db')).rejects.toThrow(
                 'plain-key sublevels require exactly one key segment'
             );
             const after = await collectRawEntries(db);
@@ -756,15 +756,15 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
     test('partially valid snapshot leaves existing database unchanged when one file has invalid JSON', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-partial-invalid-json');
-        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
-        await capabilities.creator.createDirectory(path.join(inputDir, 'x', 'values', 'event'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', 'x', 'values', 'event'));
 
         const validFile = await capabilities.creator.createFile(
-            path.join(inputDir, '_meta', 'format')
+            path.join(inputDir, 'db', '_meta', 'format')
         );
         await capabilities.writer.writeFile(validFile, JSON.stringify('xy-v1'));
         const invalidFile = await capabilities.creator.createFile(
-            path.join(inputDir, 'x', 'values', 'event', 'bad')
+            path.join(inputDir, 'db', 'x', 'values', 'event', 'bad')
         );
         await capabilities.writer.writeFile(invalidFile, '{not valid json');
 
@@ -774,7 +774,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         ]);
         try {
             const before = await collectRawEntries(db);
-            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow();
+            await expect(scanFromFilesystem(capabilities, db, inputDir, 'db')).rejects.toThrow();
             const after = await collectRawEntries(db);
             expect(after).toEqual(before);
         } finally {
@@ -808,11 +808,11 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         const dbA = await makeSeededDatabase(capA, seedEntries);
         const renderDir = path.join(tmpDir, 'render-dir');
 
-        await renderToFilesystem(capA, dbA, renderDir);
+        await renderToFilesystem(capA, dbA, renderDir, 'db');
         await dbA.close();
 
         const dbB = await getRootDatabase(capB);
-        await scanFromFilesystem(capB, dbB, renderDir);
+        await scanFromFilesystem(capB, dbB, renderDir, 'db');
 
         const dbAEntries = new Map(seedEntries);
         const dbBEntries = await collectRawEntries(dbB);
@@ -976,8 +976,108 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Additional reliability tests
+// Sublevel parameter tests
 // ---------------------------------------------------------------------------
+
+describe('sublevel parameter', () => {
+    test('renderToFilesystem places files inside the sublevel subdirectory', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const db = await makeSeededDatabase(capabilities, [
+            ['!_meta!format', 'xy-v1'],
+            ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
+        ]);
+        try {
+            const outputDir = path.join(tmpDir, 'sublevel-test');
+            await renderToFilesystem(capabilities, db, outputDir, 'snapshot');
+            // Files must be inside outputDir/snapshot/, not directly in outputDir
+            const topLevelEntries = fs.readdirSync(outputDir);
+            expect(topLevelEntries).toEqual(['snapshot']);
+            const files = collectFiles(path.join(outputDir, 'snapshot'));
+            expect(files.length).toBeGreaterThan(0);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('scanFromFilesystem reads files from the sublevel subdirectory', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'sublevel-scan');
+        fs.mkdirSync(path.join(inputDir, 'snapshot', '_meta'), { recursive: true });
+        fs.writeFileSync(
+            path.join(inputDir, 'snapshot', '_meta', 'format'),
+            JSON.stringify('xy-v1')
+        );
+        const db = await getRootDatabase(capabilities);
+        try {
+            await scanFromFilesystem(capabilities, db, inputDir, 'snapshot');
+            const entries = await collectRawEntries(db);
+            expect(entries.get('!_meta!format')).toBe('xy-v1');
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('two different sublevels can coexist in the same outputDir', async () => {
+        const { capabilities: capA, tmpDir } = makeTestCapabilities();
+        const { capabilities: capB } = makeTestCapabilities();
+        capB.environment.workingDirectory = jest.fn().mockReturnValue(
+            path.join(tmpDir, 'results-b')
+        );
+        const dbA = await makeSeededDatabase(capA, [
+            ['!_meta!format', 'xy-v1'],
+            ['!x!!values!{"head":"node_a","args":[]}', { type: 'node_a' }],
+        ]);
+        const dbB = await makeSeededDatabase(capB, [
+            ['!_meta!format', 'xy-v1'],
+            ['!x!!values!{"head":"node_b","args":[]}', { type: 'node_b' }],
+        ]);
+        const outputDir = path.join(tmpDir, 'shared-output');
+        try {
+            await renderToFilesystem(capA, dbA, outputDir, 'alpha');
+            await renderToFilesystem(capB, dbB, outputDir, 'beta');
+            const topLevel = fs.readdirSync(outputDir).sort();
+            expect(topLevel).toEqual(['alpha', 'beta']);
+            const filesAlpha = collectFiles(path.join(outputDir, 'alpha'));
+            const filesBeta = collectFiles(path.join(outputDir, 'beta'));
+            expect(filesAlpha.some(f => f.relPath === 'x/values/node_a')).toBe(true);
+            expect(filesBeta.some(f => f.relPath === 'x/values/node_b')).toBe(true);
+            expect(filesAlpha.some(f => f.relPath === 'x/values/node_b')).toBe(false);
+            expect(filesBeta.some(f => f.relPath === 'x/values/node_a')).toBe(false);
+        } finally {
+            await dbA.close();
+            await dbB.close();
+        }
+    });
+
+    test('render and scan with the same sublevel are exact inverses', async () => {
+        const { capabilities: capA, tmpDir } = makeTestCapabilities();
+        const { capabilities: capB } = makeTestCapabilities();
+        capB.environment.workingDirectory = jest.fn().mockReturnValue(
+            path.join(tmpDir, 'results-b')
+        );
+        const seedEntries = [
+            ['!_meta!format', 'xy-v1'],
+            ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
+            ['!x!!freshness!{"head":"event","args":["hello"]}', 'up-to-date'],
+        ];
+        const dbA = await makeSeededDatabase(capA, seedEntries);
+        const sharedDir = path.join(tmpDir, 'shared-dir');
+        await renderToFilesystem(capA, dbA, sharedDir, 'snap');
+        await dbA.close();
+
+        const dbB = await getRootDatabase(capB);
+        await scanFromFilesystem(capB, dbB, sharedDir, 'snap');
+        const dbBEntries = await collectRawEntries(dbB);
+        await dbB.close();
+
+        for (const [key, value] of seedEntries) {
+            expect(dbBEntries.has(key)).toBe(true);
+            expect(dbBEntries.get(key)).toEqual(value);
+        }
+    });
+});
+
+
 
 describe('additional reliability tests', () => {
     test('renderToFilesystem is idempotent when called twice on same outputDir', async () => {
@@ -988,10 +1088,10 @@ describe('additional reliability tests', () => {
         ]);
         try {
             const outputDir = path.join(tmpDir, 'idem-out');
-            await renderToFilesystem(capabilities, db, outputDir);
-            const filesFirst = collectFiles(outputDir).sort((a, b) => a.relPath.localeCompare(b.relPath));
-            await renderToFilesystem(capabilities, db, outputDir);
-            const filesSecond = collectFiles(outputDir).sort((a, b) => a.relPath.localeCompare(b.relPath));
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const filesFirst = collectFiles(path.join(outputDir, 'db')).sort((a, b) => a.relPath.localeCompare(b.relPath));
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const filesSecond = collectFiles(path.join(outputDir, 'db')).sort((a, b) => a.relPath.localeCompare(b.relPath));
             expect(filesSecond).toEqual(filesFirst);
         } finally {
             await db.close();
@@ -1009,8 +1109,8 @@ describe('additional reliability tests', () => {
         const db = await makeSeededDatabase(capabilities, seedEntries);
         try {
             const outputDir = path.join(tmpDir, 'count-out');
-            await renderToFilesystem(capabilities, db, outputDir);
-            const filesOnDisk = collectFiles(outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
+            const filesOnDisk = collectFiles(path.join(outputDir, 'db'));
             const dbEntries = await collectRawEntries(db);
             expect(filesOnDisk.length).toBe(dbEntries.size);
         } finally {
@@ -1033,9 +1133,9 @@ describe('additional reliability tests', () => {
             );
 
             const outputDir = path.join(tmpDir, 'decode-out');
-            await renderToFilesystem(capabilities, db, outputDir);
+            await renderToFilesystem(capabilities, db, outputDir, 'db');
 
-            const files = collectFiles(outputDir);
+            const files = collectFiles(path.join(outputDir, 'db'));
             for (const { relPath } of files) {
                 const key = relativePathToKey(relPath);
                 expect(typeof key).toBe('string');
@@ -1049,15 +1149,15 @@ describe('additional reliability tests', () => {
     test('scan rejects malformed plain-key snapshot paths with extra segments', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'malformed-plain-key');
-        await capabilities.creator.createDirectory(path.join(inputDir, '_meta'));
-        await capabilities.creator.createDirectory(path.join(inputDir, '_meta', 'format'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', '_meta'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'db', '_meta', 'format'));
         const malformedFile = await capabilities.creator.createFile(
-            path.join(inputDir, '_meta', 'format', 'extra')
+            path.join(inputDir, 'db', '_meta', 'format', 'extra')
         );
         await capabilities.writer.writeFile(malformedFile, JSON.stringify('xy-v1'));
         const db = await getRootDatabase(capabilities);
         try {
-            await expect(scanFromFilesystem(capabilities, db, inputDir)).rejects.toThrow(
+            await expect(scanFromFilesystem(capabilities, db, inputDir, 'db')).rejects.toThrow(
                 'plain-key sublevels require exactly one key segment'
             );
         } finally {

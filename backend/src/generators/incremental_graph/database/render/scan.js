@@ -53,16 +53,16 @@ async function walkFilesRecursively(capabilities, dir) {
 }
 
 /**
- * Reads every file from a directory tree and writes the corresponding
- * key/value pairs into a LevelDB database.
+ * Reads every file from a directory tree rooted at `path.join(inputDir, sublevel)`
+ * and writes the corresponding key/value pairs into a LevelDB database.
  *
  * This function FIRST clears all existing entries from rootDatabase, then
- * imports the snapshot from inputDir.  This guarantees that keys present in
- * the database but absent from the snapshot (i.e., deleted entries) do not
- * survive, preserving the bijection guarantee.
+ * imports the snapshot from the resolved directory.  This guarantees that keys
+ * present in the database but absent from the snapshot (i.e., deleted entries)
+ * do not survive, preserving the bijection guarantee.
  *
- * For each file found under `inputDir`:
- *   - The path relative to `inputDir` is converted back to a raw LevelDB
+ * For each file found under the resolved input directory:
+ *   - The path relative to that directory is converted back to a raw LevelDB
  *     key via relativePathToKey().
  *   - The file content is parsed via parseValue() and stored at that key.
  *
@@ -71,19 +71,21 @@ async function walkFilesRecursively(capabilities, dir) {
  *
  * @param {ScanCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.
- * @param {string} inputDir - Absolute path of the directory to read from.
+ * @param {string} inputDir - Absolute path of the base directory to read from.
+ * @param {string} sublevel - Subdirectory name within inputDir where files are read.
  * @returns {Promise<void>}
  */
-async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
+async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {
+    const resolvedInputDir = path.join(inputDir, sublevel);
     // Phase 1: Walk, read, and parse all entries before mutating the database.
-    const allFiles = await walkFilesRecursively(capabilities, inputDir);
+    const allFiles = await walkFilesRecursively(capabilities, resolvedInputDir);
 
     /** @type {Array<{ key: string, value: unknown }>} */
     const entries = [];
     let count = 0;
 
     for (const absPath of allFiles) {
-        const relPath = path.relative(inputDir, absPath);
+        const relPath = path.relative(resolvedInputDir, absPath);
         const normalizedRelPath = relPath.split(path.sep).join('/');
         const key = relativePathToKey(normalizedRelPath);
         const content = await capabilities.reader.readFileAsText(absPath);
@@ -96,7 +98,7 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir) {
     await rootDatabase._rawDeleteAll();
     await rootDatabase._rawPutAll(entries);
     capabilities.logger.logInfo(
-        { inputDir, count },
+        { inputDir: resolvedInputDir, count },
         'Scanned database from filesystem'
     );
 }
