@@ -121,23 +121,13 @@ async function synchronizeNoLock(capabilities, options) {
                 let snapshotReplica = rootDatabase.currentReplicaName();
                 if (await capabilities.checker.fileExists(currentReplicaFile)) {
                     const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
-                    let parsed;
-                    try {
-                        parsed = JSON.parse(raw);
-                    } catch (parseErr) {
-                        capabilities.logger.logWarning(
-                            { currentReplicaFile, raw, error: String(parseErr) },
-                            'Snapshot _meta/current_replica is not valid JSON; falling back to local pointer'
+                    const parsed = JSON.parse(raw);
+                    if (parsed !== 'x' && parsed !== 'y') {
+                        throw new Error(
+                            `Snapshot _meta/current_replica has invalid value: "${String(parsed)}". Expected "x" or "y".`
                         );
                     }
-                    if (parsed === 'x' || parsed === 'y') {
-                        snapshotReplica = parsed;
-                    } else if (parsed !== undefined) {
-                        capabilities.logger.logWarning(
-                            { currentReplicaFile, parsed, fallback: snapshotReplica },
-                            'Snapshot _meta/current_replica has unexpected value; falling back to local pointer'
-                        );
-                    }
+                    snapshotReplica = parsed;
                 }
 
                 await scanFromFilesystem(

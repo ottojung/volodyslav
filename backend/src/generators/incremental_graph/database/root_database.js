@@ -196,8 +196,12 @@ function isSchemaBatchVersionError(object) {
 
 /**
  * Build a SchemaStorage for one replica namespace.
- * The returned storage's `batch` function self-initialises the replica's meta/version
- * on the first write (and throws if there is an existing version mismatch).
+ * The returned storage's `batch` function verifies the replica's meta/version on
+ * the first write (initialising it when absent, or throwing on mismatch), then
+ * caches the result so subsequent batches pay no I/O overhead for the check.
+ *
+ * When the replica is cleared (`clearReplicaStorage`), a fresh SchemaStorage is
+ * built by the owner so the version-initialisation cache is reset.
  *
  * @param {SchemaSublevelType} namespaceSublevel - The replica's top-level sublevel.
  * @param {MetaSublevelType} metaSublevel - The replica's meta sublevel (`<ns>/meta`).
@@ -218,18 +222,23 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
+    let touchedSchema = false;
+
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
         if (operations.length === 0) {
             return;
         }
-        const existing = await metaSublevel.get('version');
-        if (existing === undefined) {
-            // New or freshly-cleared namespace: write version to meta to initialise.
-            await metaSublevel.put('version', version);
-        } else if (existing !== version) {
-            // Version mismatch indicates a logic error in migration or usage of staging namespace.
-            throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
+        if (!touchedSchema) {
+            const existing = await metaSublevel.get('version');
+            if (existing === undefined) {
+                // New or freshly-cleared namespace: write version to meta to initialise.
+                await metaSublevel.put('version', version);
+            } else if (existing !== version) {
+                // Version mismatch indicates a logic error in migration or usage of staging namespace.
+                throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
+            }
+            touchedSchema = true;
         }
         await namespaceSublevel.batch(operations);
     };
@@ -473,22 +482,27 @@ class RootDatabaseClass {
     }
 
     /**
-     * Clear all keys in a specific replica's namespace sublevel.
-     * Used by migration to wipe the target replica before writing fresh data.
+     * Clear all keys in a specific replica's namespace sublevel, then rebuild its
+     * SchemaStorage so the version-initialisation state is reset.
+     * The `schemaStorageForReplica` call immediately after this method will return
+     * the freshly built storage; any reference obtained before this call is stale
+     * and must be discarded.
      * Throws `InvalidReplicaPointerError` for unrecognised names.
      * @param {ReplicaName} name
      * @returns {Promise<void>}
      */
     async clearReplicaStorage(name) {
-        let namespaceSublevel;
         if (name === 'x') {
-            namespaceSublevel = this._xNamespaceSublevel;
+            await this._xNamespaceSublevel.clear();
+            // Rebuild to reset the version-initialisation cache in the new closure.
+            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xMetaSublevel, this.version);
         } else if (name === 'y') {
-            namespaceSublevel = this._yNamespaceSublevel;
+            await this._yNamespaceSublevel.clear();
+            // Rebuild to reset the version-initialisation cache in the new closure.
+            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yMetaSublevel, this.version);
         } else {
             return assertNeverReplicaName(name);
         }
-        await namespaceSublevel.clear();
     }
 
     /**

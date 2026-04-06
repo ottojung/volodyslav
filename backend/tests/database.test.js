@@ -579,17 +579,20 @@ describe('generators/database', () => {
                 const xMetaVersion = await db.getMetaVersion();
                 expect(xMetaVersion).toBeUndefined(); // x has no version yet
 
-                // Now clear y and write again — meta/version must be re-created.
+                // Now clear y — the schema storage for y is rebuilt with a fresh closure.
                 await db.clearReplicaStorage('y');
 
-                // After clearing, a fresh batch to y must not throw.
-                await yStorage.batch([
-                    yStorage.freshness.putOp('nodeB', 'potentially-outdated'),
+                // Re-fetch the storage reference after the clear (the old reference is stale).
+                const yStorageAfterClear = db.schemaStorageForReplica('y');
+
+                // A fresh batch to y must succeed (re-initialises meta/version).
+                await yStorageAfterClear.batch([
+                    yStorageAfterClear.freshness.putOp('nodeB', 'potentially-outdated'),
                 ]);
 
                 // Verify nodeA is gone (clear was effective) but nodeB is present.
-                const nodeA = await yStorage.freshness.get('nodeA');
-                const nodeB = await yStorage.freshness.get('nodeB');
+                const nodeA = await yStorageAfterClear.freshness.get('nodeA');
+                const nodeB = await yStorageAfterClear.freshness.get('nodeB');
                 expect(nodeA).toBeUndefined();
                 expect(nodeB).toBe('potentially-outdated');
 
