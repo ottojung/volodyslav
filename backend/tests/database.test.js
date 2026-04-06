@@ -552,10 +552,9 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
+                let err;
                 // @ts-expect-error — intentionally passing an invalid value to test runtime guard
-                expect(() => db.schemaStorageForReplica('z')).toThrow();
-                // @ts-expect-error — intentionally passing an invalid value to test runtime guard
-                const err = (() => { try { db.schemaStorageForReplica('z'); } catch(e) { return e; } })();
+                try { db.schemaStorageForReplica('z'); } catch (e) { err = e; }
                 expect(isInvalidReplicaPointerError(err)).toBe(true);
                 await db.close();
             } finally {

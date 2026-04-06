@@ -369,9 +369,9 @@ class RootDatabaseClass {
      */
     async switchToReplica(name) {
         if (name === 'x') {
-            // valid
+            // x is valid
         } else if (name === 'y') {
-            // valid
+            // y is valid
         } else {
             assertNeverReplicaName(name);
         }
