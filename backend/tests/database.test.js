@@ -485,27 +485,23 @@ describe('generators/database', () => {
             }
         });
 
-        test('legacy database missing current_replica is healed to "x" on open', async () => {
+        test('database missing current_replica throws InvalidReplicaPointerError on open', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // Write format marker without current_replica to simulate a legacy DB.
+                // Write format marker without current_replica.
                 const rawDb = capabilities.levelDatabase.initialize(
                     path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v1');
+                await meta.put('format', 'xy-v2');
                 // Deliberately omit `current_replica`.
                 await rawDb.close();
 
-                const db = await getRootDatabase(capabilities);
-                expect(db.currentReplicaName()).toBe('x');
-
-                // The pointer should now be persisted so a second open returns 'x'.
-                await db.close();
-                const db2 = await getRootDatabase(capabilities);
-                expect(db2.currentReplicaName()).toBe('x');
-                await db2.close();
+                // getRootDatabase wraps errors in DatabaseInitializationError.
+                const error = await getRootDatabase(capabilities).catch(e => e);
+                expect(isDatabaseInitializationError(error)).toBe(true);
+                expect(isInvalidReplicaPointerError(error.cause)).toBe(true);
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -520,7 +516,7 @@ describe('generators/database', () => {
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v1');
+                await meta.put('format', 'xy-v2');
                 await meta.put('current_replica', 'z');
                 await rawDb.close();
 

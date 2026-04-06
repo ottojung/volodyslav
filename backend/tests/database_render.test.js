@@ -459,7 +459,7 @@ describe('renderToFilesystem()', () => {
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/current_replica', content: JSON.stringify('x') },
-                { relPath: '_meta/format', content: JSON.stringify('xy-v1') },
+                { relPath: '_meta/format', content: JSON.stringify('xy-v2') },
                 { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
         } finally {
@@ -648,7 +648,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
 
         // Render a database with one entry
         const dbA = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'xy-v1'],
+            ['!_meta!format', 'xy-v2'],
         ]);
         const renderDir = path.join(tmpDir, 'stale-render', '_meta');
         await renderToFilesystem(capabilities, dbA, renderDir, '_meta');
@@ -1094,7 +1094,7 @@ describe('sublevel parameter', () => {
             path.join(tmpDir, 'results-b')
         );
         const seedEntries = [
-            ['!_meta!format', 'xy-v1'],
+            ['!_meta!format', 'xy-v2'],
             ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
             ['!x!!freshness!{"head":"event","args":["hello"]}', 'up-to-date'],
         ];
@@ -1121,7 +1121,7 @@ describe('sublevel parameter', () => {
             path.join(tmpDir, 'results-b')
         );
         const seedEntries = [
-            ['!_meta!format', 'xy-v1'],
+            ['!_meta!format', 'xy-v2'],
             ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
         ];
         const dbA = await makeSeededDatabase(capA, seedEntries);
@@ -1138,7 +1138,7 @@ describe('sublevel parameter', () => {
             type: 'event',
             value: 42,
         });
-        expect(dbBEntries.get('!_meta!format')).toBe('xy-v1');
+        expect(dbBEntries.get('!_meta!format')).toBe('xy-v2');
     });
 
     test('scanFromFilesystem rejects mismatched filesystem and sublevel pair', async () => {

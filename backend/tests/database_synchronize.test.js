@@ -182,7 +182,7 @@ describe("synchronizeNoLock", () => {
         const capabilities = getTestCapabilities();
         const remoteKey = '!x!!values!{"head":"event","args":["remote"]}';
         await seedRemoteRepository(capabilities, [
-            ["!_meta!format", "xy-v1"],
+            ["!_meta!format", "xy-v2"],
             [remoteKey, { source: "remote" }],
             ["!x!!meta!version", "remote-version"],
         ]);
@@ -209,7 +209,7 @@ describe("synchronizeNoLock", () => {
 
     test("can synchronize twice even though the persistent rendered repository work tree is stale between runs", async () => {
         const capabilities = getTestCapabilities();
-        await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v1"]]);
+        await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v2"]]);
 
         const firstKey = '!x!!values!{"head":"event","args":["first"]}';
         const secondKey = '!x!!values!{"head":"event","args":["second"]}';
@@ -251,9 +251,9 @@ describe("synchronizeNoLock", () => {
             "--",
             capabilities.environment.generatorsRepository()
         );
-        await pushRemoteRepositoryBranch(capabilities, "test-host", [["!_meta!format", "xy-v1"]]);
+        await pushRemoteRepositoryBranch(capabilities, "test-host", [["!_meta!format", "xy-v2"]]);
         await pushRemoteRepositoryBranch(capabilities, "alice", [
-            ["!_meta!format", "xy-v1"],
+            ["!_meta!format", "xy-v2"],
             [aliceKey, { source: "alice" }],
         ]);
 
@@ -279,14 +279,14 @@ describe("synchronizeNoLock", () => {
             capabilities.environment.generatorsRepository()
         );
         await pushRemoteRepositoryBranch(capabilities, "test-host", [
-            ["!_meta!format", "xy-v1"],
+            ["!_meta!format", "xy-v2"],
         ]);
         await pushRemoteRepositoryBranch(capabilities, "bob", [
-            ["!_meta!format", "xy-v1"],
+            ["!_meta!format", "xy-v2"],
             [bobKey, { source: "bob" }],
         ]);
         await pushRemoteRepositoryBranch(capabilities, "zed", [
-            ["!_meta!format", "xy-v1"],
+            ["!_meta!format", "xy-v2"],
             ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
         ]);
 
