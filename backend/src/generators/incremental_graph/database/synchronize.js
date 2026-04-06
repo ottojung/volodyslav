@@ -22,6 +22,32 @@ const {
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 
+/**
+ * Thrown when the snapshot's `_meta/current_replica` file is missing a valid
+ * replica name ("x" or "y"). This indicates a corrupted or incompatible snapshot.
+ */
+class InvalidSnapshotReplicaError extends Error {
+    /**
+     * @param {unknown} value - The invalid value that was read.
+     * @param {string} filePath - Path to the file that contained the bad value.
+     */
+    constructor(value, filePath) {
+        super(
+            `Snapshot _meta/current_replica has invalid value: "${String(value)}". Expected "x" or "y". File: ${filePath}`
+        );
+        this.name = 'InvalidSnapshotReplicaError';
+        this.value = value;
+        this.filePath = filePath;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidSnapshotReplicaError}
+ */
+function isInvalidSnapshotReplicaError(object) {
+    return object instanceof InvalidSnapshotReplicaError;
+}
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
@@ -112,16 +138,37 @@ async function synchronizeNoLock(capabilities, options) {
             remoteLocation,
             async (store) => {
                 const workTree = await store.getWorkTree();
+
+                // Read the active-replica name from the snapshot's _meta/current_replica
+                // so that `r/` data lands in the correct sublevel even when the remote
+                // used a different replica than the local pointer.
+                const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
+                const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
+                if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
+                    throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile);
+                }
+                const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
+                let parsed;
+                try {
+                    parsed = JSON.parse(raw);
+                } catch {
+                    throw new InvalidSnapshotReplicaError(raw, currentReplicaFile);
+                }
+                if (parsed !== 'x' && parsed !== 'y') {
+                    throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
+                }
+                const snapshotReplica = parsed;
+
                 await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
-                    path.join(workTree, DATABASE_SUBPATH, 'x'),
-                    'x'
+                    path.join(workTree, DATABASE_SUBPATH, 'r'),
+                    snapshotReplica
                 );
                 await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
-                    path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                    snapshotMetaDir,
                     '_meta'
                 );
             }
@@ -139,4 +186,8 @@ async function synchronizeNoLock(capabilities, options) {
     );
 }
 
-module.exports = { synchronizeNoLock };
+module.exports = {
+    synchronizeNoLock,
+    InvalidSnapshotReplicaError,
+    isInvalidSnapshotReplicaError,
+};

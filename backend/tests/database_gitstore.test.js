@@ -143,7 +143,18 @@ async function seedDatabase(capabilities, entries) {
     return db;
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+/**
+ * Converts a raw root-LevelDB key (e.g. `!x!!values!!event%2Fone`) to the
+ * rendered snapshot path (e.g. `r/values/event/one`).
+ * `keyToRelativePath` first maps the raw key to `x/...` or `y/...`, then this
+ * helper rewrites the replica prefix to the stable `r/` alias.
+ * @param {string} key - raw root-LevelDB key
+ * @returns {string}
+ */
+function renderedKeyPath(key) {
+    return keyToRelativePath(key).replace(/^[xy]\//, 'r/');
+}
+
 
 describe("checkpointDatabase", () => {
 
@@ -243,7 +254,10 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBe(2);
             expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
-            expect(allTrackedFiles(capabilities, gitDir)).toEqual([`${DATABASE_SUBPATH}/_meta/format`]);
+            expect(allTrackedFiles(capabilities, gitDir)).toEqual([
+                `${DATABASE_SUBPATH}/_meta/current_replica`,
+                `${DATABASE_SUBPATH}/_meta/format`,
+            ]);
         } finally {
             await db.close();
         }
@@ -281,9 +295,9 @@ describe("checkpointDatabase", () => {
             const tracked = allTrackedFiles(capabilities, gitDir);
             expect(tracked).toContain(`${DATABASE_SUBPATH}/_meta/format`);
             expect(tracked).toContain(
-                `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["one"]}')}`
+                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["one"]}')}`
             );
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/x/meta/version`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/r/meta/version`);
         } finally {
             await db.close();
         }
@@ -302,7 +316,7 @@ describe("checkpointDatabase", () => {
                 fileContentAtHead(
                     capabilities,
                     gitDir,
-                    `${DATABASE_SUBPATH}/${keyToRelativePath('!x!!values!{"head":"event","args":["hello"]}')}`
+                    `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["hello"]}')}`
                 )
             ).toBe(JSON.stringify({ message: "hello-content" }, null, 2));
         } finally {
@@ -342,8 +356,8 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/${keyToRelativePath(oldKey)}`);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/${keyToRelativePath(newKey)}`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(oldKey)}`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(newKey)}`);
         } finally {
             await db.close();
         }
@@ -360,7 +374,7 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
             ).toBe(JSON.stringify({ version: "version-2" }, null, 2));
         } finally {
             await db.close();
@@ -382,7 +396,7 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(2);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
             ).toBe(JSON.stringify({ value: "base" }, null, 2));
         } finally {
             await db.close();
@@ -415,7 +429,7 @@ describe("runMigrationInTransaction", () => {
                 "pre-migration: 1 → 2",
             ]);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${keyToRelativePath(key)}`)
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
             ).toBe(JSON.stringify({ version: "after" }, null, 2));
         } finally {
             await db.close();

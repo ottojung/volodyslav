@@ -1,6 +1,7 @@
 const path = require("path");
 const {
     synchronizeNoLock,
+    isInvalidSnapshotReplicaError,
     getRootDatabase,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
@@ -22,6 +23,19 @@ function getTestCapabilities() {
 }
 
 /**
+ * Maps a raw LevelDB key's filesystem path to the rendered path used in snapshots.
+ * Active replica (x or y) entries are stored under the `r/` alias.
+ * `_meta` entries remain under `_meta/`.
+ * @param {string} key
+ * @returns {string}
+ */
+function renderedKeyPath(key) {
+    return keyToRelativePath(key).replace(/^[xy]\//, 'r/');
+}
+
+const CURRENT_REPLICA_META_KEY = "!_meta!current_replica";
+
+/**
  * @param {object} capabilities
  * @param {string} hostname
  * @param {Array<[string, *]>} entries
@@ -39,11 +53,15 @@ async function pushRemoteRepositoryBranch(capabilities, hostname, entries) {
             "--",
             workTree
         );
-        for (const [key, value] of entries) {
+        const entriesToWrite = [...entries];
+        if (!entriesToWrite.some(([key]) => key === CURRENT_REPLICA_META_KEY)) {
+            entriesToWrite.push([CURRENT_REPLICA_META_KEY, "x"]);
+        }
+        for (const [key, value] of entriesToWrite) {
             const filePath = path.join(
                 workTree,
                 DATABASE_SUBPATH,
-                ...keyToRelativePath(key).split("/")
+                ...renderedKeyPath(key).split("/")
             );
             const file = await capabilities.creator.createFile(filePath);
             await capabilities.writer.writeFile(file, JSON.stringify(value));
@@ -133,7 +151,7 @@ describe("synchronizeNoLock", () => {
             const renderedFile = path.join(
                 clonedRemote,
                 DATABASE_SUBPATH,
-                ...keyToRelativePath(eventKey).split("/")
+                ...renderedKeyPath(eventKey).split("/")
             );
             expect(await capabilities.reader.readFileAsText(renderedFile)).toBe(
                 JSON.stringify({ source: "local" }, null, 2)
@@ -293,6 +311,93 @@ describe("synchronizeNoLock", () => {
             expect(entries.get(bobKey)).toEqual({ source: "bob" });
         } finally {
             await reopened.close();
+        }
+    });
+
+    test("throws InvalidSnapshotReplicaError when snapshot lacks _meta/current_replica", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = `${capabilities.environment.hostname()}-main`;
+        const remotePath = capabilities.environment.generatorsRepository();
+        const workTree = await capabilities.creator.createTemporaryDirectory();
+        try {
+            await capabilities.git.call("init", "--bare", "--", remotePath);
+            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
+
+            const formatFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
+            );
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v1"));
+
+            await capabilities.git.call("-C", workTree, "add", "--all");
+            await capabilities.git.call(
+                "-C",
+                workTree,
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "commit",
+                "-m",
+                "seed snapshot without current_replica"
+            );
+            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
+            await capabilities.git.call("-C", workTree, "push", "origin", branch);
+
+            let error;
+            try {
+                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+            } catch (caught) {
+                error = caught;
+            }
+            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
+        } finally {
+            await capabilities.deleter.deleteDirectory(workTree);
+        }
+    });
+
+    test("throws InvalidSnapshotReplicaError when snapshot _meta/current_replica is invalid JSON", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = `${capabilities.environment.hostname()}-main`;
+        const remotePath = capabilities.environment.generatorsRepository();
+        const workTree = await capabilities.creator.createTemporaryDirectory();
+        try {
+            await capabilities.git.call("init", "--bare", "--", remotePath);
+            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
+
+            const formatFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
+            );
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v1"));
+
+            const currentReplicaFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
+            );
+            await capabilities.writer.writeFile(currentReplicaFile, "not-json");
+
+            await capabilities.git.call("-C", workTree, "add", "--all");
+            await capabilities.git.call(
+                "-C",
+                workTree,
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "commit",
+                "-m",
+                "seed invalid current_replica"
+            );
+            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
+            await capabilities.git.call("-C", workTree, "push", "origin", branch);
+
+            let error;
+            try {
+                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+            } catch (caught) {
+                error = caught;
+            }
+            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
+        } finally {
+            await capabilities.deleter.deleteDirectory(workTree);
         }
     });
 });

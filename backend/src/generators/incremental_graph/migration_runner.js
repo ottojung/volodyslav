@@ -193,8 +193,12 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *
+ * Uses a replica-pointer-swap strategy: writes to the inactive replica, then
+ * atomically switches the pointer. A failed migration leaves the active replica
+ * unchanged.
+ *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
- * @param {RootDatabase} rootDatabase - Opened root database bound to the "x" namespace
+ * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @returns {Promise<void>}
@@ -213,7 +217,7 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  * The unlocked version of runMigration. Should not be called directly.
  *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
- * @param {RootDatabase} rootDatabase - Opened root database bound to the "x" namespace
+ * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @returns {Promise<void>}
@@ -244,14 +248,14 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`,
         `post-migration: ${String(currentVersion)}`,
         async () => {
-            // Create the staging namespace ("y") from the same underlying database.
-            const nextDb = rootDatabase.withNamespace('y');
+            const fromReplica = rootDatabase.currentReplicaName();
+            const toReplica = rootDatabase.otherReplicaName();
 
-            // Clear "y" before migration so a crash-retry starts clean.
-            await nextDb.clearStorage();
+            // Clear target replica so no stale keys survive from previous attempts.
+            await rootDatabase.clearReplicaStorage(toReplica);
 
-            const prevStorage = rootDatabase.getSchemaStorage();
-            const newStorage = nextDb.getSchemaStorage();
+            const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
+            const newStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
             // Compile new schema and build head index for compatibility checks.
             const compiledNodes = nodeDefs.map(compileNodeDef);
@@ -274,14 +278,15 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
 
-            // Apply decisions atomically to the staging namespace ("y").
+            // Apply decisions atomically to the target replica.
             await applyDecisions(prevStorage, newStorage, decisions);
 
-            // Write the version into y's meta BEFORE the swap so it is included in the atomic copy.
-            await nextDb.setMetaVersion(rootDatabase.version);
+            // Write the version into the target replica's meta.
+            await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
 
-            // Atomically swap "y" into "x": delete x/*, copy y/* → x/* (including meta.version), delete y/*.
-            await rootDatabase.replaceContentsFrom(nextDb);
+            // Switch the active replica pointer to the target replica.
+            // This is the atomic cutover: only runs after all writes succeed.
+            await rootDatabase.switchToReplica(toReplica);
         }
     );
 

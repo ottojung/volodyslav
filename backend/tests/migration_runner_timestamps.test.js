@@ -58,22 +58,17 @@ function makeSchemaStorage() {
     };
 }
 
-function makeYDb(storage) {
-    const yDb = {
-        getSchemaStorage() { return storage; },
-        async clearStorage() {},
-        async setMetaVersion(_v) {},
-    };
-    return { yDb };
-}
-
-function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yDb }) {
+function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
         async getMetaVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
-        withNamespace(_ns) { return yDb; },
-        async replaceContentsFrom(_sourceDb) {},
+        currentReplicaName() { return 'x'; },
+        otherReplicaName() { return 'y'; },
+        schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+        async clearReplicaStorage(_name) {},
+        async setMetaVersionForReplica(_name, _v) {},
+        async switchToReplica(_name) {},
         async setMetaVersion(_v) {},
     };
     return { rootDatabase };
@@ -146,10 +141,8 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -166,10 +159,8 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -187,10 +178,8 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -208,10 +197,8 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -235,10 +222,8 @@ describe("keep decision: timestamps copied to new storage", () => {
             inputCounters: [1],
         });
         await xStorage.revdeps.put(nkA, [nkB]);
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
@@ -263,10 +248,8 @@ describe("override decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -283,10 +266,8 @@ describe("override decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -304,10 +285,8 @@ describe("override decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: ts });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -331,10 +310,8 @@ describe("invalidate decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -351,10 +328,8 @@ describe("invalidate decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -372,10 +347,8 @@ describe("invalidate decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: ts, freshness: "up-to-date" });
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
@@ -406,10 +379,8 @@ describe("delete decision: timestamps not present in new storage", () => {
             inputCounters: [1],
         });
         await xStorage.revdeps.put(nkA, [nkB]);
-
-        const { yDb } = makeYDb(yStorage);
         const { rootDatabase } = makeRootDatabaseMock({
-            prevVersion: "1", currentVersion: "2", xStorage, yDb,
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
         // Deleting both; B auto-deleted because A is deleted (fan-out propagation)
@@ -447,9 +418,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
@@ -465,9 +434,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
@@ -483,9 +450,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
@@ -502,9 +467,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         // Override A; B is automatically invalidated (it depends on A)
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
@@ -521,9 +484,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.invalidate(nkA);
@@ -547,9 +508,7 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async () => {
@@ -569,9 +528,7 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
 
         await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, { timestamps: NEW_TIMESTAMP });
-
-        const { yDb } = makeYDb(yStorage);
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
