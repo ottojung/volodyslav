@@ -730,9 +730,8 @@ async function makeRootDatabase(capabilities, databasePath) {
     // Read the current replica pointer.
     const storedReplica = await rootMetaSublevel.get('current_replica');
     if (storedReplica === undefined) {
-        // Legacy database without a replica pointer: default to "x" and heal.
-        await rootMetaSublevel.put('current_replica', 'x');
-        return new RootDatabaseClass(db, version, 'x');
+        await db.close();
+        throw new InvalidReplicaPointerError("none");
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
         await db.close();
