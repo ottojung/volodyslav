@@ -4,7 +4,7 @@
  */
 
 const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, versionToString, stringToVersion } = require('./types');
-const { makeRootDatabase, isRootDatabase } = require('./root_database');
+const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const {
     checkpointDatabase,
@@ -36,6 +36,8 @@ module.exports = {
     makeRootDatabase,
     isRootDatabase,
     isDatabaseInitializationError,
+    isInvalidReplicaPointerError,
+    isSwitchReplicaError,
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,

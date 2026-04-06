@@ -386,13 +386,12 @@ describe('generators/database', () => {
             }
         });
 
-        test('withNamespace creates an independent namespace', async () => {
+        test('schemaStorageForReplica returns independent storages for x and y', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                const xStorage = db.getSchemaStorage();
-                const yDb = db.withNamespace('y');
-                const yStorage = yDb.getSchemaStorage();
+                const xStorage = db.schemaStorageForReplica('x');
+                const yStorage = db.schemaStorageForReplica('y');
 
                 await xStorage.values.put('key', { type: 'all_events', events: [] });
                 const fromX = await xStorage.values.get('key');

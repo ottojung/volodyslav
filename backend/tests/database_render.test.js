@@ -458,6 +458,7 @@ describe('renderToFilesystem()', () => {
             ].sort((a, b) => a.relPath.localeCompare(b.relPath));
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
+                { relPath: '_meta/current_replica', content: JSON.stringify('x') },
                 { relPath: '_meta/format', content: JSON.stringify('xy-v1') },
                 { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
@@ -1323,8 +1324,8 @@ describe('additional reliability tests', () => {
             await db._rawPutAll(entries);
             expect(batchSpy).toHaveBeenCalledTimes(2);
             const storedEntries = await collectRawEntries(db);
-            // +1 accounts for the format marker that getRootDatabase() writes on open.
-            expect(storedEntries.size).toBe(entriesCount + 1);
+            // +2 accounts for the format marker and current_replica that getRootDatabase() writes on open.
+            expect(storedEntries.size).toBe(entriesCount + 2);
             expect(
                 storedEntries.get(
                     `!x!!values!{"head":"event","args":["${entriesCount - 1}"]}`

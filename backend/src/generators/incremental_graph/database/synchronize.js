@@ -112,11 +112,12 @@ async function synchronizeNoLock(capabilities, options) {
             remoteLocation,
             async (store) => {
                 const workTree = await store.getWorkTree();
+                const activeReplica = rootDatabase.currentReplicaName();
                 await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
-                    path.join(workTree, DATABASE_SUBPATH, 'x'),
-                    'x'
+                    path.join(workTree, DATABASE_SUBPATH, 'r'),
+                    activeReplica
                 );
                 await scanFromFilesystem(
                     capabilities,

@@ -64,22 +64,17 @@ function makeSchemaStorage() {
     };
 }
 
-function makeYDb(storage) {
-    const yDb = {
-        getSchemaStorage() { return storage; },
-        async clearStorage() {},
-        async setMetaVersion(_v) {},
-    };
-    return { yDb };
-}
-
-function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yDb }) {
+function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
         async getMetaVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
-        withNamespace(_ns) { return yDb; },
-        async replaceContentsFrom(_sourceDb) {},
+        currentReplicaName() { return 'x'; },
+        otherReplicaName() { return 'y'; },
+        schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+        async clearReplicaStorage(_name) {},
+        async setMetaVersionForReplica(_name, _v) {},
+        async switchToReplica(_name) {},
         async setMetaVersion(_v) {},
     };
     return { rootDatabase };
@@ -150,12 +145,12 @@ describe("migration revdeps ordering", () => {
         await xStorage.freshness.put(inputKey, "up-to-date");
 
         const yStorage = makeSchemaStorage();
-        const { yDb } = makeYDb(yStorage);
+        // yStorage already declared
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
             currentVersion: "2",
             xStorage,
-            yDb,
+            yStorage,
         });
 
         const nodeDefs = [
@@ -257,20 +252,20 @@ describe("migration revdeps ordering", () => {
 
         const yStorage1 = makeSchemaStorage();
         const yStorage2 = makeSchemaStorage();
-        const { yDb: yDb1 } = makeYDb(yStorage1);
-        const { yDb: yDb2 } = makeYDb(yStorage2);
+        // yStorage1 already declared
+        // yStorage2 already declared
 
         const { rootDatabase: rootDatabase1 } = makeRootDatabaseMock({
             prevVersion: "1",
             currentVersion: "2",
             xStorage: await makeStorageWithDeps(),
-            yDb: yDb1,
+            yStorage: yStorage1,
         });
         const { rootDatabase: rootDatabase2 } = makeRootDatabaseMock({
             prevVersion: "1",
             currentVersion: "2",
             xStorage: await makeStorageWithDeps(),
-            yDb: yDb2,
+            yStorage: yStorage2,
         });
 
         async function keepAll(storage) {
@@ -315,12 +310,12 @@ describe("migration revdeps ordering", () => {
         }
 
         const yStorage = makeSchemaStorage();
-        const { yDb } = makeYDb(yStorage);
+        // yStorage already declared
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
             currentVersion: "2",
             xStorage,
-            yDb,
+            yStorage,
         });
 
         const nodeDefs = [

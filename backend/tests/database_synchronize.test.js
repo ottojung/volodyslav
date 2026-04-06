@@ -22,6 +22,17 @@ function getTestCapabilities() {
 }
 
 /**
+ * Maps a raw LevelDB key's filesystem path to the rendered path used in snapshots.
+ * Active replica (x or y) entries are stored under the `r/` alias.
+ * `_meta` entries remain under `_meta/`.
+ * @param {string} key
+ * @returns {string}
+ */
+function renderedKeyPath(key) {
+    return keyToRelativePath(key).replace(/^[xy]\//, 'r/');
+}
+
+/**
  * @param {object} capabilities
  * @param {string} hostname
  * @param {Array<[string, *]>} entries
@@ -43,7 +54,7 @@ async function pushRemoteRepositoryBranch(capabilities, hostname, entries) {
             const filePath = path.join(
                 workTree,
                 DATABASE_SUBPATH,
-                ...keyToRelativePath(key).split("/")
+                ...renderedKeyPath(key).split("/")
             );
             const file = await capabilities.creator.createFile(filePath);
             await capabilities.writer.writeFile(file, JSON.stringify(value));
@@ -133,7 +144,7 @@ describe("synchronizeNoLock", () => {
             const renderedFile = path.join(
                 clonedRemote,
                 DATABASE_SUBPATH,
-                ...keyToRelativePath(eventKey).split("/")
+                ...renderedKeyPath(eventKey).split("/")
             );
             expect(await capabilities.reader.readFileAsText(renderedFile)).toBe(
                 JSON.stringify({ source: "local" }, null, 2)

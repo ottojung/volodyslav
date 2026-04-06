@@ -111,7 +111,9 @@ function pathToLiveDatabase(capabilities) {
  * Record the current rendered state of the database as a git commit.
  *
  * The rendered snapshot is written into `generators-database/rendered/` inside
- * a gitstore transaction. If no files have changed since the last commit, the
+ * a gitstore transaction. The active replica is rendered under `r/` so that
+ * the snapshot always reflects the current live data regardless of which
+ * replica is active. If no files have changed since the last commit, the
  * call is a no-op (no empty commit is created). The git repository is created
  * automatically on the first call.
  *
@@ -151,11 +153,12 @@ async function checkpointDatabase(
             initialState,
             async (store) => {
                 const workTree = await store.getWorkTree();
+                const activeReplica = database.currentReplicaName();
                 await renderToFilesystem(
                     capabilities,
                     database,
-                    path.join(workTree, DATABASE_SUBPATH, 'x'),
-                    'x'
+                    path.join(workTree, DATABASE_SUBPATH, 'r'),
+                    activeReplica
                 );
                 await renderToFilesystem(
                     capabilities,
@@ -181,6 +184,10 @@ async function checkpointDatabase(
  * Both commits happen in the same transaction worktree, so any failure aborts
  * the overall transaction without pushing a partially checkpointed history.
  *
+ * The pre-migration snapshot renders the active replica (before the switch).
+ * The post-migration snapshot renders the newly active replica (after the switch).
+ * Both are rendered to `r/` so the snapshot path is stable across migrations.
+ *
  * @template T
  * @param {CheckpointCapabilities} capabilities
  * @param {RootDatabase} rootDatabase
@@ -205,8 +212,8 @@ async function runMigrationInTransaction(
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
-                path.join(workTree, DATABASE_SUBPATH, 'x'),
-                'x'
+                path.join(workTree, DATABASE_SUBPATH, 'r'),
+                rootDatabase.currentReplicaName()
             );
             await renderToFilesystem(
                 capabilities,
@@ -219,8 +226,8 @@ async function runMigrationInTransaction(
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
-                path.join(workTree, DATABASE_SUBPATH, 'x'),
-                'x'
+                path.join(workTree, DATABASE_SUBPATH, 'r'),
+                rootDatabase.currentReplicaName()
             );
             await renderToFilesystem(
                 capabilities,

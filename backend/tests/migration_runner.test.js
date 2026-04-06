@@ -62,20 +62,30 @@ function makeSchemaStorage() {
  * @param {string|undefined} opts.prevVersion - what getMetaVersion returns
  * @param {string} opts.currentVersion - version field on rootDatabase
  * @param {object} opts.xStorage - the x-namespace SchemaStorage
- * @param {object} opts.yDb - what withNamespace("y") returns
- * @returns {{ rootDatabase: any, replaceContentsFromCalled: boolean }}
+ * @param {object} opts.yStorage - the y-namespace SchemaStorage
+ * @returns {{ rootDatabase: any, switchToReplicaCalled: boolean }}
  */
-function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yDb }) {
-    let replaceContentsFromCalled = false;
+function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
+    let switchToReplicaCalled = false;
+    let switchToReplicaCalledWith = undefined;
+    let clearReplicaStorageCalledWith = undefined;
+    let setMetaVersionForReplicaCalledWith = undefined;
     let setMetaVersionCalledWith = undefined;
 
     const rootDatabase = {
         version: currentVersion,
         async getMetaVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
-        withNamespace(_ns) { return yDb; },
-        async replaceContentsFrom(_sourceDb) {
-            replaceContentsFromCalled = true;
+        currentReplicaName() { return 'x'; },
+        otherReplicaName() { return 'y'; },
+        schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+        async clearReplicaStorage(name) { clearReplicaStorageCalledWith = name; },
+        async setMetaVersionForReplica(name, v) {
+            setMetaVersionForReplicaCalledWith = { name, v };
+        },
+        async switchToReplica(name) {
+            switchToReplicaCalled = true;
+            switchToReplicaCalledWith = name;
         },
         async setMetaVersion(v) {
             setMetaVersionCalledWith = v;
@@ -84,26 +94,23 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yDb }) {
 
     return {
         rootDatabase,
-        get replaceContentsFromCalled() { return replaceContentsFromCalled; },
+        get switchToReplicaCalled() { return switchToReplicaCalled; },
+        get switchToReplicaCalledWith() { return switchToReplicaCalledWith; },
+        get clearReplicaStorageCalledWith() { return clearReplicaStorageCalledWith; },
+        get setMetaVersionForReplicaCalledWith() { return setMetaVersionForReplicaCalledWith; },
         get setMetaVersionCalledWith() { return setMetaVersionCalledWith; },
     };
 }
 
+/**
+ * Creates a yStorage and wraps it for backward compatibility with tests that
+ * previously used makeYDb to create a yDb object.
+ * Now simply returns the storage as yStorage.
+ * @param {object} storage - The y-namespace SchemaStorage
+ * @returns {{ yStorage: object }}
+ */
 function makeYDb(storage) {
-    let clearStorageCalled = false;
-    let setMetaVersionCalledWith = undefined;
-
-    const yDb = {
-        getSchemaStorage() { return storage; },
-        async clearStorage() { clearStorageCalled = true; },
-        async setMetaVersion(v) { setMetaVersionCalledWith = v; },
-    };
-
-    return {
-        yDb,
-        get clearStorageCalled() { return clearStorageCalled; },
-        get setMetaVersionCalledWith() { return setMetaVersionCalledWith; },
-    };
+    return { yStorage: storage };
 }
 
 /**
@@ -129,12 +136,11 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
     const xStorage = makeSchemaStorage();
     const yStorage = makeSchemaStorage();
     const nodeKey = toJsonKey("A");
-    const { yDb } = makeYDb(yStorage);
     const { rootDatabase } = makeRootDatabaseMock({
         prevVersion,
         currentVersion,
         xStorage,
-        yDb,
+        yStorage,
     });
     const nodeDefs = [{
         output: "A",
@@ -158,12 +164,12 @@ describe("runMigration", () => {
         await previousStorage.freshness.put(nodeKey, "up-to-date");
         await previousStorage.counters.put(nodeKey, 5);
 
-        const { yDb } = makeYDb(currentStorage);
+        const { yStorage } = makeYDb(currentStorage);
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "previous",
             currentVersion: "current",
             xStorage: previousStorage,
-            yDb,
+            yStorage,
         });
 
         const nodeDefs = [{
@@ -187,30 +193,30 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const currentStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(currentStorage);
+            const { yStorage } = makeYDb(currentStorage);
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
                 xStorage: previousStorage,
-                yDb,
+                yStorage,
             });
 
             await runMigration(capabilities, mock.rootDatabase, [], async (_storage) => {
                 throw new Error("callback must not be called for a fresh database");
             });
 
-            expect(mock.replaceContentsFromCalled).toBe(false);
+            expect(mock.switchToReplicaCalled).toBe(false);
         });
 
         test("records current version via setMetaVersion so future upgrades are detected", async () => {
               const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(makeSchemaStorage());
+            const { yStorage } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
                 xStorage,
-                yDb,
+                yStorage,
             });
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
@@ -221,12 +227,12 @@ describe("runMigration", () => {
         test("does not call runMigrationInTransaction", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(makeSchemaStorage());
+            const { yStorage } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
                 xStorage,
-                yDb,
+                yStorage,
             });
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
@@ -239,30 +245,30 @@ describe("runMigration", () => {
         test("skips migration and does not call replaceContentsFrom", async () => {
           const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(makeSchemaStorage());
+            const { yStorage } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "1.0.0",
                 xStorage,
-                yDb,
+                yStorage,
             });
 
             await runMigration(capabilities, mock.rootDatabase, [], async (_storage) => {
                 throw new Error("callback must not be called when version matches");
             });
 
-            expect(mock.replaceContentsFromCalled).toBe(false);
+            expect(mock.switchToReplicaCalled).toBe(false);
         });
 
         test("does not call runMigrationInTransaction", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(makeSchemaStorage());
+            const { yStorage } = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "1.0.0",
                 xStorage,
-                yDb,
+                yStorage,
             });
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
@@ -279,12 +285,11 @@ describe("runMigration", () => {
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
             const yStorage = makeSchemaStorage();
-            const yMock = makeYDb(yStorage);
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage,
-                yDb: yMock.yDb,
+                yStorage,
             });
 
             const nodeDefs = [{
@@ -299,35 +304,32 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(yMock.clearStorageCalled).toBe(true);
+            expect(mock.clearReplicaStorageCalledWith).toBe('y');
         });
 
-        test("writes version to y before calling replaceContentsFrom", async () => {
+        test("writes version to y before calling switchToReplica", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-            const yStorage = makeSchemaStorage();
-            const yMock = makeYDb(yStorage);
-
             const callOrder = [];
-            const yDb = {
-                ...yMock.yDb,
-                async setMetaVersion(v) {
-                    callOrder.push({ action: "setMetaVersion", arg: v });
-                },
-            };
-
-            let replaceContentsFromCalled = false;
+            let switchToReplicaCalled = false;
+            const yStorage = makeSchemaStorage();
             const rootDatabase = {
                 version: "2.0.0",
                 async getMetaVersion() { return "1.0.0"; },
                 getSchemaStorage() { return xStorage; },
-                withNamespace(_ns) { return yDb; },
-                async replaceContentsFrom(_sourceDb) {
-                    callOrder.push({ action: "replaceContentsFrom" });
-                    replaceContentsFromCalled = true;
+                currentReplicaName() { return 'x'; },
+                otherReplicaName() { return 'y'; },
+                schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+                async clearReplicaStorage(_name) {},
+                async setMetaVersionForReplica(name, v) {
+                    callOrder.push({ action: "setMetaVersionForReplica", name, arg: v });
+                },
+                async switchToReplica(name) {
+                    callOrder.push({ action: "switchToReplica", name });
+                    switchToReplicaCalled = true;
                 },
                 async setMetaVersion(_v) {},
             };
@@ -344,12 +346,12 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(replaceContentsFromCalled).toBe(true);
-            expect(callOrder[0]).toEqual({ action: "setMetaVersion", arg: "2.0.0" });
-            expect(callOrder[1]).toEqual({ action: "replaceContentsFrom" });
+            expect(switchToReplicaCalled).toBe(true);
+            expect(callOrder[0]).toEqual({ action: "setMetaVersionForReplica", name: "y", arg: "2.0.0" });
+            expect(callOrder[1]).toEqual({ action: "switchToReplica", name: "y" });
         });
 
-        test("calls replaceContentsFrom with the y database", async () => {
+        test("calls switchToReplica with 'y' on successful migration", async () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -359,12 +361,11 @@ describe("runMigration", () => {
             await previousStorage.counters.put(nodeKey, 2);
 
             const yStorage = makeSchemaStorage();
-            const yMock = makeYDb(yStorage);
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage: previousStorage,
-                yDb: yMock.yDb,
+                yStorage,
             });
 
             const nodeDefs = [{
@@ -379,7 +380,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(mock.replaceContentsFromCalled).toBe(true);
+            expect(mock.switchToReplicaCalled).toBe(true);
         });
 
         test("calls runMigrationInTransaction once for the whole migration", async () => {
@@ -429,7 +430,7 @@ describe("runMigration", () => {
             expect(postMessage).toContain("2.0.0");
         });
 
-        test("pre-migration commit happens before replaceContentsFrom inside the transaction", async () => {
+        test("pre-migration commit happens before switchToReplica inside the transaction", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.runMigrationInTransaction.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
@@ -443,13 +444,16 @@ describe("runMigration", () => {
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
             const yStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(yStorage);
             const rootDatabase = {
                 version: "2.0.0",
                 async getMetaVersion() { return "1.0.0"; },
                 getSchemaStorage() { return xStorage; },
-                withNamespace(_ns) { return yDb; },
-                async replaceContentsFrom(_source) { callOrder.push("replaceContentsFrom"); },
+                currentReplicaName() { return 'x'; },
+                otherReplicaName() { return 'y'; },
+                schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+                async clearReplicaStorage(_name) {},
+                async setMetaVersionForReplica(_name, _v) {},
+                async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
                 async setMetaVersion(_v) {},
             };
             const nodeDefs = [{
@@ -465,12 +469,12 @@ describe("runMigration", () => {
             });
 
             const preIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:pre-migration"));
-            const replaceIdx = callOrder.indexOf("replaceContentsFrom");
+            const switchIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("switchToReplica:"));
             expect(preIdx).toBeGreaterThanOrEqual(0);
-            expect(replaceIdx).toBeGreaterThan(preIdx);
+            expect(switchIdx).toBeGreaterThan(preIdx);
         });
 
-        test("post-migration commit happens after replaceContentsFrom inside the transaction", async () => {
+        test("post-migration commit happens after switchToReplica inside the transaction", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.runMigrationInTransaction.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
@@ -484,13 +488,16 @@ describe("runMigration", () => {
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
             const yStorage = makeSchemaStorage();
-            const { yDb } = makeYDb(yStorage);
             const rootDatabase = {
                 version: "2.0.0",
                 async getMetaVersion() { return "1.0.0"; },
                 getSchemaStorage() { return xStorage; },
-                withNamespace(_ns) { return yDb; },
-                async replaceContentsFrom(_source) { callOrder.push("replaceContentsFrom"); },
+                currentReplicaName() { return 'x'; },
+                otherReplicaName() { return 'y'; },
+                schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+                async clearReplicaStorage(_name) {},
+                async setMetaVersionForReplica(_name, _v) {},
+                async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
                 async setMetaVersion(_v) {},
             };
             const nodeDefs = [{
@@ -506,8 +513,8 @@ describe("runMigration", () => {
             });
 
             const postIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:post-migration"));
-            const replaceIdx = callOrder.indexOf("replaceContentsFrom");
-            expect(postIdx).toBeGreaterThan(replaceIdx);
+            const switchIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("switchToReplica:"));
+            expect(postIdx).toBeGreaterThan(switchIdx);
         });
     });
 
@@ -523,7 +530,7 @@ describe("runMigration", () => {
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage,
-                yDb: yMock.yDb,
+                yStorage: yMock.yStorage,
             });
 
             const nodeDefs = [{
@@ -541,7 +548,7 @@ describe("runMigration", () => {
                 })
             ).rejects.toBe(callbackError);
 
-            expect(mock.replaceContentsFromCalled).toBe(false);
+            expect(mock.switchToReplicaCalled).toBe(false);
         });
 
         test("finalize throws UndecidedNodesError when a node has no decision: replaceContentsFrom NOT called", async () => {
@@ -555,7 +562,7 @@ describe("runMigration", () => {
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage,
-                yDb: yMock.yDb,
+                yStorage: yMock.yStorage,
             });
 
             const nodeDefs = [{
@@ -577,21 +584,21 @@ describe("runMigration", () => {
             }
 
             expect(isUndecidedNodes(caughtError)).toBe(true);
-            expect(mock.replaceContentsFromCalled).toBe(false);
+            expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("callback throws: y namespace is already cleared (clearStorage was called)", async () => {
+        test("callback throws: y namespace is already cleared (clearReplicaStorage was called)", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-            const yMock = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage,
-                yDb: yMock.yDb,
+                yStorage,
             });
 
             const nodeDefs = [{
@@ -609,7 +616,7 @@ describe("runMigration", () => {
             ).rejects.toThrow("intentional failure");
 
             // y was still cleared before the callback ran
-            expect(yMock.clearStorageCalled).toBe(true);
+            expect(mock.clearReplicaStorageCalledWith).toBe('y');
         });
 
         test("callback throws: transaction attempts the pre-migration commit step before failing", async () => {
@@ -769,8 +776,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 42, freshness: "up-to-date" });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         await expect(
@@ -787,8 +794,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 11 });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         const rejection = new Error("async rejection");
@@ -808,8 +815,8 @@ describe("x-namespace state preserved on migration failure", () => {
         await populateNode(xStorage, nkA, { counter: 5 });
         await populateNode(xStorage, nkB, { counter: 9, freshness: "potentially-outdated" });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         // Callback only decides A, leaves B undecided → UndecidedNodesError
@@ -831,8 +838,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         // Delete only A but keep B → fan-in violation on C
@@ -855,8 +862,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 3 });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         // keep then invalidate on the same node → DecisionConflictError
@@ -873,7 +880,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("batch() throws in applyDecisions: x-namespace data unchanged, replaceContentsFrom not called", async () => {
+    test("batch() throws in applyDecisions: x-namespace data unchanged, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -885,44 +892,48 @@ describe("x-namespace state preserved on migration failure", () => {
         const batchError = new Error("batch write failure");
         yStorage.batch = async () => { throw batchError; };
 
-        const { yDb } = makeYDb(yStorage);
-        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(batchError);
 
-        expect(mock.replaceContentsFromCalled).toBe(false);
+        expect(mock.switchToReplicaCalled).toBe(false);
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("y.setMetaVersion throws: x-namespace data unchanged, replaceContentsFrom not called", async () => {
+    test("setMetaVersionForReplica throws: x-namespace data unchanged, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 7 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        const metaError = new Error("setMetaVersion failure");
+        const metaError = new Error("setMetaVersionForReplica failure");
         const yStorage = makeSchemaStorage();
-        const yDb = {
-            getSchemaStorage: () => yStorage,
-            async clearStorage() {},
-            async setMetaVersion() { throw metaError; },
+        const rootDatabase = {
+            version: "2",
+            async getMetaVersion() { return "1"; },
+            getSchemaStorage() { return xStorage; },
+            currentReplicaName() { return 'x'; },
+            otherReplicaName() { return 'y'; },
+            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+            async clearReplicaStorage(_name) {},
+            async setMetaVersionForReplica() { throw metaError; },
+            async switchToReplica() {},
+            async setMetaVersion(_v) {},
         };
-        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
+            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(metaError);
 
-        expect(mock.replaceContentsFromCalled).toBe(false);
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("replaceContentsFrom throws: error propagates and x had not been modified before the throw", async () => {
+    test("switchToReplica throws: error propagates and x had not been modified before the throw", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -931,18 +942,17 @@ describe("x-namespace state preserved on migration failure", () => {
 
         const swapError = new Error("swap failed");
         const yStorage = makeSchemaStorage();
-        const yDb = {
-            getSchemaStorage: () => yStorage,
-            async clearStorage() {},
-            async setMetaVersion() {},
-        };
-        // Override replaceContentsFrom to throw without touching xStorage
+        // Override switchToReplica to throw without touching xStorage
         const rootDatabase = {
             version: "2",
             async getMetaVersion() { return "1"; },
             getSchemaStorage() { return xStorage; },
-            withNamespace(_ns) { return yDb; },
-            async replaceContentsFrom() { throw swapError; },
+            currentReplicaName() { return 'x'; },
+            otherReplicaName() { return 'y'; },
+            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+            async clearReplicaStorage(_name) {},
+            async setMetaVersionForReplica(_name, _v) {},
+            async switchToReplica() { throw swapError; },
             async setMetaVersion() {},
         };
 
@@ -951,7 +961,7 @@ describe("x-namespace state preserved on migration failure", () => {
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(swapError);
 
-        // x was never modified by migration code — only replaceContentsFrom would do that
+        // x was never modified by migration code — only switchToReplica would do that
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
@@ -962,8 +972,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         // Only decide A; B is left undecided
@@ -985,8 +995,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, rootDatabase, makeTwoNodeDefs(), async (storage) => {
@@ -1010,8 +1020,8 @@ describe("x-namespace state preserved on migration failure", () => {
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
@@ -1036,8 +1046,8 @@ describe("x.setMetaVersion not called on migration failure", () => {
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
@@ -1053,8 +1063,8 @@ describe("x.setMetaVersion not called on migration failure", () => {
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         let caughtUndecided3;
         try {
@@ -1072,8 +1082,8 @@ describe("x.setMetaVersion not called on migration failure", () => {
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, mock.rootDatabase, makeFanInNodeDefs(), async (storage) => {
@@ -1137,8 +1147,8 @@ describe("error identity: exact thrown object propagates", () => {
         await populateNode(xStorage, nkA);
         await populateNode(xStorage, nkB);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         let caught;
         try {
@@ -1162,8 +1172,8 @@ describe("error identity: exact thrown object propagates", () => {
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         let caught;
         try {
@@ -1184,8 +1194,8 @@ describe("error identity: exact thrown object propagates", () => {
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         let caught;
         try {
@@ -1213,12 +1223,18 @@ describe("infrastructure failures", () => {
     test("getMetaVersion throws: error propagates before any migration work starts", async () => {
         const capabilities = await getTestCapabilities();
         const metaError = new Error("getMetaVersion failure");
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
         const rootDatabase = {
             version: "2",
             async getMetaVersion() { throw metaError; },
-            getSchemaStorage() { return makeSchemaStorage(); },
-            withNamespace(_ns) { return makeYDb(makeSchemaStorage()).yDb; },
-            async replaceContentsFrom() {},
+            getSchemaStorage() { return xStorage; },
+            currentReplicaName() { return 'x'; },
+            otherReplicaName() { return 'y'; },
+            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+            async clearReplicaStorage(_name) {},
+            async setMetaVersionForReplica(_name, _v) {},
+            async switchToReplica() {},
             async setMetaVersion() {},
         };
 
@@ -1233,28 +1249,34 @@ describe("infrastructure failures", () => {
         expect(capabilities.runMigrationInTransaction).not.toHaveBeenCalled();
     });
 
-    test("clearStorage throws: error propagates, callback never runs", async () => {
+    test("clearReplicaStorage throws: error propagates, callback never runs", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const clearError = new Error("clearStorage failure");
-        const yDb = {
-            getSchemaStorage() { return makeSchemaStorage(); },
-            async clearStorage() { throw clearError; },
+        const clearError = new Error("clearReplicaStorage failure");
+        const yStorage = makeSchemaStorage();
+        const rootDatabase = {
+            version: "2",
+            async getMetaVersion() { return "1"; },
+            getSchemaStorage() { return xStorage; },
+            currentReplicaName() { return 'x'; },
+            otherReplicaName() { return 'y'; },
+            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+            async clearReplicaStorage() { throw clearError; },
+            async setMetaVersionForReplica(_name, _v) {},
+            async switchToReplica() {},
             async setMetaVersion() {},
         };
-        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
 
         let callbackRan = false;
         await expect(
-            runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
+            runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async () => { callbackRan = true; })
         ).rejects.toBe(clearError);
 
         expect(callbackRan).toBe(false);
-        expect(mock.replaceContentsFromCalled).toBe(false);
     });
 
     test("runMigrationInTransaction setup throws: migration does not run, replaceContentsFrom not called", async () => {
@@ -1268,8 +1290,8 @@ describe("infrastructure failures", () => {
         // We need a fresh mock so we can check replaceContentsFromCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
         let callbackRan = false;
         await expect(
@@ -1280,7 +1302,7 @@ describe("infrastructure failures", () => {
         ).rejects.toBe(checkpointError);
 
         expect(callbackRan).toBe(false);
-        expect(freshMock.replaceContentsFromCalled).toBe(false);
+        expect(freshMock.switchToReplicaCalled).toBe(false);
     });
 
     test("runMigrationInTransaction setup throws: x-namespace data unchanged", async () => {
@@ -1293,8 +1315,8 @@ describe("infrastructure failures", () => {
         await populateNode(xStorage, nodeKey, { counter: 55 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
@@ -1320,8 +1342,8 @@ describe("infrastructure failures", () => {
         // Rebuild with a spy on replaceContentsFrom
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
         let caught;
         try {
@@ -1334,7 +1356,7 @@ describe("infrastructure failures", () => {
 
         // The error came from the post-checkpoint, but the migration DID complete
         expect(caught).toBe(postError);
-        expect(freshMock.replaceContentsFromCalled).toBe(true);
+        expect(freshMock.switchToReplicaCalled).toBe(true);
     });
 });
 
@@ -1343,14 +1365,14 @@ describe("infrastructure failures", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("retry after failure", () => {
-    test("failed migration followed by correct migration: second call applies migration and calls replaceContentsFrom", async () => {
+    test("failed migration followed by correct migration: second call applies migration and calls switchToReplica", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         // First attempt fails
         await expect(
@@ -1358,13 +1380,13 @@ describe("retry after failure", () => {
                 async () => { throw new Error("first attempt failure"); })
         ).rejects.toThrow("first attempt failure");
 
-        expect(mock.replaceContentsFromCalled).toBe(false);
+        expect(mock.switchToReplicaCalled).toBe(false);
 
         // Second attempt succeeds
         await runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
             async (storage) => { await storage.keep(nodeKey); });
 
-        expect(mock.replaceContentsFromCalled).toBe(true);
+        expect(mock.switchToReplicaCalled).toBe(true);
     });
 
     test("failed migration followed by correct migration: two pre/post checkpoint pairs are recorded", async () => {
@@ -1373,8 +1395,8 @@ describe("retry after failure", () => {
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false };
 
@@ -1401,8 +1423,8 @@ describe("retry after failure", () => {
         const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
-        const { yDb } = makeYDb(makeSchemaStorage());
-        const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yDb });
+        const { yStorage } = makeYDb(makeSchemaStorage());
+        const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         // First attempt: only decide A, B undecided → fail
         let caughtRetry;
@@ -1414,7 +1436,7 @@ describe("retry after failure", () => {
         } catch (e) { caughtRetry = e; }
         expect(isUndecidedNodes(caughtRetry)).toBe(true);
 
-        expect(mock.replaceContentsFromCalled).toBe(false);
+        expect(mock.switchToReplicaCalled).toBe(false);
 
         // Second attempt: correct, decides both nodes
         await runMigration(capabilities, mock.rootDatabase, makeTwoNodeDefs(), async (storage) => {
@@ -1422,6 +1444,6 @@ describe("retry after failure", () => {
             await storage.keep(nkB);
         });
 
-        expect(mock.replaceContentsFromCalled).toBe(true);
+        expect(mock.switchToReplicaCalled).toBe(true);
     });
 });
