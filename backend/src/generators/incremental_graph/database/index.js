@@ -13,7 +13,11 @@ const {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
-const { synchronizeNoLock } = require('./synchronize');
+const {
+    synchronizeNoLock,
+    InvalidSnapshotReplicaError,
+    isInvalidSnapshotReplicaError,
+} = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
 const {
     serializeNodeKey,
@@ -55,6 +59,8 @@ module.exports = {
     versionToString,
     stringToVersion,
     synchronizeNoLock,
+    InvalidSnapshotReplicaError,
+    isInvalidSnapshotReplicaError,
     renderToFilesystem,
     scanFromFilesystem,
     keyToRelativePath,

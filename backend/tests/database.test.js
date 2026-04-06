@@ -12,6 +12,7 @@ const {
     isDatabaseInitializationError,
     isInvalidReplicaPointerError,
     isSchemaBatchVersionError,
+    versionToString,
 } = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
@@ -42,6 +43,8 @@ function cleanup(tmpDir) {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 }
+
+const Y_META_VERSION_RAW_KEY = '!y!!meta!version';
 
 
 describe('generators/database', () => {
@@ -602,10 +605,32 @@ describe('generators/database', () => {
             }
         });
 
-        test('isSchemaBatchVersionError identifies version-mismatch errors', () => {
+        test('isSchemaBatchVersionError identifies version-mismatch errors', async () => {
             expect(isSchemaBatchVersionError({})).toBe(false);
             expect(isSchemaBatchVersionError(null)).toBe(false);
             expect(isSchemaBatchVersionError(new Error('other'))).toBe(false);
+
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                const yStorage = db.schemaStorageForReplica('y');
+                await db._rawPut(Y_META_VERSION_RAW_KEY, `${versionToString(db.version)}-mismatch`);
+
+                /** @type {unknown} */
+                let thrownError;
+                try {
+                    await yStorage.batch([
+                        yStorage.freshness.putOp('nodeA', 'up-to-date'),
+                    ]);
+                } catch (error) {
+                    thrownError = error;
+                }
+
+                expect(isSchemaBatchVersionError(thrownError)).toBe(true);
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
         });
     });
 });

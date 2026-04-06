@@ -40,6 +40,14 @@ class InvalidSnapshotReplicaError extends Error {
         this.filePath = filePath;
     }
 }
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidSnapshotReplicaError}
+ */
+function isInvalidSnapshotReplicaError(object) {
+    return object instanceof InvalidSnapshotReplicaError;
+}
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
@@ -136,15 +144,20 @@ async function synchronizeNoLock(capabilities, options) {
                 // used a different replica than the local pointer.
                 const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
                 const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
-                let snapshotReplica = rootDatabase.currentReplicaName();
-                if (await capabilities.checker.fileExists(currentReplicaFile)) {
-                    const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
-                    const parsed = JSON.parse(raw);
-                    if (parsed !== 'x' && parsed !== 'y') {
-                        throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
-                    }
-                    snapshotReplica = parsed;
+                if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
+                    throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile);
                 }
+                const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
+                let parsed;
+                try {
+                    parsed = JSON.parse(raw);
+                } catch {
+                    throw new InvalidSnapshotReplicaError(raw, currentReplicaFile);
+                }
+                if (parsed !== 'x' && parsed !== 'y') {
+                    throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
+                }
+                const snapshotReplica = parsed;
 
                 await scanFromFilesystem(
                     capabilities,
@@ -173,4 +186,8 @@ async function synchronizeNoLock(capabilities, options) {
     );
 }
 
-module.exports = { synchronizeNoLock };
+module.exports = {
+    synchronizeNoLock,
+    InvalidSnapshotReplicaError,
+    isInvalidSnapshotReplicaError,
+};
