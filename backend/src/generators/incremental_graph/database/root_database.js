@@ -222,6 +222,9 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
+    // True once this closure's first batch() verifies/writes meta/version.
+    // Prevents redundant DB reads on subsequent batch calls.
+    // Reset to false by rebuilding this SchemaStorage inside clearReplicaStorage().
     let touchedSchema = false;
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */

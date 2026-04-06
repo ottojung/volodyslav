@@ -22,6 +22,24 @@ const {
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 
+/**
+ * Thrown when the snapshot's `_meta/current_replica` file is missing a valid
+ * replica name ("x" or "y"). This indicates a corrupted or incompatible snapshot.
+ */
+class InvalidSnapshotReplicaError extends Error {
+    /**
+     * @param {unknown} value - The invalid value that was read.
+     * @param {string} filePath - Path to the file that contained the bad value.
+     */
+    constructor(value, filePath) {
+        super(
+            `Snapshot _meta/current_replica has invalid value: "${String(value)}". Expected "x" or "y". File: ${filePath}`
+        );
+        this.name = 'InvalidSnapshotReplicaError';
+        this.value = value;
+        this.filePath = filePath;
+    }
+}
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
@@ -123,9 +141,7 @@ async function synchronizeNoLock(capabilities, options) {
                     const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
                     const parsed = JSON.parse(raw);
                     if (parsed !== 'x' && parsed !== 'y') {
-                        throw new Error(
-                            `Snapshot _meta/current_replica has invalid value: "${String(parsed)}". Expected "x" or "y".`
-                        );
+                        throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
                     }
                     snapshotReplica = parsed;
                 }

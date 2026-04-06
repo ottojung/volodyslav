@@ -570,7 +570,7 @@ describe('generators/database', () => {
                 const db = await getRootDatabase(capabilities);
 
                 // Write a value into the y replica (sets meta/version on first batch).
-                const yStorage = db.schemaStorageForReplica('y');
+                let yStorage = db.schemaStorageForReplica('y');
                 await yStorage.batch([
                     yStorage.freshness.putOp('nodeA', 'up-to-date'),
                 ]);
@@ -583,16 +583,16 @@ describe('generators/database', () => {
                 await db.clearReplicaStorage('y');
 
                 // Re-fetch the storage reference after the clear (the old reference is stale).
-                const yStorageAfterClear = db.schemaStorageForReplica('y');
+                yStorage = db.schemaStorageForReplica('y');
 
                 // A fresh batch to y must succeed (re-initialises meta/version).
-                await yStorageAfterClear.batch([
-                    yStorageAfterClear.freshness.putOp('nodeB', 'potentially-outdated'),
+                await yStorage.batch([
+                    yStorage.freshness.putOp('nodeB', 'potentially-outdated'),
                 ]);
 
                 // Verify nodeA is gone (clear was effective) but nodeB is present.
-                const nodeA = await yStorageAfterClear.freshness.get('nodeA');
-                const nodeB = await yStorageAfterClear.freshness.get('nodeB');
+                const nodeA = await yStorage.freshness.get('nodeA');
+                const nodeB = await yStorage.freshness.get('nodeB');
                 expect(nodeA).toBeUndefined();
                 expect(nodeB).toBe('potentially-outdated');
 
