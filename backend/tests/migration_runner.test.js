@@ -189,7 +189,7 @@ describe("runMigration", () => {
     });
 
     describe("fresh database (getMetaVersion returns undefined)", () => {
-        test("skips migration and does not call replaceContentsFrom", async () => {
+        test("skips migration and does not switch to replica", async () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const currentStorage = makeSchemaStorage();
@@ -242,7 +242,7 @@ describe("runMigration", () => {
     });
 
     describe("no migration needed (version already matches)", () => {
-        test("skips migration and does not call replaceContentsFrom", async () => {
+        test("skips migration and does not switch to replica", async () => {
           const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -519,7 +519,7 @@ describe("runMigration", () => {
     });
 
     describe("failure cases", () => {
-        test("callback throws: replaceContentsFrom is NOT called and error propagates", async () => {
+        test("callback throws: switchToReplica is NOT called and error propagates", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -551,7 +551,7 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("finalize throws UndecidedNodesError when a node has no decision: replaceContentsFrom NOT called", async () => {
+        test("finalize throws UndecidedNodesError when a node has no decision: switchToReplica is NOT called", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -1279,7 +1279,7 @@ describe("infrastructure failures", () => {
         expect(callbackRan).toBe(false);
     });
 
-    test("runMigrationInTransaction setup throws: migration does not run, replaceContentsFrom not called", async () => {
+    test("runMigrationInTransaction setup throws: migration does not run, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const checkpointError = new Error("checkpoint failure");
         capabilities.runMigrationInTransaction.mockRejectedValueOnce(checkpointError);
@@ -1287,7 +1287,7 @@ describe("infrastructure failures", () => {
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        // We need a fresh mock so we can check replaceContentsFromCalled
+        // We need a fresh mock so we can check switchToReplicaCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1339,7 +1339,7 @@ describe("infrastructure failures", () => {
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        // Rebuild with a spy on replaceContentsFrom
+        // Rebuild with a mock that tracks the replica switch cutover via switchToReplicaCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
         const { yStorage } = makeYDb(makeSchemaStorage());

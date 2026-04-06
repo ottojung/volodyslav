@@ -509,16 +509,6 @@ class RootDatabaseClass {
     }
 
     /**
-     * Create a new RootDatabase view bound to a different active replica.
-     * Shares the underlying database instance.
-     * @param {ReplicaName} namespace
-     * @returns {RootDatabaseClass}
-     */
-    withNamespace(namespace) {
-        return new RootDatabaseClass(this.db, this.version, namespace);
-    }
-
-    /**
      * Deletes all keys belonging to one top-level LevelDB sublevel.
      * This is equivalent to iterating every key with the `!<sublevelName>!` prefix
      * and deleting them, but delegates to abstract-level's `sublevel.clear()` so
