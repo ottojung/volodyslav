@@ -30,7 +30,7 @@ const { stringToVersion, stringToNodeKeyString, versionToString } = require('./t
 /**
  * The format marker value that identifies a database using the x/y namespace layout.
  */
-const FORMAT_MARKER = 'xy-v1';
+const FORMAT_MARKER = 'xy-v2';
 const RAW_BATCH_CHUNK_SIZE = 500;
 
 /**
