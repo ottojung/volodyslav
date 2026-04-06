@@ -78,7 +78,15 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         getSchemaStorage() { return xStorage; },
         currentReplicaName() { return 'x'; },
         otherReplicaName() { return 'y'; },
-        schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+        schemaStorageForReplica(name) {
+            if (name === 'x') {
+                return xStorage;
+            }
+            if (name === 'y') {
+                return yStorage;
+            }
+            throw new Error(`Unexpected replica name: ${name}`);
+        },
         async clearReplicaStorage(name) { clearReplicaStorageCalledWith = name; },
         async setMetaVersionForReplica(name, v) {
             setMetaVersionForReplicaCalledWith = { name, v };

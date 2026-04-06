@@ -144,10 +144,11 @@ async function seedDatabase(capabilities, entries) {
 }
 
 /**
- * Converts a raw LevelDB key path (e.g. `x/values/event/one`) to the rendered
- * path in the git snapshot (e.g. `r/values/event/one`). The active replica
- * is always rendered under the stable `r/` alias.
- * @param {string} key - raw LevelDB key
+ * Converts a raw root-LevelDB key (e.g. `!x!!values!!event%2Fone`) to the
+ * rendered snapshot path (e.g. `r/values/event/one`).
+ * `keyToRelativePath` first maps the raw key to `x/...` or `y/...`, then this
+ * helper rewrites the replica prefix to the stable `r/` alias.
+ * @param {string} key - raw root-LevelDB key
  * @returns {string}
  */
 function renderedKeyPath(key) {
