@@ -145,7 +145,7 @@ describe("migration revdeps ordering", () => {
         await xStorage.freshness.put(inputKey, "up-to-date");
 
         const yStorage = makeSchemaStorage();
-        // yStorage already declared
+        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
             currentVersion: "2",
@@ -252,8 +252,8 @@ describe("migration revdeps ordering", () => {
 
         const yStorage1 = makeSchemaStorage();
         const yStorage2 = makeSchemaStorage();
-        // yStorage1 already declared
-        // yStorage2 already declared
+        
+        
 
         const { rootDatabase: rootDatabase1 } = makeRootDatabaseMock({
             prevVersion: "1",
@@ -310,7 +310,7 @@ describe("migration revdeps ordering", () => {
         }
 
         const yStorage = makeSchemaStorage();
-        // yStorage already declared
+        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
             currentVersion: "2",

@@ -141,8 +141,6 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -161,8 +159,6 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -182,8 +178,6 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -203,8 +197,6 @@ describe("keep decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -230,8 +222,6 @@ describe("keep decision: timestamps copied to new storage", () => {
             inputCounters: [1],
         });
         await xStorage.revdeps.put(nkA, [nkB]);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -258,8 +248,6 @@ describe("override decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -278,8 +266,6 @@ describe("override decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -299,8 +285,6 @@ describe("override decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: ts });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -326,8 +310,6 @@ describe("invalidate decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -346,8 +328,6 @@ describe("invalidate decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -367,8 +347,6 @@ describe("invalidate decision: timestamps copied to new storage", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: ts, freshness: "up-to-date" });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -401,8 +379,6 @@ describe("delete decision: timestamps not present in new storage", () => {
             inputCounters: [1],
         });
         await xStorage.revdeps.put(nkA, [nkB]);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -442,8 +418,6 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
@@ -460,8 +434,6 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
@@ -478,8 +450,6 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
@@ -497,8 +467,6 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         // Override A; B is automatically invalidated (it depends on A)
@@ -516,8 +484,6 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const { nkA, nkB } = await buildChain(xStorage);
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
@@ -542,8 +508,6 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
         const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
@@ -564,8 +528,6 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
 
         await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, { timestamps: NEW_TIMESTAMP });
-
-        
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await expect(
