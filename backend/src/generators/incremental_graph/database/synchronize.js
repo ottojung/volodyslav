@@ -112,17 +112,31 @@ async function synchronizeNoLock(capabilities, options) {
             remoteLocation,
             async (store) => {
                 const workTree = await store.getWorkTree();
-                const activeReplica = rootDatabase.currentReplicaName();
+
+                // Read the active-replica name from the snapshot's _meta/current_replica
+                // so that `r/` data lands in the correct sublevel even when the remote
+                // used a different replica than the local pointer.
+                const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
+                const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
+                let snapshotReplica = rootDatabase.currentReplicaName();
+                if (await capabilities.checker.fileExists(currentReplicaFile)) {
+                    const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
+                    const parsed = JSON.parse(raw);
+                    if (parsed === 'x' || parsed === 'y') {
+                        snapshotReplica = parsed;
+                    }
+                }
+
                 await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
                     path.join(workTree, DATABASE_SUBPATH, 'r'),
-                    activeReplica
+                    snapshotReplica
                 );
                 await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
-                    path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                    snapshotMetaDir,
                     '_meta'
                 );
             }

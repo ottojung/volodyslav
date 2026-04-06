@@ -10,6 +10,8 @@ const {
     isRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
     isDatabaseInitializationError,
+    isInvalidReplicaPointerError,
+    isSchemaBatchVersionError,
 } = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
@@ -438,12 +440,12 @@ describe('generators/database', () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
-                
+
                 expect(isRootDatabase(db)).toBe(true);
                 expect(isRootDatabase({})).toBe(false);
                 expect(isRootDatabase(null)).toBe(false);
                 expect(isRootDatabase(undefined)).toBe(false);
-                
+
                 await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
@@ -465,6 +467,143 @@ describe('generators/database', () => {
             expect(isDatabaseInitializationError(null)).toBe(false);
 
             cleanup(capabilities.tmpDir);
+        });
+    });
+
+    describe('Replica pointer (`_meta/current_replica`)', () => {
+        test('fresh database initializes current_replica to "x"', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('legacy database missing current_replica is healed to "x" on open', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                // Write format marker without current_replica to simulate a legacy DB.
+                const rawDb = capabilities.levelDatabase.initialize(
+                    path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
+                );
+                await rawDb.open();
+                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
+                await meta.put('format', 'xy-v1');
+                // Deliberately omit `current_replica`.
+                await rawDb.close();
+
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // The pointer should now be persisted so a second open returns 'x'.
+                await db.close();
+                const db2 = await getRootDatabase(capabilities);
+                expect(db2.currentReplicaName()).toBe('x');
+                await db2.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('invalid current_replica value throws when opening database', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                // Write a bad current_replica value.
+                const rawDb = capabilities.levelDatabase.initialize(
+                    path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
+                );
+                await rawDb.open();
+                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
+                await meta.put('format', 'xy-v1');
+                await meta.put('current_replica', 'z');
+                await rawDb.close();
+
+                // getRootDatabase wraps errors in DatabaseInitializationError.
+                const error = await getRootDatabase(capabilities).catch(e => e);
+                expect(isDatabaseInitializationError(error)).toBe(true);
+                expect(isInvalidReplicaPointerError(error.cause)).toBe(true);
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('switchToReplica changes the active replica and persists across reopen', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+                await db.switchToReplica('y');
+                expect(db.currentReplicaName()).toBe('y');
+                await db.close();
+
+                // Reopen — pointer should be 'y'.
+                const db2 = await getRootDatabase(capabilities);
+                expect(db2.currentReplicaName()).toBe('y');
+                await db2.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('schemaStorageForReplica throws InvalidReplicaPointerError for invalid name', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                // @ts-expect-error — intentionally passing an invalid value to test runtime guard
+                expect(() => db.schemaStorageForReplica('z')).toThrow();
+                // @ts-expect-error — intentionally passing an invalid value to test runtime guard
+                const err = (() => { try { db.schemaStorageForReplica('z'); } catch(e) { return e; } })();
+                expect(isInvalidReplicaPointerError(err)).toBe(true);
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe('clearReplicaStorage resets meta/version init', () => {
+        test('batch() re-initialises meta/version in target replica after clearReplicaStorage', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+
+                // Write a value into the y replica (sets meta/version on first batch).
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.batch([
+                    yStorage.freshness.putOp('nodeA', 'up-to-date'),
+                ]);
+
+                // Verify meta/version was initialised in y.
+                const xMetaVersion = await db.getMetaVersion();
+                expect(xMetaVersion).toBeUndefined(); // x has no version yet
+
+                // Now clear y and write again — meta/version must be re-created.
+                await db.clearReplicaStorage('y');
+
+                // After clearing, a fresh batch to y must not throw.
+                await yStorage.batch([
+                    yStorage.freshness.putOp('nodeB', 'potentially-outdated'),
+                ]);
+
+                // Verify nodeA is gone (clear was effective) but nodeB is present.
+                const nodeA = await yStorage.freshness.get('nodeA');
+                const nodeB = await yStorage.freshness.get('nodeB');
+                expect(nodeA).toBeUndefined();
+                expect(nodeB).toBe('potentially-outdated');
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('isSchemaBatchVersionError identifies version-mismatch errors', () => {
+            expect(isSchemaBatchVersionError({})).toBe(false);
+            expect(isSchemaBatchVersionError(null)).toBe(false);
+            expect(isSchemaBatchVersionError(new Error('other'))).toBe(false);
         });
     });
 });

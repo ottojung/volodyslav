@@ -6,7 +6,7 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeKeyString } = require('./types');
+const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -39,14 +39,26 @@ const RAW_BATCH_CHUNK_SIZE = 500;
  */
 
 /**
- * Thrown when `_meta/current_replica` contains an unexpected value.
+ * Asserts that a value is `never` at the type level.
+ * Used in exhaustive switch/if-else chains to enforce compile-time completeness.
+ * Also throws `InvalidReplicaPointerError` at runtime as a defensive guard.
+ * @param {never} name - The value that should be unreachable.
+ * @returns {never}
+ */
+function assertNeverReplicaName(name) {
+    throw new InvalidReplicaPointerError(name);
+}
+
+/**
+ * Thrown when `_meta/current_replica` contains an unexpected value,
+ * or when an API receives an invalid replica name argument.
  */
 class InvalidReplicaPointerError extends Error {
     /**
-     * @param {unknown} value - The invalid value that was read.
+     * @param {unknown} value - The invalid value that was read or passed.
      */
     constructor(value) {
-        super(`Invalid _meta/current_replica value: "${String(value)}". Expected "x" or "y".`);
+        super(`Invalid replica name: "${String(value)}". Expected "x" or "y".`);
         this.name = 'InvalidReplicaPointerError';
         this.value = value;
     }
@@ -82,6 +94,32 @@ class SwitchReplicaError extends Error {
  */
 function isSwitchReplicaError(object) {
     return object instanceof SwitchReplicaError;
+}
+
+/**
+ * Thrown by `buildSchemaStorage().batch()` when the existing meta/version in the
+ * replica does not match the expected application version.
+ * This indicates a logic error in migration ordering or staging-namespace usage.
+ */
+class SchemaBatchVersionError extends Error {
+    /**
+     * @param {string} expected - The expected version.
+     * @param {string} found - The version actually stored in the replica.
+     */
+    constructor(expected, found) {
+        super(`Version mismatch in batch operation: expected ${expected}, found ${found}`);
+        this.name = 'SchemaBatchVersionError';
+        this.expected = expected;
+        this.found = found;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is SchemaBatchVersionError}
+ */
+function isSchemaBatchVersionError(object) {
+    return object instanceof SchemaBatchVersionError;
 }
 
 /**
@@ -180,23 +218,18 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
-    let touchedSchema = false;
-
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
         if (operations.length === 0) {
             return;
         }
-        if (!touchedSchema) {
-            const existing = await metaSublevel.get('version');
-            if (existing === undefined) {
-                // New or freshly-cleared namespace: write version to meta to initialise.
-                await metaSublevel.put('version', version);
-            } else if (existing !== version) {
-                // Version mismatch indicates a logic error in migration or usage of staging namespace.
-                throw new Error(`Version mismatch in batch operation: expected ${version}, found ${existing}`);
-            }
-            touchedSchema = true;
+        const existing = await metaSublevel.get('version');
+        if (existing === undefined) {
+            // New or freshly-cleared namespace: write version to meta to initialise.
+            await metaSublevel.put('version', version);
+        } else if (existing !== version) {
+            // Version mismatch indicates a logic error in migration or usage of staging namespace.
+            throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
         }
         await namespaceSublevel.batch(operations);
     };
@@ -316,7 +349,14 @@ class RootDatabaseClass {
      * @returns {ReplicaName}
      */
     otherReplicaName() {
-        return this._cachedValueOfCurrentReplica === 'x' ? 'y' : 'x';
+        const current = this._cachedValueOfCurrentReplica;
+        if (current === 'x') {
+            return 'y';
+        } else if (current === 'y') {
+            return 'x';
+        } else {
+            return assertNeverReplicaName(current);
+        }
     }
 
     /**
@@ -328,8 +368,12 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async switchToReplica(name) {
-        if (name !== 'x' && name !== 'y') {
-            throw new InvalidReplicaPointerError(name);
+        if (name === 'x') {
+            // valid
+        } else if (name === 'y') {
+            // valid
+        } else {
+            assertNeverReplicaName(name);
         }
         try {
             await this._rootMetaSublevel.put('current_replica', name);
@@ -345,17 +389,31 @@ class RootDatabaseClass {
      * @returns {SchemaStorage}
      */
     getSchemaStorage() {
-        return this._cachedValueOfCurrentReplica === 'x' ? this._xSchemaStorage : this._ySchemaStorage;
+        const current = this._cachedValueOfCurrentReplica;
+        if (current === 'x') {
+            return this._xSchemaStorage;
+        } else if (current === 'y') {
+            return this._ySchemaStorage;
+        } else {
+            return assertNeverReplicaName(current);
+        }
     }
 
     /**
      * Get the SchemaStorage for an explicit replica, without changing the active pointer.
      * Used by migration to access both source and target replicas simultaneously.
+     * Throws `InvalidReplicaPointerError` for unrecognised names.
      * @param {ReplicaName} name
      * @returns {SchemaStorage}
      */
     schemaStorageForReplica(name) {
-        return name === 'x' ? this._xSchemaStorage : this._ySchemaStorage;
+        if (name === 'x') {
+            return this._xSchemaStorage;
+        } else if (name === 'y') {
+            return this._ySchemaStorage;
+        } else {
+            return assertNeverReplicaName(name);
+        }
     }
 
     /**
@@ -364,7 +422,15 @@ class RootDatabaseClass {
      * @returns {Promise<Version | undefined>}
      */
     async getMetaVersion() {
-        const metaSublevel = this._cachedValueOfCurrentReplica === 'x' ? this._xMetaSublevel : this._yMetaSublevel;
+        const current = this._cachedValueOfCurrentReplica;
+        let metaSublevel;
+        if (current === 'x') {
+            metaSublevel = this._xMetaSublevel;
+        } else if (current === 'y') {
+            metaSublevel = this._yMetaSublevel;
+        } else {
+            return assertNeverReplicaName(current);
+        }
         return await metaSublevel.get('version');
     }
 
@@ -374,30 +440,54 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async setMetaVersion(version) {
-        const metaSublevel = this._cachedValueOfCurrentReplica === 'x' ? this._xMetaSublevel : this._yMetaSublevel;
+        const current = this._cachedValueOfCurrentReplica;
+        let metaSublevel;
+        if (current === 'x') {
+            metaSublevel = this._xMetaSublevel;
+        } else if (current === 'y') {
+            metaSublevel = this._yMetaSublevel;
+        } else {
+            return assertNeverReplicaName(current);
+        }
         await metaSublevel.put('version', version);
     }
 
     /**
      * Write the app version string into a specific replica's meta sublevel.
      * Used by migration to set the target replica's version before switching the pointer.
+     * Throws `InvalidReplicaPointerError` for unrecognised names.
      * @param {ReplicaName} name
      * @param {Version} version
      * @returns {Promise<void>}
      */
     async setMetaVersionForReplica(name, version) {
-        const metaSublevel = name === 'x' ? this._xMetaSublevel : this._yMetaSublevel;
+        let metaSublevel;
+        if (name === 'x') {
+            metaSublevel = this._xMetaSublevel;
+        } else if (name === 'y') {
+            metaSublevel = this._yMetaSublevel;
+        } else {
+            return assertNeverReplicaName(name);
+        }
         await metaSublevel.put('version', version);
     }
 
     /**
      * Clear all keys in a specific replica's namespace sublevel.
      * Used by migration to wipe the target replica before writing fresh data.
+     * Throws `InvalidReplicaPointerError` for unrecognised names.
      * @param {ReplicaName} name
      * @returns {Promise<void>}
      */
     async clearReplicaStorage(name) {
-        const namespaceSublevel = name === 'x' ? this._xNamespaceSublevel : this._yNamespaceSublevel;
+        let namespaceSublevel;
+        if (name === 'x') {
+            namespaceSublevel = this._xNamespaceSublevel;
+        } else if (name === 'y') {
+            namespaceSublevel = this._yNamespaceSublevel;
+        } else {
+            return assertNeverReplicaName(name);
+        }
         await namespaceSublevel.clear();
     }
 
@@ -661,5 +751,6 @@ module.exports = {
     isRootDatabase,
     isInvalidReplicaPointerError,
     isSwitchReplicaError,
+    isSchemaBatchVersionError,
     RAW_BATCH_CHUNK_SIZE,
 };
