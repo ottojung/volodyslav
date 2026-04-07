@@ -433,8 +433,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     for (const [node, decision] of initialDecisions) {
         let record;
         if (decision === 'take') {
-            // Prefer H's inputs for taken nodes; fall back to T when H has none.
-            record = await H.inputs.get(node) ?? await T.inputs.get(node);
+            // Use only H's inputs for taken nodes.  buildTakeOps deletes
+            // T.inputs when H.inputs is absent, so the merged map must match
+            // that: if H has no inputs record, this node has no inputs in the
+            // merged graph (empty list).  Falling back to T.inputs here would
+            // make mergedInputsMap inconsistent with the actual DB state after
+            // the merge, leaving revdeps pointing to inputs that no longer exist.
+            record = await H.inputs.get(node);
         } else {
             record = await T.inputs.get(node);
         }

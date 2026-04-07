@@ -19,6 +19,31 @@ const { stringToNodeKeyString } = require('./types');
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 
 /**
+ * Thrown when an internal invariant of MinHeap is violated (i.e. a bug in
+ * the heap implementation).  Distinguished from data-related failures such as
+ * TopologicalSortCycleError so callers and logging infrastructure can classify
+ * failures correctly.
+ */
+class MinHeapInvariantError extends Error {
+    /**
+     * @param {string} detail - Human-readable description of the violated invariant.
+     */
+    constructor(detail) {
+        super(`MinHeap invariant violation: ${detail}`);
+        this.name = 'MinHeapInvariantError';
+        this.detail = detail;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MinHeapInvariantError}
+ */
+function isMinHeapInvariantError(object) {
+    return object instanceof MinHeapInvariantError;
+}
+
+/**
  * Minimal binary min-heap backed by an array.
  * Comparator must return negative when a < b, 0 when equal, positive when a > b.
  * @template T
@@ -93,7 +118,7 @@ class MinHeap {
             const dataAtI = this._data[i];
             const dataAtSmallest = this._data[smallest];
             if (dataAtI === undefined || dataAtSmallest === undefined) {
-                throw new Error('MinHeap invariant violation: undefined element in active range');
+                throw new MinHeapInvariantError('undefined element in active range');
             }
             this._data[i] = dataAtSmallest;
             this._data[smallest] = dataAtI;
@@ -270,4 +295,6 @@ module.exports = {
     topologicalSortFromMap,
     TopologicalSortCycleError,
     isTopologicalSortCycleError,
+    MinHeapInvariantError,
+    isMinHeapInvariantError,
 };

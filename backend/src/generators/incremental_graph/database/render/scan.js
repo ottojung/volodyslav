@@ -150,6 +150,34 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
 }
 
 /**
+ * Thrown when a path inside a rendered hostname snapshot cannot be decoded
+ * back to a (sublevelName, keyContent) pair.  Includes the original relative
+ * path and the intermediate raw key to aid debugging.
+ */
+class HostnameSnapshotDecodeError extends Error {
+    /**
+     * @param {string} relPath - The relative path that could not be decoded.
+     * @param {string} rawKey - The intermediate raw key produced before the failure.
+     * @param {string} detail - Human-readable description of the failure.
+     */
+    constructor(relPath, rawKey, detail) {
+        super(`Cannot decode hostname snapshot path '${relPath}' (rawKey='${rawKey}'): ${detail}`);
+        this.name = 'HostnameSnapshotDecodeError';
+        this.relPath = relPath;
+        this.rawKey = rawKey;
+        this.detail = detail;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is HostnameSnapshotDecodeError}
+ */
+function isHostnameSnapshotDecodeError(object) {
+    return object instanceof HostnameSnapshotDecodeError;
+}
+
+/**
  * Parse a path-component from a rendered `r/` snapshot into the
  * LevelDB sub-database name and key content.
  *
@@ -172,12 +200,12 @@ function parseHostnameSnapshotPath(relPath) {
     // Strip leading '!x!!'
     const prefix = '!' + FAKE_NS + '!!';
     if (!rawKey.startsWith(prefix)) {
-        throw new Error(`Unexpected raw key format: ${rawKey}`);
+        throw new HostnameSnapshotDecodeError(relPath, rawKey, 'unexpected raw key format');
     }
     const withoutNamespace = rawKey.slice(prefix.length);
     const bangIdx = withoutNamespace.indexOf('!');
     if (bangIdx < 0) {
-        throw new Error(`Missing sublevel separator in raw key: ${rawKey}`);
+        throw new HostnameSnapshotDecodeError(relPath, rawKey, 'missing sublevel separator');
     }
     const sublevelName = withoutNamespace.slice(0, bangIdx);
     const keyContent = withoutNamespace.slice(bangIdx + 1);
@@ -281,4 +309,6 @@ module.exports = {
     isScanInputDirMissingError,
     InvalidHostnameError,
     isInvalidHostnameError,
+    HostnameSnapshotDecodeError,
+    isHostnameSnapshotDecodeError,
 };
