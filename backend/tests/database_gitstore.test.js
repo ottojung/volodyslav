@@ -483,6 +483,11 @@ describe("dirty-state recovery", () => {
         ]);
         execFileSync("git", ["-C", workDir, "config", "receive.denyCurrentBranch", "ignore"]);
         // HEAD file now exists but points to an unborn branch — no commits yet.
+        // Also seed stale staged + untracked files to ensure unborn recovery
+        // produces a fully clean deterministic repository.
+        await fs.writeFile(path.join(workDir, "stale-staged.txt"), "stale staged");
+        await fs.writeFile(path.join(workDir, "stale-untracked.txt"), "stale untracked");
+        execFileSync("git", ["-C", workDir, "add", "stale-staged.txt"]);
 
         const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
         try {
@@ -491,6 +496,8 @@ describe("dirty-state recovery", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(1);
+            await expect(fs.stat(path.join(workDir, "stale-staged.txt"))).rejects.toThrow();
+            await expect(fs.stat(path.join(workDir, "stale-untracked.txt"))).rejects.toThrow();
         } finally {
             await db.close();
         }
@@ -655,7 +662,7 @@ describe("dirty-state recovery", () => {
 
     // ── Rebase state ─────────────────────────────────────────────────────────
 
-    test("checkpointDatabase recovers when a rebase-merge directory is present", async () => {
+    test("checkpointDatabase fails fast when malformed rebase state cannot be aborted", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
         try {
@@ -668,18 +675,23 @@ describe("dirty-state recovery", () => {
             const rebaseDir = path.join(gitDir, "rebase-merge");
             await fs.mkdir(rebaseDir, { recursive: true });
             const branch = defaultBranch(capabilities);
+            const headCommit = execFileSync("git", [
+                "--git-dir", gitDir,
+                "rev-parse", "HEAD",
+            ]).toString().trim();
             await fs.writeFile(
                 path.join(rebaseDir, "head-name"),
                 `refs/heads/${branch}\n`
             );
             await fs.writeFile(
                 path.join(rebaseDir, "onto"),
-                "0000000000000000000000000000000000000000\n"
+                `${headCommit}\n`
             );
 
-            // checkpointDatabase must succeed despite the bogus rebase state.
-            await checkpointDatabase(capabilities, "after rebase state", db);
-            expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(baselineCount);
+            await expect(
+                checkpointDatabase(capabilities, "after rebase state", db)
+            ).rejects.toThrow("Failed to abort rebase");
+            expect(commitCount(capabilities, gitDir)).toBe(baselineCount);
         } finally {
             await db.close();
         }

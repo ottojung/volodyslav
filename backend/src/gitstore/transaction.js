@@ -19,10 +19,14 @@ const { gitStoreMutexKey } = require('./mutex');
  * @param {import('./transaction_retry').RemoteLocation | "empty"} initial_state - Remote location to sync with, or "empty" for local-only
  * @param {function(import('./transaction_attempt').GitStore): Promise<T>} transformation - A function that takes a directory path and performs some operations on it
  * @param {import('./transaction_retry').RetryOptions} [retryOptions] - Retry configuration options
+ * @param {(() => Promise<void>)} [preflight] - Optional callback executed while holding the same mutex, before transaction attempts begin.
  * @returns {Promise<T>}
  */
-async function transaction(capabilities, workingPath, initial_state, transformation, retryOptions) {
+async function transaction(capabilities, workingPath, initial_state, transformation, retryOptions, preflight) {
     return await capabilities.sleeper.withMutex(gitStoreMutexKey(workingPath), async () => {
+        if (preflight !== undefined) {
+            await preflight();
+        }
         return await transactionWithRetry(capabilities, workingPath, initial_state, transformation, retryOptions);
     });
 }

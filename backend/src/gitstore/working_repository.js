@@ -99,6 +99,74 @@ async function hasOriginRemote(capabilities, workDir) {
 }
 
 /**
+ * @param {Capabilities} capabilities
+ * @param {string} gitDir
+ * @returns {Promise<boolean>}
+ */
+async function isRebaseInProgress(capabilities, gitDir) {
+    return (
+        (await capabilities.checker.directoryExists(path.join(gitDir, "rebase-merge"))) !== null
+        || (await capabilities.checker.directoryExists(path.join(gitDir, "rebase-apply"))) !== null
+    );
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @param {string} gitDir
+ * @param {"merge" | "rebase" | "cherry-pick" | "revert"} operation
+ * @returns {Promise<boolean>}
+ */
+async function isAbortableOperationInProgress(capabilities, gitDir, operation) {
+    if (operation === "merge") {
+        return (await capabilities.checker.fileExists(path.join(gitDir, "MERGE_HEAD"))) !== null;
+    }
+    if (operation === "rebase") {
+        return await isRebaseInProgress(capabilities, gitDir);
+    }
+    if (operation === "cherry-pick") {
+        return (await capabilities.checker.fileExists(path.join(gitDir, "CHERRY_PICK_HEAD"))) !== null;
+    }
+    if (operation === "revert") {
+        return (await capabilities.checker.fileExists(path.join(gitDir, "REVERT_HEAD"))) !== null;
+    }
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @param {string} workDir
+ * @param {string} gitDir
+ * @param {"merge" | "rebase" | "cherry-pick" | "revert"} operation
+ * @returns {Promise<void>}
+ */
+async function abortOperationIfInProgress(capabilities, workDir, gitDir, operation) {
+    const inProgress = await isAbortableOperationInProgress(capabilities, gitDir, operation);
+    if (!inProgress) {
+        return;
+    }
+    try {
+        await capabilities.git.call(
+            "-C", workDir, "-c", "safe.directory=*",
+            operation, "--abort"
+        );
+    } catch (error) {
+        const stillInProgress = await isAbortableOperationInProgress(capabilities, gitDir, operation);
+        if (stillInProgress) {
+            throw new WorkingRepositoryError(
+                `Failed to abort ${operation}: ${error}`,
+                workDir
+            );
+        }
+    }
+    const stillInProgress = await isAbortableOperationInProgress(capabilities, gitDir, operation);
+    if (stillInProgress) {
+        throw new WorkingRepositoryError(
+            `Failed to abort ${operation}: operation state is still present after --abort`,
+            workDir
+        );
+    }
+}
+
+/**
  * Reset and clean a git repository to a known-good state before use.
  *
  * Aborts any in-progress git operations (merge, rebase, cherry-pick, revert),
@@ -118,16 +186,15 @@ async function hasOriginRemote(capabilities, workDir) {
  */
 async function resetAndCleanRepository(capabilities, workingPath) {
     const workDir = pathToLocalRepository(capabilities, workingPath);
+    const gitDir = path.join(workDir, ".git");
 
-    // Abort any in-progress git operations.  Errors are expected (and
-    // intentionally ignored) when none of these operations is in progress.
-    const abort = (...cmd) =>
-        capabilities.git.call("-C", workDir, "-c", "safe.directory=*", ...cmd)
-            .catch(() => {});
-    await abort("merge", "--abort");
-    await abort("rebase", "--abort");
-    await abort("cherry-pick", "--abort");
-    await abort("revert", "--abort");
+    // Abort any in-progress git operations. Fail fast if an operation remains
+    // in progress after abort, because subsequent reset/clean cannot guarantee
+    // a deterministic repository state in that case.
+    await abortOperationIfInProgress(capabilities, workDir, gitDir, "merge");
+    await abortOperationIfInProgress(capabilities, workDir, gitDir, "rebase");
+    await abortOperationIfInProgress(capabilities, workDir, gitDir, "cherry-pick");
+    await abortOperationIfInProgress(capabilities, workDir, gitDir, "revert");
 
     // Check whether the branch already has at least one commit.  An unborn
     // branch (HEAD points to a ref that does not yet exist) is left by an
@@ -138,17 +205,15 @@ async function resetAndCleanRepository(capabilities, workingPath) {
         .catch(() => false);
 
     if (hasCommits) {
-        // Discard any staged or modified tracked files.
-        await capabilities.git.call(
-            "-C", workDir, "-c", "safe.directory=*",
-            "reset", "--hard", "HEAD"
-        );
-        // Remove untracked files and directories left by previous operations.
-        await capabilities.git.call(
-            "-C", workDir, "-c", "safe.directory=*",
-            "clean", "-fd"
-        );
+        // continue to shared reset/clean below
     } else {
+        // Ensure the initial commit is truly empty even if a stale index exists.
+        await capabilities.git.call(
+            "-C", workDir,
+            "-c", "safe.directory=*",
+            "read-tree",
+            "--empty"
+        );
         // No commits yet – finish the interrupted initialisation by creating
         // the missing initial empty commit so that clones work.
         await capabilities.git.call(
@@ -162,6 +227,17 @@ async function resetAndCleanRepository(capabilities, workingPath) {
             "Initial empty commit",
         );
     }
+
+    // Discard any staged or modified tracked files.
+    await capabilities.git.call(
+        "-C", workDir, "-c", "safe.directory=*",
+        "reset", "--hard", "HEAD"
+    );
+    // Remove untracked files and directories left by previous operations.
+    await capabilities.git.call(
+        "-C", workDir, "-c", "safe.directory=*",
+        "clean", "-fd"
+    );
 }
 
 /**

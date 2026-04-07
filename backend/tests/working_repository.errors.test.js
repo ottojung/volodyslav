@@ -79,5 +79,31 @@ describe("working_repository", () => {
         // Restore original function
         capabilities.environment.eventLogRepository = origEventLogRepo;
     }, 30000);
-});
 
+    test("resetAndCleanRepository fails fast when merge abort fails and merge state persists", async () => {
+        const capabilities = getTestCapabilities();
+        const workDir = `${capabilities.environment.workingDirectory()}/working-git-repository`;
+
+        capabilities.checker.fileExists = jest.fn(async (path) => {
+            if (path === `${workDir}/.git/MERGE_HEAD`) {
+                return {};
+            }
+            return null;
+        });
+        capabilities.checker.directoryExists = jest.fn(async () => null);
+
+        capabilities.git.call = jest.fn(async (...args) => {
+            const command = args.join(" ");
+            if (command.includes(" merge --abort")) {
+                throw new Error("fatal: merge --abort failed");
+            }
+            return { stdout: "", stderr: "" };
+        });
+
+        const result = await workingRepository
+            .resetAndCleanRepository(capabilities, "working-git-repository")
+            .catch((error) => error);
+        expect(workingRepository.isWorkingRepositoryError(result)).toBe(true);
+        expect(result.message).toContain("Failed to abort merge");
+    });
+});

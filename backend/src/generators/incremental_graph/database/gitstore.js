@@ -160,12 +160,6 @@ async function checkpointDatabase(
     rootDatabase,
     initialState = "empty"
 ) {
-    // Ensure the checkpoint repository is in a clean, deterministic state
-    // before any computation.  A previous process may have crashed mid-
-    // operation, leaving MERGE_HEAD, staged files, stray untracked artifacts,
-    // or an unborn branch.  Cleaning here guarantees a reliable baseline.
-    await ensureCheckpointRepoIsClean(capabilities);
-
     /** @type {RootDatabase | undefined} */
     let ownedDatabase = undefined;
     /** @type {RootDatabase} */
@@ -203,6 +197,10 @@ async function checkpointDatabase(
                     '_meta'
                 );
                 await store.commit(message);
+            },
+            undefined,
+            async () => {
+                await ensureCheckpointRepoIsClean(capabilities);
             }
         );
     } finally {
@@ -239,10 +237,6 @@ async function runMigrationInTransaction(
     postMessage,
     callback
 ) {
-    // Ensure the checkpoint repository is in a clean, deterministic state
-    // before any computation.  See checkpointDatabase for the full rationale.
-    await ensureCheckpointRepoIsClean(capabilities);
-
     return await transaction(
         capabilities,
         CHECKPOINT_WORKING_PATH,
@@ -277,6 +271,10 @@ async function runMigrationInTransaction(
             );
             await store.commit(postMessage);
             return result;
+        },
+        undefined,
+        async () => {
+            await ensureCheckpointRepoIsClean(capabilities);
         }
     );
 }
