@@ -171,6 +171,7 @@ async function mergeRemoteHostBranches(capabilities, workDirectory) {
 
 module.exports = {
     mergeRemoteHostBranches,
+    listRemoteBranches,
     MergeHostBranchesError,
     isMergeHostBranchesError,
 };

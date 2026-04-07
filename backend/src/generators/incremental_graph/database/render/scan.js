@@ -104,9 +104,11 @@ async function walkFilesRecursively(capabilities, dir) {
  *
  * Memory policy: file paths and parsed values are collected up-front (Phase 1)
  * before mutating the database.  This preserves the atomicity guarantee: if
- * reading or parsing fails, the database is left unchanged.  Writes are issued
- * in chunks of RAW_BATCH_CHUNK_SIZE via _rawPutAll, so large snapshots do not
- * produce a single oversized batch.
+ * reading or parsing fails, the database is left unchanged.  It is acceptable
+ * to keep arbitrarily many keys (and bounded-size values) in RAM; chunking is
+ * needed only for potentially unbounded value payloads and to avoid oversized
+ * LevelDB batch writes.  Writes are issued in chunks of RAW_BATCH_CHUNK_SIZE
+ * via _rawPutAll.
  *
  * @param {ScanCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.

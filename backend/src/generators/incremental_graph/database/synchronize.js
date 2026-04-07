@@ -26,6 +26,7 @@
 const gitstore = require('../../../gitstore');
 const path = require('path');
 const { transaction, configureRemoteForAllBranches, defaultBranch } = gitstore;
+const { listRemoteBranches } = gitstore.mergeHostBranches;
 const workingRepository = gitstore.workingRepository;
 const { parseRemoteHostnameBranch } = require('../../../hostname');
 const {
@@ -98,31 +99,6 @@ function isInvalidSnapshotReplicaError(object) {
  * @property {Interface} interface
  * @property {LevelDatabase} levelDatabase
  */
-
-/**
- * List all remote tracking branches visible in `workDirectory`.
- * Returns branches in sorted order.
- *
- * @param {Capabilities} capabilities
- * @param {string} workDirectory
- * @returns {Promise<string[]>}
- */
-async function listRemoteBranches(capabilities, workDirectory) {
-    const result = await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "for-each-ref",
-        "--format=%(refname:short)",
-        "refs/remotes/origin"
-    );
-    return result.stdout
-        .split("\n")
-        .map(branch => branch.trim())
-        .filter(branch => branch !== "")
-        .sort();
-}
 
 /**
  * Checkpoint the database and synchronize it with the remote generators repository.
@@ -358,4 +334,3 @@ module.exports = {
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
 };
-
