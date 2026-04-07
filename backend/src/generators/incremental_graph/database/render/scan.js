@@ -98,10 +98,22 @@ async function walkFilesRecursively(capabilities, dir) {
  * Calling scanFromFilesystem() on a directory produced by renderToFilesystem()
  * restores the database to exactly its original state (bijection guarantee).
  *
+ * Works for any valid top-level sublevel, including hostname staging namespaces
+ * (e.g. `_h_myhostname`).  Callers performing hostname staging should pass
+ * `'_h_' + hostname` as the sublevel argument.
+ *
+ * Memory policy: file paths and parsed values are collected up-front (Phase 1)
+ * before mutating the database.  This preserves the atomicity guarantee: if
+ * reading or parsing fails, the database is left unchanged.  It is acceptable
+ * to keep arbitrarily many keys (and bounded-size values) in RAM; chunking is
+ * needed only for potentially unbounded value payloads and to avoid oversized
+ * LevelDB batch writes.  Writes are issued in chunks of RAW_BATCH_CHUNK_SIZE
+ * via _rawPutAll.
+ *
  * @param {ScanCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.
  * @param {string} inputDir - Absolute path of the directory to read from.
- * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta").
+ * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta", "_h_myhostname").
  * @returns {Promise<void>}
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {
@@ -115,6 +127,8 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
     }
 
     // Phase 1: Walk, read, and parse all entries before mutating the database.
+    // This preserves the atomicity guarantee: if any read or parse step fails,
+    // the database is left completely unchanged.
     const allFiles = await walkFilesRecursively(capabilities, inputDir);
 
     /** @type {Array<{ key: string, value: unknown }>} */
@@ -134,8 +148,9 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
 
     // Phase 2: After successful validation, replace only this sublevel's data.
     // _rawDeleteSublevel deletes only the keys for validatedSublevel (e.g. all
-    // !x!... or !_meta!... entries) without touching other sublevels, avoiding
-    // the need to read-and-rewrite the entire database.
+    // !x!... or !_meta!... entries) without touching other sublevels.
+    // _rawPutAll writes entries in chunks of RAW_BATCH_CHUNK_SIZE so large
+    // snapshots do not produce a single oversized batch.
     await rootDatabase._rawDeleteSublevel(validatedSublevel);
     await rootDatabase._rawPutAll(entries);
     capabilities.logger.logInfo(

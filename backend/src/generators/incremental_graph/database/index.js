@@ -17,6 +17,7 @@ const {
     synchronizeNoLock,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
+    isSyncMergeAggregateError,
 } = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
 const {
@@ -61,6 +62,7 @@ module.exports = {
     synchronizeNoLock,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
+    isSyncMergeAggregateError,
     renderToFilesystem,
     scanFromFilesystem,
     keyToRelativePath,

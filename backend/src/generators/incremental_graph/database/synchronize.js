@@ -2,8 +2,22 @@
  * Synchronization module for the incremental-graph LevelDB database.
  *
  * Renders the current live database into the tracked filesystem snapshot,
- * synchronizes that repository with the remote generators repository, and then
- * scans the updated snapshot back into the live database.
+ * pushes our branch to the remote generators repository, then performs a
+ * structured, per-host graph merge using the incremental-graph merge engine
+ * instead of git-level textual merges.
+ *
+ * High-level flow:
+ *   1. Render the live database and commit the snapshot to git.
+ *   2. Synchronize with the remote (fetch + push our branch).
+ *   3. Fetch all remote branches so hostname tracking refs are up-to-date.
+ *   4. For each remote hostname branch (other than ours):
+ *      a. Create a temporary git worktree pointing at that branch.
+ *      b. Scan the branch's `rendered/r/` snapshot into the
+ *         `hostnames/<hostname>` LevelDB namespace.
+ *      c. Run the graph merge algorithm (mergeHostIntoReplica), which
+ *         switches the active replica pointer on success.
+ *      d. Clean up the worktree and the hostname staging namespace.
+ *   5. Aggregate per-host failures; throw SyncMergeAggregateError if any.
  *
  * Callers are responsible for acquiring a lock around this call so that
  * LevelDB is not written to while synchronization is in progress.
@@ -11,9 +25,10 @@
 
 const gitstore = require('../../../gitstore');
 const path = require('path');
-const { transaction } = gitstore;
+const { transaction, configureRemoteForAllBranches, defaultBranch } = gitstore;
+const { listRemoteBranches } = gitstore.mergeHostBranches;
 const workingRepository = gitstore.workingRepository;
-const isMergeHostBranchesError = gitstore.mergeHostBranches.isMergeHostBranchesError;
+const { parseRemoteHostnameBranch } = require('../../../hostname');
 const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
@@ -21,7 +36,11 @@ const {
 } = require('./gitstore');
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
-
+const {
+    mergeHostIntoReplica,
+    SyncMergeAggregateError,
+    isSyncMergeAggregateError,
+} = require('./sync_merge');
 /**
  * Thrown when the snapshot's `_meta/current_replica` file is missing a valid
  * replica name ("x" or "y"). This indicates a corrupted or incompatible snapshot.
@@ -85,28 +104,32 @@ function isInvalidSnapshotReplicaError(object) {
  * Checkpoint the database and synchronize it with the remote generators repository.
  *
  * Steps:
- * 1. `git add --all && git commit` — capture the latest in-memory state on disk.
- * 2. `git pull && git push` (or reset-to-hostname variant) — sync with the remote.
- * 3. `git fetch origin` and merge every matching `origin/<hostname>-main`
- *    branch into the local hostname branch, collecting merge failures by host.
+ *   1. `git add --all && git commit` — capture the latest in-memory state on disk.
+ *   2. `git pull && git push` (or reset-to-hostname variant) — sync with the remote.
+ *   3. `git fetch origin` for all branches — fetch remote hostname branches.
+ *   4. For each remote `origin/<hostname>-main` branch (excluding ours):
+ *      a. Create a temporary git worktree.
+ *      b. Scan `rendered/r/` into `hostnames/<hostname>` staging namespace.
+ *      c. Run the graph merge algorithm.
+ *      d. Clean up staging and worktree.
  *
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
  *
- * @param {Capabilities} capabilities 
- * @param {{ resetToHostname?: string }} [options] 
+ * @param {Capabilities} capabilities
+ * @param {{ resetToHostname?: string }} [options]
  * @return {Promise<void>}
- * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If sync fails
+ * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If git sync fails
+ * @throws {SyncMergeAggregateError} If one or more per-host graph merges fail
  */
 async function synchronizeNoLock(capabilities, options) {
     const remotePath = capabilities.environment.generatorsRepository();
     const remoteLocation = { url: remotePath };
     const rootDatabase = await getRootDatabase(capabilities);
-    /** @type {Error | null} */
-    let mergeHostBranchesError = null;
 
     try {
-        // Step 1: render the current live database into the tracked repository.
+        // Step 1 + 2: Render current live database → filesystem → commit → push.
+        // Note: mergeHostBranches is always false; we do graph merge below.
         await checkpointDatabase(
             capabilities,
             "sync checkpoint",
@@ -114,67 +137,211 @@ async function synchronizeNoLock(capabilities, options) {
             remoteLocation
         );
 
-        // Step 2: synchronize the rendered repository with the remote.
-        try {
-            // Only merge host branches if we're doing a full merge, not a reset-to-hostname.
-            const mergeHostBranches = options?.resetToHostname === undefined;
-            await workingRepository.synchronize(
-                capabilities,
-                CHECKPOINT_WORKING_PATH,
-                remoteLocation,
-                { ...options, mergeHostBranches }
-            );
-        } catch (error) {
-            if (!isMergeHostBranchesError(error)) {
-                throw error;
-            }
-            mergeHostBranchesError = error;
-        }
-
-        // Step 3: reconstruct the live database from the synchronized snapshot.
-        await transaction(
+        await workingRepository.synchronize(
             capabilities,
             CHECKPOINT_WORKING_PATH,
             remoteLocation,
-            async (store) => {
-                const workTree = await store.getWorkTree();
-
-                // Read the active-replica name from the snapshot's _meta/current_replica
-                // so that `r/` data lands in the correct sublevel even when the remote
-                // used a different replica than the local pointer.
-                const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
-                const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
-                if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
-                    throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile);
-                }
-                const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
-                let parsed;
-                try {
-                    parsed = JSON.parse(raw);
-                } catch {
-                    throw new InvalidSnapshotReplicaError(raw, currentReplicaFile);
-                }
-                if (parsed !== 'x' && parsed !== 'y') {
-                    throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
-                }
-                const snapshotReplica = parsed;
-
-                await scanFromFilesystem(
-                    capabilities,
-                    rootDatabase,
-                    path.join(workTree, DATABASE_SUBPATH, 'r'),
-                    snapshotReplica
-                );
-                await scanFromFilesystem(
-                    capabilities,
-                    rootDatabase,
-                    snapshotMetaDir,
-                    '_meta'
-                );
-            }
+            { ...options, mergeHostBranches: false }
         );
-        if (mergeHostBranchesError !== null) {
-            throw mergeHostBranchesError;
+
+        // For a reset-to-hostname initialization: scan back the remote's state
+        // into LevelDB so the freshly cloned/reset snapshot becomes the live DB.
+        // This replaces the entire active-replica data with the remote's content.
+        if (options?.resetToHostname !== undefined) {
+            await transaction(
+                capabilities,
+                CHECKPOINT_WORKING_PATH,
+                remoteLocation,
+                async (store) => {
+                    const workTree = await store.getWorkTree();
+
+                    // Read the active-replica name from the snapshot's _meta/current_replica
+                    // so that `r/` data lands in the correct sublevel.
+                    const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
+                    const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
+                    if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
+                        throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile);
+                    }
+                    const raw = await capabilities.reader.readFileAsText(currentReplicaFile);
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(raw);
+                    } catch {
+                        throw new InvalidSnapshotReplicaError(raw, currentReplicaFile);
+                    }
+                    if (parsed !== 'x' && parsed !== 'y') {
+                        throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
+                    }
+                    const snapshotReplica = parsed;
+
+                    await scanFromFilesystem(
+                        capabilities,
+                        rootDatabase,
+                        path.join(workTree, DATABASE_SUBPATH, 'r'),
+                        snapshotReplica
+                    );
+                    await scanFromFilesystem(
+                        capabilities,
+                        rootDatabase,
+                        snapshotMetaDir,
+                        '_meta'
+                    );
+                }
+            );
+            return;
+        }
+
+        // Step 3: Fetch all remote branches so hostname tracking refs are up to date.
+        const workDir = path.join(
+            capabilities.environment.workingDirectory(),
+            CHECKPOINT_WORKING_PATH
+        );
+
+        await configureRemoteForAllBranches(capabilities, workDir);
+        await capabilities.git.call(
+            "-C", workDir, "-c", "safe.directory=*",
+            "fetch", "origin"
+        );
+
+        // Step 4: Graph-merge each remote hostname branch into the live LevelDB.
+        const remoteBranches = await listRemoteBranches(capabilities, workDir);
+        const ourBranch = defaultBranch(capabilities);
+
+        /** @type {Map<string, { hostname: string, message: string }>} */
+        const failuresByHost = new Map();
+        /**
+         * Record/merge a per-host failure. We keep one aggregate entry per host
+         * so cleanup failures do not create duplicate `- <host>:` lines in
+         * SyncMergeAggregateError.
+         *
+         * @param {string} hostname
+         * @param {string} message
+         * @param {boolean} isCleanupFailure
+         * @returns {void}
+         */
+        const recordHostFailure = (hostname, message, isCleanupFailure) => {
+            const existing = failuresByHost.get(hostname);
+            if (existing === undefined) {
+                failuresByHost.set(hostname, { hostname, message });
+                return;
+            }
+            if (isCleanupFailure) {
+                existing.message = `${existing.message}; cleanup: ${message}`;
+                return;
+            }
+            failuresByHost.set(hostname, { hostname, message });
+        };
+
+        for (const remoteBranch of remoteBranches) {
+            const hostname = parseRemoteHostnameBranch(remoteBranch);
+            // Skip non-hostname branches (e.g. HEAD) and our own branch.
+            // Our own branch is skipped because this host is the sole writer of
+            // `origin/<ourBranch>`: no other machine pushes commits to that ref,
+            // so the remote can never be ahead of the local DB that we just
+            // checkpointed.  `workingRepository.synchronize()` already pushed our
+            // latest state to the remote, so there is nothing to merge back from
+            // `origin/<ourBranch>` that is not already in the live LevelDB.
+            if (hostname === null || remoteBranch === `origin/${ourBranch}`) {
+                continue;
+            }
+
+            // Create a temporary worktree for this hostname's branch so we can
+            // read its rendered snapshot files without disturbing our checkout.
+            // tmpDir creation is inside the try/catch so that ENOSPC or
+            // permission errors are recorded as per-host failures rather than
+            // aborting all remaining host merges.
+            let tmpDir;
+            let worktreeAdded = false;
+            try {
+                tmpDir = await capabilities.creator.createTemporaryDirectory();
+                await capabilities.git.call(
+                    "-C", workDir, "-c", "safe.directory=*",
+                    "worktree", "add", "--detach", tmpDir, remoteBranch
+                );
+                worktreeAdded = true;
+
+                const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
+
+                // Scan the remote's rendered/r/ into the `_h_<hostname>` staging sublevel.
+                // scanFromFilesystem with a `_h_<hostname>` sublevel clears and reimports
+                // the remote snapshot; the merge algorithm then reads from that namespace.
+                await scanFromFilesystem(
+                    capabilities,
+                    rootDatabase,
+                    remoteRDir,
+                    '_h_' + hostname
+                );
+
+                // Run the graph merge algorithm.
+                // On success this switches the active replica pointer.
+                await mergeHostIntoReplica(capabilities.logger, rootDatabase, hostname);
+
+                capabilities.logger.logInfo(
+                    { hostname },
+                    'Successfully merged host branch'
+                );
+            } catch (err) {
+                recordHostFailure(
+                    hostname,
+                    err instanceof Error ? err.message : String(err),
+                    false
+                );
+                capabilities.logger.logInfo(
+                    { hostname, error: err },
+                    'Failed to merge host branch; continuing with remaining hosts'
+                );
+            } finally {
+                // Always clean up: remove worktree and staging namespace.
+                // `worktreeAdded` is only true when tmpDir was successfully created,
+                // so tmpDir is always a string here (but we check to satisfy the type checker).
+                if (worktreeAdded && tmpDir !== undefined) {
+                    try {
+                        await capabilities.git.call(
+                            "-C", workDir, "-c", "safe.directory=*",
+                            "worktree", "remove", "--force", tmpDir
+                        );
+                        // git worktree remove already deletes the directory;
+                        // no separate deleteDirectory call needed.
+                    } catch (cleanupErr) {
+                        capabilities.logger.logInfo(
+                            { hostname, error: cleanupErr },
+                            'Failed to remove worktree during cleanup'
+                        );
+                        // Best-effort: try to delete the directory if worktree
+                        // removal failed.
+                        try {
+                            await capabilities.deleter.deleteDirectory(tmpDir);
+                        } catch {
+                            // Ignore secondary cleanup failures.
+                        }
+                    }
+                } else if (tmpDir !== undefined) {
+                    // Worktree was never set up; delete the tmp dir we created.
+                    try {
+                        await capabilities.deleter.deleteDirectory(tmpDir);
+                    } catch {
+                        // Ignore cleanup failures.
+                    }
+                }
+                try {
+                    await rootDatabase.clearHostnameStorage(hostname);
+                } catch (cleanupErr) {
+                    recordHostFailure(
+                        hostname,
+                        cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+                        true
+                    );
+                    capabilities.logger.logInfo(
+                        { hostname, error: cleanupErr },
+                        'Failed to clear hostname storage during cleanup'
+                    );
+                }
+            }
+        }
+
+        const failures = [...failuresByHost.values()];
+        if (failures.length > 0) {
+            throw new SyncMergeAggregateError(failures);
         }
     } finally {
         await rootDatabase.close();
@@ -190,4 +357,5 @@ module.exports = {
     synchronizeNoLock,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
+    isSyncMergeAggregateError,
 };
