@@ -7,16 +7,13 @@
  */
 
 const { renderToFilesystem } = require('./render');
-const { scanFromFilesystem, scanHostnameFromFilesystem, isScanInputDirMissingError, InvalidHostnameError, isInvalidHostnameError } = require('./scan');
+const { scanFromFilesystem, isScanInputDirMissingError } = require('./scan');
 const { keyToRelativePath, relativePathToKey, serializeValue, parseValue } = require('./encoding');
 
 module.exports = {
     renderToFilesystem,
     scanFromFilesystem,
-    scanHostnameFromFilesystem,
     isScanInputDirMissingError,
-    InvalidHostnameError,
-    isInvalidHostnameError,
     keyToRelativePath,
     relativePathToKey,
     serializeValue,

@@ -33,7 +33,7 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
 } = require('./gitstore');
-const { scanFromFilesystem, scanHostnameFromFilesystem } = require('./render');
+const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 const {
     mergeHostIntoReplica,
@@ -264,12 +264,14 @@ async function synchronizeNoLock(capabilities, options) {
 
                 const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
 
-                // Scan the remote's rendered/r/ into hostnames/<hostname> staging.
-                await scanHostnameFromFilesystem(
+                // Scan the remote's rendered/r/ into the `_h_<hostname>` staging sublevel.
+                // scanFromFilesystem with a `_h_<hostname>` sublevel clears and reimports
+                // the remote snapshot; the merge algorithm then reads from that namespace.
+                await scanFromFilesystem(
                     capabilities,
                     rootDatabase,
                     remoteRDir,
-                    hostname
+                    '_h_' + hostname
                 );
 
                 // Run the graph merge algorithm.
