@@ -145,18 +145,22 @@ async function collectAllNodes(storage) {
 }
 
 /**
- * Returns the nodes in stable topological order (roots first, leaves last).
+ * Returns the nodes in stable topological order (roots first, leaves last)
+ * from an explicit in-memory inputs map.  The map must contain every node
+ * that should appear in the output; edges to nodes not present in the map
+ * are silently ignored (so dangling references are treated as external roots).
  *
- * The ordering satisfies: if node B depends on node A, then A appears before
- * B in the result.  Within the same topological depth, nodes are sorted
- * ascending by their NodeKeyString representation.
+ * This is the core Kahn's-algorithm implementation shared by both
+ * `topologicalSort` (reads from SchemaStorage) and `topologicalSortFromMap`
+ * (operates directly on an already-built map).
  *
- * @param {SchemaStorage} storage - Schema storage whose inputs/revdeps graph to sort.
- * @returns {Promise<NodeKeyString[]>}
+ * @param {Map<NodeKeyString, NodeKeyString[]>} inputsMap
+ *   A map from each node to the list of its input nodes.
+ * @returns {NodeKeyString[]}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
-async function topologicalSort(storage) {
-    const allNodes = await collectAllNodes(storage);
+function topologicalSortFromMap(inputsMap) {
+    const allNodes = [...inputsMap.keys()];
 
     if (allNodes.length === 0) {
         return [];
@@ -177,16 +181,11 @@ async function topologicalSort(storage) {
         }
     }
 
-    // Populate inDegree and dependents from inputs records.
-    for (const node of allNodes) {
-        const record = await storage.inputs.get(node);
-        if (!record) continue;
-
-        for (const inputStr of record.inputs) {
-            const inputNode = stringToNodeKeyString(inputStr);
-            // Only count edges to nodes that are materialized in this storage.
+    // Populate inDegree and dependents from the inputs map.
+    for (const [node, inputs] of inputsMap) {
+        for (const inputNode of inputs) {
+            // Only count edges to nodes that are present in this map.
             if (!inDegree.has(inputNode)) {
-                // inputNode exists in inputs list but is not materialized — skip.
                 continue;
             }
             inDegree.set(node, (inDegree.get(node) ?? 0) + 1);
@@ -235,8 +234,40 @@ async function topologicalSort(storage) {
     return sorted;
 }
 
+/**
+ * Returns the nodes in stable topological order (roots first, leaves last).
+ *
+ * The ordering satisfies: if node B depends on node A, then A appears before
+ * B in the result.  Within the same topological depth, nodes are sorted
+ * ascending by their NodeKeyString representation.
+ *
+ * @param {SchemaStorage} storage - Schema storage whose inputs/revdeps graph to sort.
+ * @returns {Promise<NodeKeyString[]>}
+ * @throws {TopologicalSortCycleError} If the graph contains a cycle.
+ */
+async function topologicalSort(storage) {
+    const allNodes = await collectAllNodes(storage);
+
+    if (allNodes.length === 0) {
+        return [];
+    }
+
+    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    const inputsMap = new Map();
+    for (const node of allNodes) {
+        const record = await storage.inputs.get(node);
+        const inputs = record
+            ? record.inputs.map(s => stringToNodeKeyString(s))
+            : [];
+        inputsMap.set(node, inputs);
+    }
+
+    return topologicalSortFromMap(inputsMap);
+}
+
 module.exports = {
     topologicalSort,
+    topologicalSortFromMap,
     TopologicalSortCycleError,
     isTopologicalSortCycleError,
 };

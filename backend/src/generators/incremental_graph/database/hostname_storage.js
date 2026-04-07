@@ -202,6 +202,13 @@ async function setHostnameMeta(db, hostname, key, value) {
 }
 
 /**
+ * Maximum number of LevelDB batch operations issued in a single `db.batch()`
+ * call when writing hostname staging entries.  Mirrors the chunk size used
+ * by RootDatabase._rawPutAll to keep individual batch writes bounded.
+ */
+const RAW_BATCH_CHUNK_SIZE = 500;
+
+/**
  * Write raw `{ sublevelName, subkey, value }` entries into a hostname's
  * staging namespace without going through the typed schema layer.
  *
@@ -224,8 +231,10 @@ async function rawPutAllToHostname(db, hostname, entries) {
             value: entry.value,
         };
     }
-    const ops = entries.map(makePutOp);
-    if (ops.length > 0) {
+
+    for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
+        const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
+        const ops = chunk.map(makePutOp);
         await db.batch(ops);
     }
 }

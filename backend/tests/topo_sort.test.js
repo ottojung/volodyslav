@@ -15,6 +15,7 @@ const {
 } = require('../src/generators/incremental_graph/database');
 const {
     topologicalSort,
+    topologicalSortFromMap,
     TopologicalSortCycleError,
     isTopologicalSortCycleError,
 } = require('../src/generators/incremental_graph/database/topo_sort');
@@ -202,5 +203,47 @@ describe('topologicalSort', () => {
         } finally {
             if (db) await db.close();
         }
+    });
+});
+
+describe('topologicalSortFromMap', () => {
+    /**
+     * Build a NodeKeyString→NodeKeyString[] map from a plain object for test convenience.
+     * @param {Record<string, string[]>} obj
+     * @returns {Map<string, string[]>}
+     */
+    function makeMap(obj) {
+        return new Map(Object.entries(obj));
+    }
+
+    test('returns empty array for an empty map', () => {
+        expect(topologicalSortFromMap(new Map())).toEqual([]);
+    });
+
+    test('orders A → B → C correctly', () => {
+        const nodeA = nk('a');
+        const nodeB = nk('b');
+        const nodeC = nk('c');
+        const map = makeMap({ [nodeA]: [], [nodeB]: [nodeA], [nodeC]: [nodeB] });
+        expect(topologicalSortFromMap(map)).toEqual([nodeA, nodeB, nodeC]);
+    });
+
+    test('detects a cycle among in-map nodes', () => {
+        const nodeA = nk('a');
+        const nodeB = nk('b');
+        const map = makeMap({ [nodeA]: [nodeB], [nodeB]: [nodeA] });
+        expect(() => topologicalSortFromMap(map)).toThrow(TopologicalSortCycleError);
+    });
+
+    test('ignores edges to nodes not present in the map', () => {
+        const nodeA = nk('a');
+        const nodeB = nk('b');
+        const external = nk('external');
+        // nodeB "depends" on external which is not in the map — treated as root.
+        const map = makeMap({ [nodeA]: [], [nodeB]: [external] });
+        const result = topologicalSortFromMap(map);
+        expect(result.length).toBe(2);
+        expect(result).toContain(nodeA);
+        expect(result).toContain(nodeB);
     });
 });

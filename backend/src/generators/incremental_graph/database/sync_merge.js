@@ -6,16 +6,22 @@
  *
  *   1. Copies the active local replica L into the inactive replica T
  *      bit-identically (L and T become identical).
- *   2. Builds a stable topological ordering of T's nodes.
- *   3. Computes initial decisions per-node from modification timestamps:
+ *   2. Collects all nodes from T and H; computes initial per-node decisions
+ *      from modification timestamps:
  *      - T-newer (or H absent) → 'keep'; if strictly newer, flag as force-keep root.
  *      - H-newer → 'take'; flag as force-take root.
  *      - Equal timestamps → 'keep'.
- *   4. Propagates force-keep and force-take flags through the topological order,
- *      so each node inherits the taint of its most-upstream forced ancestor.
+ *      Builds a merged dependency map using H.inputs for 'take' and H-only nodes,
+ *      T.inputs for all others.
+ *   3. Builds a stable topological ordering of the merged graph, which also
+ *      detects cycles across the full merged structure (T + H-only additions +
+ *      rewired edges from taken nodes).
+ *   4. Propagates force-keep and force-take flags through the merged topological
+ *      order using the merged inputs map, so each node inherits the taint of its
+ *      most-upstream forced ancestor (even across rewired edges).
  *   5. Nodes tainted by both force-keep and force-take are 'invalidate'.
- *   6. Nodes present in H but absent in T are taken in full (additions from remote;
- *      valid because nodes cannot be deleted from a graph).
+ *   6. H-only nodes are always 'take'; those with keepTainted ancestors get
+ *      freshness overridden to `potentially-outdated`.
  *   7. Applies all decisions to T in one atomic batch, rebuilding the revdeps
  *      index from scratch.
  *   8. Switches the active replica pointer to T.
@@ -29,7 +35,7 @@
  * storage after each host merge completes (regardless of success/failure).
  */
 
-const { topologicalSort, isTopologicalSortCycleError } = require('./topo_sort');
+const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
 const { stringToNodeKeyString, versionToString } = require('./types');
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
 
@@ -126,7 +132,9 @@ function compareIsoTimestamps(a, b) {
 /**
  * Copy the entire contents of replica `from` into replica `to`,
  * clearing `to` first so no stale keys survive.
- * Version is also copied so the version check in the target's batch() passes.
+ * After copying, ensures `to`'s meta/version is always set to the
+ * current application version — even when the source replica is empty
+ * and `dst.batch([])` would otherwise perform no writes at all.
  *
  * @param {RootDatabase} rootDatabase
  * @param {ReplicaName} from
@@ -168,6 +176,15 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
     }
 
     await dst.batch(ops);
+
+    // Guarantee that `to` always carries the current application version,
+    // even when `ops` was empty (source replica has no data).
+    // When ops is non-empty, dst.batch() already initialized the version via
+    // buildSchemaStorage's first-write check; this call is idempotent.
+    // When ops is empty, dst.batch([]) returns immediately without writing
+    // anything, so without this call the switched-to replica would have no
+    // version and the next host merge would fail with HostVersionMismatchError.
+    await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
 }
 
 /**
@@ -327,20 +344,28 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const T = rootDatabase.schemaStorageForReplica(toReplica);
     const H = rootDatabase.hostnameSchemaStorage(hostname);
 
-    // ── Step 2: Stable topological sort of T ────────────────────────────────
-    const topoList = await topologicalSort(T);
+    // ── Step 2: Collect nodes and build merged dependency map ────────────────
+    //
+    // Initial timestamp decisions are computed for all T nodes.  Then the
+    // merged inputs map is built using H.inputs for every node whose initial
+    // decision is 'take' and T.inputs for all others.  H-only nodes use
+    // H.inputs.  This merged map is the single source of truth for both the
+    // topological sort and the taint-propagation pass, which guarantees:
+    //
+    //   a) Cycle detection covers the full merged graph (including H-only
+    //      additions and changed edges in taken nodes).
+    //   b) Taint propagation correctly invalidates nodes whose ancestors
+    //      change because a taken node rewired its inputs.
 
-    // ── Step 3: Compute initial per-node decisions from timestamp comparison ─
-    // 'keep': T is equal or newer (or H has no entry).
-    // 'take': H is strictly newer.
+    // ── 2a: Per-node timestamp comparison for T nodes ─────────────────────────
     /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
     const initialDecisions = new Map();
     /** @type {Set<NodeKeyString>} */
-    const forceKeepRoots = new Set(); // Nodes where T is strictly newer than H.
+    const forceKeepRoots = new Set();
     /** @type {Set<NodeKeyString>} */
-    const forceTakeRoots = new Set(); // Nodes where H is strictly newer than T.
+    const forceTakeRoots = new Set();
 
-    for (const node of topoList) {
+    for await (const node of T.inputs.keys()) {
         const tTimestamps = await T.timestamps.get(node);
         const hTimestamps = await H.timestamps.get(node);
 
@@ -357,31 +382,71 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         }
     }
 
-    // ── Step 4: Propagate force-keep and force-take flags in topological order
-    // A node is keepTainted if it is (transitively) downstream of a T-newer node.
-    // A node is takeTainted if it is (transitively) downstream of an H-newer node.
-    // Taint propagation is O(N + E): for each node, inherit taint from inputs.
+    // ── 2b: Discover H-only nodes ─────────────────────────────────────────────
+    /** @type {Set<NodeKeyString>} */
+    const hOnlyNodes = new Set();
+    for await (const key of H.inputs.keys()) {
+        if (!initialDecisions.has(key)) {
+            hOnlyNodes.add(key);
+        }
+    }
+
+    // ── 2c: Build merged inputs map ──────────────────────────────────────────
+    // For 'take' nodes: use H.inputs (the remote may have rewired edges).
+    // For 'keep' nodes: use T.inputs.
+    // For H-only nodes: use H.inputs.
+    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    const mergedInputsMap = new Map();
+
+    for (const [node, decision] of initialDecisions) {
+        let record;
+        if (decision === 'take') {
+            // Prefer H's inputs for taken nodes; fall back to T when H has none.
+            record = await H.inputs.get(node) ?? await T.inputs.get(node);
+        } else {
+            record = await T.inputs.get(node);
+        }
+        const inputKeys = record
+            ? record.inputs.map(s => stringToNodeKeyString(s))
+            : [];
+        mergedInputsMap.set(node, inputKeys);
+    }
+
+    for (const key of hOnlyNodes) {
+        const record = await H.inputs.get(key);
+        const inputKeys = record
+            ? record.inputs.map(s => stringToNodeKeyString(s))
+            : [];
+        mergedInputsMap.set(key, inputKeys);
+    }
+
+    // ── Step 3: Stable topological sort of the merged graph ──────────────────
+    // topologicalSortFromMap also detects cycles in the merged graph, covering
+    // both T→H edge changes (taken nodes) and H-only additions.
+    const topoList = topologicalSortFromMap(mergedInputsMap);
+
+    // ── Step 4: Propagate force-keep and force-take flags ─────────────────────
+    // Uses the merged inputs map so that rewired edges from taken nodes are
+    // correctly accounted for (e.g. a taken node that now depends on a
+    // force-kept ancestor will be tainted from both sides → 'invalidate').
     /** @type {Set<NodeKeyString>} */
     const keepTainted = new Set(forceKeepRoots);
     /** @type {Set<NodeKeyString>} */
     const takeTainted = new Set(forceTakeRoots);
 
     for (const node of topoList) {
-        const inputsRecord = await T.inputs.get(node);
-        if (!inputsRecord) continue;
-        for (const inputStr of inputsRecord.inputs) {
-            const inputKey = stringToNodeKeyString(inputStr);
+        const inputKeys = mergedInputsMap.get(node) ?? [];
+        for (const inputKey of inputKeys) {
             if (keepTainted.has(inputKey)) keepTainted.add(node);
             if (takeTainted.has(inputKey)) takeTainted.add(node);
         }
     }
 
     // ── Step 5: Assign final decisions ──────────────────────────────────────
-    // Nodes in both taints are invalidated (mixed-ancestry conflict).
     /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>} */
     const decisions = new Map();
 
-    for (const node of topoList) {
+    for (const [node, initial] of initialDecisions) {
         const inKeep = keepTainted.has(node);
         const inTake = takeTainted.has(node);
 
@@ -392,64 +457,16 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         } else if (inTake) {
             decisions.set(node, 'take');
         } else {
-            const base = initialDecisions.get(node) ?? 'keep';
-            decisions.set(node, base);
+            decisions.set(node, initial);
         }
     }
 
-    // ── Step 6: Handle H-only nodes (additions from remote) ─────────────────
-    // Nodes present in H but absent in T are additions from the remote side.
-    // Nodes cannot be deleted from a graph, so H having more nodes means they
-    // were added remotely.
-    //
-    // However, H-only nodes may depend (via their inputs) on T-present nodes
-    // that have force-keep taint.  Such a node was computed on the remote using
-    // an older version of an ancestor that T has already updated locally.  Its
-    // cached value is therefore stale.  We still take all structural data from H
-    // (so the node exists in T and the revdeps index is correct) but we override
-    // the freshness to `potentially-outdated`.
-    /** @type {Set<NodeKeyString>} */
-    const hOnlyNodes = new Set();
-    for await (const key of H.inputs.keys()) {
-        if (!decisions.has(key)) {
-            hOnlyNodes.add(key);
-        }
-    }
-
-    // Propagate keepTainted / takeTainted through the H-only sub-graph using
-    // a recursive DFS so that chains of H-only nodes are handled correctly.
-    // Nodes are visited at most once (guarded by `hOnlyVisited`).
-    const hOnlyVisited = new Set();
-
-    /**
-     * @param {NodeKeyString} key
-     * @returns {Promise<void>}
-     */
-    async function propagateTaintToHOnly(key) {
-        if (hOnlyVisited.has(key)) return;
-        hOnlyVisited.add(key);
-        const hInputsRecord = await H.inputs.get(key);
-        if (!hInputsRecord) return;
-        for (const inputStr of hInputsRecord.inputs) {
-            const inputKey = stringToNodeKeyString(inputStr);
-            // Propagate through any H-only predecessors first.
-            if (hOnlyNodes.has(inputKey)) {
-                await propagateTaintToHOnly(inputKey);
-            }
-            if (keepTainted.has(inputKey)) keepTainted.add(key);
-            if (takeTainted.has(inputKey)) takeTainted.add(key);
-        }
-    }
-
-    for (const key of hOnlyNodes) {
-        await propagateTaintToHOnly(key);
-    }
-
-    // Track which H-only nodes need a freshness override after being taken.
-    // A node is stale if any of its ancestors (transitively) were kept from T
-    // (keepTainted), meaning it was computed on the remote with stale inputs.
+    // ── Step 6: Finalize H-only nodes ────────────────────────────────────────
+    // H-only nodes are always taken, but their cached value may be stale if
+    // any of their (merged-graph) ancestors were force-kept from T.
     /** @type {Set<NodeKeyString>} */
     const hOnlyNeedsInvalidate = new Set();
+
     for (const key of hOnlyNodes) {
         decisions.set(key, 'take');
         if (keepTainted.has(key)) {

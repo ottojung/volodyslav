@@ -480,8 +480,10 @@ class RootDatabaseClass {
 
     /**
      * Returns a bare SchemaStorage for a hostname staging namespace.
-     * @param {string} hostname - The hostname key (must be non-empty, no `/`).
+     * @param {string} hostname - The hostname key (must be non-empty and must not
+     *   contain `/`, `\`, or `!`).
      * @returns {SchemaStorage}
+     * @throws {import('./hostname_storage').InvalidHostnameError} If the hostname is invalid.
      */
     hostnameSchemaStorage(hostname) {
         return hostnameSchemaStorageHelper(this.db, hostname);
@@ -489,8 +491,10 @@ class RootDatabaseClass {
 
     /**
      * Clear all data stored under the `_h_<hostname>` staging namespace.
-     * @param {string} hostname - The hostname key (must be non-empty, no `/`).
+     * @param {string} hostname - The hostname key (must be non-empty and must not
+     *   contain `/`, `\`, or `!`).
      * @returns {Promise<void>}
+     * @throws {import('./hostname_storage').InvalidHostnameError} If the hostname is invalid.
      */
     async clearHostnameStorage(hostname) {
         return clearHostnameStorageHelper(this.db, hostname);

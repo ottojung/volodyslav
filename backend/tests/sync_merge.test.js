@@ -291,7 +291,13 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('invalidates node whose ancestors come from both keep and take lineages', async () => {
+    test('invalidates taken node when H.inputs rewires it to a force-kept ancestor', async () => {
+        // Scenario: in T, B has no dependency on A.
+        //           in H, B depends on A (edge added remotely).
+        // A is force-kept (T-newer); B is force-taken (H-newer).
+        // With T-only taint propagation B would just be 'take'.
+        // With the merged-graph: B's merged inputs include A, so B gets
+        // both keepTainted (via A) and takeTainted (B itself) → 'invalidate'.
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -302,34 +308,71 @@ describe('mergeHostIntoReplica', () => {
             await db.setMetaVersion(appVersionStr);
             await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
-            // Graph:  A → C, B → C  (C depends on both A and B)
-            // A is locally newer (force-keep root),
-            // B is remotely newer (force-take root).
-            // C should be invalidated (freshness = 'potentially-outdated').
             const nodeA = nk('a');
             const nodeB = nk('b');
-            const nodeC = nk('c');
-            const localValueC = { value: { id: 'c-local', type: 'test', description: 'c local' }, isDirty: false };
+            const localValueB = { value: { id: 'b-local', type: 'test', description: 'local B' }, isDirty: false };
+            const remoteValueB = { value: { id: 'b-remote', type: 'test', description: 'remote B' }, isDirty: false };
 
             const L = db.schemaStorageForReplica('x');
+            // In T: A is force-kept (T-newer); B has no deps (independent of A).
             await writeNode(L, nodeA, TS3, [], undefined);
-            await writeNode(L, nodeB, TS1, [], undefined);
-            await writeNode(L, nodeC, TS1, [nodeA, nodeB], localValueC);
+            await writeNode(L, nodeB, TS1, [], localValueB);
 
             const H = db.hostnameSchemaStorage(hostname);
+            // In H: A is older; B is newer AND now depends on A.
             await writeNode(H, nodeA, TS1, [], undefined);
-            await writeNode(H, nodeB, TS2, [], undefined);
-            await writeNode(H, nodeC, TS1, [nodeA, nodeB], undefined);
+            await writeNode(H, nodeB, TS2, [nodeA], remoteValueB);
 
             await mergeHostIntoReplica(logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
 
-            // C is invalidated → freshness = 'potentially-outdated'.
-            // The old value is retained (not deleted) until the node is recomputed.
-            const cFreshness = await T.freshness.get(nodeC);
-            expect(cFreshness).toBe('potentially-outdated');
+            // B should be 'invalidate' because its merged inputs include the
+            // force-kept A, making it keepTainted AND takeTainted.
+            const bFreshness = await T.freshness.get(nodeB);
+            expect(bFreshness).toBe('potentially-outdated');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('preserves replica version when source replica is empty', async () => {
+        // When the local replica has no data (ops is empty),
+        // dst.batch([]) performs no writes. Without the explicit
+        // setMetaVersionForReplica call, the switched-to replica would
+        // have no version and the next host merge would fail with
+        // HostVersionMismatchError(local=(none), remote=<version>).
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+
+            // First host: set version on local replica but add no nodes.
+            const hostname1 = 'peer1';
+            const appVersionStr = db.version;
+            await db.setMetaVersion(appVersionStr);
+            await db.setHostnameMeta(hostname1, 'version', appVersionStr);
+
+            // Merge first host (empty local replica → ops is empty).
+            await mergeHostIntoReplica(logger, db, hostname1);
+            // Replica pointer now points to 'y'.
+            expect(db.currentReplicaName()).toBe('y');
+
+            // Second host: same version, with one node.
+            const hostname2 = 'peer2';
+            await db.setHostnameMeta(hostname2, 'version', appVersionStr);
+            const nodeA = nk('a');
+            const remoteValue = { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false };
+            const H2 = db.hostnameSchemaStorage(hostname2);
+            await writeNode(H2, nodeA, TS1, [], remoteValue);
+
+            // Should NOT throw HostVersionMismatchError even though the first
+            // merge left an empty 'y' replica with no version before this fix.
+            await expect(
+                mergeHostIntoReplica(logger, db, hostname2)
+            ).resolves.toBeUndefined();
         } finally {
             if (db) await db.close();
         }
