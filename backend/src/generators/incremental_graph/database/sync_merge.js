@@ -541,6 +541,15 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
                 pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
             }
         } else if (decision === 'invalidate') {
+            // If the node was initially 'take' (H newer) but got tainted to
+            // 'invalidate', we must still apply H's structural state first
+            // (inputs/counters/values/timestamps) so T stays consistent with
+            // mergedInputsMap and rebuilt revdeps. We then force freshness to
+            // potentially-outdated to trigger recomputation.
+            if (initialDecisions.get(node) === 'take') {
+                const takeOps = await buildTakeOps(T, H, node);
+                pendingOps.push(...takeOps);
+            }
             pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
             // Advance modifiedAt to H's value so the next sync does not see H as
             // newer and re-invalidate this node in an endless cycle.

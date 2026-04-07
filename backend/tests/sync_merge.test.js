@@ -317,11 +317,13 @@ describe('mergeHostIntoReplica', () => {
             // In T: A is force-kept (T-newer); B has no deps (independent of A).
             await writeNode(L, nodeA, TS3, [], undefined);
             await writeNode(L, nodeB, TS1, [], localValueB);
+            await L.counters.put(nodeB, 1);
 
             const H = db.hostnameSchemaStorage(hostname);
             // In H: A is older; B is newer AND now depends on A.
             await writeNode(H, nodeA, TS1, [], undefined);
             await writeNode(H, nodeB, TS2, [nodeA], remoteValueB);
+            await H.counters.put(nodeB, 2);
 
             await mergeHostIntoReplica(logger, db, hostname);
 
@@ -332,6 +334,18 @@ describe('mergeHostIntoReplica', () => {
             // force-kept A, making it keepTainted AND takeTainted.
             const bFreshness = await T.freshness.get(nodeB);
             expect(bFreshness).toBe('potentially-outdated');
+
+            // Because initial decision for B was 'take', invalidate must still
+            // apply H's structural state so inputs/revdeps remain consistent.
+            const bInputs = await T.inputs.get(nodeB);
+            expect(bInputs).toEqual({
+                inputs: [nodeA],
+                inputCounters: [],
+            });
+            const bCounter = await T.counters.get(nodeB);
+            expect(bCounter).toBe(2);
+            const bValue = await T.values.get(nodeB);
+            expect(bValue).toEqual(remoteValueB);
 
             // B's modifiedAt should be advanced to H's value (TS2) so that on
             // the next sync, compareIsoTimestamps(T.B, H.B) == 0 → 'keep', breaking
