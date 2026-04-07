@@ -8,10 +8,14 @@ const { transaction } = require("./transaction");
 const { checkpoint } = require("./checkpoint");
 const workingRepository = require("./working_repository");
 const mergeHostBranches = require("./merge_host_branches");
+const { configureRemoteForAllBranches } = require("./branch_setup");
+const defaultBranch = require("./default_branch");
 
 module.exports = {
     transaction,
     checkpoint,
     workingRepository,
     mergeHostBranches,
+    configureRemoteForAllBranches,
+    defaultBranch,
 };

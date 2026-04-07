@@ -22,6 +22,15 @@ const { stringToVersion, stringToNodeKeyString, versionToString } = require('./t
 /** @typedef {import('./types').Version} Version */
 
 /**
+ * Common base type for any abstract-level database instance at any nesting depth.
+ * Both `Level<K, V>` and `AbstractSublevel<Parent, F, K, V>` extend this base,
+ * so it can represent both the root database and any nested sublevel.
+ * Used as a looser parameter type for internal helpers that only need the shared
+ * abstract-level API (sublevel(), batch(), etc.).
+ * @typedef {import('abstract-level').AbstractLevel<SublevelFormat, NodeKeyString, DatabaseStoredValue>} AnyLevelType
+ */
+
+/**
  * Sublevel for storing plain-string namespace metadata (e.g., version).
  * Uses string keys rather than NodeKeyString to clearly distinguish meta keys from node keys.
  * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} MetaSublevelType
@@ -193,6 +202,50 @@ function isSchemaBatchVersionError(object) {
  * @template T
  * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
  */
+
+/**
+ * Build a bare SchemaStorage without any version-check enforcement.
+ * Used for hostname staging namespaces where the data originates from a remote
+ * replica and should not be constrained by the local application version.
+ *
+ * The returned storage's `batch` function simply writes operations without any
+ * meta/version check.  Individual sub-database `put`/`del` calls are also
+ * unconstrained.
+ *
+ * @param {SchemaSublevelType} namespaceSublevel - The namespace's top-level sublevel.
+ * @returns {SchemaStorage}
+ */
+function buildBareSchemaStorage(namespaceSublevel) {
+    /** @type {SimpleSublevel<ComputedValue>} */
+    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<Freshness>} */
+    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<InputsRecord>} */
+    const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<NodeKeyString[]>} */
+    const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<Counter>} */
+    const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<TimestampRecord>} */
+    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+
+    /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
+    const batch = async (operations) => {
+        if (operations.length > 0) {
+            await namespaceSublevel.batch(operations);
+        }
+    };
+
+    return {
+        batch,
+        values: makeTypedDatabase(valuesSublevel),
+        freshness: makeTypedDatabase(freshnessSublevel),
+        inputs: makeTypedDatabase(inputsSublevel),
+        revdeps: makeTypedDatabase(revdepsSublevel),
+        counters: makeTypedDatabase(countersSublevel),
+        timestamps: makeTypedDatabase(timestampsSublevel),
+    };
+}
 
 /**
  * Build a SchemaStorage for one replica namespace.
@@ -509,7 +562,97 @@ class RootDatabaseClass {
     }
 
     /**
-     * Deletes all keys belonging to one top-level LevelDB sublevel.
+     * Returns a bare SchemaStorage for a hostname staging namespace.
+     * The storage reads/writes under `hostnames/<hostname>` and does NOT enforce
+     * any local version check.  This is intentional: hostname data originates from
+     * a remote replica and must be imported verbatim for comparison during merge.
+     *
+     * The returned storage is a fresh object on every call; callers that need the
+     * same hostname storage across multiple operations should retain the reference
+     * themselves.
+     *
+     * @param {string} hostname - The hostname key (must be non-empty, no `/`).
+     * @returns {SchemaStorage}
+     */
+    hostnameSchemaStorage(hostname) {
+        /** @type {SchemaSublevelType} */
+        const hostnameSub = this.db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
+        return buildBareSchemaStorage(hostnameSub);
+    }
+
+    /**
+     * Clear all data stored under the `_h_<hostname>` staging namespace.
+     * Called before importing a remote hostname's snapshot and after a completed
+     * (successful or failed) per-host merge to free storage.
+     *
+     * @param {string} hostname - The hostname key (must be non-empty, no `/`).
+     * @returns {Promise<void>}
+     */
+    async clearHostnameStorage(hostname) {
+        /** @type {SchemaSublevelType} */
+        const hostnameSub = this.db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
+        await hostnameSub.clear();
+    }
+
+    /**
+     * Reads the app version stored in a hostname's staging meta sublevel.
+     * Returns `undefined` when the hostname storage contains no version entry.
+     * Used by the sync merge runner to validate `_meta/version` equality before
+     * attempting a graph merge.
+     *
+     * @param {string} hostname
+     * @returns {Promise<Version | undefined>}
+     */
+    async getHostnameMetaVersion(hostname) {
+        // Raw key format for _h_<hostname>/meta/version: !_h_<hostname>!!meta!version
+        const rawKey = stringToNodeKeyString(`!_h_${hostname}!!meta!version`);
+        const raw = await this.db.get(rawKey);
+        if (raw === undefined) {
+            return undefined;
+        }
+        if (typeof raw === 'string') {
+            return stringToVersion(raw);
+        }
+        return undefined;
+    }
+
+    /**
+     * Write a meta key/value pair into a hostname's staging meta sublevel.
+     * Used by scanHostnameFromFilesystem to persist the remote's meta/version
+     * so it can be checked before graph merge.
+     *
+     * @param {string} hostname
+     * @param {string} key - The meta key to write (e.g. 'version').
+     * @param {unknown} value - The value to store.
+     * @returns {Promise<void>}
+     */
+    async setHostnameMeta(hostname, key, value) {
+        // Raw key format for _h_<hostname>/meta/<key>: !_h_<hostname>!!meta!<key>
+        const rawKey = `!_h_${hostname}!!meta!${key}`;
+        await this._rawPutAll([{ key: rawKey, value }]);
+    }
+
+    /**
+     * Write raw `{ sublevelName, subkey, value }` entries into a hostname's staging
+     * namespace without going through the typed schema layer.  This is used by
+     * `scanHostnameFromFilesystem` to import filesystem snapshots whose values are
+     * still opaque `unknown` and cannot be statically typed.
+     *
+     * @param {string} hostname
+     * @param {Array<{ sublevelName: string, subkey: string, value: unknown }>} entries
+     * @returns {Promise<void>}
+     */
+    async _rawPutAllToHostname(hostname, entries) {
+        // Raw key format for _h_<hostname>/<sublevelName>/<subkey>:
+        // !_h_<hostname>!!<sublevelName>!<subkey>
+        const rawEntries = entries.map(({ sublevelName, subkey, value }) => ({
+            key: `!_h_${hostname}!!${sublevelName}!${subkey}`,
+            value,
+        }));
+        await this._rawPutAll(rawEntries);
+    }
+
+    /**
      * This is equivalent to iterating every key with the `!<sublevelName>!` prefix
      * and deleting them, but delegates to abstract-level's `sublevel.clear()` so
      * the operation is handled in a single efficient range-delete rather than a

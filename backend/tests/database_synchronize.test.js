@@ -2,6 +2,7 @@ const path = require("path");
 const {
     synchronizeNoLock,
     isInvalidSnapshotReplicaError,
+    isSyncMergeAggregateError,
     getRootDatabase,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
@@ -244,7 +245,9 @@ describe("synchronizeNoLock", () => {
 
     test("merges rendered data from other hostname branches into the live database", async () => {
         const capabilities = getTestCapabilities();
-        const aliceKey = '!x!!values!{"head":"event","args":["alice"]}';
+        const aliceNodeArgs = '{"head":"event","args":["alice"]}';
+        const aliceInputsKey = `!x!!inputs!${aliceNodeArgs}`;
+        const aliceTimestampsKey = `!x!!timestamps!${aliceNodeArgs}`;
         await capabilities.git.call(
             "init",
             "--bare",
@@ -254,23 +257,31 @@ describe("synchronizeNoLock", () => {
         await pushRemoteRepositoryBranch(capabilities, "test-host", [["!_meta!format", "xy-v2"]]);
         await pushRemoteRepositoryBranch(capabilities, "alice", [
             ["!_meta!format", "xy-v2"],
-            [aliceKey, { source: "alice" }],
+            [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
+            [aliceInputsKey, { inputs: [], inputCounters: {} }],
+            [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
 
         await synchronizeNoLock(capabilities);
 
         const reopened = await getRootDatabase(capabilities);
         try {
+            // After merge the active replica pointer may have moved to "y";
+            // look for the value in whichever replica is currently active.
+            const replica = reopened.currentReplicaName();
+            const activeAliceKey = `!${replica}!!values!${aliceNodeArgs}`;
             const entries = await collectRawEntries(reopened);
-            expect(entries.get(aliceKey)).toEqual({ source: "alice" });
+            expect(entries.get(activeAliceKey)).toEqual({ source: "alice" });
         } finally {
             await reopened.close();
         }
     });
 
-    test("on partial host-merge failures, scans back successful merges before rethrowing", async () => {
+    test("on partial host-merge failures, merges successful hosts before rethrowing", async () => {
         const capabilities = getTestCapabilities();
-        const bobKey = '!x!!values!{"head":"event","args":["bob"]}';
+        const bobNodeArgs = '{"head":"event","args":["bob"]}';
+        const bobInputsKey = `!x!!inputs!${bobNodeArgs}`;
+        const bobTimestampsKey = `!x!!timestamps!${bobNodeArgs}`;
 
         await capabilities.git.call(
             "init",
@@ -281,34 +292,39 @@ describe("synchronizeNoLock", () => {
         await pushRemoteRepositoryBranch(capabilities, "test-host", [
             ["!_meta!format", "xy-v2"],
         ]);
+        // bob: matching version (undefined == undefined → passes check), has inputs record.
         await pushRemoteRepositoryBranch(capabilities, "bob", [
             ["!_meta!format", "xy-v2"],
-            [bobKey, { source: "bob" }],
+            [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
+            [bobInputsKey, { inputs: [], inputCounters: {} }],
+            [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
+        // zed: version mismatch → HostVersionMismatchError → triggers aggregate failure.
         await pushRemoteRepositoryBranch(capabilities, "zed", [
             ["!_meta!format", "xy-v2"],
+            ['!x!!meta!version', "incompatible-version"],
             ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
+            ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: {} }],
         ]);
 
-        const originalGitCall = capabilities.git.call;
-        capabilities.git.call = jest.fn().mockImplementation((...args) => {
-            if (
-                args.includes("merge") &&
-                args.includes("origin/zed-main")
-            ) {
-                throw new Error("Simulated zed merge failure");
-            }
-            return originalGitCall.apply(capabilities.git, args);
-        });
+        let error;
+        try {
+            await synchronizeNoLock(capabilities);
+        } catch (caught) {
+            error = caught;
+        }
 
-        await expect(synchronizeNoLock(capabilities)).rejects.toThrow(
-            "Failed to merge generators database branches:\n- zed:"
-        );
+        expect(isSyncMergeAggregateError(error)).toBe(true);
+        expect(error.message).toMatch("Failed to merge generators database branches:\n- zed:");
 
         const reopened = await getRootDatabase(capabilities);
         try {
+            // After merge the active replica pointer may have moved to "y";
+            // look for bob's value in whichever replica is currently active.
+            const replica = reopened.currentReplicaName();
+            const activeBobKey = `!${replica}!!values!${bobNodeArgs}`;
             const entries = await collectRawEntries(reopened);
-            expect(entries.get(bobKey)).toEqual({ source: "bob" });
+            expect(entries.get(activeBobKey)).toEqual({ source: "bob" });
         } finally {
             await reopened.close();
         }
