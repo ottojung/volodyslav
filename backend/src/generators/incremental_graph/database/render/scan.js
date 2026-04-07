@@ -19,6 +19,7 @@ const {
     isInvalidHostnameError,
     validateHostname,
 } = require('../hostname_storage');
+const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -246,10 +247,30 @@ async function scanHostnameFromFilesystem(capabilities, rootDatabase, inputDir, 
 
     const allFiles = await walkFilesRecursively(capabilities, inputDir);
 
-    // Phase 1: Read all files and collect (sublevelName, subkey, value) triples.
+    // Read files and write graph entries to LevelDB in streaming chunks to
+    // avoid holding the entire host snapshot in RAM.  `values` entries can
+    // contain arbitrarily large computation results, so we flush to
+    // _rawPutAllToHostname every RAW_BATCH_CHUNK_SIZE entries.
     /** @type {Array<{ sublevelName: string, subkey: string, value: unknown }>} */
-    const graphEntries = [];
+    let chunk = [];
     let count = 0;
+
+    /**
+     * Flush the current chunk if it has reached RAW_BATCH_CHUNK_SIZE entries.
+     * @returns {Promise<void>}
+     */
+    /**
+     * Flush the accumulated chunk to the hostname staging namespace when it
+     * reaches RAW_BATCH_CHUNK_SIZE entries.  Uses `>=` (not `===`) so the guard
+     * stays correct even if multiple entries are ever pushed at once.
+     * @returns {Promise<void>}
+     */
+    async function flushChunk() {
+        if (chunk.length >= RAW_BATCH_CHUNK_SIZE) {
+            await rootDatabase._rawPutAllToHostname(validatedHostname, chunk);
+            chunk = [];
+        }
+    }
 
     for (const absPath of allFiles) {
         const relPath = path.relative(inputDir, absPath).split(path.sep).join('/');
@@ -258,12 +279,14 @@ async function scanHostnameFromFilesystem(capabilities, rootDatabase, inputDir, 
         let keyContent;
         try {
             ({ sublevelName, keyContent } = parseHostnameSnapshotPath(relPath));
-        } catch (_err) {
-            capabilities.logger.logDebug(
-                { relPath, inputDir, hostname: validatedHostname },
-                'scanHostnameFromFilesystem: skipping undecodable path'
-            );
-            continue;
+        } catch (err) {
+            if (isHostnameSnapshotDecodeError(err)) {
+                capabilities.logger.logDebug(
+                    { relPath, inputDir, hostname: validatedHostname, error: err.message },
+                    'scanHostnameFromFilesystem: undecodable path encountered'
+                );
+            }
+            throw err;
         }
 
         const content = await capabilities.reader.readFileAsText(absPath);
@@ -283,7 +306,8 @@ async function scanHostnameFromFilesystem(capabilities, rootDatabase, inputDir, 
             // Use _rawPutAllToHostname to avoid typed-storage value-type constraints;
             // the hostname storage is a staging area and values remain opaque until
             // the merge algorithm inspects them.
-            graphEntries.push({ sublevelName, subkey: keyContent, value });
+            chunk.push({ sublevelName, subkey: keyContent, value });
+            await flushChunk();
         } else {
             capabilities.logger.logDebug(
                 { sublevelName, relPath, hostname: validatedHostname },
@@ -294,8 +318,10 @@ async function scanHostnameFromFilesystem(capabilities, rootDatabase, inputDir, 
         count++;
     }
 
-    // Phase 2: Bulk-write all graph entries.
-    await rootDatabase._rawPutAllToHostname(validatedHostname, graphEntries);
+    // Flush any remaining entries.
+    if (chunk.length > 0) {
+        await rootDatabase._rawPutAllToHostname(validatedHostname, chunk);
+    }
 
     capabilities.logger.logInfo(
         { inputDir, hostname: validatedHostname, count },

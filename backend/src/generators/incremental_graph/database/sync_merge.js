@@ -160,19 +160,30 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
     let pending = [];
 
     /**
-     * Flush full chunks of `pending` to `dst`, leaving any partial chunk queued.
-     * Uses a while loop so that pushing several ops at once (e.g. one value +
-     * several metadata fields per node) never produces a batch larger than
-     * RAW_BATCH_CHUNK_SIZE.
+     * Flush full chunks of `pending` to `dst`, leaving any partial chunk
+     * queued.  Tracks a start index and slices only the remaining tail once at
+     * the end, so total slice work is O(remaining) instead of O(N) per batch.
      * @returns {Promise<void>}
      */
     async function flushPendingOps() {
-        while (pending.length >= RAW_BATCH_CHUNK_SIZE) {
-            await dst.batch(pending.slice(0, RAW_BATCH_CHUNK_SIZE));
-            pending = pending.slice(RAW_BATCH_CHUNK_SIZE);
+        let i = 0;
+        while (i + RAW_BATCH_CHUNK_SIZE <= pending.length) {
+            await dst.batch(pending.slice(i, i + RAW_BATCH_CHUNK_SIZE));
+            i += RAW_BATCH_CHUNK_SIZE;
+        }
+        if (i > 0) {
+            pending = pending.slice(i);
         }
     }
 
+    // Only `values` entries are chunked because their values can be
+    // arbitrarily large (node computation results).  The other sublevels
+    // (freshness, inputs, counters, timestamps) store bounded-size metadata
+    // and may be accumulated without chunking.
+    //
+    // `revdeps` are intentionally NOT copied here: mergeHostIntoReplica always
+    // deletes and rebuilds the entire revdeps index from the merged dependency
+    // map.  Copying them here would waste I/O only to have them overwritten.
     for await (const key of src.values.keys()) {
         const v = await src.values.get(key);
         if (v !== undefined) {
@@ -184,35 +195,24 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
         const v = await src.freshness.get(key);
         if (v !== undefined) {
             pending.push(dst.freshness.putOp(key, v));
-            await flushPendingOps();
         }
     }
     for await (const key of src.inputs.keys()) {
         const v = await src.inputs.get(key);
         if (v !== undefined) {
             pending.push(dst.inputs.putOp(key, v));
-            await flushPendingOps();
-        }
-    }
-    for await (const key of src.revdeps.keys()) {
-        const v = await src.revdeps.get(key);
-        if (v !== undefined) {
-            pending.push(dst.revdeps.putOp(key, v));
-            await flushPendingOps();
         }
     }
     for await (const key of src.counters.keys()) {
         const v = await src.counters.get(key);
         if (v !== undefined) {
             pending.push(dst.counters.putOp(key, v));
-            await flushPendingOps();
         }
     }
     for await (const key of src.timestamps.keys()) {
         const v = await src.timestamps.get(key);
         if (v !== undefined) {
             pending.push(dst.timestamps.putOp(key, v));
-            await flushPendingOps();
         }
     }
 
