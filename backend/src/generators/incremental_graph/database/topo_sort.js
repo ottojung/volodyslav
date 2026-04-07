@@ -92,10 +92,11 @@ class MinHeap {
             if (smallest === i) break;
             const dataAtI = this._data[i];
             const dataAtSmallest = this._data[smallest];
-            if (dataAtI !== undefined && dataAtSmallest !== undefined) {
-                this._data[i] = dataAtSmallest;
-                this._data[smallest] = dataAtI;
+            if (dataAtI === undefined || dataAtSmallest === undefined) {
+                throw new Error('MinHeap invariant violation: undefined element in active range');
             }
+            this._data[i] = dataAtSmallest;
+            this._data[smallest] = dataAtI;
             i = smallest;
         }
     }

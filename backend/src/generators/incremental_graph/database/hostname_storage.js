@@ -103,6 +103,19 @@ async function clearHostnameStorage(db, hostname) {
 }
 
 /**
+ * Build the raw LevelDB key for a hostname staging entry.
+ * Format: `!_h_<hostname>!!<sublevelName>!<subkey>`
+ *
+ * @param {string} hostname
+ * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
+ * @param {string} subkey
+ * @returns {NodeKeyString}
+ */
+function hostnameRawKey(hostname, sublevelName, subkey) {
+    return stringToNodeKeyString(`!_h_${hostname}!!${sublevelName}!${subkey}`);
+}
+
+/**
  * Reads the app version stored in a hostname's staging meta sublevel.
  * Returns `undefined` when the hostname storage contains no version entry.
  *
@@ -111,7 +124,7 @@ async function clearHostnameStorage(db, hostname) {
  * @returns {Promise<Version | undefined>}
  */
 async function getHostnameMetaVersion(db, hostname) {
-    const rawKey = stringToNodeKeyString(`!_h_${hostname}!!meta!version`);
+    const rawKey = hostnameRawKey(hostname, 'meta', 'version');
     const raw = await db.get(rawKey);
     if (raw === undefined) {
         return undefined;
@@ -132,7 +145,7 @@ async function getHostnameMetaVersion(db, hostname) {
  * @returns {Promise<void>}
  */
 async function setHostnameMeta(db, hostname, key, value) {
-    const rawKey = stringToNodeKeyString(`!_h_${hostname}!!meta!${key}`);
+    const rawKey = hostnameRawKey(hostname, 'meta', key);
     await db.put(rawKey, value);
 }
 
@@ -153,7 +166,7 @@ async function rawPutAllToHostname(db, hostname, entries) {
     function makePutOp(entry) {
         return {
             type: 'put',
-            key: stringToNodeKeyString(`!_h_${hostname}!!${entry.sublevelName}!${entry.subkey}`),
+            key: hostnameRawKey(hostname, entry.sublevelName, entry.subkey),
             value: entry.value,
         };
     }
