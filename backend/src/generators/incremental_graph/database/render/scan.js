@@ -111,7 +111,7 @@ async function walkFilesRecursively(capabilities, dir) {
  * @param {ScanCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.
  * @param {string} inputDir - Absolute path of the directory to read from.
- * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta", "_h_hostname").
+ * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta", "_h_myhostname").
  * @returns {Promise<void>}
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {
