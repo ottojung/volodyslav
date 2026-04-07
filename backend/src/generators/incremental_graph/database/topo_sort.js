@@ -137,8 +137,14 @@ class TopologicalSortCycleError extends Error {
      * @param {NodeKeyString[]} cycle - A representative subset of nodes involved in the cycle.
      */
     constructor(cycle) {
+        const sampleLimit = 20;
+        const sample = cycle.slice(0, sampleLimit);
+        const hiddenCount = cycle.length - sample.length;
+        const sampleSuffix = hiddenCount > 0
+            ? `, ... (+${hiddenCount} more)`
+            : '';
         super(
-            `Topological sort detected a cycle in the graph involving nodes: ${cycle.join(', ')}`
+            `Topological sort detected a cycle in the graph involving ${cycle.length} nodes: ${sample.join(', ')}${sampleSuffix}`
         );
         this.name = 'TopologicalSortCycleError';
         this.cycle = cycle;

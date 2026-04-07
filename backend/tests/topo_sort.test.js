@@ -235,6 +235,32 @@ describe('topologicalSortFromMap', () => {
         expect(() => topologicalSortFromMap(map)).toThrow(TopologicalSortCycleError);
     });
 
+    test('cycle error message is size-bounded while retaining full cycle payload', () => {
+        /** @type {Record<string, string[]>} */
+        const obj = {};
+        const nodes = [];
+        for (let i = 0; i < 25; i += 1) {
+            nodes.push(nk(`n${i}`));
+        }
+        for (let i = 0; i < nodes.length; i += 1) {
+            obj[nodes[i]] = [nodes[(i + 1) % nodes.length]];
+        }
+
+        let caught;
+        try {
+            topologicalSortFromMap(makeMap(obj));
+        } catch (err) {
+            caught = err;
+        }
+        expect(caught).toBeInstanceOf(TopologicalSortCycleError);
+        if (!(caught instanceof TopologicalSortCycleError)) {
+            throw new Error('expected TopologicalSortCycleError');
+        }
+        expect(caught.cycle.length).toBe(25);
+        expect(caught.message).toContain('involving 25 nodes');
+        expect(caught.message).toContain('... (+5 more)');
+    });
+
     test('ignores edges to nodes not present in the map', () => {
         const nodeA = nk('a');
         const nodeB = nk('b');

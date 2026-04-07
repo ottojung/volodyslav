@@ -177,9 +177,12 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
     }
 
     // Only `values` entries are chunked because their values can be
-    // arbitrarily large (node computation results).  The other sublevels
-    // (freshness, inputs, counters, timestamps) store bounded-size metadata
-    // and may be accumulated without chunking.
+    // arbitrarily large (node computation results).
+    //
+    // The other sublevels (freshness, inputs, counters, timestamps) hold
+    // bounded-size metadata, and project policy allows keeping arbitrarily
+    // many bounded-size key/value records in memory. We therefore keep this
+    // path simple and flush those metadata ops once at the end.
     //
     // `revdeps` are intentionally NOT copied here: mergeHostIntoReplica always
     // deletes and rebuilds the entire revdeps index from the merged dependency
@@ -287,6 +290,10 @@ async function buildTakeOps(T, H, key) {
  * that nodes whose initial decision was 'take' (and thus used H.inputs for
  * the topo sort and taint propagation) continue to use H.inputs for revdeps
  * even if taint propagation subsequently changed their decision to 'invalidate'.
+ *
+ * Revdeps payloads are bounded-size key lists, so (by project policy) we
+ * intentionally materialize the full revdeps operation set in memory rather
+ * than chunking this path.
  *
  * @param {SchemaStorage} T
  * @param {Map<NodeKeyString, NodeKeyString[]>} mergedInputsMap

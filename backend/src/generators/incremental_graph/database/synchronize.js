@@ -209,6 +209,28 @@ async function synchronizeNoLock(capabilities, options) {
 
         /** @type {Array<{ hostname: string, message: string }>} */
         const failures = [];
+        /**
+         * Record/merge a per-host failure. We keep one aggregate entry per host
+         * so cleanup failures do not create duplicate `- <host>:` lines in
+         * SyncMergeAggregateError.
+         *
+         * @param {string} hostname
+         * @param {string} message
+         * @param {boolean} isCleanupFailure
+         * @returns {void}
+         */
+        const recordHostFailure = (hostname, message, isCleanupFailure) => {
+            const existing = failures.find(f => f.hostname === hostname);
+            if (existing === undefined) {
+                failures.push({ hostname, message });
+                return;
+            }
+            if (isCleanupFailure) {
+                existing.message = `${existing.message}; cleanup: ${message}`;
+                return;
+            }
+            existing.message = message;
+        };
 
         for (const remoteBranch of remoteBranches) {
             const hostname = parseRemoteHostnameBranch(remoteBranch);
@@ -259,10 +281,11 @@ async function synchronizeNoLock(capabilities, options) {
                     'Successfully merged host branch'
                 );
             } catch (err) {
-                failures.push({
+                recordHostFailure(
                     hostname,
-                    message: err instanceof Error ? err.message : String(err),
-                });
+                    err instanceof Error ? err.message : String(err),
+                    false
+                );
                 capabilities.logger.logInfo(
                     { hostname, error: err },
                     'Failed to merge host branch; continuing with remaining hosts'
@@ -303,10 +326,11 @@ async function synchronizeNoLock(capabilities, options) {
                 try {
                     await rootDatabase.clearHostnameStorage(hostname);
                 } catch (cleanupErr) {
-                    failures.push({
+                    recordHostFailure(
                         hostname,
-                        message: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-                    });
+                        cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+                        true
+                    );
                     capabilities.logger.logInfo(
                         { hostname, error: cleanupErr },
                         'Failed to clear hostname storage during cleanup'
