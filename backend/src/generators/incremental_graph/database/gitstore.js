@@ -26,7 +26,9 @@
  */
 
 const path = require('path');
-const { transaction } = require('../../../gitstore');
+const gitstore = require('../../../gitstore');
+const { transaction } = gitstore;
+const { resetAndCleanRepository } = gitstore.workingRepository;
 const { renderToFilesystem } = require('./render');
 
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
@@ -108,6 +110,34 @@ function pathToLiveDatabase(capabilities) {
 }
 
 /**
+ * Reset and clean the checkpoint git repository to a known-good state before
+ * any computation.
+ *
+ * The checkpoint repository cannot be assumed to be in any particular state
+ * when computations begin — a previous process may have crashed mid-operation,
+ * leaving behind MERGE_HEAD, staged files, untracked artifacts, or even an
+ * unborn branch (git init completed but first commit never made).
+ *
+ * This function is called before every `checkpointDatabase` and
+ * `runMigrationInTransaction` to ensure that transactions start from a clean,
+ * deterministic baseline.
+ *
+ * @param {CheckpointCapabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function ensureCheckpointRepoIsClean(capabilities) {
+    const gitDir = path.join(
+        capabilities.environment.workingDirectory(),
+        CHECKPOINT_WORKING_PATH,
+        ".git"
+    );
+    const headFile = path.join(gitDir, "HEAD");
+    if ((await capabilities.checker.fileExists(headFile)) !== null) {
+        await resetAndCleanRepository(capabilities, CHECKPOINT_WORKING_PATH);
+    }
+}
+
+/**
  * Record the current rendered state of the database as a git commit.
  *
  * The rendered snapshot is written into `generators-database/rendered/` inside
@@ -167,6 +197,10 @@ async function checkpointDatabase(
                     '_meta'
                 );
                 await store.commit(message);
+            },
+            undefined,
+            async () => {
+                await ensureCheckpointRepoIsClean(capabilities);
             }
         );
     } finally {
@@ -237,6 +271,10 @@ async function runMigrationInTransaction(
             );
             await store.commit(postMessage);
             return result;
+        },
+        undefined,
+        async () => {
+            await ensureCheckpointRepoIsClean(capabilities);
         }
     );
 }

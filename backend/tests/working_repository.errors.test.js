@@ -1,3 +1,4 @@
+const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
 const {
@@ -79,5 +80,37 @@ describe("working_repository", () => {
         // Restore original function
         capabilities.environment.eventLogRepository = origEventLogRepo;
     }, 30000);
-});
 
+    test("resetAndCleanRepository fails fast when merge abort fails and merge state persists", async () => {
+        const capabilities = getTestCapabilities();
+        const workDir = path.join(
+            capabilities.environment.workingDirectory(),
+            "working-git-repository"
+        );
+        const mergeHeadPath = path.join(workDir, ".git", "MERGE_HEAD");
+
+        capabilities.checker.fileExists = jest.fn(async (filePath) => {
+            if (filePath === mergeHeadPath) {
+                return {};
+            }
+            return null;
+        });
+        capabilities.checker.directoryExists = jest.fn(async () => null);
+
+        capabilities.git.call = jest.fn(async (...args) => {
+            const command = args.join(" ");
+            if (command.includes(" merge --abort")) {
+                throw new Error("fatal: merge --abort failed");
+            }
+            return { stdout: "", stderr: "" };
+        });
+
+        const result = await workingRepository
+            .resetAndCleanRepository(capabilities, "working-git-repository")
+            .catch((error) => error);
+        expect(capabilities.checker.fileExists).toHaveBeenCalledWith(mergeHeadPath);
+        expect(capabilities.checker.fileExists.mock.calls.length).toBeGreaterThanOrEqual(2);
+        expect(workingRepository.isWorkingRepositoryError(result)).toBe(true);
+        expect(result.message).toContain("Failed to abort merge");
+    });
+});
