@@ -129,6 +129,10 @@ async function isAbortableOperationInProgress(capabilities, gitDir, operation) {
     if (operation === "revert") {
         return (await capabilities.checker.fileExists(path.join(gitDir, "REVERT_HEAD"))) !== null;
     }
+    throw new WorkingRepositoryError(
+        `Unknown abortable operation: ${operation}`,
+        gitDir
+    );
 }
 
 /**
@@ -143,24 +147,23 @@ async function abortOperationIfInProgress(capabilities, workDir, gitDir, operati
     if (!inProgress) {
         return;
     }
+    /** @type {unknown | null} */
+    let abortError = null;
     try {
         await capabilities.git.call(
             "-C", workDir, "-c", "safe.directory=*",
             operation, "--abort"
         );
     } catch (error) {
-        const stillInProgress = await isAbortableOperationInProgress(capabilities, gitDir, operation);
-        if (stillInProgress) {
-            throw new WorkingRepositoryError(
-                `Failed to abort ${operation}: ${error}`,
-                workDir
-            );
-        }
+        abortError = error;
     }
     const stillInProgress = await isAbortableOperationInProgress(capabilities, gitDir, operation);
     if (stillInProgress) {
+        const reason = abortError === null
+            ? "operation state unexpectedly persists after successful --abort"
+            : String(abortError);
         throw new WorkingRepositoryError(
-            `Failed to abort ${operation}: operation state is still present after --abort`,
+            `Failed to abort ${operation}: ${reason}`,
             workDir
         );
     }
@@ -207,7 +210,9 @@ async function resetAndCleanRepository(capabilities, workingPath) {
     if (hasCommits) {
         // continue to shared reset/clean below
     } else {
-        // Ensure the initial commit is truly empty even if a stale index exists.
+        // Ensure the initial commit is truly empty even if a stale index exists:
+        // an interrupted previous run may have left entries staged in the index
+        // despite the branch still being unborn.
         await capabilities.git.call(
             "-C", workDir,
             "-c", "safe.directory=*",

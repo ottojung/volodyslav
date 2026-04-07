@@ -103,6 +103,8 @@ describe("working_repository", () => {
         const result = await workingRepository
             .resetAndCleanRepository(capabilities, "working-git-repository")
             .catch((error) => error);
+        expect(capabilities.checker.fileExists).toHaveBeenCalledWith(`${workDir}/.git/MERGE_HEAD`);
+        expect(capabilities.checker.fileExists.mock.calls.length).toBeGreaterThanOrEqual(2);
         expect(workingRepository.isWorkingRepositoryError(result)).toBe(true);
         expect(result.message).toContain("Failed to abort merge");
     });
