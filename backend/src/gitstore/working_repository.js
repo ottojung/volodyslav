@@ -99,6 +99,72 @@ async function hasOriginRemote(capabilities, workDir) {
 }
 
 /**
+ * Reset and clean a git repository to a known-good state before use.
+ *
+ * Aborts any in-progress git operations (merge, rebase, cherry-pick, revert),
+ * resets the working tree to the last committed state, and removes all
+ * untracked files and directories.  When the branch is unborn (i.e. `git init`
+ * completed but the first commit was never made due to an earlier crash) a new
+ * initial empty commit is created so that subsequent `git clone` calls succeed.
+ *
+ * This function must be called before any computation that relies on the local
+ * repository being in a deterministic state, because the repository cannot be
+ * assumed to be clean when we start using it (a previous process may have
+ * crashed mid-operation).
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} workingPath
+ * @returns {Promise<void>}
+ */
+async function resetAndCleanRepository(capabilities, workingPath) {
+    const workDir = pathToLocalRepository(capabilities, workingPath);
+
+    // Abort any in-progress git operations.  Errors are expected (and
+    // intentionally ignored) when none of these operations is in progress.
+    const abort = (...cmd) =>
+        capabilities.git.call("-C", workDir, "-c", "safe.directory=*", ...cmd)
+            .catch(() => {});
+    await abort("merge", "--abort");
+    await abort("rebase", "--abort");
+    await abort("cherry-pick", "--abort");
+    await abort("revert", "--abort");
+
+    // Check whether the branch already has at least one commit.  An unborn
+    // branch (HEAD points to a ref that does not yet exist) is left by an
+    // interrupted `initializeEmptyRepository` call.
+    const hasCommits = await capabilities.git
+        .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "HEAD")
+        .then(() => true)
+        .catch(() => false);
+
+    if (hasCommits) {
+        // Discard any staged or modified tracked files.
+        await capabilities.git.call(
+            "-C", workDir, "-c", "safe.directory=*",
+            "reset", "--hard", "HEAD"
+        );
+        // Remove untracked files and directories left by previous operations.
+        await capabilities.git.call(
+            "-C", workDir, "-c", "safe.directory=*",
+            "clean", "-fd"
+        );
+    } else {
+        // No commits yet – finish the interrupted initialisation by creating
+        // the missing initial empty commit so that clones work.
+        await capabilities.git.call(
+            "-C", workDir,
+            "-c", "safe.directory=*",
+            "-c", "user.name=volodyslav",
+            "-c", "user.email=volodyslav",
+            "commit",
+            "--allow-empty",
+            "--message",
+            "Initial empty commit",
+        );
+    }
+}
+
+/**
  * Synchronize the local repository with remote: pull if exists, else clone.
  * Then push the changes as well.
  * @param {Capabilities} capabilities
@@ -125,6 +191,13 @@ async function synchronize(capabilities, workingPath, origin, options) {
     // keeps the retry logic simple and free of nullable state.
     const localExists = (await capabilities.checker.fileExists(headFile)) !== null;
     const needsRemoteSetup = localExists && !(await hasOriginRemote(capabilities, workDir));
+
+    // If the local repository already exists it may have been left in a dirty
+    // state by a previous interrupted run.  Reset it once before the retry
+    // loop so that pull/merge/read-tree operations start from a clean baseline.
+    if (localExists) {
+        await resetAndCleanRepository(capabilities, workingPath);
+    }
 
     /**
      * @param {{ attempt: number, retry: () => void }} args
@@ -276,6 +349,7 @@ async function initializeEmptyRepository(capabilities, workingPath) {
 /**
  * Ensure the repository is present locally and return its path.
  * Note: returns the path to the `.git` directory.
+ *
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation | "empty"} initial_state - Remote location to sync with, or "empty" for local-only
@@ -300,5 +374,6 @@ async function getRepository(capabilities, workingPath, initial_state) {
 module.exports = {
     synchronize,
     getRepository,
+    resetAndCleanRepository,
     isWorkingRepositoryError,
 };

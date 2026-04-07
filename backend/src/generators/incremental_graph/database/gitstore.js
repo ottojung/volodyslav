@@ -26,7 +26,9 @@
  */
 
 const path = require('path');
-const { transaction } = require('../../../gitstore');
+const gitstore = require('../../../gitstore');
+const { transaction } = gitstore;
+const { resetAndCleanRepository } = gitstore.workingRepository;
 const { renderToFilesystem } = require('./render');
 
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
@@ -108,6 +110,34 @@ function pathToLiveDatabase(capabilities) {
 }
 
 /**
+ * Reset and clean the checkpoint git repository to a known-good state before
+ * any computation.
+ *
+ * The checkpoint repository cannot be assumed to be in any particular state
+ * when computations begin — a previous process may have crashed mid-operation,
+ * leaving behind MERGE_HEAD, staged files, untracked artifacts, or even an
+ * unborn branch (git init completed but first commit never made).
+ *
+ * This function is called before every `checkpointDatabase` and
+ * `runMigrationInTransaction` to ensure that transactions start from a clean,
+ * deterministic baseline.
+ *
+ * @param {CheckpointCapabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function ensureCheckpointRepoIsClean(capabilities) {
+    const gitDir = path.join(
+        capabilities.environment.workingDirectory(),
+        CHECKPOINT_WORKING_PATH,
+        ".git"
+    );
+    const headFile = path.join(gitDir, "HEAD");
+    if ((await capabilities.checker.fileExists(headFile)) !== null) {
+        await resetAndCleanRepository(capabilities, CHECKPOINT_WORKING_PATH);
+    }
+}
+
+/**
  * Record the current rendered state of the database as a git commit.
  *
  * The rendered snapshot is written into `generators-database/rendered/` inside
@@ -130,6 +160,12 @@ async function checkpointDatabase(
     rootDatabase,
     initialState = "empty"
 ) {
+    // Ensure the checkpoint repository is in a clean, deterministic state
+    // before any computation.  A previous process may have crashed mid-
+    // operation, leaving MERGE_HEAD, staged files, stray untracked artifacts,
+    // or an unborn branch.  Cleaning here guarantees a reliable baseline.
+    await ensureCheckpointRepoIsClean(capabilities);
+
     /** @type {RootDatabase | undefined} */
     let ownedDatabase = undefined;
     /** @type {RootDatabase} */
@@ -203,6 +239,10 @@ async function runMigrationInTransaction(
     postMessage,
     callback
 ) {
+    // Ensure the checkpoint repository is in a clean, deterministic state
+    // before any computation.  See checkpointDatabase for the full rationale.
+    await ensureCheckpointRepoIsClean(capabilities);
+
     return await transaction(
         capabilities,
         CHECKPOINT_WORKING_PATH,

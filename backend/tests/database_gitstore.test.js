@@ -462,3 +462,289 @@ describe("runMigrationInTransaction", () => {
         }
     });
 });
+
+describe("dirty-state recovery", () => {
+
+    // ── Unborn branch ─────────────────────────────────────────────────────────
+
+    test("checkpointDatabase recovers when git repo was initialised but has no commits (unborn branch)", async () => {
+        const capabilities = getTestCapabilities();
+        const workDir = path.join(
+            capabilities.environment.workingDirectory(),
+            CHECKPOINT_WORKING_PATH
+        );
+
+        // Simulate an interrupted initializeEmptyRepository: git init succeeded
+        // but the initial commit was never made.
+        await fs.mkdir(workDir, { recursive: true });
+        execFileSync("git", [
+            "-C", workDir, "init",
+            `--initial-branch=${defaultBranch(capabilities)}`,
+        ]);
+        execFileSync("git", ["-C", workDir, "config", "receive.denyCurrentBranch", "ignore"]);
+        // HEAD file now exists but points to an unborn branch — no commits yet.
+
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            // Should not throw even though there are no commits yet.
+            await checkpointDatabase(capabilities, "checkpoint on unborn branch", db);
+
+            const gitDir = checkpointGitDir(capabilities);
+            expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(1);
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── MERGE_HEAD ────────────────────────────────────────────────────────────
+
+    test("checkpointDatabase recovers when MERGE_HEAD is present from a prior interrupted merge", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            // Establish a clean baseline.
+            await checkpointDatabase(capabilities, "baseline", db);
+            const gitDir = checkpointGitDir(capabilities);
+            const baselineCount = commitCount(capabilities, gitDir);
+
+            // Simulate an interrupted merge by writing a MERGE_HEAD file.
+            await fs.writeFile(
+                path.join(gitDir, "MERGE_HEAD"),
+                "0000000000000000000000000000000000000000\n"
+            );
+
+            // A subsequent checkpoint must succeed despite MERGE_HEAD being present.
+            await checkpointDatabase(capabilities, "after merge head", db);
+
+            // Verify the repository advanced normally.
+            expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(baselineCount);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test("runMigrationInTransaction recovers when MERGE_HEAD is present", async () => {
+        const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["merge-head-recovery"]}';
+        const db = await seedDatabase(capabilities, [[key, { v: 1 }]]);
+        try {
+            // Establish a clean baseline.
+            await checkpointDatabase(capabilities, "baseline", db);
+            const gitDir = checkpointGitDir(capabilities);
+
+            // Simulate an interrupted merge.
+            await fs.writeFile(
+                path.join(gitDir, "MERGE_HEAD"),
+                "0000000000000000000000000000000000000000\n"
+            );
+
+            // The migration must succeed despite the leftover merge state.
+            const result = await runMigrationInTransaction(
+                capabilities,
+                db,
+                "pre-migration",
+                "post-migration",
+                async () => {
+                    await db._rawPut(key, { v: 2 });
+                    return "ok";
+                }
+            );
+            expect(result).toBe("ok");
+            expect(
+                fileContentAtHead(
+                    capabilities,
+                    gitDir,
+                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`
+                )
+            ).toBe(JSON.stringify({ v: 2 }, null, 2));
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── CHERRY_PICK_HEAD ─────────────────────────────────────────────────────
+
+    test("checkpointDatabase recovers when CHERRY_PICK_HEAD is present", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "baseline", db);
+            const gitDir = checkpointGitDir(capabilities);
+
+            // Simulate an interrupted cherry-pick.
+            await fs.writeFile(
+                path.join(gitDir, "CHERRY_PICK_HEAD"),
+                "0000000000000000000000000000000000000000\n"
+            );
+
+            await checkpointDatabase(capabilities, "after cherry-pick head", db);
+
+            // Verify CHERRY_PICK_HEAD has been cleaned up.
+            const cherryPickHeadGone = await fs
+                .stat(path.join(gitDir, "CHERRY_PICK_HEAD"))
+                .then(() => false)
+                .catch(() => true);
+            expect(cherryPickHeadGone).toBe(true);
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── Untracked stray files ─────────────────────────────────────────────────
+
+    test("checkpointDatabase cleans up untracked stray files and directories from the working tree", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "baseline", db);
+
+            // Drop untracked files/directories into the working tree to simulate
+            // leftover artifacts from a previous interrupted operation.
+            const workDir = path.join(
+                capabilities.environment.workingDirectory(),
+                CHECKPOINT_WORKING_PATH
+            );
+            await fs.mkdir(path.join(workDir, "stray-dir"), { recursive: true });
+            await fs.writeFile(
+                path.join(workDir, "stray-dir", "file.txt"),
+                "stray content"
+            );
+            await fs.writeFile(path.join(workDir, "stray-file.txt"), "another stray file");
+
+            // checkpointDatabase must succeed and stray content must be removed.
+            await checkpointDatabase(capabilities, "after stray files", db);
+
+            await expect(
+                fs.stat(path.join(workDir, "stray-dir"))
+            ).rejects.toThrow();
+            await expect(
+                fs.stat(path.join(workDir, "stray-file.txt"))
+            ).rejects.toThrow();
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── Staged (indexed) files ────────────────────────────────────────────────
+
+    test("checkpointDatabase recovers when staged files are present without a commit", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "baseline", db);
+
+            // Stage a file without committing to simulate a crash after `git add`.
+            const workDir = path.join(
+                capabilities.environment.workingDirectory(),
+                CHECKPOINT_WORKING_PATH
+            );
+            await fs.writeFile(path.join(workDir, "staged.txt"), "staged content");
+            execFileSync("git", ["-C", workDir, "add", "staged.txt"]);
+            // Intentionally do NOT commit.
+
+            // checkpointDatabase must succeed and the staged file must be gone.
+            await checkpointDatabase(capabilities, "after staged file", db);
+
+            await expect(
+                fs.stat(path.join(workDir, "staged.txt"))
+            ).rejects.toThrow();
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── Rebase state ─────────────────────────────────────────────────────────
+
+    test("checkpointDatabase recovers when a rebase-merge directory is present", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "baseline", db);
+            const gitDir = checkpointGitDir(capabilities);
+            const baselineCount = commitCount(capabilities, gitDir);
+
+            // Simulate a rebase-in-progress by creating the rebase-merge directory
+            // with the minimum file set that makes git recognise the state.
+            const rebaseDir = path.join(gitDir, "rebase-merge");
+            await fs.mkdir(rebaseDir, { recursive: true });
+            const branch = defaultBranch(capabilities);
+            await fs.writeFile(
+                path.join(rebaseDir, "head-name"),
+                `refs/heads/${branch}\n`
+            );
+            await fs.writeFile(
+                path.join(rebaseDir, "onto"),
+                "0000000000000000000000000000000000000000\n"
+            );
+
+            // checkpointDatabase must succeed despite the bogus rebase state.
+            await checkpointDatabase(capabilities, "after rebase state", db);
+            expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(baselineCount);
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── Database snapshot is correct after recovery ───────────────────────────
+
+    test("database snapshot content is correct after dirty-state recovery", async () => {
+        const capabilities = getTestCapabilities();
+        const key = '!x!!values!{"head":"event","args":["content-check"]}';
+        const db = await seedDatabase(capabilities, [
+            [key, { value: "recorded-after-recovery" }],
+        ]);
+        try {
+            await checkpointDatabase(capabilities, "baseline", db);
+            const gitDir = checkpointGitDir(capabilities);
+
+            // Introduce dirty state.
+            await fs.writeFile(
+                path.join(gitDir, "MERGE_HEAD"),
+                "0000000000000000000000000000000000000000\n"
+            );
+
+            // Checkpoint after dirty state.
+            await checkpointDatabase(capabilities, "snapshot after recovery", db);
+
+            // Verify the snapshot content is correct and not corrupted.
+            expect(
+                fileContentAtHead(
+                    capabilities,
+                    gitDir,
+                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`
+                )
+            ).toBe(JSON.stringify({ value: "recorded-after-recovery" }, null, 2));
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ── Multiple checkpoints after recovery ───────────────────────────────────
+
+    test("multiple checkpoints succeed after dirty-state recovery", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        try {
+            await checkpointDatabase(capabilities, "baseline", db);
+            const gitDir = checkpointGitDir(capabilities);
+
+            // Introduce dirty state.
+            await fs.writeFile(
+                path.join(gitDir, "MERGE_HEAD"),
+                "0000000000000000000000000000000000000000\n"
+            );
+
+            // First call cleans up and checkpoints.
+            await checkpointDatabase(capabilities, "recovery checkpoint", db);
+
+            // Subsequent checkpoints must also work normally.
+            await db._rawPut('!x!!values!{"head":"event","args":["after-recovery"]}', { ok: true });
+            await checkpointDatabase(capabilities, "after recovery 1", db);
+            await checkpointDatabase(capabilities, "after recovery 2", db);
+
+            expect(latestCommitMessage(gitDir)).toBe("after recovery 1");
+        } finally {
+            await db.close();
+        }
+    });
+});
