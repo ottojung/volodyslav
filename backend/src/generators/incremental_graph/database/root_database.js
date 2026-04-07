@@ -518,6 +518,25 @@ class RootDatabaseClass {
     }
 
     /**
+     * Read the app version string from a specific replica's meta sublevel.
+     * Returns `undefined` when no version has been written yet.
+     * Throws `InvalidReplicaPointerError` for unrecognised names.
+     * @param {ReplicaName} name
+     * @returns {Promise<Version | undefined>}
+     */
+    async getMetaVersionForReplica(name) {
+        let metaSublevel;
+        if (name === 'x') {
+            metaSublevel = this._xMetaSublevel;
+        } else if (name === 'y') {
+            metaSublevel = this._yMetaSublevel;
+        } else {
+            return assertNeverReplicaName(name);
+        }
+        return await metaSublevel.get('version');
+    }
+
+    /**
      * Write the app version string into a specific replica's meta sublevel.
      * Used by migration to set the target replica's version before switching the pointer.
      * Throws `InvalidReplicaPointerError` for unrecognised names.

@@ -309,7 +309,18 @@ async function synchronizeNoLock(capabilities, options) {
                         // Ignore cleanup failures.
                     }
                 }
-                await rootDatabase.clearHostnameStorage(hostname);
+                try {
+                    await rootDatabase.clearHostnameStorage(hostname);
+                } catch (cleanupErr) {
+                    failures.push({
+                        hostname,
+                        message: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+                    });
+                    capabilities.logger.logInfo(
+                        { hostname, error: cleanupErr },
+                        'Failed to clear hostname storage during cleanup'
+                    );
+                }
             }
         }
 

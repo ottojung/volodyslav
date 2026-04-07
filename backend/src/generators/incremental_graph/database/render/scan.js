@@ -58,6 +58,30 @@ function isScanInputDirMissingError(object) {
 }
 
 /**
+ * Thrown when the hostname string passed to scanHostnameFromFilesystem() is
+ * invalid (empty, or contains characters not allowed in a staging namespace key).
+ */
+class InvalidHostnameError extends Error {
+    /**
+     * @param {string} hostname
+     * @param {string} reason
+     */
+    constructor(hostname, reason) {
+        super(`Invalid hostname '${hostname}': ${reason}`);
+        this.name = 'InvalidHostnameError';
+        this.hostname = hostname;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidHostnameError}
+ */
+function isInvalidHostnameError(object) {
+    return object instanceof InvalidHostnameError;
+}
+
+/**
  * Recursively collects the absolute paths of every file under `dir` using the
  * capabilities pattern. Directories are traversed but not included in the result.
  *
@@ -154,10 +178,10 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
  */
 function validateHostname(hostname) {
     if (typeof hostname !== 'string' || hostname.length === 0) {
-        throw new Error('Invalid hostname: must be a non-empty string');
+        throw new InvalidHostnameError(hostname, 'must be a non-empty string');
     }
     if (hostname.includes('/') || hostname.includes('\\') || hostname.includes('!')) {
-        throw new Error(`Invalid hostname '${hostname}': must not contain '/', '\\', or '!'`);
+        throw new InvalidHostnameError(hostname, "must not contain '/', '\\\\', or '!'");
     }
     return hostname;
 }
@@ -292,4 +316,6 @@ module.exports = {
     scanFromFilesystem,
     scanHostnameFromFilesystem,
     isScanInputDirMissingError,
+    InvalidHostnameError,
+    isInvalidHostnameError,
 };

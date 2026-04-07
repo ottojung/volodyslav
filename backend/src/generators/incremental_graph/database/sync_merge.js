@@ -161,8 +161,8 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
         if (v !== undefined) ops.push(dst.timestamps.putOp(key, v));
     }
 
-    // Copy version from source meta into target meta.
-    const srcVersion = await rootDatabase.getMetaVersion();
+    // Copy version from source replica meta into target meta.
+    const srcVersion = await rootDatabase.getMetaVersionForReplica(from);
     if (srcVersion !== undefined) {
         await rootDatabase.setMetaVersionForReplica(to, srcVersion);
     }
@@ -197,16 +197,22 @@ async function buildTakeOps(T, H, key) {
     const hTimestamps = await H.timestamps.get(key);
     if (hTimestamps !== undefined) {
         ops.push(T.timestamps.putOp(key, hTimestamps));
+    } else {
+        ops.push(T.timestamps.delOp(key));
     }
 
     const hInputs = await H.inputs.get(key);
     if (hInputs !== undefined) {
         ops.push(T.inputs.putOp(key, hInputs));
+    } else {
+        ops.push(T.inputs.delOp(key));
     }
 
     const hCounter = await H.counters.get(key);
     if (hCounter !== undefined) {
         ops.push(T.counters.putOp(key, hCounter));
+    } else {
+        ops.push(T.counters.delOp(key));
     }
 
     return ops;
@@ -414,6 +420,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             ops.push(...takeOps);
         } else if (decision === 'invalidate') {
             ops.push(T.freshness.putOp(node, 'potentially-outdated'));
+            ops.push(T.values.delOp(node));
         }
         // 'keep': no write operations needed; T already has the correct data.
     }

@@ -7,9 +7,9 @@
  * deterministic: nodes are sorted ascending by their NodeKeyString
  * representation so the output is stable across runs.
  *
- * Uses Kahn's algorithm with a priority queue backed by a sorted array for
- * determinism.  Throws TopologicalSortCycleError if the graph contains a
- * cycle (which is treated as data corruption).
+ * Uses Kahn's algorithm with a min-heap priority queue for O((N + E) log N)
+ * complexity and deterministic ordering.  Throws TopologicalSortCycleError
+ * if the graph contains a cycle (which is treated as data corruption).
  */
 
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
@@ -17,6 +17,86 @@ const { stringToNodeKeyString } = require('./types');
 
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+
+/**
+ * Minimal binary min-heap backed by an array.
+ * Comparator must return negative when a < b, 0 when equal, positive when a > b.
+ * @template T
+ */
+class MinHeap {
+    /**
+     * @param {(a: T, b: T) => number} compare
+     */
+    constructor(compare) {
+        /** @type {T[]} */
+        this._data = [];
+        this._compare = compare;
+    }
+
+    /** @returns {number} */
+    get size() {
+        return this._data.length;
+    }
+
+    /** @param {T} item */
+    push(item) {
+        this._data.push(item);
+        this._siftUp(this._data.length - 1);
+    }
+
+    /** @returns {T | undefined} */
+    pop() {
+        if (this._data.length === 0) return undefined;
+        const top = this._data[0];
+        const last = this._data.pop();
+        if (this._data.length > 0 && last !== undefined) {
+            this._data[0] = last;
+            this._siftDown(0);
+        }
+        return top;
+    }
+
+    /** @param {number} i */
+    _siftUp(i) {
+        while (i > 0) {
+            const parent = (i - 1) >> 1;
+            const dataI = this._data[i];
+            const dataParent = this._data[parent];
+            if (dataI !== undefined && dataParent !== undefined && this._compare(dataI, dataParent) < 0) {
+                this._data[parent] = dataI;
+                this._data[i] = dataParent;
+                i = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /** @param {number} i */
+    _siftDown(i) {
+        const n = this._data.length;
+        for (;;) {
+            let smallest = i;
+            const left = (i << 1) + 1;
+            const right = left + 1;
+            const dataSmallest = this._data[smallest];
+            const dataLeft = this._data[left];
+            if (left < n && dataLeft !== undefined && dataSmallest !== undefined && this._compare(dataLeft, dataSmallest) < 0) {
+                smallest = left;
+            }
+            const dataSmallest2 = this._data[smallest];
+            const dataRight = this._data[right];
+            if (right < n && dataRight !== undefined && dataSmallest2 !== undefined && this._compare(dataRight, dataSmallest2) < 0) {
+                smallest = right;
+            }
+            if (smallest === i) break;
+            const tmp = this._data[i];
+            this._data[i] = this._data[smallest];
+            this._data[smallest] = tmp;
+            i = smallest;
+        }
+    }
+}
 
 /**
  * Thrown when the node graph contains a cycle, which violates the DAG
@@ -112,45 +192,33 @@ async function topologicalSort(storage) {
         }
     }
 
-    // Initialize queue with all nodes having in-degree 0, sorted for determinism.
-    /** @type {NodeKeyString[]} */
-    let queue = [];
+    // Initialize priority queue with all nodes having in-degree 0.
+    const heap = new MinHeap(compareNodeKeyStringByNodeKey);
     for (const [node, degree] of inDegree) {
         if (degree === 0) {
-            queue.push(node);
+            heap.push(node);
         }
     }
-    queue.sort(compareNodeKeyStringByNodeKey);
 
     /** @type {NodeKeyString[]} */
     const sorted = [];
     /** @type {Map<NodeKeyString, number>} */
     const remaining = new Map(inDegree);
 
-    while (queue.length > 0) {
-        const node = queue.shift();
+    while (heap.size > 0) {
+        const node = heap.pop();
         if (node === undefined) break;
 
         sorted.push(node);
 
         const deps = dependents.get(node) ?? [];
-        /** @type {NodeKeyString[]} */
-        const newlyReady = [];
-
         for (const dep of deps) {
             const newDeg = (remaining.get(dep) ?? 0) - 1;
             remaining.set(dep, newDeg);
             if (newDeg === 0) {
-                newlyReady.push(dep);
+                heap.push(dep);
             }
         }
-
-        // Sort newly-ready nodes for determinism before merging.
-        newlyReady.sort(compareNodeKeyStringByNodeKey);
-        // Merge with the existing sorted queue (both arrays are already sorted,
-        // concat+sort is O(N log N) but avoids unsafe indexed access under
-        // noUncheckedIndexedAccess).
-        queue = [...queue, ...newlyReady].sort(compareNodeKeyStringByNodeKey);
     }
 
     if (sorted.length !== allNodes.length) {
