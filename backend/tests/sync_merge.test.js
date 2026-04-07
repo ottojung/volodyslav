@@ -332,6 +332,72 @@ describe('mergeHostIntoReplica', () => {
             // force-kept A, making it keepTainted AND takeTainted.
             const bFreshness = await T.freshness.get(nodeB);
             expect(bFreshness).toBe('potentially-outdated');
+
+            // B's modifiedAt should be advanced to H's value (TS2) so that on
+            // the next sync, compareIsoTimestamps(T.B, H.B) == 0 → 'keep', breaking
+            // the repeated-invalidation cycle.
+            const bTimestamps = await T.timestamps.get(nodeB);
+            expect(bTimestamps?.modifiedAt).toBe(TS2);
+            // createdAt should be preserved from T (not overwritten from H).
+            expect(bTimestamps?.createdAt).toBe(TS1); // T wrote createdAt = TS1
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('invalidated node does not re-invalidate on a second sync with same H', async () => {
+        // After the first merge advances T.B.modifiedAt to H.B.modifiedAt (TS2),
+        // a second merge with the same H data should leave B as 'keep' (not
+        // repeatedly invalidated).
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setMetaVersion(appVersionStr);
+            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+
+            const nodeA = nk('a');
+            const nodeB = nk('b');
+            const localValueB = { value: { id: 'b-local', type: 'test', description: 'local B' }, isDirty: false };
+            const remoteValueB = { value: { id: 'b-remote', type: 'test', description: 'remote B' }, isDirty: false };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS3, [], undefined);
+            await writeNode(L, nodeB, TS1, [], localValueB);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS1, [], undefined);
+            await writeNode(H, nodeB, TS2, [nodeA], remoteValueB);
+
+            // First merge: B is 'invalidate', modifiedAt advanced to TS2.
+            await mergeHostIntoReplica(logger, db, hostname);
+
+            // Restore the same H staging data for the second merge
+            // (simulates a re-sync against the same remote snapshot).
+            // Re-write H since clearHostnameStorage may have been called by caller
+            // in production; in this test we write it directly.
+            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            const H2 = db.hostnameSchemaStorage(hostname);
+            await writeNode(H2, nodeA, TS1, [], undefined);
+            await writeNode(H2, nodeB, TS2, [nodeA], remoteValueB);
+
+            // Second merge: T.B.modifiedAt == H.B.modifiedAt == TS2 → B is 'keep'.
+            await mergeHostIntoReplica(logger, db, hostname);
+
+            const newActive = db.currentReplicaName();
+            const T = db.schemaStorageForReplica(newActive);
+
+            // After timestamp advancement, T.B.modifiedAt == H.B.modifiedAt == TS2.
+            // On the second sync, compareIsoTimestamps returns 0 so B gets merge
+            // decision 'keep' (no taint); freshness is unchanged from the first merge.
+            const bFreshness = await T.freshness.get(nodeB);
+            expect(bFreshness).toBe('potentially-outdated');
+            const bTimestamps = await T.timestamps.get(nodeB);
+            // modifiedAt still equals TS2 — not re-advanced (it was already equal to H's).
+            expect(bTimestamps?.modifiedAt).toBe(TS2);
         } finally {
             if (db) await db.close();
         }

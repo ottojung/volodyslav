@@ -33,6 +33,14 @@
  *
  * The caller (synchronize.js) is responsible for clearing the hostname staging
  * storage after each host merge completes (regardless of success/failure).
+ *
+ * Batching policy:
+ * - We only chunk batch writes for entries whose values are potentially
+ *   unbounded in size (e.g. node computation results stored in `values`).
+ * - Keys and bounded-size metadata (freshness strings, timestamps, inputs
+ *   records, revdeps key lists, counters) may be accumulated in RAM without
+ *   chunking — their total size is proportional to the number of nodes, not
+ *   the size of arbitrary computation output.
  */
 
 const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
@@ -152,13 +160,16 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
     let pending = [];
 
     /**
-     * Flush `pending` to `dst` and reset.
+     * Flush full chunks of `pending` to `dst`, leaving any partial chunk queued.
+     * Uses a while loop so that pushing several ops at once (e.g. one value +
+     * several metadata fields per node) never produces a batch larger than
+     * RAW_BATCH_CHUNK_SIZE.
      * @returns {Promise<void>}
      */
     async function flushPendingOps() {
-        if (pending.length >= RAW_BATCH_CHUNK_SIZE) {
-            await dst.batch(pending);
-            pending = [];
+        while (pending.length >= RAW_BATCH_CHUNK_SIZE) {
+            await dst.batch(pending.slice(0, RAW_BATCH_CHUNK_SIZE));
+            pending = pending.slice(RAW_BATCH_CHUNK_SIZE);
         }
     }
 
@@ -500,13 +511,16 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     let pendingOps = [];
 
     /**
-     * Flush `pendingOps` to T and reset when at or above chunk size.
+     * Flush full chunks of `pendingOps` to T, leaving any partial chunk queued.
+     * Uses a while loop so that pushing several ops at once (e.g. via
+     * `pendingOps.push(...takeOps)`) never produces a batch larger than
+     * RAW_BATCH_CHUNK_SIZE entries.
      * @returns {Promise<void>}
      */
     async function flushPendingOps() {
-        if (pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
-            await T.batch(pendingOps);
-            pendingOps = [];
+        while (pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
+            await T.batch(pendingOps.slice(0, RAW_BATCH_CHUNK_SIZE));
+            pendingOps = pendingOps.slice(RAW_BATCH_CHUNK_SIZE);
         }
     }
 
@@ -523,6 +537,36 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             }
         } else if (decision === 'invalidate') {
             pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
+            // Advance modifiedAt to H's value so the next sync does not see H as
+            // newer and re-invalidate this node in an endless cycle.
+            //
+            // Background: without this fix, T.modifiedAt < H.modifiedAt still holds
+            // after the merge, so compareIsoTimestamps keeps selecting the node as a
+            // force-take candidate and the invalidate decision repeats on every sync
+            // (even when local recomputation returns unchanged output and does not
+            // bump the timestamp).
+            //
+            // This only applies when the initial decision was 'take' (H was strictly
+            // newer).  For 'keep'-initial nodes that were tainted to 'invalidate' via
+            // an ancestor, T.modifiedAt >= H.modifiedAt already — overwriting would
+            // regress the timestamp.
+            if (initialDecisions.get(node) === 'take') {
+                const hTimestamps = await H.timestamps.get(node);
+                if (hTimestamps !== undefined) {
+                    const tTimestamps = await T.timestamps.get(node);
+                    // Preserve T's createdAt; advance only modifiedAt to H's value.
+                    // tTimestamps can theoretically be undefined when the node was
+                    // created before the timestamps feature was added (no record yet).
+                    // In that case we fall back to H's createdAt as the best available
+                    // approximation — the node exists in T (it was in T.inputs during
+                    // step 2a) so it is not a truly new node.
+                    const advanced = {
+                        createdAt: tTimestamps?.createdAt ?? hTimestamps.createdAt,
+                        modifiedAt: hTimestamps.modifiedAt,
+                    };
+                    pendingOps.push(T.timestamps.putOp(node, advanced));
+                }
+            }
         }
         // 'keep': no write operations needed; T already has the correct data.
         await flushPendingOps();
