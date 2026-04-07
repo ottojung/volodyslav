@@ -105,16 +105,22 @@ function isSyncMergeAggregateError(object) {
 /**
  * Compare two ISO-8601 date strings.
  * Returns negative if a < b, 0 if equal, positive if a > b.
- * `undefined` is treated as the oldest possible value (epoch).
+ * `undefined` is treated as the oldest possible value (before any real timestamp).
+ *
+ * ISO 8601 UTC timestamps (ending in 'Z') are lexicographically ordered,
+ * so plain string comparison produces the correct temporal ordering.
  *
  * @param {string | undefined} a
  * @param {string | undefined} b
  * @returns {number}
  */
 function compareIsoTimestamps(a, b) {
-    const ta = a !== undefined ? Date.parse(a) : 0;
-    const tb = b !== undefined ? Date.parse(b) : 0;
-    return ta - tb;
+    if (a === undefined && b === undefined) return 0;
+    if (a === undefined) return -1;
+    if (b === undefined) return 1;
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
 }
 
 /**
@@ -420,7 +426,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             ops.push(...takeOps);
         } else if (decision === 'invalidate') {
             ops.push(T.freshness.putOp(node, 'potentially-outdated'));
-            ops.push(T.values.delOp(node));
         }
         // 'keep': no write operations needed; T already has the correct data.
     }

@@ -7,6 +7,21 @@
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
 const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const {
+    hostnameSchemaStorage: hostnameSchemaStorageHelper,
+    clearHostnameStorage: clearHostnameStorageHelper,
+    getHostnameMetaVersion: getHostnameMetaVersionHelper,
+    setHostnameMeta: setHostnameMetaHelper,
+    rawPutAllToHostname: rawPutAllToHostnameHelper,
+} = require('./hostname_storage');
+const {
+    InvalidReplicaPointerError,
+    isInvalidReplicaPointerError,
+    SwitchReplicaError,
+    isSwitchReplicaError,
+    SchemaBatchVersionError,
+    isSchemaBatchVersionError,
+} = require('./replica_errors');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
@@ -56,79 +71,6 @@ const RAW_BATCH_CHUNK_SIZE = 500;
  */
 function assertNeverReplicaName(name) {
     throw new InvalidReplicaPointerError(name);
-}
-
-/**
- * Thrown when `_meta/current_replica` contains an unexpected value,
- * or when an API receives an invalid replica name argument.
- */
-class InvalidReplicaPointerError extends Error {
-    /**
-     * @param {unknown} value - The invalid value that was read or passed.
-     */
-    constructor(value) {
-        super(`Invalid replica name: "${String(value)}". Expected "x" or "y".`);
-        this.name = 'InvalidReplicaPointerError';
-        this.value = value;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is InvalidReplicaPointerError}
- */
-function isInvalidReplicaPointerError(object) {
-    return object instanceof InvalidReplicaPointerError;
-}
-
-/**
- * Thrown when the replica pointer write fails during `switchToReplica`.
- */
-class SwitchReplicaError extends Error {
-    /**
-     * @param {string} name - The replica name we tried to switch to.
-     * @param {unknown} cause - The underlying error.
-     */
-    constructor(name, cause) {
-        super(`Failed to write replica pointer "${name}" to _meta/current_replica: ${String(cause)}`);
-        this.name = 'SwitchReplicaError';
-        this.replicaName = name;
-        this.cause = cause;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is SwitchReplicaError}
- */
-function isSwitchReplicaError(object) {
-    return object instanceof SwitchReplicaError;
-}
-
-/**
- * Thrown by `buildSchemaStorage().batch()` when the existing meta/version in the
- * replica does not match the expected application version.
- * This indicates a logic error in migration ordering or staging-namespace usage.
- */
-class SchemaBatchVersionError extends Error {
-    /**
-     * @param {string} expected - The expected version.
-     * @param {string} found - The version actually stored in the replica.
-     */
-    constructor(expected, found) {
-        super(`Version mismatch in batch operation: expected ${expected}, found ${found}`);
-        this.name = 'SchemaBatchVersionError';
-        this.expected = expected;
-        this.found = found;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is SchemaBatchVersionError}
- */
-function isSchemaBatchVersionError(object) {
-    return object instanceof SchemaBatchVersionError;
 }
 
 /**
@@ -202,50 +144,6 @@ function isSchemaBatchVersionError(object) {
  * @template T
  * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
  */
-
-/**
- * Build a bare SchemaStorage without any version-check enforcement.
- * Used for hostname staging namespaces where the data originates from a remote
- * replica and should not be constrained by the local application version.
- *
- * The returned storage's `batch` function simply writes operations without any
- * meta/version check.  Individual sub-database `put`/`del` calls are also
- * unconstrained.
- *
- * @param {SchemaSublevelType} namespaceSublevel - The namespace's top-level sublevel.
- * @returns {SchemaStorage}
- */
-function buildBareSchemaStorage(namespaceSublevel) {
-    /** @type {SimpleSublevel<ComputedValue>} */
-    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Freshness>} */
-    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord>} */
-    const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeKeyString[]>} */
-    const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter>} */
-    const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<TimestampRecord>} */
-    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
-
-    /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
-    const batch = async (operations) => {
-        if (operations.length > 0) {
-            await namespaceSublevel.batch(operations);
-        }
-    };
-
-    return {
-        batch,
-        values: makeTypedDatabase(valuesSublevel),
-        freshness: makeTypedDatabase(freshnessSublevel),
-        inputs: makeTypedDatabase(inputsSublevel),
-        revdeps: makeTypedDatabase(revdepsSublevel),
-        counters: makeTypedDatabase(countersSublevel),
-        timestamps: makeTypedDatabase(timestampsSublevel),
-    };
-}
 
 /**
  * Build a SchemaStorage for one replica namespace.
@@ -582,93 +480,52 @@ class RootDatabaseClass {
 
     /**
      * Returns a bare SchemaStorage for a hostname staging namespace.
-     * The storage reads/writes under `hostnames/<hostname>` and does NOT enforce
-     * any local version check.  This is intentional: hostname data originates from
-     * a remote replica and must be imported verbatim for comparison during merge.
-     *
-     * The returned storage is a fresh object on every call; callers that need the
-     * same hostname storage across multiple operations should retain the reference
-     * themselves.
-     *
      * @param {string} hostname - The hostname key (must be non-empty, no `/`).
      * @returns {SchemaStorage}
      */
     hostnameSchemaStorage(hostname) {
-        /** @type {SchemaSublevelType} */
-        const hostnameSub = this.db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
-        return buildBareSchemaStorage(hostnameSub);
+        return hostnameSchemaStorageHelper(this.db, hostname);
     }
 
     /**
      * Clear all data stored under the `_h_<hostname>` staging namespace.
-     * Called before importing a remote hostname's snapshot and after a completed
-     * (successful or failed) per-host merge to free storage.
-     *
      * @param {string} hostname - The hostname key (must be non-empty, no `/`).
      * @returns {Promise<void>}
      */
     async clearHostnameStorage(hostname) {
-        /** @type {SchemaSublevelType} */
-        const hostnameSub = this.db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
-        await hostnameSub.clear();
+        return clearHostnameStorageHelper(this.db, hostname);
     }
 
     /**
      * Reads the app version stored in a hostname's staging meta sublevel.
      * Returns `undefined` when the hostname storage contains no version entry.
-     * Used by the sync merge runner to validate `_meta/version` equality before
-     * attempting a graph merge.
-     *
      * @param {string} hostname
      * @returns {Promise<Version | undefined>}
      */
     async getHostnameMetaVersion(hostname) {
-        // Raw key format for _h_<hostname>/meta/version: !_h_<hostname>!!meta!version
-        const rawKey = stringToNodeKeyString(`!_h_${hostname}!!meta!version`);
-        const raw = await this.db.get(rawKey);
-        if (raw === undefined) {
-            return undefined;
-        }
-        if (typeof raw === 'string') {
-            return stringToVersion(raw);
-        }
-        return undefined;
+        return getHostnameMetaVersionHelper(this.db, hostname);
     }
 
     /**
      * Write a meta key/value pair into a hostname's staging meta sublevel.
-     * Used by scanHostnameFromFilesystem to persist the remote's meta/version
-     * so it can be checked before graph merge.
-     *
      * @param {string} hostname
      * @param {string} key - The meta key to write (e.g. 'version').
-     * @param {unknown} value - The value to store.
+     * @param {*} value - The value to store.
      * @returns {Promise<void>}
      */
     async setHostnameMeta(hostname, key, value) {
-        // Raw key format for _h_<hostname>/meta/<key>: !_h_<hostname>!!meta!<key>
-        const rawKey = `!_h_${hostname}!!meta!${key}`;
-        await this._rawPutAll([{ key: rawKey, value }]);
+        return setHostnameMetaHelper(this.db, hostname, key, value);
     }
 
     /**
-     * Write raw `{ sublevelName, subkey, value }` entries into a hostname's staging
-     * namespace without going through the typed schema layer.  This is used by
-     * `scanHostnameFromFilesystem` to import filesystem snapshots whose values are
-     * still opaque `unknown` and cannot be statically typed.
-     *
+     * Write raw `{ sublevelName, subkey, value }` entries into a hostname's
+     * staging namespace without going through the typed schema layer.
      * @param {string} hostname
-     * @param {Array<{ sublevelName: string, subkey: string, value: unknown }>} entries
+     * @param {Array<{ sublevelName: string, subkey: string, value: * }>} entries
      * @returns {Promise<void>}
      */
     async _rawPutAllToHostname(hostname, entries) {
-        // Raw key format for _h_<hostname>/<sublevelName>/<subkey>:
-        // !_h_<hostname>!!<sublevelName>!<subkey>
-        const rawEntries = entries.map(({ sublevelName, subkey, value }) => ({
-            key: `!_h_${hostname}!!${sublevelName}!${subkey}`,
-            value,
-        }));
-        await this._rawPutAll(rawEntries);
+        return rawPutAllToHostnameHelper(this.db, hostname, entries);
     }
 
     /**

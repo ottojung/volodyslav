@@ -174,7 +174,7 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
  *
  * @param {string} hostname
  * @returns {string} The validated hostname.
- * @throws {Error} If the hostname is invalid.
+ * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 function validateHostname(hostname) {
     if (typeof hostname !== 'string' || hostname.length === 0) {

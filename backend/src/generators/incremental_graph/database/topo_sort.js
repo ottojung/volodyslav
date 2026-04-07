@@ -90,9 +90,12 @@ class MinHeap {
                 smallest = right;
             }
             if (smallest === i) break;
-            const tmp = this._data[i];
-            this._data[i] = this._data[smallest];
-            this._data[smallest] = tmp;
+            const dataAtI = this._data[i];
+            const dataAtSmallest = this._data[smallest];
+            if (dataAtI !== undefined && dataAtSmallest !== undefined) {
+                this._data[i] = dataAtSmallest;
+                this._data[smallest] = dataAtI;
+            }
             i = smallest;
         }
     }

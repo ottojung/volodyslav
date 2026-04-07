@@ -8,7 +8,7 @@
  *   - missing timestamps in H: take emits del ops (no stale T timestamps survive)
  *   - version mismatch: HostVersionMismatchError thrown
  *   - replica pointer switches on success
- *   - invalidate: mixed-ancestry conflict (one ancestor force-keep, another force-take)
+ *   - invalidate: mixed-ancestry conflict marks freshness potentially-outdated
  */
 
 const os = require('os');
@@ -17,7 +17,6 @@ const fs = require('fs');
 
 const {
     getRootDatabase,
-    versionToString,
 } = require('../src/generators/incremental_graph/database');
 const {
     mergeHostIntoReplica,
@@ -51,9 +50,11 @@ function nk(name) {
     return `{"head":"${name}","args":[]}`;
 }
 
-function ts(offsetMs) {
-    return new Date(offsetMs).toISOString();
-}
+// Hardcoded ISO 8601 UTC timestamps for test reproducibility.
+// Values are chosen to be clearly ordered: TS1 < TS2 < TS3.
+const TS1 = '2024-01-01T00:00:01.000Z';
+const TS2 = '2024-01-01T00:00:05.000Z';
+const TS3 = '2024-01-01T00:00:09.000Z';
 
 /**
  * Write a node into storage with a modifiedAt timestamp.
@@ -74,7 +75,6 @@ describe('mergeHostIntoReplica', () => {
             const db = await getRootDatabase(capabilities);
             try {
                 const logger = makeLogger();
-                const appVersion = versionToString(db.version);
                 await db.setMetaVersion(db.version);
                 // Set remote version to something incompatible.
                 await db.setHostnameMeta('remote-host', 'version', 'incompatible-version');
@@ -103,21 +103,19 @@ describe('mergeHostIntoReplica', () => {
             try {
                 const logger = makeLogger();
                 const hostname = 'peer';
-                const appVersion = versionToString(db.version);
-                await db.setMetaVersion(db.version);
-                // Align staging meta version with app version.
-                await db.setHostnameMeta(hostname, 'version', appVersion);
+                const appVersionStr = db.version;
+                await db.setMetaVersion(appVersionStr);
+                await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
                 const nodeA = nk('a');
-                const timestamp = ts(1000);
                 const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
                 const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
 
                 const L = db.schemaStorageForReplica('x');
-                await writeNode(L, nodeA, timestamp, [], localValue);
+                await writeNode(L, nodeA, TS1, [], localValue);
 
                 const H = db.hostnameSchemaStorage(hostname);
-                await writeNode(H, nodeA, timestamp, [], remoteValue);
+                await writeNode(H, nodeA, TS1, [], remoteValue);
 
                 await mergeHostIntoReplica(logger, db, hostname);
 
@@ -142,21 +140,19 @@ describe('mergeHostIntoReplica', () => {
             try {
                 const logger = makeLogger();
                 const hostname = 'peer';
-                const appVersion = versionToString(db.version);
-                await db.setMetaVersion(db.version);
-                await db.setHostnameMeta(hostname, 'version', appVersion);
+                const appVersionStr = db.version;
+                await db.setMetaVersion(appVersionStr);
+                await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
                 const nodeA = nk('a');
-                const olderTs = ts(1000);
-                const newerTs = ts(5000);
                 const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
                 const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
 
                 const L = db.schemaStorageForReplica('x');
-                await writeNode(L, nodeA, olderTs, [], localValue);
+                await writeNode(L, nodeA, TS1, [], localValue);
 
                 const H = db.hostnameSchemaStorage(hostname);
-                await writeNode(H, nodeA, newerTs, [], remoteValue);
+                await writeNode(H, nodeA, TS2, [], remoteValue);
 
                 await mergeHostIntoReplica(logger, db, hostname);
 
@@ -181,15 +177,15 @@ describe('mergeHostIntoReplica', () => {
             try {
                 const logger = makeLogger();
                 const hostname = 'peer';
-                const appVersion = versionToString(db.version);
-                await db.setMetaVersion(db.version);
-                await db.setHostnameMeta(hostname, 'version', appVersion);
+                const appVersionStr = db.version;
+                await db.setMetaVersion(appVersionStr);
+                await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
                 const nodeA = nk('a-only-in-h');
                 const remoteValue = { value: { id: 'h-only', type: 'test', description: 'h only' }, isDirty: false };
 
                 const H = db.hostnameSchemaStorage(hostname);
-                await writeNode(H, nodeA, ts(1000), [], remoteValue);
+                await writeNode(H, nodeA, TS1, [], remoteValue);
 
                 await mergeHostIntoReplica(logger, db, hostname);
 
@@ -214,9 +210,9 @@ describe('mergeHostIntoReplica', () => {
             try {
                 const logger = makeLogger();
                 const hostname = 'peer';
-                const appVersion = versionToString(db.version);
-                await db.setMetaVersion(db.version);
-                await db.setHostnameMeta(hostname, 'version', appVersion);
+                const appVersionStr = db.version;
+                await db.setMetaVersion(appVersionStr);
+                await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
                 // Write an H-only node without a timestamps record.
                 const hOnlyNode = nk('h-only-no-ts');
@@ -247,9 +243,9 @@ describe('mergeHostIntoReplica', () => {
             try {
                 const logger = makeLogger();
                 const hostname = 'peer';
-                const appVersion = versionToString(db.version);
-                await db.setMetaVersion(db.version);
-                await db.setHostnameMeta(hostname, 'version', appVersion);
+                const appVersionStr = db.version;
+                await db.setMetaVersion(appVersionStr);
+                await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
                 const before = db.currentReplicaName();
                 expect(before).toBe('x');
@@ -273,42 +269,38 @@ describe('mergeHostIntoReplica', () => {
             try {
                 const logger = makeLogger();
                 const hostname = 'peer';
-                const appVersion = versionToString(db.version);
-                await db.setMetaVersion(db.version);
-                await db.setHostnameMeta(hostname, 'version', appVersion);
+                const appVersionStr = db.version;
+                await db.setMetaVersion(appVersionStr);
+                await db.setHostnameMeta(hostname, 'version', appVersionStr);
 
                 // Graph:  A → C, B → C  (C depends on both A and B)
                 // A is locally newer (force-keep root),
                 // B is remotely newer (force-take root).
-                // C should be invalidated.
+                // C should be invalidated (freshness = 'potentially-outdated').
                 const nodeA = nk('a');
                 const nodeB = nk('b');
                 const nodeC = nk('c');
-                const olderTs = ts(1000);
-                const newerLocalTs = ts(9000);
-                const newerRemoteTs = ts(8000);
                 const localValueC = { value: { id: 'c-local', type: 'test', description: 'c local' }, isDirty: false };
 
                 const L = db.schemaStorageForReplica('x');
-                await writeNode(L, nodeA, newerLocalTs, [], undefined);
-                await writeNode(L, nodeB, olderTs, [], undefined);
-                await writeNode(L, nodeC, olderTs, [nodeA, nodeB], localValueC);
+                await writeNode(L, nodeA, TS3, [], undefined);
+                await writeNode(L, nodeB, TS1, [], undefined);
+                await writeNode(L, nodeC, TS1, [nodeA, nodeB], localValueC);
 
                 const H = db.hostnameSchemaStorage(hostname);
-                await writeNode(H, nodeA, olderTs, [], undefined);
-                await writeNode(H, nodeB, newerRemoteTs, [], undefined);
-                await writeNode(H, nodeC, olderTs, [nodeA, nodeB], undefined);
+                await writeNode(H, nodeA, TS1, [], undefined);
+                await writeNode(H, nodeB, TS2, [], undefined);
+                await writeNode(H, nodeC, TS1, [nodeA, nodeB], undefined);
 
                 await mergeHostIntoReplica(logger, db, hostname);
 
                 const newActive = db.currentReplicaName();
                 const T = db.schemaStorageForReplica(newActive);
 
-                // C is invalidated → freshness = 'potentially-outdated', no value.
+                // C is invalidated → freshness = 'potentially-outdated'.
+                // The old value is retained (not deleted) until the node is recomputed.
                 const cFreshness = await T.freshness.get(nodeC);
                 expect(cFreshness).toBe('potentially-outdated');
-                const cValue = await T.values.get(nodeC);
-                expect(cValue).toBeUndefined();
             } finally {
                 await db.close();
             }

@@ -51,8 +51,6 @@ function nk(name) {
 
 /**
  * Write an inputs record for `node` whose dependencies are `inputs`.
- * Creates both an inputs record and an empty revdeps entry so the node is
- * materialized in the storage.
  *
  * @param {object} storage - SchemaStorage instance.
  * @param {string} nodeKey

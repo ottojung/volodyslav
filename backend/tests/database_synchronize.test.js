@@ -258,7 +258,7 @@ describe("synchronizeNoLock", () => {
         await pushRemoteRepositoryBranch(capabilities, "alice", [
             ["!_meta!format", "xy-v2"],
             [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
-            [aliceInputsKey, { inputs: [], inputCounters: {} }],
+            [aliceInputsKey, { inputs: [], inputCounters: [] }],
             [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
 
@@ -296,7 +296,7 @@ describe("synchronizeNoLock", () => {
         await pushRemoteRepositoryBranch(capabilities, "bob", [
             ["!_meta!format", "xy-v2"],
             [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
-            [bobInputsKey, { inputs: [], inputCounters: {} }],
+            [bobInputsKey, { inputs: [], inputCounters: [] }],
             [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
         ]);
         // zed: version mismatch → HostVersionMismatchError → triggers aggregate failure.
@@ -304,7 +304,7 @@ describe("synchronizeNoLock", () => {
             ["!_meta!format", "xy-v2"],
             ['!x!!meta!version', "incompatible-version"],
             ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
-            ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: {} }],
+            ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
         ]);
 
         let error;
