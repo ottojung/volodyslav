@@ -236,6 +236,13 @@ async function synchronizeNoLock(capabilities, options) {
 
         for (const remoteBranch of remoteBranches) {
             const hostname = parseRemoteHostnameBranch(remoteBranch);
+            // Skip non-hostname branches (e.g. HEAD) and our own branch.
+            // Our own branch is skipped because this host is the sole writer of
+            // `origin/<ourBranch>`: no other machine pushes commits to that ref,
+            // so the remote can never be ahead of the local DB that we just
+            // checkpointed.  `workingRepository.synchronize()` already pushed our
+            // latest state to the remote, so there is nothing to merge back from
+            // `origin/<ourBranch>` that is not already in the live LevelDB.
             if (hostname === null || remoteBranch === `origin/${ourBranch}`) {
                 continue;
             }

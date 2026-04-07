@@ -14,6 +14,11 @@
 const path = require('path');
 const { relativePathToKey, parseValue } = require('./encoding');
 const { validateTopLevelSublevel } = require('./sublevel');
+const {
+    InvalidHostnameError,
+    isInvalidHostnameError,
+    validateHostname,
+} = require('../hostname_storage');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -55,30 +60,6 @@ class ScanInputDirMissingError extends Error {
  */
 function isScanInputDirMissingError(object) {
     return object instanceof ScanInputDirMissingError;
-}
-
-/**
- * Thrown when the hostname string passed to scanHostnameFromFilesystem() is
- * invalid (empty, or contains characters not allowed in a staging namespace key).
- */
-class InvalidHostnameError extends Error {
-    /**
-     * @param {string} hostname
-     * @param {string} reason
-     */
-    constructor(hostname, reason) {
-        super(`Invalid hostname '${hostname}': ${reason}`);
-        this.name = 'InvalidHostnameError';
-        this.hostname = hostname;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is InvalidHostnameError}
- */
-function isInvalidHostnameError(object) {
-    return object instanceof InvalidHostnameError;
 }
 
 /**
@@ -166,24 +147,6 @@ async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel
         { inputDir, sublevel: validatedSublevel, count },
         'Scanned database from filesystem'
     );
-}
-
-/**
- * Validate a hostname string for use as a staging namespace key.
- * Must be non-empty and must not contain `/`, `\`, or `!`.
- *
- * @param {string} hostname
- * @returns {string} The validated hostname.
- * @throws {InvalidHostnameError} If the hostname is invalid.
- */
-function validateHostname(hostname) {
-    if (typeof hostname !== 'string' || hostname.length === 0) {
-        throw new InvalidHostnameError(hostname, 'must be a non-empty string');
-    }
-    if (hostname.includes('/') || hostname.includes('\\') || hostname.includes('!')) {
-        throw new InvalidHostnameError(hostname, "must not contain '/', '\\\\', or '!'");
-    }
-    return hostname;
 }
 
 /**

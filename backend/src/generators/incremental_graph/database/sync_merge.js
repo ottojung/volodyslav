@@ -167,12 +167,6 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
         if (v !== undefined) ops.push(dst.timestamps.putOp(key, v));
     }
 
-    // Copy version from source replica meta into target meta.
-    const srcVersion = await rootDatabase.getMetaVersionForReplica(from);
-    if (srcVersion !== undefined) {
-        await rootDatabase.setMetaVersionForReplica(to, srcVersion);
-    }
-
     await dst.batch(ops);
 }
 
@@ -404,15 +398,62 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     // ── Step 6: Handle H-only nodes (additions from remote) ─────────────────
-    // Nodes present in H but absent in T are taken.  This is unconditionally
-    // correct: nodes cannot be deleted from a graph, so if H has more nodes,
-    // those were added on the remote side.
+    // Nodes present in H but absent in T are additions from the remote side.
+    // Nodes cannot be deleted from a graph, so H having more nodes means they
+    // were added remotely.
+    //
+    // However, H-only nodes may depend (via their inputs) on T-present nodes
+    // that have force-keep taint.  Such a node was computed on the remote using
+    // an older version of an ancestor that T has already updated locally.  Its
+    // cached value is therefore stale.  We still take all structural data from H
+    // (so the node exists in T and the revdeps index is correct) but we override
+    // the freshness to `potentially-outdated`.
     /** @type {Set<NodeKeyString>} */
     const hOnlyNodes = new Set();
     for await (const key of H.inputs.keys()) {
         if (!decisions.has(key)) {
             hOnlyNodes.add(key);
-            decisions.set(key, 'take');
+        }
+    }
+
+    // Propagate keepTainted / takeTainted through the H-only sub-graph using
+    // a recursive DFS so that chains of H-only nodes are handled correctly.
+    // Nodes are visited at most once (guarded by `hOnlyVisited`).
+    const hOnlyVisited = new Set();
+
+    /**
+     * @param {NodeKeyString} key
+     * @returns {Promise<void>}
+     */
+    async function propagateTaintToHOnly(key) {
+        if (hOnlyVisited.has(key)) return;
+        hOnlyVisited.add(key);
+        const hInputsRecord = await H.inputs.get(key);
+        if (!hInputsRecord) return;
+        for (const inputStr of hInputsRecord.inputs) {
+            const inputKey = stringToNodeKeyString(inputStr);
+            // Propagate through any H-only predecessors first.
+            if (hOnlyNodes.has(inputKey)) {
+                await propagateTaintToHOnly(inputKey);
+            }
+            if (keepTainted.has(inputKey)) keepTainted.add(key);
+            if (takeTainted.has(inputKey)) takeTainted.add(key);
+        }
+    }
+
+    for (const key of hOnlyNodes) {
+        await propagateTaintToHOnly(key);
+    }
+
+    // Track which H-only nodes need a freshness override after being taken.
+    // A node is stale if any of its ancestors (transitively) were kept from T
+    // (keepTainted), meaning it was computed on the remote with stale inputs.
+    /** @type {Set<NodeKeyString>} */
+    const hOnlyNeedsInvalidate = new Set();
+    for (const key of hOnlyNodes) {
+        decisions.set(key, 'take');
+        if (keepTainted.has(key)) {
+            hOnlyNeedsInvalidate.add(key);
         }
     }
 
@@ -424,6 +465,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         if (decision === 'take') {
             const takeOps = await buildTakeOps(T, H, node);
             ops.push(...takeOps);
+            // H-only nodes whose ancestors include a locally-kept (T-newer) node
+            // were computed on the remote with stale inputs.  Copy the structural
+            // data from H so the node exists in T and the revdeps index is
+            // correct, but override freshness to force recomputation.
+            if (hOnlyNeedsInvalidate.has(node)) {
+                ops.push(T.freshness.putOp(node, 'potentially-outdated'));
+            }
         } else if (decision === 'invalidate') {
             ops.push(T.freshness.putOp(node, 'potentially-outdated'));
         }

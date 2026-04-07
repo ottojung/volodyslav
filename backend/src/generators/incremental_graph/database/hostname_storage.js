@@ -13,6 +13,50 @@
 const { makeTypedDatabase } = require('./typed_database');
 const { stringToNodeKeyString, stringToVersion } = require('./types');
 
+/**
+ * Thrown when a hostname string is invalid for use as a staging namespace key.
+ * The hostname is embedded into LevelDB sublevel names and raw key prefixes, so
+ * characters that act as delimiters (e.g. `!`) or path separators (`/`, `\`)
+ * must be rejected to prevent namespace collisions or key corruption.
+ */
+class InvalidHostnameError extends Error {
+    /**
+     * @param {string} hostname
+     * @param {string} reason
+     */
+    constructor(hostname, reason) {
+        super(`Invalid hostname '${hostname}': ${reason}`);
+        this.name = 'InvalidHostnameError';
+        this.hostname = hostname;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidHostnameError}
+ */
+function isInvalidHostnameError(object) {
+    return object instanceof InvalidHostnameError;
+}
+
+/**
+ * Validate a hostname string for use as a staging namespace key.
+ * Must be non-empty and must not contain `/`, `\`, or `!`.
+ *
+ * @param {string} hostname
+ * @returns {string} The validated hostname (same value, for chaining).
+ * @throws {InvalidHostnameError} If the hostname is invalid.
+ */
+function validateHostname(hostname) {
+    if (typeof hostname !== 'string' || hostname.length === 0) {
+        throw new InvalidHostnameError(hostname, 'must be a non-empty string');
+    }
+    if (hostname.includes('/') || hostname.includes('\\') || hostname.includes('!')) {
+        throw new InvalidHostnameError(hostname, "must not contain '/', '\\\\', or '!'");
+    }
+    return hostname;
+}
+
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').Version} Version */
@@ -80,10 +124,12 @@ function buildBareSchemaStorage(namespaceSublevel) {
  * local version check.
  *
  * @param {RootLevelType} db - The root LevelDB instance.
- * @param {string} hostname - The hostname key (must be non-empty, no `/`).
+ * @param {string} hostname - The hostname key (must be non-empty, no `/`, `\`, or `!`).
  * @returns {SchemaStorage}
+ * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 function hostnameSchemaStorage(db, hostname) {
+    validateHostname(hostname);
     /** @type {SchemaSublevelType} */
     const hostnameSub = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
     return buildBareSchemaStorage(hostnameSub);
@@ -93,10 +139,12 @@ function hostnameSchemaStorage(db, hostname) {
  * Clear all data stored under the `_h_<hostname>` staging namespace.
  *
  * @param {RootLevelType} db - The root LevelDB instance.
- * @param {string} hostname - The hostname key (must be non-empty, no `/`).
+ * @param {string} hostname - The hostname key (must be non-empty, no `/`, `\`, or `!`).
  * @returns {Promise<void>}
+ * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 async function clearHostnameStorage(db, hostname) {
+    validateHostname(hostname);
     /** @type {SchemaSublevelType} */
     const hostnameSub = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
     await hostnameSub.clear();
@@ -122,8 +170,10 @@ function hostnameRawKey(hostname, sublevelName, subkey) {
  * @param {RootLevelType} db - The root LevelDB instance.
  * @param {string} hostname
  * @returns {Promise<Version | undefined>}
+ * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 async function getHostnameMetaVersion(db, hostname) {
+    validateHostname(hostname);
     const rawKey = hostnameRawKey(hostname, 'meta', 'version');
     const raw = await db.get(rawKey);
     if (raw === undefined) {
@@ -143,8 +193,10 @@ async function getHostnameMetaVersion(db, hostname) {
  * @param {string} key - The meta key to write (e.g. 'version').
  * @param {*} value - The value to store.
  * @returns {Promise<void>}
+ * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 async function setHostnameMeta(db, hostname, key, value) {
+    validateHostname(hostname);
     const rawKey = hostnameRawKey(hostname, 'meta', key);
     await db.put(rawKey, value);
 }
@@ -157,8 +209,10 @@ async function setHostnameMeta(db, hostname, key, value) {
  * @param {string} hostname
  * @param {Array<{ sublevelName: string, subkey: string, value: * }>} entries
  * @returns {Promise<void>}
+ * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 async function rawPutAllToHostname(db, hostname, entries) {
+    validateHostname(hostname);
     /**
      * @param {{ sublevelName: string, subkey: string, value: * }} entry
      * @returns {{ type: 'put', key: NodeKeyString, value: * }}
@@ -183,4 +237,7 @@ module.exports = {
     getHostnameMetaVersion,
     setHostnameMeta,
     rawPutAllToHostname,
+    InvalidHostnameError,
+    isInvalidHostnameError,
+    validateHostname,
 };
