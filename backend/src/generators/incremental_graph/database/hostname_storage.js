@@ -12,6 +12,7 @@
 
 const { makeTypedDatabase } = require('./typed_database');
 const { stringToNodeKeyString, stringToVersion } = require('./types');
+const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
  * Thrown when a hostname string is invalid for use as a staging namespace key.
@@ -200,13 +201,6 @@ async function setHostnameMeta(db, hostname, key, value) {
     const rawKey = hostnameRawKey(hostname, 'meta', key);
     await db.put(rawKey, value);
 }
-
-/**
- * Maximum number of LevelDB batch operations issued in a single `db.batch()`
- * call when writing hostname staging entries.  Mirrors the chunk size used
- * by RootDatabase._rawPutAll to keep individual batch writes bounded.
- */
-const RAW_BATCH_CHUNK_SIZE = 500;
 
 /**
  * Write raw `{ sublevelName, subkey, value }` entries into a hostname's

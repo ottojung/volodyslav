@@ -7,6 +7,7 @@
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
 const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -55,7 +56,6 @@ const {
  * The format marker value that identifies a database using the x/y namespace layout.
  */
 const FORMAT_MARKER = 'xy-v2';
-const RAW_BATCH_CHUNK_SIZE = 500;
 
 /**
  * The valid replica names.

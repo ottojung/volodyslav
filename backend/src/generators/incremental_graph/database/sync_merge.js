@@ -38,6 +38,7 @@
 const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
 const { stringToNodeKeyString, versionToString } = require('./types');
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
+const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -148,42 +149,73 @@ async function copyReplicaBitIdentically(rootDatabase, from, to) {
     const dst = rootDatabase.schemaStorageForReplica(to);
 
     /** @type {DatabaseBatchOperation[]} */
-    const ops = [];
+    let pending = [];
+
+    /**
+     * Flush `pending` to `dst` and reset.
+     * @returns {Promise<void>}
+     */
+    async function flushPendingOps() {
+        if (pending.length >= RAW_BATCH_CHUNK_SIZE) {
+            await dst.batch(pending);
+            pending = [];
+        }
+    }
 
     for await (const key of src.values.keys()) {
         const v = await src.values.get(key);
-        if (v !== undefined) ops.push(dst.values.putOp(key, v));
+        if (v !== undefined) {
+            pending.push(dst.values.putOp(key, v));
+            await flushPendingOps();
+        }
     }
     for await (const key of src.freshness.keys()) {
         const v = await src.freshness.get(key);
-        if (v !== undefined) ops.push(dst.freshness.putOp(key, v));
+        if (v !== undefined) {
+            pending.push(dst.freshness.putOp(key, v));
+            await flushPendingOps();
+        }
     }
     for await (const key of src.inputs.keys()) {
         const v = await src.inputs.get(key);
-        if (v !== undefined) ops.push(dst.inputs.putOp(key, v));
+        if (v !== undefined) {
+            pending.push(dst.inputs.putOp(key, v));
+            await flushPendingOps();
+        }
     }
     for await (const key of src.revdeps.keys()) {
         const v = await src.revdeps.get(key);
-        if (v !== undefined) ops.push(dst.revdeps.putOp(key, v));
+        if (v !== undefined) {
+            pending.push(dst.revdeps.putOp(key, v));
+            await flushPendingOps();
+        }
     }
     for await (const key of src.counters.keys()) {
         const v = await src.counters.get(key);
-        if (v !== undefined) ops.push(dst.counters.putOp(key, v));
+        if (v !== undefined) {
+            pending.push(dst.counters.putOp(key, v));
+            await flushPendingOps();
+        }
     }
     for await (const key of src.timestamps.keys()) {
         const v = await src.timestamps.get(key);
-        if (v !== undefined) ops.push(dst.timestamps.putOp(key, v));
+        if (v !== undefined) {
+            pending.push(dst.timestamps.putOp(key, v));
+            await flushPendingOps();
+        }
     }
 
-    await dst.batch(ops);
+    if (pending.length > 0) {
+        await dst.batch(pending);
+    }
 
     // Guarantee that `to` always carries the current application version,
-    // even when `ops` was empty (source replica has no data).
-    // When ops is non-empty, dst.batch() already initialized the version via
+    // even when `pending` was empty throughout (source replica has no data).
+    // When pending was non-empty, dst.batch() already initialized the version via
     // buildSchemaStorage's first-write check; this call is idempotent.
-    // When ops is empty, dst.batch([]) returns immediately without writing
-    // anything, so without this call the switched-to replica would have no
-    // version and the next host merge would fail with HostVersionMismatchError.
+    // When pending was always empty, dst.batch() was never called, so without
+    // this call the switched-to replica would have no version and the next host
+    // merge would fail with HostVersionMismatchError.
     await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
 }
 
@@ -236,17 +268,20 @@ async function buildTakeOps(T, H, key) {
 }
 
 /**
- * Build the complete revdeps index from T's inputs records.
+ * Build the complete revdeps index from the merged dependency map.
  * Returns batch operations that delete all existing revdeps and write the
  * freshly computed ones.
  *
+ * Using `mergedInputsMap` (rather than re-reading T and H per-node) ensures
+ * that nodes whose initial decision was 'take' (and thus used H.inputs for
+ * the topo sort and taint propagation) continue to use H.inputs for revdeps
+ * even if taint propagation subsequently changed their decision to 'invalidate'.
+ *
  * @param {SchemaStorage} T
- * @param {Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>} decisions
- * @param {SchemaStorage} H
- * @param {Set<NodeKeyString>} hOnlyNodes
+ * @param {Map<NodeKeyString, NodeKeyString[]>} mergedInputsMap
  * @returns {Promise<DatabaseBatchOperation[]>}
  */
-async function buildRebuildRevdepsOps(T, decisions, H, hOnlyNodes) {
+async function buildRebuildRevdepsOps(T, mergedInputsMap) {
     /** @type {DatabaseBatchOperation[]} */
     const ops = [];
 
@@ -255,27 +290,13 @@ async function buildRebuildRevdepsOps(T, decisions, H, hOnlyNodes) {
         ops.push(T.revdeps.delOp(key));
     }
 
-    // Rebuild from the merged inputs.
+    // Rebuild from the merged inputs map.
     /** @type {Map<string, Set<NodeKeyString>>} */
     const newRevdepsMap = new Map();
 
-    // All nodes that will exist in the merged T (including H-only additions).
-    const allMergedNodes = new Set([
-        ...[...decisions.keys()],
-        ...hOnlyNodes,
-    ]);
-
-    for (const node of allMergedNodes) {
-        const decision = decisions.get(node);
-        let inputsRecord;
-        if (decision === 'take' || hOnlyNodes.has(node)) {
-            // Taken nodes and H-only nodes use H's inputs.
-            inputsRecord = await H.inputs.get(node);
-        } else {
-            inputsRecord = await T.inputs.get(node);
-        }
-        if (!inputsRecord) continue;
-        for (const inputStr of inputsRecord.inputs) {
+    for (const [node, inputKeys] of mergedInputsMap) {
+        for (const inputKey of inputKeys) {
+            const inputStr = String(inputKey);
             const existing = newRevdepsMap.get(inputStr);
             if (existing) {
                 existing.add(node);
@@ -474,32 +495,52 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         }
     }
 
-    // ── Step 7: Apply decisions to T ────────────────────────────────────────
+    // ── Step 7: Apply decisions to T in chunks ──────────────────────────────
     /** @type {DatabaseBatchOperation[]} */
-    const ops = [];
+    let pendingOps = [];
+
+    /**
+     * Flush `pendingOps` to T and reset when at or above chunk size.
+     * @returns {Promise<void>}
+     */
+    async function flushPendingOps() {
+        if (pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
+            await T.batch(pendingOps);
+            pendingOps = [];
+        }
+    }
 
     for (const [node, decision] of decisions) {
         if (decision === 'take') {
             const takeOps = await buildTakeOps(T, H, node);
-            ops.push(...takeOps);
+            pendingOps.push(...takeOps);
             // H-only nodes whose ancestors include a locally-kept (T-newer) node
             // were computed on the remote with stale inputs.  Copy the structural
             // data from H so the node exists in T and the revdeps index is
             // correct, but override freshness to force recomputation.
             if (hOnlyNeedsInvalidate.has(node)) {
-                ops.push(T.freshness.putOp(node, 'potentially-outdated'));
+                pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
             }
         } else if (decision === 'invalidate') {
-            ops.push(T.freshness.putOp(node, 'potentially-outdated'));
+            pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
         }
         // 'keep': no write operations needed; T already has the correct data.
+        await flushPendingOps();
     }
 
-    // Rebuild revdeps from scratch.
-    const revdepsOps = await buildRebuildRevdepsOps(T, decisions, H, hOnlyNodes);
-    ops.push(...revdepsOps);
+    // Rebuild revdeps from scratch using the merged inputs map.
+    // buildRebuildRevdepsOps uses mergedInputsMap directly, ensuring nodes
+    // that were initially 'take' (H.inputs) but taint-propagated to 'invalidate'
+    // still use H.inputs for revdeps (consistent with the merged graph).
+    const revdepsOps = await buildRebuildRevdepsOps(T, mergedInputsMap);
+    for (const op of revdepsOps) {
+        pendingOps.push(op);
+        await flushPendingOps();
+    }
 
-    await T.batch(ops);
+    if (pendingOps.length > 0) {
+        await T.batch(pendingOps);
+    }
 
     // ── Step 8: Switch active replica pointer ────────────────────────────────
     await rootDatabase.switchToReplica(toReplica);

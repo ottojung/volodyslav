@@ -249,9 +249,13 @@ async function synchronizeNoLock(capabilities, options) {
 
             // Create a temporary worktree for this hostname's branch so we can
             // read its rendered snapshot files without disturbing our checkout.
-            const tmpDir = await capabilities.creator.createTemporaryDirectory();
+            // tmpDir creation is inside the try/catch so that ENOSPC or
+            // permission errors are recorded as per-host failures rather than
+            // aborting all remaining host merges.
+            let tmpDir;
             let worktreeAdded = false;
             try {
+                tmpDir = await capabilities.creator.createTemporaryDirectory();
                 await capabilities.git.call(
                     "-C", workDir, "-c", "safe.directory=*",
                     "worktree", "add", "--detach", tmpDir, remoteBranch
@@ -287,7 +291,9 @@ async function synchronizeNoLock(capabilities, options) {
                 );
             } finally {
                 // Always clean up: remove worktree and staging namespace.
-                if (worktreeAdded) {
+                // `worktreeAdded` is only true when tmpDir was successfully created,
+                // so tmpDir is always a string here (but we check to satisfy the type checker).
+                if (worktreeAdded && tmpDir !== undefined) {
                     try {
                         await capabilities.git.call(
                             "-C", workDir, "-c", "safe.directory=*",
@@ -308,7 +314,7 @@ async function synchronizeNoLock(capabilities, options) {
                             // Ignore secondary cleanup failures.
                         }
                     }
-                } else {
+                } else if (tmpDir !== undefined) {
                     // Worktree was never set up; delete the tmp dir we created.
                     try {
                         await capabilities.deleter.deleteDirectory(tmpDir);
