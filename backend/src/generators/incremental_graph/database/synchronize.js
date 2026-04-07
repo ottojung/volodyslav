@@ -207,8 +207,8 @@ async function synchronizeNoLock(capabilities, options) {
         const remoteBranches = await listRemoteBranches(capabilities, workDir);
         const ourBranch = defaultBranch(capabilities);
 
-        /** @type {Array<{ hostname: string, message: string }>} */
-        const failures = [];
+        /** @type {Map<string, { hostname: string, message: string }>} */
+        const failuresByHost = new Map();
         /**
          * Record/merge a per-host failure. We keep one aggregate entry per host
          * so cleanup failures do not create duplicate `- <host>:` lines in
@@ -220,16 +220,16 @@ async function synchronizeNoLock(capabilities, options) {
          * @returns {void}
          */
         const recordHostFailure = (hostname, message, isCleanupFailure) => {
-            const existing = failures.find(f => f.hostname === hostname);
+            const existing = failuresByHost.get(hostname);
             if (existing === undefined) {
-                failures.push({ hostname, message });
+                failuresByHost.set(hostname, { hostname, message });
                 return;
             }
             if (isCleanupFailure) {
                 existing.message = `${existing.message}; cleanup: ${message}`;
                 return;
             }
-            existing.message = message;
+            failuresByHost.set(hostname, { hostname, message });
         };
 
         for (const remoteBranch of remoteBranches) {
@@ -339,6 +339,7 @@ async function synchronizeNoLock(capabilities, options) {
             }
         }
 
+        const failures = [...failuresByHost.values()];
         if (failures.length > 0) {
             throw new SyncMergeAggregateError(failures);
         }

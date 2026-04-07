@@ -17,6 +17,7 @@ const { stringToNodeKeyString } = require('./types');
 
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+const CYCLE_MESSAGE_SAMPLE_LIMIT = 20;
 
 /**
  * Thrown when an internal invariant of MinHeap is violated (i.e. a bug in
@@ -137,8 +138,7 @@ class TopologicalSortCycleError extends Error {
      * @param {NodeKeyString[]} cycle - A representative subset of nodes involved in the cycle.
      */
     constructor(cycle) {
-        const sampleLimit = 20;
-        const sample = cycle.slice(0, sampleLimit);
+        const sample = cycle.slice(0, CYCLE_MESSAGE_SAMPLE_LIMIT);
         const hiddenCount = cycle.length - sample.length;
         const sampleSuffix = hiddenCount > 0
             ? `, ... (+${hiddenCount} more)`
