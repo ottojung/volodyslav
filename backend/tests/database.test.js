@@ -116,56 +116,7 @@ describe('generators/database', () => {
             }
         });
 
-        test('restores database from local snapshot when LevelDB is missing', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const workingDir = capabilities.environment.workingDirectory();
-                const snapshotDir = path.join(workingDir, 'generators-database', 'rendered');
-                const metaDir = path.join(snapshotDir, '_meta');
-                const rDir = path.join(snapshotDir, 'r');
 
-                // Create snapshot structure: _meta/format, _meta/current_replica, r/meta/version
-                fs.mkdirSync(path.join(rDir, 'meta'), { recursive: true });
-                fs.mkdirSync(metaDir, { recursive: true });
-                fs.writeFileSync(path.join(metaDir, 'format'), JSON.stringify('xy-v2'));
-                fs.writeFileSync(path.join(metaDir, 'current_replica'), JSON.stringify('x'));
-                fs.writeFileSync(path.join(rDir, 'meta', 'version'), JSON.stringify('snapshot-version'));
-
-                const db = await getRootDatabase(capabilities);
-                try {
-                    // The database should have been restored from the snapshot.
-                    // The version written into replica 'x' meta should match the snapshot.
-                    const version = await db.getMetaVersion();
-                    expect(versionToString(version)).toBe('snapshot-version');
-                } finally {
-                    await db.close();
-                }
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('wraps DatabaseInitializationError around format mismatch from local snapshot', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const workingDir = capabilities.environment.workingDirectory();
-                const snapshotDir = path.join(workingDir, 'generators-database', 'rendered');
-                const metaDir = path.join(snapshotDir, '_meta');
-                const rDir = path.join(snapshotDir, 'r');
-
-                // Create a snapshot whose format marker is an old, incompatible value.
-                fs.mkdirSync(rDir, { recursive: true });
-                fs.mkdirSync(metaDir, { recursive: true });
-                fs.writeFileSync(path.join(metaDir, 'format'), JSON.stringify('xy-v1'));
-                fs.writeFileSync(path.join(metaDir, 'current_replica'), JSON.stringify('x'));
-
-                const error = await getRootDatabase(capabilities).catch((e) => e);
-                expect(isDatabaseInitializationError(error)).toBe(true);
-                expect(error.message).toMatch('xy-v1');
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
 
         test('starts with fresh database when no local snapshot exists', async () => {
             const capabilities = getTestCapabilities();
@@ -184,76 +135,7 @@ describe('generators/database', () => {
             }
         });
 
-        test('skips restore when snapshot _meta/current_replica is invalid JSON', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const workingDir = capabilities.environment.workingDirectory();
-                const snapshotDir = path.join(workingDir, 'generators-database', 'rendered');
-                const metaDir = path.join(snapshotDir, '_meta');
-                const rDir = path.join(snapshotDir, 'r');
 
-                fs.mkdirSync(rDir, { recursive: true });
-                fs.mkdirSync(metaDir, { recursive: true });
-                fs.writeFileSync(path.join(metaDir, 'format'), JSON.stringify('xy-v2'));
-                // current_replica file contains invalid JSON
-                fs.writeFileSync(path.join(metaDir, 'current_replica'), 'not-json');
-
-                // Should silently fall through to fresh start rather than crashing.
-                const db = await getRootDatabase(capabilities);
-                try {
-                    expect(isRootDatabase(db)).toBe(true);
-                    const version = await db.getMetaVersion();
-                    expect(version).toBeUndefined();
-                } finally {
-                    await db.close();
-                }
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('skips restore when LevelDB directory already exists', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const workingDir = capabilities.environment.workingDirectory();
-                const snapshotDir = path.join(workingDir, 'generators-database', 'rendered');
-                const metaDir = path.join(snapshotDir, '_meta');
-                const rDir = path.join(snapshotDir, 'r');
-
-                // Create a snapshot that has version 'snapshot-version'.
-                fs.mkdirSync(path.join(rDir, 'meta'), { recursive: true });
-                fs.mkdirSync(metaDir, { recursive: true });
-                fs.writeFileSync(path.join(metaDir, 'format'), JSON.stringify('xy-v2'));
-                fs.writeFileSync(path.join(metaDir, 'current_replica'), JSON.stringify('x'));
-                fs.writeFileSync(path.join(rDir, 'meta', 'version'), JSON.stringify('snapshot-version'));
-
-                // First call: LevelDB directory does not exist yet, so the snapshot is restored;
-                // the resulting database is populated with 'snapshot-version'.
-                const db1 = await getRootDatabase(capabilities);
-                await db1.close();
-
-                // Delete the snapshot and recreate it with a different version to confirm
-                // the second getRootDatabase call does NOT re-restore (dir already exists).
-                fs.rmSync(snapshotDir, { recursive: true, force: true });
-                fs.mkdirSync(path.join(rDir, 'meta'), { recursive: true });
-                fs.mkdirSync(metaDir, { recursive: true });
-                fs.writeFileSync(path.join(metaDir, 'format'), JSON.stringify('xy-v2'));
-                fs.writeFileSync(path.join(metaDir, 'current_replica'), JSON.stringify('x'));
-                fs.writeFileSync(path.join(rDir, 'meta', 'version'), JSON.stringify('different-version'));
-
-                // Second call: LevelDB directory already exists; snapshot is NOT re-applied.
-                const db2 = await getRootDatabase(capabilities);
-                try {
-                    // Version should still be 'snapshot-version' from the first restore, not 'different-version'.
-                    const version = await db2.getMetaVersion();
-                    expect(versionToString(version)).toBe('snapshot-version');
-                } finally {
-                    await db2.close();
-                }
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
     });
 
     describe('Schema storage operations', () => {

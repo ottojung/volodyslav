@@ -5,7 +5,6 @@
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../../../filesystem/reader').FileReader} FileReader */
-/** @typedef {import('../../../filesystem/dirscanner').DirScanner} DirScanner */
 /** @typedef {import('../../../logger').Logger} Logger */
 /** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
 /** @typedef {import('../../../environment').Environment} Environment */
@@ -118,7 +117,6 @@ function nodeNameToString(nodeName) {
  * @property {FileChecker} checker - A file checker instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileReader} reader - A file reader instance
- * @property {DirScanner} scanner - A directory scanner instance
  * @property {Environment} environment - An environment instance
  * @property {Logger} logger - A logger instance
  * @property {LevelDatabase} levelDatabase - A level database instance
