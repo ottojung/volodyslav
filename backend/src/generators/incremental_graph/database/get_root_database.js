@@ -106,9 +106,16 @@ async function rawScanDir(capabilities, rawDb, inputDir, sublevel) {
         entries.push({ key, value });
     }
 
+    /**
+     * @param {{ key: string, value: unknown }} e
+     */
+    function makePutOp(e) {
+        return { type: 'put', key: e.key, value: e.value };
+    }
+
     for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
         const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
-        await rawDb.batch(chunk.map((e) => ({ type: /** @type {'put'} */ ('put'), key: e.key, value: e.value })));
+        await rawDb.batch(chunk.map(makePutOp));
     }
     return entries.length;
 }
@@ -224,7 +231,7 @@ async function tryRestoreFromLocalSnapshot(capabilities, databasePath) {
 async function getRootDatabase(capabilities) {
     const databasePath = pathToLiveDatabase(capabilities);
 
-    const directoryAlreadyExists = !!(await capabilities.checker.directoryExists(databasePath));
+    const directoryAlreadyExists = (await capabilities.checker.directoryExists(databasePath)) !== null;
     if (directoryAlreadyExists) {
         capabilities.logger.logInfo({ databasePath }, 'Database directory exists');
     } else {
