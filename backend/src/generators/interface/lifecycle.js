@@ -26,7 +26,6 @@ const {
     withExclusiveMode,
     migrationCallback,
     LIVE_DATABASE_WORKING_PATH,
-    CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
@@ -55,32 +54,18 @@ async function internalEnsureInitialized(interfaceInstance) {
     }
     const capabilities = interfaceInstance._getCapabilities();
     await withExclusiveMode(capabilities.sleeper, async () => {
-        // If the live LevelDB directory is absent but the checkpoint git
-        // repository already exists (i.e., we have previously synced and
-        // rendered a snapshot), the LevelDB was lost while data still exists in
-        // the rendered snapshot.  Use the reset-to-hostname sync path to restore
-        // the LevelDB atomically from the remote, exactly as a regular sync
-        // would — this preserves the format marker and replica pointer so the
-        // format/migration checks below work correctly.
-        //
-        // If neither the LevelDB nor the checkpoint repo exists (brand-new
-        // first boot), skip this and let makeRootDatabase create a fresh DB.
+        // If the live LevelDB directory is absent, pull the current state from
+        // the remote via the reset-to-hostname sync path.  Any error from
+        // synchronizeNoLock propagates directly (no silencing) so boot failures
+        // are always visible.
         const liveDbPath = path.join(
             capabilities.environment.workingDirectory(),
             LIVE_DATABASE_WORKING_PATH
         );
-        const checkpointGitHead = path.join(
-            capabilities.environment.workingDirectory(),
-            CHECKPOINT_WORKING_PATH,
-            '.git',
-            'HEAD'
-        );
-        const liveDbExists = (await capabilities.checker.directoryExists(liveDbPath)) !== null;
-        const checkpointRepoExists = (await capabilities.checker.fileExists(checkpointGitHead)) !== null;
-        if (!liveDbExists && checkpointRepoExists) {
+        if ((await capabilities.checker.directoryExists(liveDbPath)) === null) {
             capabilities.logger.logInfo(
                 { liveDbPath },
-                'Live database directory absent but checkpoint repo exists; restoring via reset-to-hostname sync'
+                'Live database directory absent; restoring via reset-to-hostname sync'
             );
             await synchronizeNoLock(capabilities, {
                 resetToHostname: capabilities.environment.hostname(),

@@ -210,8 +210,11 @@ describe("generators/interface", () => {
 
             expect(rawDatabases).toHaveLength(3);
             expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(3);
+            // [0] initial live DB, closed at the start of synchronizeDatabase.
             expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
+            // [1] DB opened by synchronizeNoLock during the regular sync call.
             expect(rawDatabases[1].close).toHaveBeenCalledTimes(1);
+            // [2] the new live DB opened after synchronizeDatabase.
             expect(rawDatabases[2].open).toHaveBeenCalled();
             expect(iface.isInitialized()).toBe(true);
             await expect(iface._incrementalGraph.pull("all_events")).resolves.toMatchObject({

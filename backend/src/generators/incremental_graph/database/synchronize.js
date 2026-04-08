@@ -174,12 +174,19 @@ async function synchronizeNoLock(capabilities, options) {
                     }
                     const snapshotReplica = parsed;
 
-                    await scanFromFilesystem(
-                        capabilities,
-                        rootDatabase,
-                        path.join(workTree, DATABASE_SUBPATH, 'r'),
-                        snapshotReplica
-                    );
+                    // Scan `r/` into the active replica sublevel.
+                    // `r/` may not exist if the snapshot was of an empty database
+                    // (git does not track empty directories); in that case the
+                    // replica is left empty, which is correct.
+                    const rDir = path.join(workTree, DATABASE_SUBPATH, 'r');
+                    if (await capabilities.checker.directoryExists(rDir)) {
+                        await scanFromFilesystem(
+                            capabilities,
+                            rootDatabase,
+                            rDir,
+                            snapshotReplica
+                        );
+                    }
                     await scanFromFilesystem(
                         capabilities,
                         rootDatabase,

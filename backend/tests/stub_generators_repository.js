@@ -10,6 +10,9 @@ const defaultBranch = require("../src/gitstore/default_branch");
  * `capabilities.environment.generatorsRepository()`, so tests that exercise
  * generator synchronization need to initialize one explicitly.
  *
+ * The remote also needs a minimal rendered snapshot so that the
+ * reset-to-hostname boot path can scan `_meta/` back into LevelDB.
+ *
  * @param {Capabilities} capabilities
  * @returns {Promise<void>}
  */
@@ -38,6 +41,24 @@ async function stubGeneratorsRepository(capabilities) {
     const testFile = path.join(workTree, "README");
     const testFileObj = await capabilities.creator.createFile(testFile);
     await capabilities.writer.writeFile(testFileObj, "initial generators remote");
+
+    // Add a minimal rendered snapshot so the reset-to-hostname path can
+    // scan `_meta/` back into LevelDB.  The format marker and replica
+    // pointer are the only required keys; `r/` is left absent (git does
+    // not track empty dirs) and the scan path handles that as an empty
+    // replica.
+    const renderedMetaDir = path.join(workTree, "rendered", "_meta");
+    await capabilities.creator.createDirectory(renderedMetaDir);
+
+    // FORMAT_MARKER = 'xy-v2' (defined in database/root_database.js).
+    // The value is serialised as JSON so that parseValue() can read it back.
+    const formatFile = path.join(renderedMetaDir, "format");
+    const formatFileObj = await capabilities.creator.createFile(formatFile);
+    await capabilities.writer.writeFile(formatFileObj, '"xy-v2"');
+
+    const replicaFile = path.join(renderedMetaDir, "current_replica");
+    const replicaFileObj = await capabilities.creator.createFile(replicaFile);
+    await capabilities.writer.writeFile(replicaFileObj, '"x"');
 
     await capabilities.git.call("-C", workTree, "add", "--all");
     await capabilities.git.call(
