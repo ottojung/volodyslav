@@ -54,25 +54,86 @@ async function internalEnsureInitialized(interfaceInstance) {
     }
     const capabilities = interfaceInstance._getCapabilities();
     await withExclusiveMode(capabilities.sleeper, async () => {
-        // If the live LevelDB directory is absent, pull the current state from
-        // the remote via the reset-to-hostname sync path.  Any error from
-        // synchronizeNoLock propagates directly (no silencing) so boot failures
-        // are always visible.
         const liveDbPath = path.join(
             capabilities.environment.workingDirectory(),
             LIVE_DATABASE_WORKING_PATH
         );
-        if ((await capabilities.checker.directoryExists(liveDbPath)) === null) {
-            capabilities.logger.logInfo(
-                { liveDbPath },
-                'Live database directory absent; restoring via reset-to-hostname sync'
-            );
-            await synchronizeNoLock(capabilities, {
-                resetToHostname: capabilities.environment.hostname(),
-            });
+        const liveDbExists = (await capabilities.checker.directoryExists(liveDbPath)) !== null;
+
+        capabilities.logger.logInfo(
+            { liveDbPath, liveDbExists },
+            liveDbExists
+                ? 'Bootstrap: live database directory present; proceeding to open'
+                : 'Bootstrap: live database directory absent; selecting bootstrap path'
+        );
+
+        if (!liveDbExists) {
+            await internalBootstrap(capabilities);
         }
+
         await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
+
+        capabilities.logger.logInfo(
+            {},
+            'Bootstrap: startup completed successfully'
+        );
     });
+}
+
+/**
+ * Select and execute the bootstrap path when the live LevelDB is absent.
+ *
+ * Protocol section 7.1:
+ *  1. Check if `<hostname>-main` exists on the remote.
+ *  2. If yes  → reset-to-hostname sync (restores snapshot; fatal on any error).
+ *  3. If no   → normal sync from empty local DB (fatal on any error).
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function internalBootstrap(capabilities) {
+    const hostname = capabilities.environment.hostname();
+    const remotePath = capabilities.environment.generatorsRepository();
+    const hostnameBranch = `${hostname}-main`;
+    const hostnameBranchRef = `refs/heads/${hostnameBranch}`;
+
+    capabilities.logger.logInfo(
+        { hostname, remotePath, hostnameBranch },
+        'Bootstrap: checking if hostname branch exists on remote'
+    );
+
+    // Query the remote without requiring a local clone.  Any error here
+    // (e.g. remote unreachable) propagates as a fatal startup crash.
+    const lsRemoteResult = await capabilities.git.call(
+        "ls-remote", "--heads", "--", remotePath, hostnameBranchRef
+    );
+    const hostnameBranchExists = lsRemoteResult.stdout.trim() !== '';
+
+    if (hostnameBranchExists) {
+        capabilities.logger.logInfo(
+            { hostname, hostnameBranch },
+            'Bootstrap: hostname branch found; using reset-to-hostname sync path'
+        );
+        // Phase 1 (protocol §7.1.2): restore from remote snapshot.
+        // Any error is fatal (protocol §8.3).
+        await synchronizeNoLock(capabilities, { resetToHostname: hostname });
+        capabilities.logger.logInfo(
+            { hostname },
+            'Bootstrap: reset-to-hostname sync completed'
+        );
+    } else {
+        capabilities.logger.logInfo(
+            { hostname, hostnameBranch },
+            'Bootstrap: hostname branch does not exist remotely; using normal sync fallback'
+        );
+        // Phase 1 fallback (protocol §7.1.3): normal sync from empty local DB.
+        // Any error is fatal (protocol §8.3).
+        await synchronizeNoLock(capabilities);
+        capabilities.logger.logInfo(
+            { hostname },
+            'Bootstrap: fallback normal sync completed'
+        );
+    }
 }
 
 /**
