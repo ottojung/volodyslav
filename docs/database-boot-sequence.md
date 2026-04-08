@@ -6,6 +6,8 @@ Define a deterministic, correctness-first startup protocol for IncrementalGraph 
 
 The protocol is intentionally fail-fast: it prefers crashing on ambiguous or structurally invalid state over silently starting from a potentially wrong state.
 
+This document specifies **startup behavior only**. It does not specify steady-state synchronization, runtime merge behavior outside boot, or corruption-repair workflows.
+
 ---
 
 ## 2) Data model and storage layers
@@ -27,23 +29,33 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 
 ---
 
-## 3) Assumptions / Preconditions (not protocol guarantees)
+## 3) Preconditions, trust assumptions, terminology, and out-of-scope classes
 
-These are external preconditions the protocol relies on:
+### 3.1 Environment preconditions
 
-1. **Hostname env is initialized**
-   - `VOLODYSLAV_HOSTNAME` is present and valid before startup proceeds.
+1. `VOLODYSLAV_HOSTNAME` is present and valid before startup proceeds.
+2. At most one process executes this boot sequence against the same working directory at a time.
 
-2. **Single-process startup per working directory**
-   - At most one process executes this boot sequence against the same working directory at a time.
+### 3.2 Trust assumptions about inputs
 
-3. **Trust model for storage shape**
-   - If local live DB directory exists, it is assumed structurally readable by LevelDB.
-   - If remote hostname branch exists, its rendered data is assumed structurally well-formed for scanning/merge.
-   - Arbitrary corruption-repair logic is out of scope for this protocol.
+1. If the live DB directory exists at boot entry, the protocol assumes it remains structurally readable and non-malformed for the duration of that boot attempt.
+2. If `<hostname>-main` exists remotely, the protocol assumes its rendered data is structurally well-formed for the reset/scan/merge path.
 
-4. **Directory-existence check semantics**
-   - “Live DB exists” means directory existence at `generators-leveldb`; deeper structural checks happen only during DB open/validation.
+### 3.3 Terminology used by this protocol
+
+1. **Live DB exists**: directory existence at `<workingDirectory>/generators-leveldb` only.
+2. **Fresh DB**: a newly initialized DB where active replica version metadata is absent.
+3. **Current version**: the application version expected by the running build.
+4. **Migration transaction**: the transactional write sequence that prepares migrated replica state.
+5. **Replica cutover**: the committed switch of `_meta/current_replica` from old replica to migrated replica.
+6. **Fatal startup crash**: startup abort where IncrementalGraph is not exposed.
+7. **Structural validation**: boot-time checks for `_meta/format == xy-v2` and `_meta/current_replica ∈ {x,y}`.
+8. **Effective version**: the version metadata associated with the active replica after startup completes.
+
+### 3.4 Out of scope
+
+1. Arbitrary corruption detection/repair of malformed local or remote data.
+2. Compatibility heuristics that attempt startup continuation after structural-contract violations.
 
 ---
 
@@ -51,7 +63,7 @@ These are external preconditions the protocol relies on:
 
 If startup completes successfully, all of the following hold:
 
-1. Live DB directory exists.
+1. A live LevelDB is present and openable at the runtime storage path.
 2. Root format marker is valid (`xy-v2`).
 3. Replica pointer is valid (`x` or `y`).
 4. Active replica version is current application version (either already current or migrated during startup).
@@ -127,7 +139,7 @@ After structural validation:
 1. Read active replica version metadata.
 2. If no version is recorded (fresh DB), record current version.
 3. If version equals current version, continue.
-4. If version differs, run migration transaction and then switch active replica.
+4. If version differs, run migration transaction and then perform replica cutover.
 
 ### 7.4 Exposure boundary
 
@@ -144,9 +156,19 @@ IncrementalGraph becomes available only after bootstrap/open/validation/migratio
 
 ### Scope of consistency claim on migration failure
 
-This document claims consistency at the **live RootDatabase state boundary** (replica data + active replica pointer semantics).
+This document claims consistency at the **live RootDatabase boundary**, specifically:
 
-This document does **not** claim atomic rollback of every external side effect outside that boundary (for example, independently visible rendered snapshot/git side effects), unless explicitly guaranteed by the underlying transaction path.
+1. active replica pointer (`_meta/current_replica`),
+2. committed contents of the active replica namespace, and
+3. version metadata used for subsequent boot decisions.
+
+Migration/cutover guarantees are **restart-safety guarantees** around named cut-points, not a blanket claim of atomic rollback for every external side effect.
+
+The following are outside this guarantee boundary unless explicitly covered by the same transaction path:
+
+- rendered snapshot refresh work,
+- git-visible checkpoint/update side effects,
+- observability-only emissions.
 
 ---
 
@@ -160,11 +182,12 @@ This protocol is restart-safe by re-running deterministic checks from the beginn
 2. **Crash after fallback normal sync success, before DB open**
    - Next start follows same path as above (open/validate/version-check).
 
-3. **Crash during migration before replica switch**
+3. **Crash during migration transaction before replica cutover commit**
    - Active replica pointer remains at old replica; next start retries migration path.
 
-4. **Crash after replica switch, before later non-critical side effects**
+4. **Crash after replica cutover commit, before follow-up side effects**
    - New replica is active on next start; startup continues from structural/version checks.
+   - Follow-up side effects in this context are limited to rendered snapshot refresh, git-visible checkpoint updates, and observability emissions.
 
 5. **Crash after successful migration, before interface exposure**
    - Next start re-checks state; version already current, no re-migration needed.
@@ -173,7 +196,7 @@ This protocol is restart-safe by re-running deterministic checks from the beginn
 
 ## 10) Observability requirements (inspectability contract)
 
-For each startup attempt, logs should make these facts reconstructable:
+A compliant implementation must emit enough structured log information to reconstruct these facts for every startup attempt:
 
 1. Whether live DB directory existed at startup.
 2. Chosen bootstrap path (none/reset/fallback).
@@ -183,7 +206,7 @@ For each startup attempt, logs should make these facts reconstructable:
 6. Detected replica pointer result.
 7. Detected active version and current app version.
 8. Whether migration ran.
-9. Final active replica and effective version.
+9. Whether cutover was committed and the final active replica/effective version.
 10. Final startup result (success/fatal) and error class when failed.
 
 ---
@@ -194,27 +217,34 @@ For each startup attempt, logs should make these facts reconstructable:
 |---|---|---|
 | V1 | Live DB exists, valid, current version | Startup succeeds without migration |
 | V2 | Live DB exists, valid, old version | Migration runs, then startup succeeds |
+| V2b | Fresh DB (no version recorded yet) | Current version is recorded without migration, then startup succeeds |
 | V3 | Live DB missing, hostname branch exists | Reset bootstrap path used, then open/validate/migrate as needed |
 | V4 | Live DB missing, hostname branch absent | Fallback normal sync path used, then open/validate/migrate as needed |
 | V5 | Live DB exists, format mismatch | Fatal crash before graph exposure |
 | V6 | Live DB exists, invalid replica pointer | Fatal crash before graph exposure |
 | V7 | Live DB missing, reset path fails for unexpected reason | Fatal crash |
-| V8 | Migration fails before replica switch | Fatal crash; previous active replica remains active |
-| V9 | Migration fails around switch boundary | Fatal crash; next startup deterministically re-evaluates state |
-| V10 | Repeated restart after any fatal path | Deterministic re-entry into protocol (no silent success from wrong state) |
+| V7b | Live DB exists but malformed (assumption violation) | Fatal crash path is explicit; classification recorded as assumption violation |
+| V7c | Hostname branch exists but rendered data malformed (assumption violation) | Fatal crash path is explicit; classification recorded as assumption violation |
+| V8 | Migration fails before cutover commit | Fatal crash; previous active replica remains active |
+| V9 | Migration fails after cutover commit, before follow-up side effects | Fatal crash; new replica remains active on restart |
+| V9b | Migration succeeds but rendered/git follow-up fails | Startup result matches restart-safe boundary; next boot deterministically re-evaluates |
+| V10 | Repeated restarts at each crash cut-point | Deterministic re-entry into protocol (no silent success from wrong state) |
 
 ---
 
 ## 12) Why this protocol is chosen
 
-1. Keeps decision tree intentionally narrow and auditable.
-2. Separates bootstrap concerns from structural validation and migration.
-3. Limits fallback to one explicit expected condition (missing hostname branch).
-4. Preserves strict fail-fast behavior for structural incompatibility.
+1. Prefers startup refusal over compatibility heuristics when structural contracts are violated.
+2. Prefers a narrow, auditable decision tree over flexible recovery logic.
+3. Separates bootstrap concerns from structural validation and migration/cutover boundaries.
+4. Accepts explicit trust assumptions on local/remote storage shape to keep boot logic simple.
+5. Intentionally does not attempt self-healing from malformed inputs.
 
 ---
 
 ## 13) Implementation touchpoints
+
+These touchpoints are informative and do not define protocol semantics.
 
 - `backend/src/generators/interface/lifecycle.js` (startup orchestration boundary)
 - `backend/src/generators/incremental_graph/database/root_database.js` (format/pointer checks)
