@@ -776,6 +776,7 @@ function isRootDatabase(object) {
 /** @typedef {RootDatabaseClass} RootDatabase */
 
 module.exports = {
+    FORMAT_MARKER,
     makeRootDatabase,
     isRootDatabase,
     isInvalidReplicaPointerError,

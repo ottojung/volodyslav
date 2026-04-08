@@ -1,5 +1,6 @@
 const path = require("path");
-const defaultBranch = require("../src/gitstore/default_branch");
+const { defaultBranch } = require("../src/gitstore");
+const { FORMAT_MARKER } = require("../src/generators/incremental_graph/database");
 
 /** @typedef {import("../src/capabilities/root").Capabilities} Capabilities */
 
@@ -50,11 +51,11 @@ async function stubGeneratorsRepository(capabilities) {
     const renderedMetaDir = path.join(workTree, "rendered", "_meta");
     await capabilities.creator.createDirectory(renderedMetaDir);
 
-    // FORMAT_MARKER = 'xy-v2' (defined in database/root_database.js).
-    // The value is serialised as JSON so that parseValue() can read it back.
+    // Use the FORMAT_MARKER constant exported from root_database so that this
+    // stub does not drift if the format value ever changes.
     const formatFile = path.join(renderedMetaDir, "format");
     const formatFileObj = await capabilities.creator.createFile(formatFile);
-    await capabilities.writer.writeFile(formatFileObj, '"xy-v2"');
+    await capabilities.writer.writeFile(formatFileObj, JSON.stringify(FORMAT_MARKER));
 
     const replicaFile = path.join(renderedMetaDir, "current_replica");
     const replicaFileObj = await capabilities.creator.createFile(replicaFile);

@@ -27,7 +27,7 @@ const {
     migrationCallback,
     LIVE_DATABASE_WORKING_PATH,
 } = require("../incremental_graph");
-const defaultBranch = require("../../gitstore/default_branch");
+const { defaultBranch } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
@@ -105,7 +105,10 @@ async function internalBootstrap(capabilities) {
 
     // Query the remote without requiring a local clone.  Any error here
     // (e.g. remote unreachable) propagates as a fatal startup crash.
+    // `-c safe.directory=*` avoids "detected dubious ownership" errors when
+    // the remote is a local path with strict safe.directory enforcement.
     const lsRemoteResult = await capabilities.git.call(
+        "-c", "safe.directory=*",
         "ls-remote", "--heads", "--", remotePath, hostnameBranchRef
     );
     const hostnameBranchExists = lsRemoteResult.stdout.trim() !== '';
