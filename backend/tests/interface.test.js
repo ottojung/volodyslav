@@ -2,7 +2,6 @@
  * Tests for generators/interface module.
  */
 
-const fs = require("fs");
 const path = require("path");
 const {
     makeInterface,
@@ -408,7 +407,7 @@ describe("generators/interface", () => {
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH
             );
-            fs.rmSync(liveDbPath, { recursive: true, force: true });
+            await capabilities.deleter.deleteDirectory(liveDbPath);
 
             const iface = makeInterface(() => capabilities);
             await iface.ensureInitialized();
@@ -490,7 +489,7 @@ describe("generators/interface", () => {
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH
             );
-            fs.rmSync(liveDbPath, { recursive: true, force: true });
+            await capabilities.deleter.deleteDirectory(liveDbPath);
 
             const iface = makeInterface(() => capabilities);
             await iface.ensureInitialized();
