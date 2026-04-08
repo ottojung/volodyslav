@@ -1,25 +1,24 @@
 /**
  * Root database initialization utilities.
  *
- * Boot sequence (executed by getRootDatabase):
+ * This module's responsibility is to open (or create) the live LevelDB
+ * instance.  `getRootDatabase` ensures the directory exists, then delegates
+ * to `makeRootDatabase` which:
+ *   - Reads `_meta/format`; crashes if it does not match FORMAT_MARKER
+ *     (satisfies "format mismatch → crash").
+ *   - Writes the current FORMAT_MARKER and replica pointer on first open of
+ *     a truly empty database.
  *
- *  1. Open/create the LevelDB via makeRootDatabase, which:
- *       a. Reads _meta/format; if it does not match FORMAT_MARKER, throws
- *          (satisfies "format mismatch → crash").
- *       b. If _meta/format is absent (truly empty database), writes the
- *          current FORMAT_MARKER and replica pointer.
+ * Version migration ("version mismatch → migrate") is handled by the caller
+ * (`internalEnsureInitializedWithMigration` in lifecycle.js) via
+ * `runMigrationUnsafe` after this function returns.
  *
- *  2. The caller (internalEnsureInitializedWithMigration in lifecycle.js) then
- *     invokes runMigrationUnsafe, which reads x/meta.version and migrates when
- *     the stored version differs from the current application version
- *     (satisfies "version mismatch → migrate").
- *
- * If the live LevelDB directory does not exist yet (first boot or deleted),
- * the caller (internalEnsureInitialized in lifecycle.js) is responsible for
- * detecting the absence and triggering synchronizeNoLock with resetToHostname
- * before calling this function.  That sync path uses an atomic git transaction
- * to populate the LevelDB from the remote rendered snapshot, preserving the
- * correct format marker so the check here works correctly.
+ * Recovery from a missing LevelDB (deleted, or lost after a format-mismatch
+ * crash) is also handled by the caller (`internalEnsureInitialized` in
+ * lifecycle.js): when both the LevelDB and the checkpoint git repo already
+ * existed before the LevelDB was lost, `synchronizeNoLock` with
+ * `resetToHostname` is called first to atomically restore the LevelDB from
+ * the remote rendered snapshot.
  */
 
 const { pathToLiveDatabase } = require('./gitstore');
