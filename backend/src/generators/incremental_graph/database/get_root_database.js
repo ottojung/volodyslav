@@ -137,6 +137,10 @@ async function tryRestoreFromLocalSnapshot(capabilities, databasePath) {
     const snapshotDir = pathToRenderedDatabase(capabilities);
 
     if (!await capabilities.checker.directoryExists(snapshotDir)) {
+        capabilities.logger.logInfo(
+            { snapshotDir },
+            'No local snapshot directory found; starting with a fresh database'
+        );
         return false;
     }
 
@@ -145,12 +149,24 @@ async function tryRestoreFromLocalSnapshot(capabilities, databasePath) {
     const currentReplicaFile = path.join(metaDir, 'current_replica');
 
     if (!await capabilities.checker.directoryExists(metaDir)) {
+        capabilities.logger.logInfo(
+            { snapshotDir },
+            'Snapshot is missing _meta directory; skipping local-snapshot restore'
+        );
         return false;
     }
     if (!await capabilities.checker.fileExists(currentReplicaFile)) {
+        capabilities.logger.logInfo(
+            { currentReplicaFile },
+            'Snapshot is missing _meta/current_replica; skipping local-snapshot restore'
+        );
         return false;
     }
     if (!await capabilities.checker.directoryExists(rDir)) {
+        capabilities.logger.logInfo(
+            { rDir },
+            'Snapshot is missing r/ directory; skipping local-snapshot restore'
+        );
         return false;
     }
 
@@ -159,7 +175,7 @@ async function tryRestoreFromLocalSnapshot(capabilities, databasePath) {
     try {
         replica = JSON.parse(raw);
     } catch {
-        capabilities.logger.logInfo(
+        capabilities.logger.logWarning(
             { currentReplicaFile },
             'Snapshot _meta/current_replica is not valid JSON; skipping local-snapshot restore'
         );
@@ -167,7 +183,7 @@ async function tryRestoreFromLocalSnapshot(capabilities, databasePath) {
     }
 
     if (replica !== 'x' && replica !== 'y') {
-        capabilities.logger.logInfo(
+        capabilities.logger.logWarning(
             { currentReplicaFile, replica },
             'Snapshot _meta/current_replica has unexpected value; skipping local-snapshot restore'
         );
@@ -233,18 +249,12 @@ async function getRootDatabase(capabilities) {
     // silently starting as an empty database.
     if (!directoryAlreadyExists) {
         try {
-            const restored = await tryRestoreFromLocalSnapshot(capabilities, databasePath);
-            if (!restored) {
-                capabilities.logger.logInfo(
-                    { databasePath },
-                    'No local snapshot found; starting with a fresh database'
-                );
-            }
+            await tryRestoreFromLocalSnapshot(capabilities, databasePath);
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
-            capabilities.logger.logInfo(
-                { databasePath, error: err.message },
-                'Failed to restore from local snapshot; starting with a fresh database'
+            capabilities.logger.logWarning(
+                { databasePath, error: err.message, stack: err.stack },
+                'Failed to restore from local snapshot; proceeding with empty database'
             );
         }
     }

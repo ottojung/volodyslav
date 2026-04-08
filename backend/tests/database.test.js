@@ -227,8 +227,8 @@ describe('generators/database', () => {
                 fs.writeFileSync(path.join(metaDir, 'current_replica'), JSON.stringify('x'));
                 fs.writeFileSync(path.join(rDir, 'meta', 'version'), JSON.stringify('snapshot-version'));
 
-                // First call: creates LevelDB as a fresh empty database (directory doesn't exist
-                // yet but snapshot is there — this restores from snapshot).
+                // First call: LevelDB directory does not exist yet, so the snapshot is restored;
+                // the resulting database is populated with 'snapshot-version'.
                 const db1 = await getRootDatabase(capabilities);
                 await db1.close();
 
