@@ -13,12 +13,10 @@
  * (`internalEnsureInitializedWithMigration` in lifecycle.js) via
  * `runMigrationUnsafe` after this function returns.
  *
- * Recovery from a missing LevelDB (deleted, or lost after a format-mismatch
- * crash) is also handled by the caller (`internalEnsureInitialized` in
- * lifecycle.js): when both the LevelDB and the checkpoint git repo already
- * existed before the LevelDB was lost, `synchronizeNoLock` with
- * `resetToHostname` is called first to atomically restore the LevelDB from
- * the remote rendered snapshot.
+ * Recovery when the live LevelDB directory is missing (for example, deleted
+ * or lost after a format-mismatch crash) is handled by the caller
+ * (`internalEnsureInitialized` in lifecycle.js): it performs bootstrap via
+ * `synchronizeNoLock` before this module opens the database.
  */
 
 const { pathToLiveDatabase } = require('./gitstore');

@@ -27,6 +27,7 @@ const {
     migrationCallback,
     LIVE_DATABASE_WORKING_PATH,
 } = require("../incremental_graph");
+const defaultBranch = require("../../gitstore/default_branch");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
@@ -94,7 +95,7 @@ async function internalEnsureInitialized(interfaceInstance) {
 async function internalBootstrap(capabilities) {
     const hostname = capabilities.environment.hostname();
     const remotePath = capabilities.environment.generatorsRepository();
-    const hostnameBranch = `${hostname}-main`;
+    const hostnameBranch = defaultBranch(capabilities);
     const hostnameBranchRef = `refs/heads/${hostnameBranch}`;
 
     capabilities.logger.logInfo(

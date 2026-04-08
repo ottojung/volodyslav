@@ -118,10 +118,10 @@ describe('generators/database', () => {
 
 
 
-        test('starts with fresh database when no local snapshot exists', async () => {
+        test('has no stored version in a fresh database', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // No snapshot directory is created; LevelDB does not exist yet.
+                // Open a fresh database and verify that no meta version has been stored yet.
                 const db = await getRootDatabase(capabilities);
                 try {
                     // A fresh database has no stored version.

@@ -174,10 +174,12 @@ async function synchronizeNoLock(capabilities, options) {
                     }
                     const snapshotReplica = parsed;
 
-                    // Scan `r/` into the active replica sublevel.
-                    // `r/` may not exist if the snapshot was of an empty database
-                    // (git does not track empty directories); in that case the
-                    // replica is left empty, which is correct.
+                    // Scan `r/` into the active replica sublevel, replacing the
+                    // sublevel's entire content with the remote snapshot's data.
+                    // `r/` may not exist when the remote snapshot represents an
+                    // empty database (git does not track empty directories).
+                    // In that case we still must clear the sublevel so that any
+                    // stale data from a previous local state is removed.
                     const rDir = path.join(workTree, DATABASE_SUBPATH, 'r');
                     if (await capabilities.checker.directoryExists(rDir)) {
                         await scanFromFilesystem(
@@ -186,6 +188,11 @@ async function synchronizeNoLock(capabilities, options) {
                             rDir,
                             snapshotReplica
                         );
+                    } else {
+                        // Empty remote snapshot: no files to import, but we
+                        // still need to wipe the local sublevel so the DB
+                        // matches the remote state exactly.
+                        await rootDatabase._rawDeleteSublevel(snapshotReplica);
                     }
                     await scanFromFilesystem(
                         capabilities,
