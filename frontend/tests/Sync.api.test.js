@@ -13,7 +13,12 @@ jest.mock("../src/api_base_url.js", () => ({
     API_BASE_URL: "/api",
 }));
 
-import { postSync, fetchSyncHostnames, fetchSyncState } from "../src/Sync/api.js";
+import {
+    postSync,
+    followRunningSync,
+    fetchSyncHostnames,
+    fetchSyncState,
+} from "../src/Sync/api.js";
 
 function makeResponse(status, data) {
     return {
@@ -204,6 +209,30 @@ describe("postSync", () => {
 
         expect(onProgress).toHaveBeenCalledWith(intermediateSteps);
         expect(onProgress).toHaveBeenCalledTimes(2);
+    });
+
+    it("follows an already-running sync without starting a new POST request", async () => {
+        const runningSteps = [{ name: "generators", status: "success" }];
+        const finalSteps = [...runningSteps, { name: "assets", status: "success" }];
+        global.fetch.mockResolvedValueOnce(makeResponse(200, {
+            status: "success",
+            steps: finalSteps,
+        }));
+
+        const onProgress = jest.fn();
+
+        let result;
+        await act(async () => {
+            result = await followRunningSync(
+                { status: "running", steps: runningSteps },
+                onProgress
+            );
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(global.fetch).toHaveBeenCalledWith("/api/sync");
+        expect(onProgress).toHaveBeenCalledWith(runningSteps);
+        expect(result).toEqual({ success: true, steps: finalSteps });
     });
 
     it("fetches reset hostname options for the sync dropdown", async () => {

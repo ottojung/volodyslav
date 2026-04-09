@@ -11,7 +11,7 @@ import {
   List,
   HStack,
 } from '@chakra-ui/react';
-import { postSync, fetchSyncHostnames, fetchSyncState } from './api.js';
+import { postSync, fetchSyncHostnames, fetchSyncState, followRunningSync } from './api.js';
 import { SyncStepList } from './SyncStepList.jsx';
 
 /** @typedef {{ name: string, message: string, causes: string[] }} SyncErrorDetail */
@@ -66,9 +66,8 @@ export function SyncSection() {
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [syncSteps, setSyncSteps] = useState(makeEmptySyncSteps());
 
-  // On mount, check the current sync state so the UI reflects any in-progress
-  // or recently finished sync (e.g. one started by the hourly job or by the
-  // user on another page).
+  // On mount, only follow an already-running sync so the UI can show live
+  // progress for work started elsewhere without surfacing stale finished state.
   useEffect(() => {
     let isMounted = true;
 
@@ -76,38 +75,30 @@ export function SyncSection() {
       const state = await fetchSyncState();
       if (!isMounted) return;
 
-      if (state.status === 'running') {
-        setSyncState('loading');
-        setSyncSteps(state.steps || []);
-        // Attach to the running sync and poll until it finishes.
-        const result = await postSync(state.reset_to_hostname, (steps) => {
-          if (isMounted) setSyncSteps(steps);
-        });
-        if (!isMounted) return;
-        if (result.success) {
-          setSyncState('success');
-          setSyncSuccessMessage(makeSyncSuccessMessage(result.resetToHostname));
-          setSyncSteps(result.steps || []);
-        } else {
-          setSyncState('error');
-          setSyncSuccessMessage('');
-          setSyncSteps(result.steps || []);
-          setSyncError({
-            message: result.error || 'Sync failed',
-            details: result.details || [],
-          });
-        }
-      } else if (state.status === 'success') {
+      if (state.status !== 'running') {
+        return;
+      }
+
+      setSyncState('loading');
+      setSyncSteps(state.steps || []);
+
+      const result = await followRunningSync(state, (steps) => {
+        if (isMounted) setSyncSteps(steps);
+      });
+
+      if (!isMounted) return;
+
+      if (result.success) {
         setSyncState('success');
-        setSyncSuccessMessage(makeSyncSuccessMessage(state.reset_to_hostname));
-        setSyncSteps(state.steps || []);
-      } else if (state.status === 'error') {
+        setSyncSuccessMessage(makeSyncSuccessMessage(result.resetToHostname));
+        setSyncSteps(result.steps || []);
+      } else {
         setSyncState('error');
         setSyncSuccessMessage('');
-        setSyncSteps(state.steps || []);
+        setSyncSteps(result.steps || []);
         setSyncError({
-          message: state.error?.message || 'Sync failed',
-          details: state.error?.details || [],
+          message: result.error || 'Sync failed',
+          details: result.details || [],
         });
       }
     }

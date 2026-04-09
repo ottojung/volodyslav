@@ -6,6 +6,7 @@ import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 jest.mock("../src/Sync/api.js", () => ({
     postSync: jest.fn(),
+    followRunningSync: jest.fn(),
     fetchSyncHostnames: jest.fn(),
     fetchSyncState: jest.fn().mockResolvedValue({ status: "idle" }),
 }));
@@ -24,7 +25,12 @@ jest.mock("../src/DescriptionEntry/logger.js", () => ({
 }));
 
 import App from "../src/App.jsx";
-import { postSync, fetchSyncHostnames } from "../src/Sync/api.js";
+import {
+    postSync,
+    followRunningSync,
+    fetchSyncHostnames,
+    fetchSyncState,
+} from "../src/Sync/api.js";
 import { fetchVersion } from "../src/version_api.js";
 
 function renderApp() {
@@ -41,8 +47,11 @@ describe("App", () => {
     beforeEach(() => {
         fetchVersion.mockReset();
         postSync.mockReset();
+        followRunningSync.mockReset();
         fetchSyncHostnames.mockReset();
+        fetchSyncState.mockReset();
         fetchSyncHostnames.mockResolvedValue(["test-host", "alice"]);
+        fetchSyncState.mockResolvedValue({ status: "idle" });
     });
 
     afterEach(() => {
@@ -126,6 +135,65 @@ describe("App", () => {
         });
 
         expect(screen.getByText("Sync complete")).toBeInTheDocument();
+    });
+
+    it("does not show stale completed sync status on initial load", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        fetchSyncState.mockResolvedValue({
+            status: "success",
+            started_at: "2024-01-01T00:00:00.000Z",
+            finished_at: "2024-01-01T00:10:00.000Z",
+            steps: [{ name: "generators", status: "success" }],
+        });
+
+        renderApp();
+
+        await waitFor(() => {
+            expect(fetchSyncState).toHaveBeenCalledTimes(1);
+        });
+
+        expect(followRunningSync).not.toHaveBeenCalled();
+        expect(screen.queryByText("Sync complete")).not.toBeInTheDocument();
+        expect(screen.getByText("Sync")).toBeInTheDocument();
+    });
+
+    it("follows an in-progress sync on initial load without starting another sync", async () => {
+        fetchVersion.mockResolvedValue("1.2.3");
+        fetchSyncState.mockResolvedValue({
+            status: "running",
+            reset_to_hostname: "alice",
+            steps: [{ name: "generators", status: "success" }],
+        });
+        followRunningSync.mockResolvedValue({
+            success: true,
+            resetToHostname: "alice",
+            steps: [
+                { name: "generators", status: "success" },
+                { name: "assets", status: "success" },
+            ],
+        });
+
+        renderApp();
+
+        await waitFor(() => {
+            expect(followRunningSync).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    status: "running",
+                    reset_to_hostname: "alice",
+                }),
+                expect.any(Function)
+            );
+        });
+
+        expect(postSync).not.toHaveBeenCalled();
+
+        await waitFor(() => {
+            expect(screen.getByText("Sync complete")).toBeInTheDocument();
+        });
+
+        expect(
+            screen.getByText("Your local data was reset to match alice-main.")
+        ).toBeInTheDocument();
     });
 
     it("clears a previous success confirmation when the sync mode changes", async () => {

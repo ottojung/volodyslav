@@ -93,6 +93,60 @@ function toSyncResult(data) {
 }
 
 /**
+ * Follows an already-running sync until the backend reports a settled state.
+ * This polls GET /api/sync only; it does not start a new sync run.
+ *
+ * @param {SyncResponse} currentData
+ * @param {(steps: SyncStepResult[]) => void} [onProgress]
+ * @returns {Promise<PostSyncResult>}
+ */
+async function pollRunningSync(currentData, onProgress) {
+    let data = currentData;
+
+    if (data?.status === "running" && data.steps) {
+        onProgress?.(data.steps);
+    }
+
+    while (data?.status === "running") {
+        await waitForNextSyncPoll();
+        const statusResponse = await fetch(`${API_BASE_URL}/sync`);
+
+        if (statusResponse.status !== 200 && statusResponse.status !== 202 && statusResponse.status !== 500) {
+            return await readSyncErrorResponse(statusResponse);
+        }
+
+        data = await readSyncResponse(statusResponse);
+
+        if (data?.status === "running" && data.steps) {
+            onProgress?.(data.steps);
+        }
+    }
+
+    return toSyncResult(data);
+}
+
+/**
+ * Follows a sync that is already running when the UI loads.
+ *
+ * @param {SyncResponse} initialState
+ * @param {(steps: SyncStepResult[]) => void} [onProgress]
+ * @returns {Promise<PostSyncResult>}
+ */
+export async function followRunningSync(initialState, onProgress) {
+    try {
+        if (initialState?.status !== "running") {
+            return toSyncResult(initialState);
+        }
+
+        return await pollRunningSync(initialState, onProgress);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error("Error while following running sync:", error);
+        return { success: false, error: `Network error: ${message}` };
+    }
+}
+
+/**
  * Calls POST /api/sync to synchronize persisted application state.
  * @param {string} [resetToHostname] - Optional hostname branch target for reset mode.
  * @param {(steps: SyncStepResult[]) => void} [onProgress] - Called with current step results whenever the running state is polled.
@@ -118,23 +172,8 @@ export async function postSync(resetToHostname, onProgress) {
 
         let data = await readSyncResponse(response);
 
-        if (data?.status === "running" && data.steps) {
-            onProgress?.(data.steps);
-        }
-
-        while (data?.status === "running") {
-            await waitForNextSyncPoll();
-            const statusResponse = await fetch(`${API_BASE_URL}/sync`);
-
-            if (statusResponse.status !== 200 && statusResponse.status !== 202 && statusResponse.status !== 500) {
-                return await readSyncErrorResponse(statusResponse);
-            }
-
-            data = await readSyncResponse(statusResponse);
-
-            if (data?.status === "running" && data.steps) {
-                onProgress?.(data.steps);
-            }
+        if (data?.status === "running") {
+            return await pollRunningSync(data, onProgress);
         }
 
         return toSyncResult(data);

@@ -30,6 +30,7 @@ jest.mock("../src/DescriptionEntry/logger.js", () => ({
 
 jest.mock("../src/Sync/api.js", () => ({
     postSync: jest.fn(),
+    followRunningSync: jest.fn(),
     fetchSyncHostnames: jest.fn().mockResolvedValue([]),
     fetchSyncState: jest.fn().mockResolvedValue({ status: "idle" }),
 }));
