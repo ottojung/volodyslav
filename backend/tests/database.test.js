@@ -115,6 +115,27 @@ describe('generators/database', () => {
                 cleanup(capabilities.tmpDir);
             }
         });
+
+
+
+        test('has no stored version in a fresh database', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                // Open a fresh database and verify that no meta version has been stored yet.
+                const db = await getRootDatabase(capabilities);
+                try {
+                    // A fresh database has no stored version.
+                    const version = await db.getMetaVersion();
+                    expect(version).toBeUndefined();
+                } finally {
+                    await db.close();
+                }
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+
     });
 
     describe('Schema storage operations', () => {

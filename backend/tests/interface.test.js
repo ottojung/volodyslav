@@ -2,10 +2,14 @@
  * Tests for generators/interface module.
  */
 
+const path = require("path");
 const {
     makeInterface,
     isInterface,
 } = require("../src/generators/interface");
+const {
+    LIVE_DATABASE_WORKING_PATH,
+} = require("../src/generators/incremental_graph");
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
@@ -210,8 +214,11 @@ describe("generators/interface", () => {
 
             expect(rawDatabases).toHaveLength(3);
             expect(capabilities.levelDatabase.initialize).toHaveBeenCalledTimes(3);
+            // [0] initial live DB, closed at the start of synchronizeDatabase.
             expect(rawDatabases[0].close).toHaveBeenCalledTimes(1);
+            // [1] DB opened by synchronizeNoLock during the regular sync call.
             expect(rawDatabases[1].close).toHaveBeenCalledTimes(1);
+            // [2] the new live DB opened after synchronizeDatabase.
             expect(rawDatabases[2].open).toHaveBeenCalled();
             expect(iface.isInitialized()).toBe(true);
             await expect(iface._incrementalGraph.pull("all_events")).resolves.toMatchObject({
@@ -387,6 +394,83 @@ describe("generators/interface", () => {
             expect(isInterface({})).toBe(false);
             expect(isInterface(null)).toBe(false);
             expect(isInterface(undefined)).toBe(false);
+        });
+    });
+
+    describe("bootstrap path selection", () => {
+        test("V3: uses reset-to-hostname sync when LevelDB is absent and hostname branch exists remotely", async () => {
+            // Setup: remote WITH hostname branch (test-host-main), no local LevelDB.
+            const capabilities = await getTestCapabilities();
+            // Delete the pre-created LevelDB dir to trigger the bootstrap path.
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+
+            // Verify the reset-to-hostname path was taken.
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({ hostname: 'test-host' }),
+                'Bootstrap: hostname branch found; using reset-to-hostname sync path'
+            );
+            expect(isInterface(iface)).toBe(true);
+        });
+
+        test("V4: uses fallback normal sync when LevelDB is absent and hostname branch is absent remotely", async () => {
+            // Setup: remote WITHOUT the hostname branch (only a non-hostname branch), no local LevelDB.
+            const capabilities = getMockedRootCapabilities();
+            stubEnvironment(capabilities);
+            stubLogger(capabilities);
+            stubDatetime(capabilities);
+
+            // Create a bare remote that has only 'main' (not 'test-host-main').
+            const gitDir = capabilities.environment.generatorsRepository();
+            await capabilities.git.call("init", "--bare", "--", gitDir);
+            const workTree = path.join(
+                capabilities.environment.workingDirectory(),
+                "bootstrap-v4-setup"
+            );
+            await capabilities.creator.createDirectory(workTree);
+            await capabilities.git.call(
+                "init", "--initial-branch", "main", "--", workTree
+            );
+            const readmeFile = path.join(workTree, "README");
+            const readmeObj = await capabilities.creator.createFile(readmeFile);
+            await capabilities.writer.writeFile(readmeObj, "bootstrap test remote");
+            await capabilities.git.call("-C", workTree, "add", "--all");
+            await capabilities.git.call(
+                "-C", workTree,
+                "-c", "user.name=test",
+                "-c", "user.email=test@example.com",
+                "commit", "-m", "initial"
+            );
+            await capabilities.git.call(
+                "-C", workTree, "remote", "add", "origin", "--", gitDir
+            );
+            await capabilities.git.call("-C", workTree, "push", "origin", "main");
+
+            // Delete the pre-created LevelDB dir to trigger the bootstrap path.
+            // The production code (internalInitCheckpointRepoForFallback) will
+            // automatically initialize the checkpoint repo and configure the
+            // origin remote, so no manual pre-initialization is needed here.
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+
+            // Verify the fallback normal-sync path was taken.
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({ hostname: 'test-host' }),
+                'Bootstrap: hostname branch does not exist remotely; using normal sync fallback'
+            );
+            expect(isInterface(iface)).toBe(true);
         });
     });
 });

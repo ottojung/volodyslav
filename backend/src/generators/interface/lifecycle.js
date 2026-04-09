@@ -17,6 +17,7 @@
  * @property {import('../individual/ontology/wrapper').OntologyBox | null} _ontologyBox
  */
 
+const path = require('path');
 const {
     makeIncrementalGraph,
     getRootDatabase,
@@ -24,7 +25,10 @@ const {
     synchronizeNoLock,
     withExclusiveMode,
     migrationCallback,
+    LIVE_DATABASE_WORKING_PATH,
+    CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
+const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
@@ -52,8 +56,141 @@ async function internalEnsureInitialized(interfaceInstance) {
     }
     const capabilities = interfaceInstance._getCapabilities();
     await withExclusiveMode(capabilities.sleeper, async () => {
+        const liveDbPath = path.join(
+            capabilities.environment.workingDirectory(),
+            LIVE_DATABASE_WORKING_PATH
+        );
+        const liveDbExists = (await capabilities.checker.directoryExists(liveDbPath)) !== null;
+
+        capabilities.logger.logInfo(
+            { liveDbPath, liveDbExists },
+            liveDbExists
+                ? 'Bootstrap: live database directory present; proceeding to open'
+                : 'Bootstrap: live database directory absent; selecting bootstrap path'
+        );
+
+        if (!liveDbExists) {
+            await internalBootstrap(capabilities);
+        }
+
         await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
+
+        capabilities.logger.logInfo(
+            {},
+            'Bootstrap: startup completed successfully'
+        );
     });
+}
+
+/**
+ * Select and execute the bootstrap path when the live LevelDB is absent.
+ *
+ * Protocol section 7.1:
+ *  1. Check if `<hostname>-main` exists on the remote.
+ *  2. If yes  → reset-to-hostname sync (restores snapshot; fatal on any error).
+ *  3. If no   → normal sync from empty local DB (fatal on any error).
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function internalBootstrap(capabilities) {
+    const hostname = capabilities.environment.hostname();
+    const remotePath = capabilities.environment.generatorsRepository();
+    const hostnameBranch = defaultBranch(capabilities);
+    const hostnameBranchRef = `refs/heads/${hostnameBranch}`;
+
+    capabilities.logger.logInfo(
+        { hostname, remotePath, hostnameBranch },
+        'Bootstrap: checking if hostname branch exists on remote'
+    );
+
+    // Query the remote without requiring a local clone.  Any error here
+    // (e.g. remote unreachable) propagates as a fatal startup crash.
+    // `-c safe.directory=*` avoids "detected dubious ownership" errors when
+    // the remote is a local path with strict safe.directory enforcement.
+    const lsRemoteResult = await capabilities.git.call(
+        "-c", "safe.directory=*",
+        "ls-remote", "--heads", "--", remotePath, hostnameBranchRef
+    );
+    const hostnameBranchExists = lsRemoteResult.stdout.trim() !== '';
+
+    if (hostnameBranchExists) {
+        capabilities.logger.logInfo(
+            { hostname, hostnameBranch },
+            'Bootstrap: hostname branch found; using reset-to-hostname sync path'
+        );
+        // Phase 1 (protocol §7.1.2): restore from remote snapshot.
+        // Any error is fatal (protocol §8.3).
+        await synchronizeNoLock(capabilities, { resetToHostname: hostname });
+        capabilities.logger.logInfo(
+            { hostname },
+            'Bootstrap: reset-to-hostname sync completed'
+        );
+    } else {
+        capabilities.logger.logInfo(
+            { hostname, hostnameBranch },
+            'Bootstrap: hostname branch does not exist remotely; using normal sync fallback'
+        );
+        // Phase 1 fallback (protocol §7.1.3): normal sync from empty local DB.
+        // Any error is fatal (protocol §8.3).
+        //
+        // Pre-initialize the checkpoint repo before calling synchronizeNoLock so
+        // that synchronizeNoLock's checkpointDatabase step does not attempt to
+        // clone the remote with `--branch=<hostname>-main` (which would fail
+        // because that branch is absent).  With a local repo already present,
+        // workingRepository.synchronize falls into the pull+push path, where
+        // pull returns early when the remote branch does not exist yet, and push
+        // creates the branch for the first time.
+        await internalInitCheckpointRepoForFallback(capabilities);
+        await synchronizeNoLock(capabilities);
+        capabilities.logger.logInfo(
+            { hostname },
+            'Bootstrap: fallback normal sync completed'
+        );
+    }
+}
+
+/**
+ * Ensure the checkpoint git repository exists locally and has the origin
+ * remote configured.  Called before the V4 fallback sync so that
+ * `synchronizeNoLock` does not try to clone the remote with a
+ * `--branch=<hostname>-main` that doesn't exist yet.
+ *
+ * The operation is idempotent: if the repo already exists and already has
+ * an origin remote, this is a no-op.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function internalInitCheckpointRepoForFallback(capabilities) {
+    const remotePath = capabilities.environment.generatorsRepository();
+    const checkpointDir = path.join(
+        capabilities.environment.workingDirectory(),
+        CHECKPOINT_WORKING_PATH
+    );
+
+    // Ensure the local checkpoint repo exists (idempotent).
+    await workingRepository.getRepository(capabilities, CHECKPOINT_WORKING_PATH, "empty");
+
+    // Add the origin remote so workingRepository.synchronize uses the
+    // pull+push path instead of the fetchAndReconcile path (needsRemoteSetup).
+    const hasOrigin = await capabilities.git.call(
+        "-C", checkpointDir, "-c", "safe.directory=*",
+        "remote", "get-url", "origin"
+    ).then(() => true).catch((err) => {
+        capabilities.logger.logDebug(
+            { checkpointDir, err: String(err) },
+            'Bootstrap: git remote get-url origin returned non-zero (treating as absent)'
+        );
+        return false;
+    });
+
+    if (!hasOrigin) {
+        await capabilities.git.call(
+            "-C", checkpointDir, "-c", "safe.directory=*",
+            "remote", "add", "origin", remotePath
+        );
+    }
 }
 
 /**

@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
 const { POLLING_LOOP_NAME } = require("../src/scheduler/polling/identifiers");
+const { LIVE_DATABASE_WORKING_PATH } = require("../src/generators/incremental_graph");
 
 /**
  * Stubs the environment capabilities for testing.
@@ -69,6 +70,13 @@ function stubEnvironment(capabilities) {
         .fn()
         .mockReturnValue("test-host");
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn();
+
+    // Pre-create the live LevelDB directory so that internalEnsureInitialized
+    // does not trigger a reset-to-hostname sync on boot.  Tests that
+    // specifically exercise the missing-LevelDB restore path may delete this
+    // directory before calling ensureInitialized().
+    const liveDatabaseDir = path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH);
+    fs.mkdirSync(liveDatabaseDir, { recursive: true });
 }
 
 /**
