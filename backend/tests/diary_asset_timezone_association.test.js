@@ -11,6 +11,7 @@ const {
     stubLogger,
     stubDatetime,
     stubEventLogRepository,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 /**
@@ -21,6 +22,7 @@ async function makeTestApp() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
     capabilities.datetime.timeZone = () => "America/Los_Angeles";
     capabilities.checker.isFileStable = jest.fn().mockResolvedValue(true);
     await stubEventLogRepository(capabilities);

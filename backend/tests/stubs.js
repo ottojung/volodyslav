@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { stubEventLogRepository } = require("./stub_event_log_repository");
+const defaultBranch = require("../src/gitstore/default_branch");
 const { POLLING_LOOP_NAME } = require("../src/scheduler/polling/identifiers");
 const { LIVE_DATABASE_WORKING_PATH } = require("../src/generators/incremental_graph");
 
@@ -70,13 +70,89 @@ function stubEnvironment(capabilities) {
         .fn()
         .mockReturnValue("test-host");
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn();
+}
 
-    // Pre-create the live LevelDB directory so that internalEnsureInitialized
-    // does not trigger a reset-to-hostname sync on boot.  Tests that
-    // specifically exercise the missing-LevelDB restore path may delete this
-    // directory before calling ensureInitialized().
-    const liveDatabaseDir = path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH);
+/**
+ * Creates the live LevelDB directory used by the generators interface.
+ * Tests should opt into this explicitly when they need the bootstrap path to
+ * observe an existing local database directory.
+ *
+ * @param {object} capabilities
+ */
+function ensureLiveDatabaseDirectory(capabilities) {
+    const liveDatabaseDir = path.join(
+        capabilities.environment.workingDirectory(),
+        LIVE_DATABASE_WORKING_PATH
+    );
     fs.mkdirSync(liveDatabaseDir, { recursive: true });
+}
+
+/**
+ * Creates a bare event-log repository for tests that exercise gitstore-based
+ * workflows directly.
+ *
+ * @param {object} capabilities
+ * @returns {Promise<void>}
+ */
+async function stubEventLogRepository(capabilities) {
+    const branch = defaultBranch(capabilities);
+    const gitDir = capabilities.environment.eventLogRepository();
+
+    if (await capabilities.checker.directoryExists(gitDir)) {
+        await capabilities.deleter.deleteDirectory(gitDir);
+    }
+
+    await capabilities.git.call("init", "--bare", "--", gitDir);
+
+    const workTree = await capabilities.creator.createTemporaryDirectory();
+    try {
+        await capabilities.git.call(
+            "init",
+            "--initial-branch",
+            branch,
+            "--",
+            workTree
+        );
+
+        const testFile = path.join(workTree, "test.txt");
+        const testFileObj = await capabilities.creator.createFile(testFile);
+        await capabilities.writer.writeFile(testFileObj, "initial content");
+
+        const dataFile = path.join(workTree, "data.json");
+        const dataFileObj = await capabilities.creator.createFile(dataFile);
+        await capabilities.writer.writeFile(dataFileObj, "");
+
+        await capabilities.git.call("-C", workTree, "add", "--all");
+        await capabilities.git.call(
+            "-C",
+            workTree,
+            "-c",
+            "user.name=1",
+            "-c",
+            "user.email=1",
+            "commit",
+            "-m",
+            "Initial commit"
+        );
+        await capabilities.git.call(
+            "-C",
+            workTree,
+            "remote",
+            "add",
+            "origin",
+            "--",
+            gitDir
+        );
+        await capabilities.git.call(
+            "-C",
+            workTree,
+            "push",
+            "origin",
+            branch
+        );
+    } finally {
+        await capabilities.deleter.deleteDirectory(workTree);
+    }
 }
 
 /**
@@ -595,6 +671,7 @@ function stubRsync(capabilities) {
 
 module.exports = {
     stubEnvironment,
+    ensureLiveDatabaseDirectory,
     stubLogger,
     stubAiTranscriber,
     stubAiCalories,

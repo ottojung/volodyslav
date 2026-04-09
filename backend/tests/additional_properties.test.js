@@ -18,6 +18,7 @@ const {
     stubDatetime,
     stubAiCalories,
     stubAiTranscriber,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 /**
@@ -115,6 +116,7 @@ async function makeUninitializedApp(defaultCalories = "N/A") {
  */
 async function makeInitializedApp(defaultCalories = "N/A") {
     const { app, capabilities } = await makeUninitializedApp(defaultCalories);
+    ensureLiveDatabaseDirectory(capabilities);
     await capabilities.interface.ensureInitialized();
     return { app, capabilities };
 }

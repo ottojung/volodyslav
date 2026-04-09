@@ -1,0 +1,41 @@
+{
+  "type": "all_events",
+  "events": [
+    {
+      "id": "ajqw7mgcbxrjwcu3",
+      "date": "2025-06-28T16:31:37+0000",
+      "original": "mood [level happy]",
+      "input": "mood [level happy]",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "v0.1.0-674-g8b127ea",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "r49r56mbh2hssujf",
+      "date": "2025-06-28T16:33:19+0000",
+      "original": "exercise [type cardio] walking",
+      "input": "exercise [type cardio] walking",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "v0.1.0-674-g8b127ea",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "xovxev9i1b8j4kqm",
+      "date": "2025-06-28T16:33:30+0000",
+      "original": "work [type development] programming",
+      "input": "work [type development] programming",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "v0.1.0-674-g8b127ea",
+        "hostname": "fixturehost"
+      }
+    }
+  ]
+}

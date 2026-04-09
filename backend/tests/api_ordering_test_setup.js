@@ -6,6 +6,7 @@ const {
     stubLogger,
     stubDatetime,
     stubEventLogRepository,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 /**
@@ -17,6 +18,7 @@ async function makeTestApp() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
     await stubEventLogRepository(capabilities);
 
     const app = expressApp.make();

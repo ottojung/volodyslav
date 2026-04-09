@@ -1,14 +1,14 @@
 const { applyShortcuts } = require("../src/event/from_input");
 const { getMockedRootCapabilities } = require("./spies");
+const { stubIncrementalDatabaseRemote } = require("./stub_incremental_database_remote");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
-const { stubEventLogRepository } = require("./stub_event_log_repository");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubDatetime(capabilities);
     stubEnvironment(capabilities);
     stubLogger(capabilities);
-    await stubEventLogRepository(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
     return capabilities;
 }
 

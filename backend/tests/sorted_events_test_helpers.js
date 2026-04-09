@@ -6,12 +6,13 @@ const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { fromDays } = require("../src/datetime/duration");
 const { transaction } = require("../src/event_log_storage");
-const { stubGeneratorsRepository } = require("./stub_generators_repository");
+const { stubIncrementalDatabaseRemote } = require("./stub_incremental_database_remote");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubLogger,
     stubEnvironment,
     stubDatetime,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 /**
@@ -23,7 +24,8 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    await stubGeneratorsRepository(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
     return capabilities;
 }
 

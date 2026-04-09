@@ -1,13 +1,19 @@
 const { transaction } = require("../src/event_log_storage");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const {
+    stubEnvironment,
+    stubLogger,
+    stubDatetime,
+    ensureLiveDatabaseDirectory,
+} = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
     return capabilities;
 }
 

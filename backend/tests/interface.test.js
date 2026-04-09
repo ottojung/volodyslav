@@ -13,9 +13,17 @@ const {
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
-const { stubGeneratorsRepository } = require("./stub_generators_repository");
+const {
+    stubIncrementalDatabaseRemote,
+    stubPopulatedIncrementalDatabaseRemote,
+} = require("./stub_incremental_database_remote");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger, stubEnvironment, stubDatetime } = require("./stubs");
+const {
+    stubLogger,
+    stubEnvironment,
+    stubDatetime,
+    ensureLiveDatabaseDirectory,
+} = require("./stubs");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -30,7 +38,8 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    await stubGeneratorsRepository(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
     return capabilities;
 }
 
@@ -400,7 +409,12 @@ describe("generators/interface", () => {
     describe("bootstrap path selection", () => {
         test("V3: uses reset-to-hostname sync when LevelDB is absent and hostname branch exists remotely", async () => {
             // Setup: remote WITH hostname branch (test-host-main), no local LevelDB.
-            const capabilities = await getTestCapabilities();
+            const capabilities = getMockedRootCapabilities();
+            stubEnvironment(capabilities);
+            stubLogger(capabilities);
+            stubDatetime(capabilities);
+            ensureLiveDatabaseDirectory(capabilities);
+            await stubPopulatedIncrementalDatabaseRemote(capabilities);
             // Delete the pre-created LevelDB dir to trigger the bootstrap path.
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
@@ -416,6 +430,13 @@ describe("generators/interface", () => {
                 expect.objectContaining({ hostname: 'test-host' }),
                 'Bootstrap: hostname branch found; using reset-to-hostname sync path'
             );
+            await expect(iface.getAllEvents()).resolves.toHaveLength(3);
+            await expect(iface.getConfig()).resolves.toMatchObject({
+                help: expect.stringContaining("Event logging help text"),
+                shortcuts: expect.arrayContaining([
+                    ["breakfast", "food [when this morning]", "Quick breakfast entry"],
+                ]),
+            });
             expect(isInterface(iface)).toBe(true);
         });
 
@@ -456,6 +477,7 @@ describe("generators/interface", () => {
             // The production code (internalInitCheckpointRepoForFallback) will
             // automatically initialize the checkpoint repo and configure the
             // origin remote, so no manual pre-initialization is needed here.
+            ensureLiveDatabaseDirectory(capabilities);
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH

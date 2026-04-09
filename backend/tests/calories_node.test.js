@@ -11,6 +11,7 @@ const {
     stubEnvironment,
     stubDatetime,
     stubAiCalories,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 /**
@@ -23,6 +24,7 @@ async function getTestCapabilities(defaultCalories = "N/A") {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubAiCalories(capabilities, defaultCalories);
+    ensureLiveDatabaseDirectory(capabilities);
     return capabilities;
 }
 

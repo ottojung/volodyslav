@@ -11,12 +11,21 @@ export VOLODYSLAV_HOSTNAME="${VOLODYSLAV_HOSTNAME:-$(hostname)}"
 
 if test -z "$VOLODYSLAV_GENERATORS_REPOSITORY"
 then
-    export VOLODYSLAV_GENERATORS_REPOSITORY="dist/test/mock-generators-repository"
+    if test "$VOLODYSLAV_USE_EMPTY_INCREMENTAL_DATABASE_REMOTE" = "1"
+    then
+        export VOLODYSLAV_GENERATORS_REPOSITORY="dist/test/mock-incremental-database-remote"
+        SOURCE_REMOTE_FIXTURE="backend/tests/mock-incremental-database-remote"
+    else
+        export VOLODYSLAV_GENERATORS_REPOSITORY="dist/test/mock-incremental-database-remote-populated"
+        SOURCE_REMOTE_FIXTURE="backend/tests/mock-incremental-database-remote-populated"
+    fi
+
     if ! test -d "$VOLODYSLAV_GENERATORS_REPOSITORY"
     then
-        mkdir -p -- "$VOLODYSLAV_GENERATORS_REPOSITORY"
-        git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" init --initial-branch=master
-        git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" -c user.name=volodyslav -c user.email=volodyslav commit --allow-empty -m "Initial empty commit"
-        git -C "$VOLODYSLAV_GENERATORS_REPOSITORY" config receive.denyCurrentBranch ignore
+        mkdir -p -- dist/test
+        sh scripts/materialize-incremental-database-remote.sh \
+            "$SOURCE_REMOTE_FIXTURE" \
+            "$VOLODYSLAV_GENERATORS_REPOSITORY" \
+            "$VOLODYSLAV_HOSTNAME"
     fi
 fi

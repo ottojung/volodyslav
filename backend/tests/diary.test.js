@@ -8,6 +8,7 @@ const {
     stubEnvironment,
     stubLogger,
     stubDatetime,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -17,6 +18,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
 
     // Mock isFileStable to return true by default for existing tests
     capabilities.checker.isFileStable = jest.fn().mockResolvedValue(true);

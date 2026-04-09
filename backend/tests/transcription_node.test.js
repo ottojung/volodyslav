@@ -9,6 +9,7 @@ const {
     stubEnvironment,
     stubDatetime,
     stubAiTranscriber,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 function makeDiaryEvent(id) {
@@ -38,6 +39,7 @@ async function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubAiTranscriber(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
     return capabilities;
 }
 

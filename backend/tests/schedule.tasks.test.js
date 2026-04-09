@@ -8,10 +8,11 @@ const {
     stubAiTranscriber,
     stubNotifier,
     stubDailyTasksExecutable,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
 
 const { everyHour, daily, allTasks } = require("../src/jobs");
-const { stubGeneratorsRepository } = require("./stub_generators_repository");
+const { stubIncrementalDatabaseRemote } = require("./stub_incremental_database_remote");
 const { getMockedRootCapabilities } = require("./spies");
 const { fromMinutes } = require("../src/datetime");
 
@@ -22,7 +23,8 @@ async function getTestCapabilities() {
     stubAiTranscriber(capabilities);
     stubNotifier(capabilities);
     stubDailyTasksExecutable(capabilities);
-    await stubGeneratorsRepository(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
     return capabilities;
 }
 

@@ -10,7 +10,9 @@ const {
     stubDatetime,
     stubAiTranscriber,
     stubAiDiarySummary,
+    ensureLiveDatabaseDirectory,
 } = require("./stubs");
+const { stubIncrementalDatabaseRemote } = require("./stub_incremental_database_remote");
 const { runDiarySummaryPipeline } = require("../src/jobs/diary_summary");
 
 /**
@@ -42,6 +44,8 @@ async function getTestCapabilities() {
     stubDatetime(capabilities);
     stubAiTranscriber(capabilities);
     stubAiDiarySummary(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
     return capabilities;
 }
 

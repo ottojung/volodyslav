@@ -4,7 +4,12 @@ const { targetPath } = require("../src/event/asset");
 const { makeFromBuffer, makeFromData } = require("../src/filesystem/file_ref");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const {
+    stubEnvironment,
+    stubLogger,
+    stubDatetime,
+    ensureLiveDatabaseDirectory,
+} = require("./stubs");
 const fsp = require("fs/promises");
 
 function getTestCapabilities() {
@@ -12,6 +17,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
     return capabilities;
 }
 

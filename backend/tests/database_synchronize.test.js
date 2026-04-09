@@ -12,6 +12,7 @@ const {
 const defaultBranch = require("../src/gitstore/default_branch");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
+const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
 jest.setTimeout(30000);
 
 
@@ -34,75 +35,18 @@ function renderedKeyPath(key) {
     return keyToRelativePath(key).replace(/^[xy]\//, 'r/');
 }
 
-const CURRENT_REPLICA_META_KEY = "!_meta!current_replica";
-
-/**
- * @param {object} capabilities
- * @param {string} hostname
- * @param {Array<[string, *]>} entries
- * @returns {Promise<void>}
- */
-async function pushRemoteRepositoryBranch(capabilities, hostname, entries) {
-    const branch = `${hostname}-main`;
-    const remotePath = capabilities.environment.generatorsRepository();
-    const workTree = await capabilities.creator.createTemporaryDirectory();
-    try {
-        await capabilities.git.call(
-            "init",
-            "--initial-branch",
-            branch,
-            "--",
-            workTree
-        );
-        const entriesToWrite = [...entries];
-        if (!entriesToWrite.some(([key]) => key === CURRENT_REPLICA_META_KEY)) {
-            entriesToWrite.push([CURRENT_REPLICA_META_KEY, "x"]);
-        }
-        for (const [key, value] of entriesToWrite) {
-            const filePath = path.join(
-                workTree,
-                DATABASE_SUBPATH,
-                ...renderedKeyPath(key).split("/")
-            );
-            const file = await capabilities.creator.createFile(filePath);
-            await capabilities.writer.writeFile(file, JSON.stringify(value));
-        }
-        await capabilities.git.call("-C", workTree, "add", "--all");
-        await capabilities.git.call(
-            "-C",
-            workTree,
-            "-c",
-            "user.name=volodyslav",
-            "-c",
-            "user.email=volodyslav",
-            "commit",
-            "-m",
-            "Initial rendered snapshot"
-        );
-        await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
-        await capabilities.git.call("-C", workTree, "push", "origin", branch);
-    } finally {
-        await capabilities.deleter.deleteDirectory(workTree);
-    }
-}
-
 /**
  * @param {object} capabilities
  * @param {Array<[string, *]>} entries
  * @returns {Promise<void>}
  */
 async function seedRemoteRepository(capabilities, entries) {
-    await capabilities.git.call(
-        "init",
-        "--bare",
-        "--",
-        capabilities.environment.generatorsRepository()
-    );
-    await pushRemoteRepositoryBranch(
-        capabilities,
-        capabilities.environment.hostname(),
-        entries
-    );
+    await stubIncrementalDatabaseRemoteBranches(capabilities, [
+        {
+            hostname: capabilities.environment.hostname(),
+            entries,
+        },
+    ]);
 }
 
 /**
@@ -248,18 +192,20 @@ describe("synchronizeNoLock", () => {
         const aliceNodeArgs = '{"head":"event","args":["alice"]}';
         const aliceInputsKey = `!x!!inputs!${aliceNodeArgs}`;
         const aliceTimestampsKey = `!x!!timestamps!${aliceNodeArgs}`;
-        await capabilities.git.call(
-            "init",
-            "--bare",
-            "--",
-            capabilities.environment.generatorsRepository()
-        );
-        await pushRemoteRepositoryBranch(capabilities, "test-host", [["!_meta!format", "xy-v2"]]);
-        await pushRemoteRepositoryBranch(capabilities, "alice", [
-            ["!_meta!format", "xy-v2"],
-            [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
-            [aliceInputsKey, { inputs: [], inputCounters: [] }],
-            [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+        await stubIncrementalDatabaseRemoteBranches(capabilities, [
+            {
+                hostname: "test-host",
+                entries: [["!_meta!format", "xy-v2"]],
+            },
+            {
+                hostname: "alice",
+                entries: [
+                    ["!_meta!format", "xy-v2"],
+                    [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
+                    [aliceInputsKey, { inputs: [], inputCounters: [] }],
+                    [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                ],
+            },
         ]);
 
         await synchronizeNoLock(capabilities);
@@ -283,28 +229,29 @@ describe("synchronizeNoLock", () => {
         const bobInputsKey = `!x!!inputs!${bobNodeArgs}`;
         const bobTimestampsKey = `!x!!timestamps!${bobNodeArgs}`;
 
-        await capabilities.git.call(
-            "init",
-            "--bare",
-            "--",
-            capabilities.environment.generatorsRepository()
-        );
-        await pushRemoteRepositoryBranch(capabilities, "test-host", [
-            ["!_meta!format", "xy-v2"],
-        ]);
-        // bob: matching version (undefined == undefined → passes check), has inputs record.
-        await pushRemoteRepositoryBranch(capabilities, "bob", [
-            ["!_meta!format", "xy-v2"],
-            [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
-            [bobInputsKey, { inputs: [], inputCounters: [] }],
-            [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
-        ]);
-        // zed: version mismatch → HostVersionMismatchError → triggers aggregate failure.
-        await pushRemoteRepositoryBranch(capabilities, "zed", [
-            ["!_meta!format", "xy-v2"],
-            ['!x!!meta!version', "incompatible-version"],
-            ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
-            ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
+        await stubIncrementalDatabaseRemoteBranches(capabilities, [
+            {
+                hostname: "test-host",
+                entries: [["!_meta!format", "xy-v2"]],
+            },
+            {
+                hostname: "bob",
+                entries: [
+                    ["!_meta!format", "xy-v2"],
+                    [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
+                    [bobInputsKey, { inputs: [], inputCounters: [] }],
+                    [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                ],
+            },
+            {
+                hostname: "zed",
+                entries: [
+                    ["!_meta!format", "xy-v2"],
+                    ['!x!!meta!version', "incompatible-version"],
+                    ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
+                    ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
+                ],
+            },
         ]);
 
         let error;
