@@ -9,7 +9,6 @@ const {
 } = require("../src/generators/interface");
 const {
     LIVE_DATABASE_WORKING_PATH,
-    CHECKPOINT_WORKING_PATH,
 } = require("../src/generators/incremental_graph");
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
@@ -453,38 +452,10 @@ describe("generators/interface", () => {
             );
             await capabilities.git.call("-C", workTree, "push", "origin", "main");
 
-            // Pre-initialise the checkpoint repository so that the fallback
-            // `synchronizeNoLock()` call does not try to clone the remote with
-            // `--branch=test-host-main` (which would fail since the branch is absent).
-            // With the checkpoint repo already present, `checkpointDatabase` simply
-            // uses the existing local repo, and `workingRepository.synchronize`
-            // falls into the normal pull+push path which handles a missing
-            // `origin/test-host-main` gracefully.
-            const checkpointDir = path.join(
-                capabilities.environment.workingDirectory(),
-                CHECKPOINT_WORKING_PATH
-            );
-            await capabilities.creator.createDirectory(checkpointDir);
-            await capabilities.git.call(
-                "init", "--initial-branch", "test-host-main", "--", checkpointDir
-            );
-            // Allow pushing to the current branch (same as `initializeEmptyRepository`).
-            await capabilities.git.call(
-                "-C", checkpointDir, "-c", "safe.directory=*",
-                "config", "receive.denyCurrentBranch", "ignore"
-            );
-            await capabilities.git.call(
-                "-C", checkpointDir,
-                "-c", "user.name=volodyslav",
-                "-c", "user.email=volodyslav",
-                "commit", "--allow-empty", "-m", "Initial empty commit"
-            );
-            await capabilities.git.call(
-                "-C", checkpointDir, "-c", "safe.directory=*",
-                "remote", "add", "origin", "--", gitDir
-            );
-
             // Delete the pre-created LevelDB dir to trigger the bootstrap path.
+            // The production code (internalInitCheckpointRepoForFallback) will
+            // automatically initialize the checkpoint repo and configure the
+            // origin remote, so no manual pre-initialization is needed here.
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH

@@ -26,8 +26,9 @@ const {
     withExclusiveMode,
     migrationCallback,
     LIVE_DATABASE_WORKING_PATH,
+    CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
-const { defaultBranch } = require("../../gitstore");
+const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
@@ -132,10 +133,62 @@ async function internalBootstrap(capabilities) {
         );
         // Phase 1 fallback (protocol §7.1.3): normal sync from empty local DB.
         // Any error is fatal (protocol §8.3).
+        //
+        // Pre-initialize the checkpoint repo before calling synchronizeNoLock so
+        // that synchronizeNoLock's checkpointDatabase step does not attempt to
+        // clone the remote with `--branch=<hostname>-main` (which would fail
+        // because that branch is absent).  With a local repo already present,
+        // workingRepository.synchronize falls into the pull+push path, where
+        // pull returns early when the remote branch does not exist yet, and push
+        // creates the branch for the first time.
+        await internalInitCheckpointRepoForFallback(capabilities);
         await synchronizeNoLock(capabilities);
         capabilities.logger.logInfo(
             { hostname },
             'Bootstrap: fallback normal sync completed'
+        );
+    }
+}
+
+/**
+ * Ensure the checkpoint git repository exists locally and has the origin
+ * remote configured.  Called before the V4 fallback sync so that
+ * `synchronizeNoLock` does not try to clone the remote with a
+ * `--branch=<hostname>-main` that doesn't exist yet.
+ *
+ * The operation is idempotent: if the repo already exists and already has
+ * an origin remote, this is a no-op.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function internalInitCheckpointRepoForFallback(capabilities) {
+    const remotePath = capabilities.environment.generatorsRepository();
+    const checkpointDir = path.join(
+        capabilities.environment.workingDirectory(),
+        CHECKPOINT_WORKING_PATH
+    );
+
+    // Ensure the local checkpoint repo exists (idempotent).
+    await workingRepository.getRepository(capabilities, CHECKPOINT_WORKING_PATH, "empty");
+
+    // Add the origin remote so workingRepository.synchronize uses the
+    // pull+push path instead of the fetchAndReconcile path (needsRemoteSetup).
+    const hasOrigin = await capabilities.git.call(
+        "-C", checkpointDir, "-c", "safe.directory=*",
+        "remote", "get-url", "origin"
+    ).then(() => true).catch((err) => {
+        capabilities.logger.logDebug(
+            { checkpointDir, err: String(err) },
+            'Bootstrap: git remote get-url origin returned non-zero (treating as absent)'
+        );
+        return false;
+    });
+
+    if (!hasOrigin) {
+        await capabilities.git.call(
+            "-C", checkpointDir, "-c", "safe.directory=*",
+            "remote", "add", "origin", remotePath
         );
     }
 }
