@@ -95,6 +95,8 @@ function ensureLiveDatabaseDirectory(capabilities) {
  * @returns {Promise<void>}
  */
 async function stubEventLogRepository(capabilities) {
+    ensureLiveDatabaseDirectory(capabilities);
+
     const branch = defaultBranch(capabilities);
     const gitDir = capabilities.environment.eventLogRepository();
 
