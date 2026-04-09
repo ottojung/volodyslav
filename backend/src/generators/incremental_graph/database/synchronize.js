@@ -34,6 +34,7 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
 } = require('./gitstore');
+const { FORMAT_MARKER } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 const {
@@ -51,10 +52,30 @@ class InvalidSnapshotReplicaError extends Error {
      * @param {string} filePath - Path to the file that contained the bad value.
      */
     constructor(value, filePath) {
+        const renderedValue = value === undefined ? 'undefined' : JSON.stringify(value);
         super(
-            `Snapshot _meta/current_replica has invalid value: "${String(value)}". Expected "x" or "y". File: ${filePath}`
+            `Snapshot _meta/current_replica has invalid value: ${renderedValue}. Expected "x" or "y". File: ${filePath}`
         );
         this.name = 'InvalidSnapshotReplicaError';
+        this.value = value;
+        this.filePath = filePath;
+    }
+}
+
+/**
+ * Thrown when the snapshot's `_meta/format` marker is missing or incompatible.
+ */
+class InvalidSnapshotFormatError extends Error {
+    /**
+     * @param {unknown} value - The invalid value that was read.
+     * @param {string} filePath - Path to the file that contained the bad value.
+     */
+    constructor(value, filePath) {
+        const renderedValue = value === undefined ? 'undefined' : JSON.stringify(value);
+        super(
+            `Snapshot _meta/format has invalid value: ${renderedValue}. Expected ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`
+        );
+        this.name = 'InvalidSnapshotFormatError';
         this.value = value;
         this.filePath = filePath;
     }
@@ -66,6 +87,14 @@ class InvalidSnapshotReplicaError extends Error {
  */
 function isInvalidSnapshotReplicaError(object) {
     return object instanceof InvalidSnapshotReplicaError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidSnapshotFormatError}
+ */
+function isInvalidSnapshotFormatError(object) {
+    return object instanceof InvalidSnapshotFormatError;
 }
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
@@ -125,17 +154,21 @@ function isInvalidSnapshotReplicaError(object) {
 async function synchronizeNoLock(capabilities, options) {
     const remotePath = capabilities.environment.generatorsRepository();
     const remoteLocation = { url: remotePath };
-    const rootDatabase = await getRootDatabase(capabilities);
+    /** @type {import('./root_database').RootDatabase | undefined} */
+    let rootDatabase;
 
     try {
-        // Step 1 + 2: Render current live database → filesystem → commit → push.
-        // Note: mergeHostBranches is always false; we do graph merge below.
-        await checkpointDatabase(
-            capabilities,
-            "sync checkpoint",
-            rootDatabase,
-            remoteLocation
-        );
+        if (options?.resetToHostname === undefined) {
+            rootDatabase = await getRootDatabase(capabilities);
+            // Step 1 + 2: Render current live database → filesystem → commit → push.
+            // Note: mergeHostBranches is always false; we do graph merge below.
+            await checkpointDatabase(
+                capabilities,
+                "sync checkpoint",
+                rootDatabase,
+                remoteLocation
+            );
+        }
 
         await workingRepository.synchronize(
             capabilities,
@@ -155,10 +188,26 @@ async function synchronizeNoLock(capabilities, options) {
                 async (store) => {
                     const workTree = await store.getWorkTree();
 
+                    // Validate the snapshot format before any replica checks.
+                    const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
+                    const formatFile = path.join(snapshotMetaDir, 'format');
+                    const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
+                    if (!(await capabilities.checker.fileExists(formatFile))) {
+                        throw new InvalidSnapshotFormatError(undefined, formatFile);
+                    }
+                    const formatRaw = await capabilities.reader.readFileAsText(formatFile);
+                    let parsedFormat;
+                    try {
+                        parsedFormat = JSON.parse(formatRaw);
+                    } catch {
+                        throw new InvalidSnapshotFormatError(formatRaw, formatFile);
+                    }
+                    if (parsedFormat !== FORMAT_MARKER) {
+                        throw new InvalidSnapshotFormatError(parsedFormat, formatFile);
+                    }
+
                     // Read the active-replica name from the snapshot's _meta/current_replica
                     // so that `r/` data lands in the correct sublevel.
-                    const snapshotMetaDir = path.join(workTree, DATABASE_SUBPATH, '_meta');
-                    const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
                     if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
                         throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile);
                     }
@@ -173,6 +222,7 @@ async function synchronizeNoLock(capabilities, options) {
                         throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
                     }
                     const snapshotReplica = parsed;
+                    rootDatabase = await getRootDatabase(capabilities);
 
                     // Scan `r/` into the active replica sublevel, replacing the
                     // sublevel's entire content with the remote snapshot's data.
@@ -210,6 +260,9 @@ async function synchronizeNoLock(capabilities, options) {
             capabilities.environment.workingDirectory(),
             CHECKPOINT_WORKING_PATH
         );
+        if (rootDatabase === undefined) {
+            throw new Error('Impossible: rootDatabase must exist for merge path');
+        }
 
         await configureRemoteForAllBranches(capabilities, workDir);
         await capabilities.git.call(
@@ -358,7 +411,9 @@ async function synchronizeNoLock(capabilities, options) {
             throw new SyncMergeAggregateError(failures);
         }
     } finally {
-        await rootDatabase.close();
+        if (rootDatabase !== undefined) {
+            await rootDatabase.close();
+        }
     }
 
     capabilities.logger.logInfo(
@@ -369,6 +424,8 @@ async function synchronizeNoLock(capabilities, options) {
 
 module.exports = {
     synchronizeNoLock,
+    InvalidSnapshotFormatError,
+    isInvalidSnapshotFormatError,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,

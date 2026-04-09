@@ -1,6 +1,7 @@
 const path = require("path");
 const {
     synchronizeNoLock,
+    isInvalidSnapshotFormatError,
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
     getRootDatabase,
@@ -277,7 +278,7 @@ describe("synchronizeNoLock", () => {
         }
     });
 
-    test("throws InvalidSnapshotReplicaError when snapshot lacks _meta/current_replica", async () => {
+    test("throws InvalidSnapshotFormatError when snapshot has incompatible _meta/format", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -312,13 +313,13 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 error = caught;
             }
-            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
+            expect(isInvalidSnapshotFormatError(error)).toBe(true);
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }
     });
 
-    test("throws InvalidSnapshotReplicaError when snapshot _meta/current_replica is invalid JSON", async () => {
+    test("throws InvalidSnapshotFormatError before checking _meta/current_replica when format is incompatible", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -358,7 +359,111 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 error = caught;
             }
+            expect(isInvalidSnapshotFormatError(error)).toBe(true);
+            expect(isInvalidSnapshotReplicaError(error)).toBe(false);
+        } finally {
+            await capabilities.deleter.deleteDirectory(workTree);
+        }
+    });
+
+    test("throws InvalidSnapshotReplicaError with unquoted undefined when _meta/current_replica is missing", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = `${capabilities.environment.hostname()}-main`;
+        const remotePath = capabilities.environment.generatorsRepository();
+        const workTree = await capabilities.creator.createTemporaryDirectory();
+        try {
+            await capabilities.git.call("init", "--bare", "--", remotePath);
+            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
+
+            const formatFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
+            );
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v2"));
+
+            await capabilities.git.call("-C", workTree, "add", "--all");
+            await capabilities.git.call(
+                "-C",
+                workTree,
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "commit",
+                "-m",
+                "seed snapshot without current_replica"
+            );
+            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
+            await capabilities.git.call("-C", workTree, "push", "origin", branch);
+
+            let error;
+            try {
+                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+            } catch (caught) {
+                error = caught;
+            }
             expect(isInvalidSnapshotReplicaError(error)).toBe(true);
+            expect(error.message).toContain('invalid value: undefined');
+            expect(error.message).not.toContain('"undefined"');
+        } finally {
+            await capabilities.deleter.deleteDirectory(workTree);
+        }
+    });
+
+    test("repeat reset bootstrap failures remain deterministic and do not create live database", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = `${capabilities.environment.hostname()}-main`;
+        const remotePath = capabilities.environment.generatorsRepository();
+        const liveDbPath = path.join(
+            capabilities.environment.workingDirectory(),
+            LIVE_DATABASE_WORKING_PATH
+        );
+        const workTree = await capabilities.creator.createTemporaryDirectory();
+        try {
+            await capabilities.git.call("init", "--bare", "--", remotePath);
+            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
+
+            const formatFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
+            );
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v1"));
+            const currentReplicaFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
+            );
+            await capabilities.writer.writeFile(currentReplicaFile, JSON.stringify("x"));
+
+            await capabilities.git.call("-C", workTree, "add", "--all");
+            await capabilities.git.call(
+                "-C",
+                workTree,
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "commit",
+                "-m",
+                "seed old format"
+            );
+            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
+            await capabilities.git.call("-C", workTree, "push", "origin", branch);
+
+            let firstError;
+            try {
+                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+            } catch (caught) {
+                firstError = caught;
+            }
+            expect(isInvalidSnapshotFormatError(firstError)).toBe(true);
+            expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+
+            let secondError;
+            try {
+                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+            } catch (caught) {
+                secondError = caught;
+            }
+            expect(isInvalidSnapshotFormatError(secondError)).toBe(true);
+            expect(secondError.message).toContain('Snapshot _meta/format has invalid value: "xy-v1".');
+            expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }

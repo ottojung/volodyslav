@@ -15,6 +15,8 @@ const {
 } = require('./gitstore');
 const {
     synchronizeNoLock,
+    InvalidSnapshotFormatError,
+    isInvalidSnapshotFormatError,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
@@ -61,6 +63,8 @@ module.exports = {
     versionToString,
     stringToVersion,
     synchronizeNoLock,
+    InvalidSnapshotFormatError,
+    isInvalidSnapshotFormatError,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
