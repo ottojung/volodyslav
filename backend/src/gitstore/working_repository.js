@@ -348,6 +348,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                     {
                         repository: remotePath,
                         attempt,
+                        error,
                         errorName: error instanceof Error ? error.name : "UnknownError",
                         errorMessage: error instanceof Error ? error.message : String(error),
                     },
@@ -364,6 +365,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 {
                     repository: remotePath,
                     attempt,
+                    error,
                     errorName: error instanceof Error ? error.name : "UnknownError",
                     errorMessage: error instanceof Error ? error.message : String(error),
                 },
@@ -434,6 +436,7 @@ async function initializeEmptyRepository(capabilities, workingPath) {
                 {
                     repository: workDir,
                     attempt,
+                    error: err,
                     errorName: err instanceof Error ? err.name : "UnknownError",
                     errorMessage: err instanceof Error ? err.message : String(err),
                 },
