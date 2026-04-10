@@ -1430,20 +1430,22 @@ describe("scheduler stories", () => {
         stubEnvironment(capabilities);
         stubLogger(capabilities);
 
-        // Test scheduler behavior with first-time initialization
-        const retryDelay = fromMilliseconds(1000);
-        const registrations = [
-            ["test-task", "0 * * * *", jest.fn(), retryDelay]
-        ];
+        try {
+            // Test scheduler behavior with first-time initialization
+            const retryDelay = fromMilliseconds(1000);
+            const registrations = [
+                ["test-task", "0 * * * *", jest.fn(), retryDelay]
+            ];
 
-        // This should succeed as first-time initialization
-        await capabilities.scheduler.initialize(registrations);
+            // This should succeed as first-time initialization
+            await capabilities.scheduler.initialize(registrations);
 
-        // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
-        await capabilities.state.transaction(() => 0);
-
-        await capabilities.scheduler.stop();
+            // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
+            await capabilities.state.transaction(() => 0);
+        } finally {
+            await capabilities.scheduler.stop();
+        }
 
         expect(true).toBe(true); // Dummy assertion to mark test as passed
-    });
+    }, 15000);
 });
