@@ -55,7 +55,7 @@ function logTransactionSuccessAfterRetries(logger, context) {
  * @returns {void}
  */
 function logNonRetryableError(logger, context, error) {
-    logger.logError(
+    logger.logDebug(
         {
             attempt: context.attempt,
             errorType: error instanceof Error ? error.name : 'Unknown',
@@ -95,7 +95,7 @@ function logRetryAttempt(logger, context, delayDescription, error) {
  * @returns {void}
  */
 function logFinalFailure(logger, context, error) {
-    logger.logError(
+    logger.logDebug(
         {
             attempt: context.attempt,
             maxAttempts: context.maxAttempts,
