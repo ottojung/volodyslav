@@ -17,13 +17,9 @@ const {
     unifyStores,
     UnificationListError,
     isUnificationListError,
-    UnificationReadError,
     isUnificationReadError,
-    UnificationWriteError,
     isUnificationWriteError,
-    UnificationDeleteError,
     isUnificationDeleteError,
-    UnificationCommitError,
     isUnificationCommitError,
 } = require('../src/generators/incremental_graph/database/unification');
 
@@ -94,7 +90,7 @@ describe('unifyStores', () => {
     test('pure put: all source keys written to empty target', async () => {
         const source = new Map([['x', 10], ['y', 20]]);
         const target = new Map();
-        const { adapter, ops } = makeMapAdapter(source, target);
+        const { adapter } = makeMapAdapter(source, target);
 
         const stats = await unifyStores(adapter);
 
@@ -110,7 +106,7 @@ describe('unifyStores', () => {
     test('pure delete: all target keys absent from empty source are deleted', async () => {
         const source = new Map();
         const target = new Map([['p', 'old'], ['q', 'also-old']]);
-        const { adapter, ops } = makeMapAdapter(source, target);
+        const { adapter } = makeMapAdapter(source, target);
 
         const stats = await unifyStores(adapter);
 
@@ -125,7 +121,7 @@ describe('unifyStores', () => {
     test('mixed patch: adds new keys, deletes stale keys, keeps unchanged keys', async () => {
         const source = new Map([['keep', 'same'], ['add', 'new']]);
         const target = new Map([['keep', 'same'], ['stale', 'remove-me']]);
-        const { adapter, ops } = makeMapAdapter(source, target);
+        const { adapter } = makeMapAdapter(source, target);
 
         const stats = await unifyStores(adapter);
 
@@ -140,7 +136,7 @@ describe('unifyStores', () => {
     test('value update: same key but different value triggers a put', async () => {
         const source = new Map([['k', { v: 2 }]]);
         const target = new Map([['k', { v: 1 }]]);
-        const { adapter, ops } = makeMapAdapter(source, target);
+        const { adapter } = makeMapAdapter(source, target);
 
         const stats = await unifyStores(adapter);
 
@@ -199,8 +195,8 @@ describe('unifyStores', () => {
     test('listSourceKeys error → UnificationListError(source)', async () => {
         const cause = new Error('list source boom');
         const adapter = {
-            listSourceKeys: async function* () { throw cause; },
-            listTargetKeys: async function* () { /* empty */ },
+            listSourceKeys: async function* () { yield* []; throw cause; },
+            listTargetKeys: async function* () { yield* []; },
             readSource: async () => undefined,
             readTarget: async () => undefined,
             equals: () => false,
@@ -219,8 +215,8 @@ describe('unifyStores', () => {
     test('listTargetKeys error → UnificationListError(target)', async () => {
         const cause = new Error('list target boom');
         const adapter = {
-            listSourceKeys: async function* () { /* empty */ },
-            listTargetKeys: async function* () { throw cause; },
+            listSourceKeys: async function* () { yield* []; },
+            listTargetKeys: async function* () { yield* []; throw cause; },
             readSource: async () => undefined,
             readTarget: async () => undefined,
             equals: () => false,
@@ -239,7 +235,7 @@ describe('unifyStores', () => {
         const cause = new Error('read source boom');
         const adapter = {
             listSourceKeys: async function* () { yield 'k'; },
-            listTargetKeys: async function* () { /* empty */ },
+            listTargetKeys: async function* () { yield* []; },
             readSource: async () => { throw cause; },
             readTarget: async () => undefined,
             equals: () => false,
@@ -278,7 +274,7 @@ describe('unifyStores', () => {
         const cause = new Error('write boom');
         const adapter = {
             listSourceKeys: async function* () { yield 'k'; },
-            listTargetKeys: async function* () { /* empty */ },
+            listTargetKeys: async function* () { yield* []; },
             readSource: async () => 1,
             readTarget: async () => undefined,
             equals: () => false,
@@ -296,7 +292,7 @@ describe('unifyStores', () => {
     test('deleteTarget error → UnificationDeleteError', async () => {
         const cause = new Error('delete boom');
         const adapter = {
-            listSourceKeys: async function* () { /* empty */ },
+            listSourceKeys: async function* () { yield* []; },
             listTargetKeys: async function* () { yield 'k'; },
             readSource: async () => undefined,
             readTarget: async () => 1,
@@ -330,8 +326,8 @@ describe('unifyStores', () => {
         let rollbackCalled = false;
         const adapter = {
             begin: async () => {},
-            listSourceKeys: async function* () { throw cause; },
-            listTargetKeys: async function* () { /* empty */ },
+            listSourceKeys: async function* () { yield* []; throw cause; },
+            listTargetKeys: async function* () { yield* []; },
             readSource: async () => undefined,
             readTarget: async () => undefined,
             equals: () => false,

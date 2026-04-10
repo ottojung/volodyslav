@@ -19,10 +19,14 @@
  * rollback; this is acceptable because crash-safety is handled at a higher
  * level).
  *
- * In-memory source: the source may be either a real SchemaStorage (LevelDB-
- * backed) or an InMemorySchemaStorage produced by makeInMemorySchemaStorage().
- * Both implement the same structural interface (per-sublevel get/keys and a
- * batch method), so the adapter works identically for both.
+ * Source type: the source may be any ReadableSchemaStorage — a real
+ * SchemaStorage (LevelDB-backed) or a lazy source such as the migration source
+ * built in migration_runner.js.  Only the per-sublevel get() and keys()
+ * methods are required from the source side.
+ *
+ * In-memory capture: makeInMemorySchemaStorage() provides an in-memory store
+ * that supports get/put/keys and its own batch() that accepts InMemoryBatchOp
+ * values.  It satisfies ReadableSchemaStorage so it can be passed as source.
  */
 
 const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
@@ -32,6 +36,37 @@ const { stringToNodeKeyString } = require('../types');
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
 /** @typedef {import('../types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
+
+/**
+ * Read-only view of a single sublevel — the minimum interface required by the
+ * source side of the DB→DB adapter.  Both GenericDatabase<T> and the
+ * InMemorySchemaStorage sublevels satisfy this interface.
+ *
+ * @typedef {object} ReadableSublevel
+ * @property {(key: NodeKeyString) => Promise<unknown>} get
+ * @property {() => AsyncIterable<NodeKeyString>} keys
+ */
+
+/**
+ * Read-only structural type accepted as source by makeDbToDbAdapter.
+ * Both SchemaStorage (via GenericDatabase<T>) and InMemorySchemaStorage
+ * satisfy this interface without any casts.
+ *
+ * @typedef {object} ReadableSchemaStorage
+ * @property {ReadableSublevel} values
+ * @property {ReadableSublevel} freshness
+ * @property {ReadableSublevel} inputs
+ * @property {ReadableSublevel} revdeps
+ * @property {ReadableSublevel} counters
+ * @property {ReadableSublevel} timestamps
+ */
+
+/**
+ * Union of all concrete typed sublevels in a SchemaStorage.
+ * Used for the target side only (where put/del ops must be typed).
+ *
+ * @typedef {import('../root_database').ValuesDatabase | import('../root_database').FreshnessDatabase | import('../root_database').InputsDatabase | import('../root_database').RevdepsDatabase | import('../root_database').CountersDatabase | import('../root_database').TimestampsDatabase} AnySubDb
+ */
 
 /**
  * The data sublevel names covered by this adapter.
@@ -88,57 +123,112 @@ function stableStringify(value) {
     if (Array.isArray(value)) {
         return '[' + value.map(stableStringify).join(',') + ']';
     }
-    const keys = Object.keys(value).sort();
-    return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(/** @type {Record<string,unknown>} */ (value)[k])).join(',') + '}';
+    const entries = Object.entries(value).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+    return '{' + entries.map(([key, entryValue]) => JSON.stringify(key) + ':' + stableStringify(entryValue)).join(',') + '}';
 }
 
-/** @typedef {import('../typed_database').GenericDatabase<unknown>} AnySubDb */
+// ---------------------------------------------------------------------------
+// Source accessor
+// ---------------------------------------------------------------------------
 
 /**
- * Returns the appropriate sublevel object from a SchemaStorage given its name.
- * The return type is erased to `GenericDatabase<unknown>` because this adapter
- * works with opaque values (it only reads, compares via stringify, and writes
- * back the same value it read — so the exact value type is never needed).
+ * Returns the ReadableSublevel for the given sublevel name from a source.
+ *
+ * @param {ReadableSchemaStorage} source
+ * @param {string} sublevel
+ * @returns {ReadableSublevel}
+ */
+function getSourceSubDb(source, sublevel) {
+    switch (sublevel) {
+        case 'values': return source.values;
+        case 'freshness': return source.freshness;
+        case 'inputs': return source.inputs;
+        case 'revdeps': return source.revdeps;
+        case 'counters': return source.counters;
+        case 'timestamps': return source.timestamps;
+        default: throw new Error(`Unknown sublevel name: ${sublevel}`);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Target accessor
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the typed sublevel object from a SchemaStorage.
+ * Used only for the target side where put/del ops require concrete types.
  *
  * @param {SchemaStorage} storage
  * @param {string} sublevel
  * @returns {AnySubDb}
  */
-function getSubDb(storage, sublevel) {
+function getTargetSubDb(storage, sublevel) {
     switch (sublevel) {
-        case 'values': return /** @type {AnySubDb} */ (storage.values);
-        case 'freshness': return /** @type {AnySubDb} */ (storage.freshness);
-        case 'inputs': return /** @type {AnySubDb} */ (storage.inputs);
-        case 'revdeps': return /** @type {AnySubDb} */ (storage.revdeps);
-        case 'counters': return /** @type {AnySubDb} */ (storage.counters);
-        case 'timestamps': return /** @type {AnySubDb} */ (storage.timestamps);
+        case 'values': return storage.values;
+        case 'freshness': return storage.freshness;
+        case 'inputs': return storage.inputs;
+        case 'revdeps': return storage.revdeps;
+        case 'counters': return storage.counters;
+        case 'timestamps': return storage.timestamps;
         default: throw new Error(`Unknown sublevel name: ${sublevel}`);
     }
 }
 
 /**
- * Iterate all (sublevel, key) pairs across a SchemaStorage or InMemorySchemaStorage.
+ * Create a typed put operation for the given target sublevel.
+ * Dispatches by sublevel name to call the correctly-typed putOp.
+ * Since putOp now accepts unknown values, no coercion is needed.
+ *
+ * @param {SchemaStorage} target
+ * @param {string} sublevel
+ * @param {NodeKeyString} key
+ * @param {unknown} value
+ * @returns {DatabaseBatchOperation}
+ */
+function makeSublevelPutOp(target, sublevel, key, value) {
+    switch (sublevel) {
+        case 'values':   return target.values.putOp(key, value);
+        case 'freshness': return target.freshness.putOp(key, value);
+        case 'inputs':   return target.inputs.putOp(key, value);
+        case 'revdeps':  return target.revdeps.putOp(key, value);
+        case 'counters': return target.counters.putOp(key, value);
+        case 'timestamps': return target.timestamps.putOp(key, value);
+        default: throw new Error(`Unknown sublevel name: ${sublevel}`);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Key iteration
+// ---------------------------------------------------------------------------
+
+/**
+ * Iterate all (sublevel, key) pairs across a ReadableSchemaStorage.
  * Yields composite keys.
  *
- * @param {SchemaStorage} storage
+ * @param {ReadableSchemaStorage} source
  * @param {readonly string[]} sublevels - The sublevel names to include.
  * @returns {AsyncIterable<string>}
  */
-async function* listAllKeys(storage, sublevels) {
+async function* listAllKeys(source, sublevels) {
     for (const sublevel of sublevels) {
-        for await (const key of getSubDb(storage, sublevel).keys()) {
+        for await (const key of getSourceSubDb(source, sublevel).keys()) {
             yield makeCompositeKey(sublevel, String(key));
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// makeDbToDbAdapter
+// ---------------------------------------------------------------------------
+
 /**
  * Create a DB-to-DB unification adapter.
  *
- * Source and target must implement the SchemaStorage interface (or the
- * InMemorySchemaStorage interface, which is structurally compatible).
+ * Source must implement the ReadableSchemaStorage interface (per-sublevel
+ * get() and keys() only).  SchemaStorage (LevelDB-backed), InMemorySchemaStorage,
+ * and lazy migration sources all satisfy this interface without any casts.
  *
- * @param {SchemaStorage} source
+ * @param {ReadableSchemaStorage} source
  * @param {SchemaStorage} target
  * @param {{ excludeSublevels?: string[] }} [options]
  * @returns {UnificationAdapter}
@@ -176,12 +266,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async readSource(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            return await getSubDb(source, sublevel).get(stringToNodeKeyString(nodeKey));
+            return await getSourceSubDb(source, sublevel).get(stringToNodeKeyString(nodeKey));
         },
 
         async readTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            return await getSubDb(target, sublevel).get(stringToNodeKeyString(nodeKey));
+            return await getTargetSubDb(target, sublevel).get(stringToNodeKeyString(nodeKey));
         },
 
         equals(sv, tv) {
@@ -190,19 +280,13 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            // The cast is safe: putOp on a typed sublevel produces a DatabaseBatchOperation
-            // at runtime; the generic type parameter is erased.
-            pendingOps.push(/** @type {DatabaseBatchOperation} */ (
-                getSubDb(target, sublevel).putOp(stringToNodeKeyString(nodeKey), value)
-            ));
+            pendingOps.push(makeSublevelPutOp(target, sublevel, stringToNodeKeyString(nodeKey), value));
             await maybeFlush();
         },
 
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            pendingOps.push(/** @type {DatabaseBatchOperation} */ (
-                getSubDb(target, sublevel).delOp(stringToNodeKeyString(nodeKey))
-            ));
+            pendingOps.push(getTargetSubDb(target, sublevel).delOp(stringToNodeKeyString(nodeKey)));
             await maybeFlush();
         },
 
@@ -222,52 +306,84 @@ function makeDbToDbAdapter(source, target, options = {}) {
     };
 }
 
+// ---------------------------------------------------------------------------
+// InMemorySchemaStorage
+// ---------------------------------------------------------------------------
+
+/**
+ * Batch operation produced by an InMemorySchemaStorage put.
+ * Uses a string sublevelTag instead of a sublevel reference, so batch()
+ * can dispatch by name without any JSDoc type assertions.
+ *
+ * @typedef {{ type: 'put', sublevelTag: string, key: string, value: unknown }} InMemoryPutOp
+ */
+
+/**
+ * Batch operation produced by an InMemorySchemaStorage delete.
+ *
+ * @typedef {{ type: 'del', sublevelTag: string, key: string }} InMemoryDelOp
+ */
+
+/**
+ * Union of in-memory batch operation types accepted by InMemorySchemaStorage.batch().
+ *
+ * @typedef {InMemoryPutOp | InMemoryDelOp} InMemoryBatchOp
+ */
+
 /**
  * Create an in-memory SchemaStorage that captures writes for later iteration.
  *
- * The returned object implements the same structural interface as SchemaStorage
- * (per-sublevel get/keys, putOp/delOp, and a batch method), so it can be
- * passed to any function that accepts a SchemaStorage, including applyDecisions.
+ * The returned object satisfies ReadableSchemaStorage (per-sublevel get/keys),
+ * so it can be passed as the source argument to makeDbToDbAdapter.  Its own
+ * batch() method accepts InMemoryBatchOp values produced by the per-sublevel
+ * putOp/delOp helpers.
  *
  * Unlike a real SchemaStorage, this implementation does NOT perform version
  * checking in batch() — it is intended purely as a temporary capture store for
- * computing a desired state, not as a durable replica.
+ * tests or intermediate computation, not as a durable replica.
  *
- * @returns {SchemaStorage & { _stores: { values: Map<string, unknown>, freshness: Map<string, unknown>, inputs: Map<string, unknown>, revdeps: Map<string, unknown>, counters: Map<string, unknown>, timestamps: Map<string, unknown> } }}
+ * @returns {{ values: object, freshness: object, inputs: object, revdeps: object, counters: object, timestamps: object, batch: function, _stores: object }}
  */
 function makeInMemorySchemaStorage() {
-    const valuesStore = /** @type {Map<string, unknown>} */ (new Map());
-    const freshnessStore = /** @type {Map<string, unknown>} */ (new Map());
-    const inputsStore = /** @type {Map<string, unknown>} */ (new Map());
-    const revdepsStore = /** @type {Map<string, unknown>} */ (new Map());
-    const countersStore = /** @type {Map<string, unknown>} */ (new Map());
-    const timestampsStore = /** @type {Map<string, unknown>} */ (new Map());
+    /** @type {Map<string, unknown>} */
+    const valuesStore = new Map();
+    /** @type {Map<string, unknown>} */
+    const freshnessStore = new Map();
+    /** @type {Map<string, unknown>} */
+    const inputsStore = new Map();
+    /** @type {Map<string, unknown>} */
+    const revdepsStore = new Map();
+    /** @type {Map<string, unknown>} */
+    const countersStore = new Map();
+    /** @type {Map<string, unknown>} */
+    const timestampsStore = new Map();
 
     /**
      * @param {Map<string, unknown>} store
      * @param {string} sublevelName
-     * @returns {import('../root_database').GenericDatabase<unknown>}
      */
     function makeSubstorage(store, sublevelName) {
         return {
-            async get(key) {
+            async get(/** @type {string} */ key) {
                 return store.get(String(key));
             },
-            async put(key, value) {
+            async put(/** @type {string} */ key, /** @type {unknown} */ value) {
                 store.set(String(key), value);
             },
-            async del(key) {
+            async del(/** @type {string} */ key) {
                 store.delete(String(key));
             },
-            putOp(key, value) {
-                return /** @type {*} */ ({ sublevelTag: sublevelName, type: 'put', key: String(key), value });
+            /** @returns {InMemoryPutOp} */
+            putOp(/** @type {string} */ key, /** @type {unknown} */ value) {
+                return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
             },
-            delOp(key) {
-                return /** @type {*} */ ({ sublevelTag: sublevelName, type: 'del', key: String(key) });
+            /** @returns {InMemoryDelOp} */
+            delOp(/** @type {string} */ key) {
+                return { type: 'del', sublevelTag: sublevelName, key: String(key) };
             },
             async *keys() {
                 for (const k of store.keys()) {
-                    yield /** @type {*} */ (k);
+                    yield stringToNodeKeyString(k);
                 }
             },
             async clear() {
@@ -293,31 +409,29 @@ function makeInMemorySchemaStorage() {
     }
 
     /**
-     * @param {import('../types').DatabaseBatchOperation[]} ops
+     * @param {InMemoryBatchOp[]} ops
      * @returns {Promise<void>}
      */
     async function batch(ops) {
         if (ops.length === 0) return;
         for (const op of ops) {
-            const tag = /** @type {*} */ (op).sublevelTag;
-            if (typeof tag !== 'string') continue;
-            const store = getStore(tag);
+            const store = getStore(op.sublevelTag);
             if (store === undefined) continue;
             if (op.type === 'put') {
-                store.set(String(op.key), /** @type {*} */ (op).value);
+                store.set(op.key, op.value);
             } else if (op.type === 'del') {
-                store.delete(String(op.key));
+                store.delete(op.key);
             }
         }
     }
 
     return {
-        values: /** @type {*} */ (makeSubstorage(valuesStore, 'values')),
-        freshness: /** @type {*} */ (makeSubstorage(freshnessStore, 'freshness')),
-        inputs: /** @type {*} */ (makeSubstorage(inputsStore, 'inputs')),
-        revdeps: /** @type {*} */ (makeSubstorage(revdepsStore, 'revdeps')),
-        counters: /** @type {*} */ (makeSubstorage(countersStore, 'counters')),
-        timestamps: /** @type {*} */ (makeSubstorage(timestampsStore, 'timestamps')),
+        values: makeSubstorage(valuesStore, 'values'),
+        freshness: makeSubstorage(freshnessStore, 'freshness'),
+        inputs: makeSubstorage(inputsStore, 'inputs'),
+        revdeps: makeSubstorage(revdepsStore, 'revdeps'),
+        counters: makeSubstorage(countersStore, 'counters'),
+        timestamps: makeSubstorage(timestampsStore, 'timestamps'),
         batch,
         _stores: {
             values: valuesStore,

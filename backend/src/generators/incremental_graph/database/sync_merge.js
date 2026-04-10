@@ -158,15 +158,19 @@ async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
 
+    // Set the target replica version BEFORE calling unifyStores.
+    // SchemaStorage.batch() enforces meta/version on the first write and throws
+    // SchemaBatchVersionError on mismatch.  After a successful migration the
+    // inactive replica may still carry the previous app version, so any sync
+    // that writes at least one key would fail during unification without this.
+    //
+    // It is safe to write to the inactive replica before cutover: its
+    // intermediate state is irrelevant until switchToReplica() succeeds.
+    await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
+
     // Exclude revdeps: they will be recomputed from mergedInputsMap by
     // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
-
-    // Guarantee that `to` always carries the current application version.
-    // When no data was written (replicas were already identical), the batch
-    // was never called and the version meta would not have been touched.
-    // This call is idempotent when the version was already correct.
-    await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
 }
 
 /**

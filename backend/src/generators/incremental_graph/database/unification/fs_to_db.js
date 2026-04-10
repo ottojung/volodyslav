@@ -21,7 +21,7 @@
  */
 
 const path = require('path');
-const { relativePathToKey, parseValue } = require('../render/encoding');
+const { relativePathToKey, keyToRelativePath, parseValue } = require('../render');
 const { stableStringify } = require('./db_to_db');
 const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
 
@@ -93,7 +93,6 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
      * @returns {string}
      */
     function rawKeyToAbsPath(rawKey) {
-        const { keyToRelativePath } = require('../render/encoding');
         const fullRelPath = keyToRelativePath(rawKey);
         const relPath = fullRelPath.slice(sublevelPathPrefix.length);
         return path.join(inputDir, relPath.split('/').join(path.sep));

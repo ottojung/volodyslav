@@ -13,6 +13,8 @@
  *   makeDbToFsAdapter    — database sublevel → snapshot directory
  */
 
+/** @typedef {import('./db_to_db').ReadableSchemaStorage} ReadableSchemaStorage */
+
 const {
     unifyStores,
     UnificationListError,

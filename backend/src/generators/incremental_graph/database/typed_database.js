@@ -32,7 +32,7 @@
  * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: DatabaseKey, value: TValue) => Promise<void>} put - Store a value
  * @property {(key: DatabaseKey) => Promise<void>} del - Delete a value
- * @property {(key: DatabaseKey, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
+ * @property {(key: DatabaseKey, value: unknown) => DatabasePutOperation<TValue>} putOp - Store a value operation (accepts unknown to support unification adapters)
  * @property {(key: DatabaseKey) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
  * @property {() => AsyncIterable<DatabaseKey>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
@@ -93,7 +93,7 @@ class TypedDatabaseClass {
     /**
      * Create a put operation for batch processing.
      * @param {DatabaseKey} key - The key to store
-     * @param {TValue} value - The value to store
+     * @param {unknown} value - The value to store
      * @returns {DatabasePutOperation<TValue>}
      */
     putOp(key, value) {

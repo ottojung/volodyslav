@@ -206,7 +206,23 @@ async function unifyStores(adapter) {
         let deleteCount = 0;
         let unchangedCount = 0;
 
-        // ── Phase 2: puts ────────────────────────────────────────────────────
+        // ── Phase 2: deletes ─────────────────────────────────────────────────
+        // Deletes are issued before puts so that stale target paths cannot
+        // structurally conflict with new ones.  For example, if the target has
+        // a stale file at "values/foo" and the source now contains "values/foo/bar",
+        // the stale file must be removed before the new one can be created.
+        for (const key of targetKeys) {
+            if (!sourceKeys.has(key)) {
+                try {
+                    await adapter.deleteTarget(key);
+                } catch (err) {
+                    throw new UnificationDeleteError(key, err);
+                }
+                deleteCount++;
+            }
+        }
+
+        // ── Phase 3: puts ────────────────────────────────────────────────────
         for (const key of sourceKeys) {
             /** @type {unknown} */
             let sourceValue;
@@ -242,18 +258,6 @@ async function unifyStores(adapter) {
                     throw new UnificationWriteError(key, err);
                 }
                 putCount++;
-            }
-        }
-
-        // ── Phase 3: deletes ─────────────────────────────────────────────────
-        for (const key of targetKeys) {
-            if (!sourceKeys.has(key)) {
-                try {
-                    await adapter.deleteTarget(key);
-                } catch (err) {
-                    throw new UnificationDeleteError(key, err);
-                }
-                deleteCount++;
             }
         }
 
