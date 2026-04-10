@@ -26,7 +26,8 @@ Fix incremental graph boot/reset sequence to be spec-compliant, deterministic ac
    - after repo sync, inside transaction callback:
      - validate `_meta/format` exists, parses as JSON, equals `xy-v2`,
      - only then validate `_meta/current_replica` exists/parses/is `x|y`,
-     - only then open `rootDatabase`, scan `r/`, and scan `_meta`.
+     - import into a staged temporary live DB, scan `r/`, and scan `_meta`,
+     - swap staged DB into live path only after successful full import (restore backup on swap failure).
 4. Ensure `finally` only closes DB when it was actually opened.
 
 ### Phase 3 — Test updates and additions
@@ -35,6 +36,8 @@ Fix incremental graph boot/reset sequence to be spec-compliant, deterministic ac
    - incompatible format now throws `InvalidSnapshotFormatError`.
 2. Add test that missing `_meta/current_replica` with valid format throws `InvalidSnapshotReplicaError` and message contains unquoted `undefined`.
 3. Add test ensuring deterministic repeated reset failures with incompatible format and asserting live DB directory is still absent after each failure.
+4. Add matrix-driven tests for multiple reset failure scenarios (format errors, replica errors, late scan/import errors) ensuring no healing occurs across repeated attempts.
+5. Add swap-failure regression test to ensure existing live DB is restored when replacement fails mid-swap.
 
 ### Phase 4 — Validation commands
 

@@ -5,8 +5,9 @@
 1. In reset bootstrap mode, validate remote snapshot `_meta/format` first.
 2. Only if format is valid, validate `_meta/current_replica`.
 3. Delay opening/initializing live LevelDB in reset mode until after both validations pass.
-4. Fix error value rendering so `undefined` is rendered as `undefined` (unquoted), not `"undefined"`.
-5. Add tests for ordering, diagnostics, and deterministic repeated failure behavior.
+4. Import reset snapshot into a staged temporary live DB and swap it into place only after full import succeeds.
+5. Fix error value rendering so `undefined` is rendered as `undefined` (unquoted), not `"undefined"`.
+6. Add tests for ordering, diagnostics, and deterministic repeated failure behavior.
 
 ## Fit against requirements
 
@@ -17,6 +18,7 @@
 ### Requirement: restart must fail the same way, no silent repair
 
 - **Fit:** high; delaying live DB initialization avoids persistent side effects on failed reset bootstrap, so next restart re-enters same failure condition.
+- **Fit:** stronger with staged swap; even late failures during scan/import do not mutate existing live DB.
 
 ### Requirement: never auto-repair incompatible DB
 

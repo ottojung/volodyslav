@@ -33,8 +33,9 @@ const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
+    LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
-const { FORMAT_MARKER } = require('./root_database');
+const { FORMAT_MARKER, makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 const {
@@ -222,34 +223,96 @@ async function synchronizeNoLock(capabilities, options) {
                         throw new InvalidSnapshotReplicaError(parsed, currentReplicaFile);
                     }
                     const snapshotReplica = parsed;
-                    rootDatabase = await getRootDatabase(capabilities);
+                    const workingDirectory = capabilities.environment.workingDirectory();
+                    const liveDatabasePath = path.join(
+                        workingDirectory,
+                        LIVE_DATABASE_WORKING_PATH
+                    );
+                    const resetWorkspace = await capabilities.creator.createTemporaryDirectory(
+                        workingDirectory
+                    );
+                    const stagedDatabasePath = path.join(
+                        resetWorkspace,
+                        LIVE_DATABASE_WORKING_PATH
+                    );
+                    const backupDatabasePath = path.join(
+                        resetWorkspace,
+                        `${LIVE_DATABASE_WORKING_PATH}-backup`
+                    );
+                    /** @type {import('./root_database').RootDatabase | undefined} */
+                    let stagedDatabase;
+                    let liveDatabaseMovedToBackup = false;
 
-                    // Scan `r/` into the active replica sublevel, replacing the
-                    // sublevel's entire content with the remote snapshot's data.
-                    // `r/` may not exist when the remote snapshot represents an
-                    // empty database (git does not track empty directories).
-                    // In that case we still must clear the sublevel so that any
-                    // stale data from a previous local state is removed.
-                    const rDir = path.join(workTree, DATABASE_SUBPATH, 'r');
-                    if (await capabilities.checker.directoryExists(rDir)) {
+                    try {
+                        stagedDatabase = await makeRootDatabase(
+                            capabilities,
+                            stagedDatabasePath
+                        );
+
+                        // Scan `r/` into the active replica sublevel, replacing the
+                        // sublevel's entire content with the remote snapshot's data.
+                        // `r/` may not exist when the remote snapshot represents an
+                        // empty database (git does not track empty directories).
+                        // In that case we still must clear the sublevel so that any
+                        // stale data from a previous local state is removed.
+                        const rDir = path.join(workTree, DATABASE_SUBPATH, 'r');
+                        if (await capabilities.checker.directoryExists(rDir)) {
+                            await scanFromFilesystem(
+                                capabilities,
+                                stagedDatabase,
+                                rDir,
+                                snapshotReplica
+                            );
+                        } else {
+                            // Empty remote snapshot: no files to import, but we
+                            // still need to wipe the local sublevel so the DB
+                            // matches the remote state exactly.
+                            await stagedDatabase._rawDeleteSublevel(snapshotReplica);
+                        }
                         await scanFromFilesystem(
                             capabilities,
-                            rootDatabase,
-                            rDir,
-                            snapshotReplica
+                            stagedDatabase,
+                            snapshotMetaDir,
+                            '_meta'
                         );
-                    } else {
-                        // Empty remote snapshot: no files to import, but we
-                        // still need to wipe the local sublevel so the DB
-                        // matches the remote state exactly.
-                        await rootDatabase._rawDeleteSublevel(snapshotReplica);
+
+                        await stagedDatabase.close();
+                        stagedDatabase = undefined;
+
+                        if (await capabilities.checker.directoryExists(liveDatabasePath)) {
+                            await capabilities.mover.moveDirectory(
+                                liveDatabasePath,
+                                backupDatabasePath
+                            );
+                            liveDatabaseMovedToBackup = true;
+                        }
+
+                        try {
+                            await capabilities.mover.moveDirectory(
+                                stagedDatabasePath,
+                                liveDatabasePath
+                            );
+                        } catch (moveError) {
+                            if (liveDatabaseMovedToBackup) {
+                                await capabilities.mover.moveDirectory(
+                                    backupDatabasePath,
+                                    liveDatabasePath
+                                );
+                            }
+                            throw moveError;
+                        }
+
+                        if (liveDatabaseMovedToBackup) {
+                            await capabilities.deleter.deleteDirectory(backupDatabasePath);
+                        }
+                    } finally {
+                        if (stagedDatabase !== undefined) {
+                            await stagedDatabase.close();
+                        }
+                        if (await capabilities.checker.directoryExists(resetWorkspace)) {
+                            await capabilities.deleter.deleteDirectory(resetWorkspace);
+                        }
                     }
-                    await scanFromFilesystem(
-                        capabilities,
-                        rootDatabase,
-                        snapshotMetaDir,
-                        '_meta'
-                    );
                 }
             );
             return;

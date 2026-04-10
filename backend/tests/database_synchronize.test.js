@@ -51,6 +51,43 @@ async function seedRemoteRepository(capabilities, entries) {
 }
 
 /**
+ * @param {object} capabilities
+ * @param {Array<{ path: string, content: string }>} renderedFiles
+ * @returns {Promise<void>}
+ */
+async function seedHostnameBranchWithRenderedFiles(capabilities, renderedFiles) {
+    const branch = `${capabilities.environment.hostname()}-main`;
+    const remotePath = capabilities.environment.generatorsRepository();
+    const workTree = await capabilities.creator.createTemporaryDirectory();
+    try {
+        await capabilities.git.call("init", "--bare", "--", remotePath);
+        await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
+        for (const file of renderedFiles) {
+            const created = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, file.path)
+            );
+            await capabilities.writer.writeFile(created, file.content);
+        }
+        await capabilities.git.call("-C", workTree, "add", "--all");
+        await capabilities.git.call(
+            "-C",
+            workTree,
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "-m",
+            "seed rendered snapshot"
+        );
+        await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
+        await capabilities.git.call("-C", workTree, "push", "origin", branch);
+    } finally {
+        await capabilities.deleter.deleteDirectory(workTree);
+    }
+}
+
+/**
  * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} db
  * @returns {Promise<Map<string, *>>}
  */
@@ -467,5 +504,163 @@ describe("synchronizeNoLock", () => {
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }
+    });
+
+    describe("resetToHostname no-healing scenario matrix", () => {
+        /**
+         * @typedef {{ name: string, files: Array<{ path: string, content: string }>, expectedErrorGuard: (error: unknown) => boolean }} ResetFailureScenario
+         */
+
+        /** @type {ResetFailureScenario[]} */
+        const scenarios = [
+            {
+                name: "missing _meta/format",
+                files: [
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
+                ],
+                expectedErrorGuard: isInvalidSnapshotFormatError,
+            },
+            {
+                name: "invalid JSON in _meta/format",
+                files: [
+                    { path: "_meta/format", content: "not-json" },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
+                ],
+                expectedErrorGuard: isInvalidSnapshotFormatError,
+            },
+            {
+                name: "legacy _meta/format value",
+                files: [
+                    { path: "_meta/format", content: JSON.stringify("xy-v1") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
+                ],
+                expectedErrorGuard: isInvalidSnapshotFormatError,
+            },
+            {
+                name: "missing _meta/current_replica",
+                files: [
+                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                ],
+                expectedErrorGuard: isInvalidSnapshotReplicaError,
+            },
+            {
+                name: "invalid JSON in _meta/current_replica",
+                files: [
+                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: "not-json" },
+                ],
+                expectedErrorGuard: isInvalidSnapshotReplicaError,
+            },
+            {
+                name: "invalid _meta/current_replica value",
+                files: [
+                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("z") },
+                ],
+                expectedErrorGuard: isInvalidSnapshotReplicaError,
+            },
+            {
+                name: "invalid JSON payload in rendered r/ subtree",
+                files: [
+                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
+                    { path: "r/values/%7B%22head%22%3A%22event%22%2C%22args%22%3A%5B%22broken%22%5D%7D", content: "not-json" },
+                ],
+                expectedErrorGuard: (error) =>
+                    error instanceof Error &&
+                    !isInvalidSnapshotFormatError(error) &&
+                    !isInvalidSnapshotReplicaError(error),
+            },
+            {
+                name: "invalid JSON payload in rendered _meta subtree after metadata checks",
+                files: [
+                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
+                    { path: "_meta/another_key", content: "not-json" },
+                ],
+                expectedErrorGuard: (error) =>
+                    error instanceof Error &&
+                    !isInvalidSnapshotFormatError(error) &&
+                    !isInvalidSnapshotReplicaError(error),
+            },
+        ];
+
+        test.each(scenarios)(
+            "does not heal for scenario: $name",
+            async ({ files, expectedErrorGuard }) => {
+                const capabilities = getTestCapabilities();
+                const liveDbPath = path.join(
+                    capabilities.environment.workingDirectory(),
+                    LIVE_DATABASE_WORKING_PATH
+                );
+
+                await seedHostnameBranchWithRenderedFiles(capabilities, files);
+
+                let firstError;
+                try {
+                    await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+                } catch (caught) {
+                    firstError = caught;
+                }
+
+                expect(expectedErrorGuard(firstError)).toBe(true);
+                expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+
+                let secondError;
+                try {
+                    await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+                } catch (caught) {
+                    secondError = caught;
+                }
+
+                expect(expectedErrorGuard(secondError)).toBe(true);
+                expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+            }
+        );
+
+        test("if reset swap fails while replacing an existing live DB, old DB is restored", async () => {
+            const capabilities = getTestCapabilities();
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+
+            const existingDb = await getRootDatabase(capabilities);
+            try {
+                await existingDb._rawPut('!_meta!sticky_marker', "old-db-marker");
+            } finally {
+                await existingDb.close();
+            }
+
+            await seedHostnameBranchWithRenderedFiles(capabilities, [
+                { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                { path: "_meta/current_replica", content: JSON.stringify("x") },
+            ]);
+
+            const originalMoveDirectory = capabilities.mover.moveDirectory;
+            let moveCount = 0;
+            capabilities.mover.moveDirectory = jest.fn(async (from, to) => {
+                moveCount++;
+                if (moveCount === 2) {
+                    throw new Error("simulated swap failure");
+                }
+                await originalMoveDirectory(from, to);
+            });
+
+            await expect(
+                synchronizeNoLock(capabilities, { resetToHostname: "test-host" })
+            ).rejects.toThrow("simulated swap failure");
+
+            expect(await capabilities.checker.directoryExists(liveDbPath)).not.toBeNull();
+
+            const reopened = await getRootDatabase(capabilities);
+            try {
+                const entries = await collectRawEntries(reopened);
+                const marker = entries.get('!_meta!sticky_marker');
+                expect(marker).toBe("old-db-marker");
+            } finally {
+                await reopened.close();
+            }
+        });
     });
 });
