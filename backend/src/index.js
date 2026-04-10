@@ -50,20 +50,7 @@ async function entryTyped(capabilities) {
 
 async function entry() {
     const capabilities = root.make();
-    try {
-        return await gentleCall(capabilities, () => entryTyped(capabilities));
-    } catch (error) {
-        capabilities.logger.logError(
-            {
-                errorName: error instanceof Error ? error.name : "UnknownError",
-                errorMessage: error instanceof Error ? error.message : String(error),
-                errorStack: error instanceof Error ? error.stack : undefined,
-            },
-            "Fatal unhandled error"
-        );
-        capabilities.exiter.exit(1);
-        return undefined;
-    }
+    return gentleCall(capabilities, () => entryTyped(capabilities));
 }
 
 // Set up the command line interface with commander

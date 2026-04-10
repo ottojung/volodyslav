@@ -154,7 +154,7 @@ describe("gitstore retry functionality", () => {
             call[1] && call[1].includes("retrying after")
         );
         expect(retryLogCalls).toHaveLength(2); // 2 retry messages
-        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 3,
                 maxAttempts: 3
@@ -173,8 +173,8 @@ describe("gitstore retry functionality", () => {
             })
         ).rejects.toThrow("Non-push error");
 
-        // Should not have retry logs, and should emit debug log about not retrying
-        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+        // Should not have retry logs, and should emit error log about not retrying
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 1,
                 errorType: "Error"
@@ -217,7 +217,7 @@ describe("gitstore retry functionality", () => {
         ).rejects.toThrow(PushError);
 
         // Verify custom maxAttempts was used
-        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 2,
                 maxAttempts: 2

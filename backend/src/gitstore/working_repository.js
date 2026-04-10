@@ -344,6 +344,15 @@ async function synchronize(capabilities, workingPath, origin, options) {
         } catch (error) {
             capabilities.logger.logInfo({ repository: remotePath, error }, "Failed to synchronize repository");
             if (gitmethod.isMergeHostBranchesError(error)) {
+                capabilities.logger.logError(
+                    {
+                        repository: remotePath,
+                        attempt,
+                        errorName: error instanceof Error ? error.name : "UnknownError",
+                        errorMessage: error instanceof Error ? error.message : String(error),
+                    },
+                    "Failed to merge host branches during synchronize"
+                );
                 throw error;
             }
             if (attempt < 100) {
@@ -351,6 +360,15 @@ async function synchronize(capabilities, workingPath, origin, options) {
                 return retry();
             }
 
+            capabilities.logger.logError(
+                {
+                    repository: remotePath,
+                    attempt,
+                    errorName: error instanceof Error ? error.name : "UnknownError",
+                    errorMessage: error instanceof Error ? error.message : String(error),
+                },
+                "Failed to synchronize repository after retries exhausted"
+            );
             throw error;
         }
     }
@@ -412,6 +430,15 @@ async function initializeEmptyRepository(capabilities, workingPath) {
                 return retry();
             }
 
+            capabilities.logger.logError(
+                {
+                    repository: workDir,
+                    attempt,
+                    errorName: err instanceof Error ? err.name : "UnknownError",
+                    errorMessage: err instanceof Error ? err.message : String(err),
+                },
+                "Failed to initialize empty repository after retries exhausted"
+            );
             throw err;
         }
     }

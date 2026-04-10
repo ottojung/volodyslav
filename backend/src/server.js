@@ -129,32 +129,20 @@ function addressToString(address) {
  * @param {Capabilities} capabilities
  */
 async function startWithCapabilities(capabilities) {
-    try {
-        await capabilities.logger.setup();
-        const app = expressApp.make();
-        // The following line is commented out because HTTP call logging is too verbose by default.
-        // TODO: configure a better logging strategy for HTTP calls.
-        // capabilities.logger.enableHttpCallsLogging(app);
-        await expressApp.run(capabilities, app, async (app, server) => {
-            const address = server.address();
-            const addressString = addressToString(address);
-            capabilities.logger.logInfo(
-                { address },
-                `Server started on ${addressString}`
-            );
-            await initialize(capabilities, app);
-        });
-    } catch (error) {
-        capabilities.logger.logError(
-            {
-                errorName: error instanceof Error ? error.name : "UnknownError",
-                errorMessage: error instanceof Error ? error.message : String(error),
-                errorStack: error instanceof Error ? error.stack : undefined,
-            },
-            "Server startup failed"
+    await capabilities.logger.setup();
+    const app = expressApp.make();
+    // The following line is commented out because HTTP call logging is too verbose by default.
+    // TODO: configure a better logging strategy for HTTP calls.
+    // capabilities.logger.enableHttpCallsLogging(app);
+    await expressApp.run(capabilities, app, async (app, server) => {
+        const address = server.address();
+        const addressString = addressToString(address);
+        capabilities.logger.logInfo(
+            { address },
+            `Server started on ${addressString}`
         );
-        capabilities.exiter.exit(1);
-    }
+        await initialize(capabilities, app);
+    });
 }
 
 /**
