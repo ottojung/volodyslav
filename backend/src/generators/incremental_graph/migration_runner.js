@@ -285,14 +285,22 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Apply decisions atomically to the desired state store.
             await applyDecisions(prevStorage, desiredStorage, decisions);
 
+            // The inactive replica may still carry the old application version
+            // in its meta sublevel.  Set the new version now — before calling
+            // unifyStores — so that SchemaStorage.batch() does not reject writes
+            // with SchemaBatchVersionError on the first flushed chunk.
+            //
+            // It is safe to write to the inactive replica before cutover:
+            // the replica's intermediate state is irrelevant until
+            // switchToReplica() succeeds.  A crash here leaves the active
+            // replica untouched.
+            const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
+            await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
+
             // Gently unify the desired state into the target replica.
             // Only changed keys are written; stale keys are deleted.
-            const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
             const adapter = makeDbToDbAdapter(desiredStorage, toStorage);
             await unifyStores(adapter);
-
-            // Write the version into the target replica's meta.
-            await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
 
             // Switch the active replica pointer to the target replica.
             // This is the atomic cutover: only runs after all writes succeed.

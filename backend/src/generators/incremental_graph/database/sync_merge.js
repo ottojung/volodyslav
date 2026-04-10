@@ -158,7 +158,9 @@ async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
 
-    await unifyStores(makeDbToDbAdapter(src, dst));
+    // Exclude revdeps: they will be recomputed from mergedInputsMap by
+    // unifyRevdeps() after the merge.  Copying them here wastes I/O.
+    await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
 
     // Guarantee that `to` always carries the current application version.
     // When no data was written (replicas were already identical), the batch
@@ -216,8 +218,6 @@ async function buildTakeOps(T, H, key) {
 }
 
 /**
- * Build the complete revdeps index from the merged dependency map.
-/**
  * Gently update the revdeps index in `T` to match the desired state derived
  * from `mergedInputsMap`.  Only entries that differ are written; stale entries
  * are deleted.
@@ -231,24 +231,29 @@ async function buildTakeOps(T, H, key) {
  */
 async function unifyRevdeps(T, mergedInputsMap) {
     // Compute the desired revdeps state from the merged inputs map.
-    /** @type {Map<string, NodeKeyString[]>} */
-    const desired = new Map();
+    // Use a Set per input key to automatically deduplicate dependents — an
+    // InputsRecord may contain the same input key more than once, and writing
+    // duplicate entries would trigger spurious downstream recomputation.
+    /** @type {Map<string, Set<NodeKeyString>>} */
+    const desiredSets = new Map();
 
     for (const [node, inputKeys] of mergedInputsMap) {
         for (const inputKey of inputKeys) {
             const inputStr = String(inputKey);
-            const existing = desired.get(inputStr);
+            const existing = desiredSets.get(inputStr);
             if (existing) {
-                existing.push(node);
+                existing.add(node);
             } else {
-                desired.set(inputStr, [node]);
+                desiredSets.set(inputStr, new Set([node]));
             }
         }
     }
 
-    // Sort each dependent list for determinism.
-    for (const [key, deps] of desired) {
-        desired.set(key, deps.sort(compareNodeKeyStringByNodeKey));
+    // Convert to sorted arrays for determinism and stable serialisation.
+    /** @type {Map<string, NodeKeyString[]>} */
+    const desired = new Map();
+    for (const [key, depSet] of desiredSets) {
+        desired.set(key, [...depSet].sort(compareNodeKeyStringByNodeKey));
     }
 
     // Materialise the current target key set.

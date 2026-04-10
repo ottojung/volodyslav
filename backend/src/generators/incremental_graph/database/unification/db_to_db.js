@@ -121,10 +121,11 @@ function getSubDb(storage, sublevel) {
  * Yields composite keys.
  *
  * @param {SchemaStorage} storage
+ * @param {readonly string[]} sublevels - The sublevel names to include.
  * @returns {AsyncIterable<string>}
  */
-async function* listAllKeys(storage) {
-    for (const sublevel of DATA_SUBLEVELS) {
+async function* listAllKeys(storage, sublevels) {
+    for (const sublevel of sublevels) {
         for await (const key of getSubDb(storage, sublevel).keys()) {
             yield makeCompositeKey(sublevel, String(key));
         }
@@ -139,9 +140,13 @@ async function* listAllKeys(storage) {
  *
  * @param {SchemaStorage} source
  * @param {SchemaStorage} target
+ * @param {{ excludeSublevels?: string[] }} [options]
  * @returns {UnificationAdapter}
  */
-function makeDbToDbAdapter(source, target) {
+function makeDbToDbAdapter(source, target, options = {}) {
+    const { excludeSublevels = [] } = options;
+    const sublevels = DATA_SUBLEVELS.filter(s => !excludeSublevels.includes(s));
+
     /** @type {DatabaseBatchOperation[]} */
     let pendingOps = [];
 
@@ -166,8 +171,8 @@ function makeDbToDbAdapter(source, target) {
     }
 
     return {
-        listSourceKeys: () => listAllKeys(source),
-        listTargetKeys: () => listAllKeys(target),
+        listSourceKeys: () => listAllKeys(source, sublevels),
+        listTargetKeys: () => listAllKeys(target, sublevels),
 
         async readSource(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);

@@ -151,9 +151,14 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
         },
 
         async putTarget(relPath, content) {
+            if (typeof content !== 'string') {
+                throw new Error(
+                    `db_to_fs putTarget: expected string content for "${relPath}", got ${typeof content}`
+                );
+            }
             const absPath = resolveContainedPath(outputDir, relPath);
             const file = await capabilities.creator.createFile(absPath);
-            await capabilities.writer.writeFile(file, /** @type {string} */ (content));
+            await capabilities.writer.writeFile(file, content);
         },
 
         async deleteTarget(relPath) {
