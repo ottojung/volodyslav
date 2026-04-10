@@ -286,7 +286,7 @@ describe("runMigration", () => {
     });
 
     describe("successful migration", () => {
-        test("clears y namespace before running the callback", async () => {
+        test("y namespace is populated with migrated data after successful migration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -312,7 +312,9 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(mock.clearReplicaStorageCalledWith).toBe('y');
+            // y namespace is populated with the migrated node's inputs record.
+            const migratedInputs = await yStorage.inputs.get(nodeKey);
+            expect(migratedInputs).toBeDefined();
         });
 
         test("writes version to y before calling switchToReplica", async () => {
@@ -595,7 +597,7 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("callback throws: y namespace is already cleared (clearReplicaStorage was called)", async () => {
+        test("callback throws: unification is not attempted and error propagates", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -623,8 +625,8 @@ describe("runMigration", () => {
                 })
             ).rejects.toThrow("intentional failure");
 
-            // y was still cleared before the callback ran
-            expect(mock.clearReplicaStorageCalledWith).toBe('y');
+            // unification was never attempted so y namespace is still empty
+            expect(mock.switchToReplicaCalled).toBe(false);
         });
 
         test("callback throws: transaction attempts the pre-migration commit step before failing", async () => {
@@ -888,7 +890,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("batch() throws in applyDecisions: x-namespace data unchanged, switchToReplica not called", async () => {
+    test("batch() throws during unification into y: x-namespace data unchanged, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -905,7 +907,7 @@ describe("x-namespace state preserved on migration failure", () => {
         await expect(
             runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
-        ).rejects.toBe(batchError);
+        ).rejects.toMatchObject({ cause: batchError });
 
         expect(mock.switchToReplicaCalled).toBe(false);
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
@@ -1257,14 +1259,15 @@ describe("infrastructure failures", () => {
         expect(capabilities.runMigrationInTransaction).not.toHaveBeenCalled();
     });
 
-    test("clearReplicaStorage throws: error propagates, callback never runs", async () => {
+    test("unification batch throws: error propagates, callback was run, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const clearError = new Error("clearReplicaStorage failure");
+        const unificationError = new Error("unification batch failure");
         const yStorage = makeSchemaStorage();
+        yStorage.batch = async () => { throw unificationError; };
         const rootDatabase = {
             version: "2",
             async getMetaVersion() { return "1"; },
@@ -1272,7 +1275,6 @@ describe("infrastructure failures", () => {
             currentReplicaName() { return 'x'; },
             otherReplicaName() { return 'y'; },
             schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
-            async clearReplicaStorage() { throw clearError; },
             async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() {},
             async setMetaVersion() {},
@@ -1281,10 +1283,11 @@ describe("infrastructure failures", () => {
         let callbackRan = false;
         await expect(
             runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
-                async () => { callbackRan = true; })
-        ).rejects.toBe(clearError);
+                async (storage) => { callbackRan = true; await storage.keep(nodeKey); })
+        ).rejects.toMatchObject({ cause: unificationError });
 
-        expect(callbackRan).toBe(false);
+        // Callback ran successfully; unification threw on commit.
+        expect(callbackRan).toBe(true);
     });
 
     test("runMigrationInTransaction setup throws: migration does not run, switchToReplica not called", async () => {

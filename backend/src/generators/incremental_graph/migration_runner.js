@@ -14,6 +14,7 @@ const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
 const { compareNodeKeyStringByNodeKey } = require("./database");
+const { makeInMemorySchemaStorage, makeDbToDbAdapter, unifyStores } = require("./database/unification");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -193,9 +194,10 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *
- * Uses a replica-pointer-swap strategy: writes to the inactive replica, then
- * atomically switches the pointer. A failed migration leaves the active replica
- * unchanged.
+ * Uses a replica-pointer-swap strategy: writes the desired state to an
+ * in-memory store, gently unifies it into the inactive replica (writing only
+ * changed keys, deleting stale ones), then atomically switches the pointer.
+ * A failed migration leaves the active replica unchanged.
  *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database
@@ -251,11 +253,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const fromReplica = rootDatabase.currentReplicaName();
             const toReplica = rootDatabase.otherReplicaName();
 
-            // Clear target replica so no stale keys survive from previous attempts.
-            await rootDatabase.clearReplicaStorage(toReplica);
-
             const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
-            const newStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
             // Compile new schema and build head index for compatibility checks.
             const compiledNodes = nodeDefs.map(compileNodeDef);
@@ -278,8 +276,20 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
 
-            // Apply decisions atomically to the target replica.
-            await applyDecisions(prevStorage, newStorage, decisions);
+            // Compute the desired state for the target replica by applying
+            // decisions to a temporary in-memory store, then unify that
+            // desired state into the actual target replica.  This avoids
+            // clearing the target first and minimises unnecessary writes.
+            const desiredStorage = makeInMemorySchemaStorage();
+
+            // Apply decisions atomically to the desired state store.
+            await applyDecisions(prevStorage, desiredStorage, decisions);
+
+            // Gently unify the desired state into the target replica.
+            // Only changed keys are written; stale keys are deleted.
+            const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
+            const adapter = makeDbToDbAdapter(desiredStorage, toStorage);
+            await unifyStores(adapter);
 
             // Write the version into the target replica's meta.
             await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
