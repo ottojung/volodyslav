@@ -315,6 +315,57 @@ describe("synchronizeNoLock", () => {
         }
     });
 
+    test("reports host format mismatch with explicit hostname when remote host uses legacy format", async () => {
+        const capabilities = getTestCapabilities();
+        const bobNodeArgs = '{"head":"event","args":["bob"]}';
+        const bobInputsKey = `!x!!inputs!${bobNodeArgs}`;
+        const bobTimestampsKey = `!x!!timestamps!${bobNodeArgs}`;
+
+        await stubIncrementalDatabaseRemoteBranches(capabilities, [
+            {
+                hostname: "test-host",
+                entries: [["!_meta!format", "xy-v2"]],
+            },
+            {
+                hostname: "bob",
+                entries: [
+                    ["!_meta!format", "xy-v2"],
+                    [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
+                    [bobInputsKey, { inputs: [], inputCounters: [] }],
+                    [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                ],
+            },
+            {
+                hostname: "prismo",
+                entries: [
+                    ["!_meta!format", "xy-v1"],
+                ],
+            },
+        ]);
+
+        let error;
+        try {
+            await synchronizeNoLock(capabilities);
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(isSyncMergeAggregateError(error)).toBe(true);
+        expect(error.message).toContain("prismo");
+        expect(error.message).toContain('incompatible format "xy-v1"');
+        expect(error.message).not.toContain("input directory does not exist");
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const replica = reopened.currentReplicaName();
+            const activeBobKey = `!${replica}!!values!${bobNodeArgs}`;
+            const entries = await collectRawEntries(reopened);
+            expect(entries.get(activeBobKey)).toEqual({ source: "bob" });
+        } finally {
+            await reopened.close();
+        }
+    });
+
     test("throws InvalidSnapshotFormatError when snapshot has incompatible _meta/format", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
@@ -403,7 +454,7 @@ describe("synchronizeNoLock", () => {
         }
     });
 
-    test("throws InvalidSnapshotReplicaError with unquoted undefined when _meta/current_replica is missing", async () => {
+    test("throws InvalidSnapshotReplicaError that clearly reports a missing _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -439,8 +490,7 @@ describe("synchronizeNoLock", () => {
                 error = caught;
             }
             expect(isInvalidSnapshotReplicaError(error)).toBe(true);
-            expect(error.message).toContain('invalid value: undefined');
-            expect(error.message).not.toContain('"undefined"');
+            expect(error.message).toContain('Snapshot _meta/current_replica is missing.');
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }
@@ -499,7 +549,7 @@ describe("synchronizeNoLock", () => {
                 secondError = caught;
             }
             expect(isInvalidSnapshotFormatError(secondError)).toBe(true);
-            expect(secondError.message).toContain('Snapshot _meta/format has invalid value: "xy-v1".');
+            expect(secondError.message).toContain('Snapshot _meta/format has invalid parsed value: "xy-v1".');
             expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);

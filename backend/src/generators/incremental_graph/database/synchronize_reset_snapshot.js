@@ -19,15 +19,23 @@ class InvalidSnapshotReplicaError extends Error {
     /**
      * @param {unknown} value - The invalid value that was read.
      * @param {string} filePath - Path to the file that contained the bad value.
+     * @param {'missing' | 'invalid-json' | 'invalid-value'} reason
      */
-    constructor(value, filePath) {
+    constructor(value, filePath, reason) {
         const renderedValue = value === undefined ? 'undefined' : JSON.stringify(value);
-        super(
-            `Snapshot _meta/current_replica has invalid value: ${renderedValue}. Expected "x" or "y". File: ${filePath}`
-        );
+        let message;
+        if (reason === 'missing') {
+            message = `Snapshot _meta/current_replica is missing. Expected a JSON string: "x" or "y". File: ${filePath}`;
+        } else if (reason === 'invalid-json') {
+            message = `Snapshot _meta/current_replica is not valid JSON: ${renderedValue}. Expected a JSON string: "x" or "y". File: ${filePath}`;
+        } else {
+            message = `Snapshot _meta/current_replica has invalid parsed value: ${renderedValue}. Expected "x" or "y". File: ${filePath}`;
+        }
+        super(message);
         this.name = 'InvalidSnapshotReplicaError';
         this.value = value;
         this.filePath = filePath;
+        this.reason = reason;
     }
 }
 
@@ -38,15 +46,23 @@ class InvalidSnapshotFormatError extends Error {
     /**
      * @param {unknown} value - The invalid value that was read.
      * @param {string} filePath - Path to the file that contained the bad value.
+     * @param {'missing' | 'invalid-json' | 'invalid-value'} reason
      */
-    constructor(value, filePath) {
+    constructor(value, filePath, reason) {
         const renderedValue = value === undefined ? 'undefined' : JSON.stringify(value);
-        super(
-            `Snapshot _meta/format has invalid value: ${renderedValue}. Expected ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`
-        );
+        let message;
+        if (reason === 'missing') {
+            message = `Snapshot _meta/format is missing. Expected ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`;
+        } else if (reason === 'invalid-json') {
+            message = `Snapshot _meta/format is not valid JSON: ${renderedValue}. Expected JSON string ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`;
+        } else {
+            message = `Snapshot _meta/format has invalid parsed value: ${renderedValue}. Expected ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`;
+        }
+        super(message);
         this.name = 'InvalidSnapshotFormatError';
         this.value = value;
         this.filePath = filePath;
+        this.reason = reason;
     }
 }
 
@@ -84,7 +100,7 @@ async function readJsonFromFile(capabilities, filePath) {
 async function validateResetSnapshotMetadata(capabilities, snapshotMetaDir) {
     const formatFile = path.join(snapshotMetaDir, 'format');
     if (!(await capabilities.checker.fileExists(formatFile))) {
-        throw new InvalidSnapshotFormatError(undefined, formatFile);
+        throw new InvalidSnapshotFormatError(undefined, formatFile, 'missing');
     }
 
     let parsedFormat;
@@ -92,15 +108,15 @@ async function validateResetSnapshotMetadata(capabilities, snapshotMetaDir) {
         parsedFormat = await readJsonFromFile(capabilities, formatFile);
     } catch {
         const formatRaw = await capabilities.reader.readFileAsText(formatFile);
-        throw new InvalidSnapshotFormatError(formatRaw, formatFile);
+        throw new InvalidSnapshotFormatError(formatRaw, formatFile, 'invalid-json');
     }
     if (parsedFormat !== FORMAT_MARKER) {
-        throw new InvalidSnapshotFormatError(parsedFormat, formatFile);
+        throw new InvalidSnapshotFormatError(parsedFormat, formatFile, 'invalid-value');
     }
 
     const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
     if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
-        throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile);
+        throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile, 'missing');
     }
 
     let parsedReplica;
@@ -108,10 +124,10 @@ async function validateResetSnapshotMetadata(capabilities, snapshotMetaDir) {
         parsedReplica = await readJsonFromFile(capabilities, currentReplicaFile);
     } catch {
         const replicaRaw = await capabilities.reader.readFileAsText(currentReplicaFile);
-        throw new InvalidSnapshotReplicaError(replicaRaw, currentReplicaFile);
+        throw new InvalidSnapshotReplicaError(replicaRaw, currentReplicaFile, 'invalid-json');
     }
     if (parsedReplica !== 'x' && parsedReplica !== 'y') {
-        throw new InvalidSnapshotReplicaError(parsedReplica, currentReplicaFile);
+        throw new InvalidSnapshotReplicaError(parsedReplica, currentReplicaFile, 'invalid-value');
     }
 
     return parsedReplica;
