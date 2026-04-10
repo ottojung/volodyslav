@@ -101,6 +101,7 @@ function toSyncResult(data) {
  * @returns {Promise<PostSyncResult>}
  */
 async function pollRunningSync(currentData, onProgress) {
+    /** @type {SyncResponse | null} */
     let data = currentData;
 
     if (data?.status === "running" && data.steps) {
