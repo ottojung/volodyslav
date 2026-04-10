@@ -344,12 +344,20 @@ async function synchronize(capabilities, workingPath, origin, options) {
         } catch (error) {
             capabilities.logger.logInfo({ repository: remotePath, error }, "Failed to synchronize repository");
             if (gitmethod.isMergeHostBranchesError(error)) {
+                capabilities.logger.logError(
+                    { repository: remotePath, attempt, error },
+                    "Failed to synchronize repository with merge-host-branches error"
+                );
                 throw error;
             }
             if (attempt < 100) {
                 await new Promise(resolve => setTimeout(resolve, 0));
                 return retry();
             }
+            capabilities.logger.logError(
+                { repository: remotePath, attempt, error },
+                "Failed to synchronize repository after all retry attempts"
+            );
 
             throw error;
         }
@@ -411,6 +419,10 @@ async function initializeEmptyRepository(capabilities, workingPath) {
                 await new Promise(resolve => setTimeout(resolve, 0));
                 return retry();
             }
+            capabilities.logger.logError(
+                { repository: workDir, attempt, err },
+                "Failed to initialize repository after all retry attempts"
+            );
 
             throw err;
         }

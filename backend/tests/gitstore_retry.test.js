@@ -173,8 +173,8 @@ describe("gitstore retry functionality", () => {
             })
         ).rejects.toThrow("Non-push error");
 
-        // Should not have retry logs, only the debug log about not retrying
-        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+        // Should not have retry logs, and should emit an error log about not retrying
+        expect(capabilities.logger.logError).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 1,
                 errorType: "Error"
