@@ -238,6 +238,11 @@ async function unifyRevdeps(T, mergedInputsMap) {
     // Use a Set per input key to automatically deduplicate dependents — an
     // InputsRecord may contain the same input key more than once, and writing
     // duplicate entries would trigger spurious downstream recomputation.
+    //
+    // Memory: O(num_edges) — we hold the full desired revdeps map before
+    // writing.  This is bounded by the number of nodes+edges in the graph,
+    // not by value sizes, so it fits within the O(n) target where
+    // n = max(max_value_size, num_nodes + num_edges).
     /** @type {Map<string, Set<NodeKeyString>>} */
     const desiredSets = new Map();
 
@@ -267,10 +272,11 @@ async function unifyRevdeps(T, mergedInputsMap) {
         targetKeys.add(String(key));
     }
 
+    // Accumulate ops for a single batch write.
+    // Memory: O(num_edges) — revdep values are small (arrays of node-key
+    // strings), so the total size is bounded by the number of graph edges.
     /** @type {DatabaseBatchOperation[]} */
     const ops = [];
-
-    // Put new or changed entries.
     for (const [inputStr, dependents] of desired) {
         const inputKey = stringToNodeKeyString(inputStr);
         if (!targetKeys.has(inputStr)) {

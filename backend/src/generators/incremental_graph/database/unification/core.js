@@ -6,9 +6,11 @@
  * merge-join), reads values only for keys that exist in both stores, and issues
  * only the necessary puts and deletes.
  *
- * Memory policy: O(max(V, K)) where V is the size of the largest single value
- * and K is the number of keys in the adapter.  At most one source value and
- * one target value live in memory at any instant.
+ * Memory policy: O(V) where V is the size of the largest single value read or
+ * written by the core algorithm.  unifyStores() retains only the current
+ * iterator items plus, at most, one source value and one target value at any
+ * instant.  If an adapter materialises or buffers key lists, that memory usage
+ * is an adapter concern rather than memory retained by unifyStores() itself.
  *
  * Atomicity: unifyStores() is intentionally NOT atomic.  A failure mid-run
  * may leave the target in a partially-updated state.  Atomicity is guaranteed

@@ -26,7 +26,7 @@
  */
 
 const path = require('path');
-const { relativePathToKey, keyToRelativePath, parseValue } = require('../render');
+const { relativePathToKey, keyToRelativePath, parseValue } = require('../encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -107,6 +107,9 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         async *listSourceKeys() {
             // Collect all file paths, map each to its raw DB key, then sort.
             // Sorting is required for the merge-join in core.js.
+            //
+            // Memory: O(num_files × avg_rawkey_length).  Only key strings are
+            // held; file contents are never read during key enumeration.
             const allFiles = await walkFilesRecursively(capabilities, inputDir);
             const rawKeys = allFiles.map(absPath => absPathToRawKey(absPath));
             rawKeys.sort();

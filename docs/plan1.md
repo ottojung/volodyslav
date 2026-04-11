@@ -15,11 +15,17 @@ before any I/O, requiring O(|source_keys| + |target_keys|) key memory.
 
 ## Goal
 
-O(n) memory **and** time, where  
+O(n log n) overall time (dominated by key-list sorts in the adapters), with  
+O(n) memory where  
 `n = max(max_value_size, total_key_count + total_edge_count)`
 
-At any instant:
-- At most one source value **and** at most one target value live in memory.
+The **core merge-join** itself is O(n) time and O(V) memory (V = largest value size),
+given sorted key streams.  Adapters that cannot stream pre-sorted keys must sort a
+list of key strings first, paying an extra O(n log n) sort cost.  Values are never
+retained in the key lists; only short path strings are held while sorting.
+
+At any instant the core engine retains:
+- At most one source value **and** at most one target value.
 - Key lists hold only short strings (file paths / node-key JSON), not values.
 
 ## Algorithm: sorted merge-join
@@ -117,21 +123,30 @@ produces sorted output compatible with the merge-join when paired with a real (L
   O(max_value_size) peak memory.
 
 ### `root_database.js`
-New helper `_rawGetInSublevel(sublevelName, innerKey)`: opens the sublevel with JSON encoding and
-calls `sublevel.get(innerKey)`. Used by `fs_to_db.js` and `db_to_fs.js` for on-demand reads.
+New helper `_rawGetInSublevel(sublevelName, innerKey)`: opens (or returns a cached) sublevel with
+JSON encoding and calls `sublevel.get(innerKey)`.  Sublevel instances are cached by name in
+`_sublevelCache` so the wrapper is not reconstructed on every per-key read.
 
-### `render/index.js`
-Exports encoding functions (`keyToRelativePath`, `relativePathToKey`, `serializeValue`,
-`parseValue`) **before** requiring `scan.js`. This breaks the circular-dependency cycle:
+### `database/encoding.js`  (new — promoted from `render/encoding.js`)
+Encoding functions (`keyToRelativePath`, `relativePathToKey`, `serializeValue`, `parseValue`) are
+now a standalone module at the `database/` level with no imports from the unification or render
+subsystems.  This completely eliminates the circular-dependency cycle:
 
+**Old cycle:**
 ```
-fs_to_db.js → render/index.js → scan.js → unification/ → fs_to_db.js
+render/index.js → render.js → ../unification → db_to_fs.js → ../render → render/index.js
 ```
 
-Node.js resolves circular requires by returning the **partial** exports object that has been
-populated so far. By exporting encoding functions first (before `require('./scan')`), the partial
-object already contains the functions that `fs_to_db.js`/`db_to_fs.js` need, so they receive the
-correct values even mid-cycle.
+**New (no cycle):**
+```
+unification/db_to_fs.js  → ../encoding   (standalone leaf)
+unification/fs_to_db.js  → ../encoding   (standalone leaf)
+render/index.js          → ../encoding   (standalone leaf)
+                         → ./render       (render.js → ../unification  -- fine, no cycle back)
+```
+
+`render/encoding.js` is kept as a thin re-export shim (`module.exports = require('../encoding')`)
+for any code that imports encoding from the render subfolder.
 
 ## Memory summary
 
