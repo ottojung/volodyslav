@@ -12,9 +12,10 @@
  * Key format: "{sublevel}\x00{nodeKey}" where \x00 is used as an unambiguous
  * separator that cannot appear in either sublevel names or NodeKey JSON strings.
  *
- * Writes are applied immediately (no buffering).  Each put/delete is issued as
- * a single-element batch to SchemaStorage.batch().  This keeps peak memory at
- * O(max_value_size) and avoids any need for commit/rollback lifecycle methods.
+ * Writes are buffered during unification and flushed once at the end via
+ * flush(), using direct rawPut/del calls on each target sublevel (no batch()
+ * API calls).  This avoids per-key batch overhead while keeping peak memory at
+ * O(num_changed_keys × avg_key_length + max_value_size).
  * Atomicity is guaranteed at a higher level by the replica-cutover mechanism.
  *
  * Source type: the source may be any ReadableSchemaStorage — a real
@@ -27,12 +28,11 @@
  * values.  It satisfies ReadableSchemaStorage so it can be passed as source.
  */
 
-const { stringToNodeKeyString } = require('../types');
-
 /** @typedef {import('../root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
-/** @typedef {import('../types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
+
+const { stringToNodeKeyString } = require('../types');
 
 /**
  * Read-only view of a single sublevel — the minimum interface required by the
@@ -158,28 +158,10 @@ function getTargetSubDb(storage, sublevel) {
 }
 
 /**
- * Create a typed put operation for the given target sublevel.
- * Uses rawPutOp which accepts unknown values but preserves the typed putOp
- * boundary for normal callers.  The value IS the correct runtime type because
- * source and target share the same schema (DB→DB copy invariant).
+ * Pending operation buffered during unification, applied all at once in flush().
  *
- * @param {SchemaStorage} target
- * @param {string} sublevel
- * @param {NodeKeyString} key
- * @param {unknown} value
- * @returns {DatabaseBatchOperation}
+ * @typedef {{ type: 'put', sublevel: string, key: NodeKeyString, value: unknown } | { type: 'del', sublevel: string, key: NodeKeyString }} PendingOp
  */
-function makeSublevelPutOp(target, sublevel, key, value) {
-    switch (sublevel) {
-        case 'values':   return target.values.rawPutOp(key, value);
-        case 'freshness': return target.freshness.rawPutOp(key, value);
-        case 'inputs':   return target.inputs.rawPutOp(key, value);
-        case 'revdeps':  return target.revdeps.rawPutOp(key, value);
-        case 'counters': return target.counters.rawPutOp(key, value);
-        case 'timestamps': return target.timestamps.rawPutOp(key, value);
-        default: throw new Error(`Unknown sublevel name: ${sublevel}`);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Key iteration
@@ -212,9 +194,14 @@ async function* listAllKeys(source, sublevels) {
  * get() and keys() only).  SchemaStorage (LevelDB-backed), InMemorySchemaStorage,
  * and lazy migration sources all satisfy this interface without any casts.
  *
- * Writes are applied immediately: each putTarget/deleteTarget call issues a
- * single-element target.batch() right away.  No commit/rollback is needed.
- * Atomicity is guaranteed at the replica-cutover level (see module-level note).
+ * putTarget and deleteTarget buffer all ops in memory during unification.
+ * flush() applies them all at once using direct rawPut()/del() calls on each
+ * target sublevel (no batch() calls).  This minimises LevelDB round-trip
+ * overhead without retaining any values in the buffer — only key strings and
+ * value references are held.
+ *
+ * Memory: O(num_changed_keys × avg_key_length) for the key buffer, plus
+ * O(max_value_size) for the single source/target value read at any instant.
  *
  * @param {ReadableSchemaStorage} source
  * @param {SchemaStorage} target
@@ -224,6 +211,12 @@ async function* listAllKeys(source, sublevels) {
 function makeDbToDbAdapter(source, target, options = {}) {
     const { excludeSublevels = [] } = options;
     const sublevels = DATA_SUBLEVELS.filter(s => !excludeSublevels.includes(s));
+
+    // Buffer for all pending write operations.
+    // Memory: O(num_changed_keys × avg_key_length + num_changed_values).
+    // All ops are applied once in flush() to avoid per-key LevelDB round-trips.
+    /** @type {PendingOp[]} */
+    const pendingOps = [];
 
     return {
         listSourceKeys: () => listAllKeys(source, sublevels),
@@ -245,12 +238,25 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            await target.batch([makeSublevelPutOp(target, sublevel, stringToNodeKeyString(nodeKey), value)]);
+            pendingOps.push({ type: 'put', sublevel, key: stringToNodeKeyString(nodeKey), value });
         },
 
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            await target.batch([getTargetSubDb(target, sublevel).delOp(stringToNodeKeyString(nodeKey))]);
+            pendingOps.push({ type: 'del', sublevel, key: stringToNodeKeyString(nodeKey) });
+        },
+
+        async flush() {
+            // Apply all buffered ops using direct rawPut/del API.
+            // No batch() calls — each write goes straight to the sublevel.
+            for (const op of pendingOps) {
+                const subDb = getTargetSubDb(target, op.sublevel);
+                if (op.type === 'put') {
+                    await subDb.rawPut(op.key, op.value);
+                } else {
+                    await subDb.del(op.key);
+                }
+            }
         },
     };
 }
@@ -317,6 +323,12 @@ function makeInMemorySchemaStorage() {
                 return store.get(String(key));
             },
             async put(/** @type {string} */ key, /** @type {unknown} */ value) {
+                store.set(String(key), value);
+            },
+            // rawPut() is identical to put() at runtime — the distinction exists
+            // only at the JSDoc/type level so unification adapters can call it
+            // without the TValue constraint while normal callers keep the typed API.
+            async rawPut(/** @type {string} */ key, /** @type {*} */ value) {
                 store.set(String(key), value);
             },
             async del(/** @type {string} */ key) {

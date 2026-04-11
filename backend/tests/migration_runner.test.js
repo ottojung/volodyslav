@@ -18,6 +18,8 @@ function makeInMemoryDb(table) {
     return {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
+        async rawPut(key, value) { store.set(key, value); },
+        async del(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
@@ -899,24 +901,27 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("batch() throws during unification into y: x-namespace data unchanged, switchToReplica not called", async () => {
+    test("rawPut() throws during unification into y: x-namespace data unchanged, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 99 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        // Build a yStorage whose batch function throws
+        // Build a yStorage whose rawPut throws on all sublevels
         const yStorage = makeSchemaStorage();
-        const batchError = new Error("batch write failure");
-        yStorage.batch = async () => { throw batchError; };
+        const writeError = new Error("write failure");
+        for (const name of ['values', 'freshness', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+            yStorage[name].rawPut = async () => { throw writeError; };
+            yStorage[name].del = async () => { throw writeError; };
+        }
 
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
             runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
-        ).rejects.toMatchObject({ cause: batchError });
+        ).rejects.toMatchObject({ cause: writeError });
 
         expect(mock.switchToReplicaCalled).toBe(false);
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
@@ -1268,15 +1273,18 @@ describe("infrastructure failures", () => {
         expect(capabilities.runMigrationInTransaction).not.toHaveBeenCalled();
     });
 
-    test("unification batch throws: error propagates, callback was run, switchToReplica not called", async () => {
+    test("unification rawPut throws: error propagates, callback was run, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        const unificationError = new Error("unification batch failure");
+        const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
-        yStorage.batch = async () => { throw unificationError; };
+        for (const name of ['values', 'freshness', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+            yStorage[name].rawPut = async () => { throw unificationError; };
+            yStorage[name].del = async () => { throw unificationError; };
+        }
         const rootDatabase = {
             version: "2",
             async getMetaVersion() { return "1"; },

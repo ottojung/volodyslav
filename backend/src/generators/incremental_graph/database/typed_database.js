@@ -31,6 +31,7 @@
  * @typedef {object} GenericDatabase
  * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: DatabaseKey, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: DatabaseKey, value: *) => Promise<void>} rawPut - Store a value accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
  * @property {(key: DatabaseKey) => Promise<void>} del - Delete a value
  * @property {(key: DatabaseKey, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
  * @property {(key: DatabaseKey, value: *) => DatabasePutOperation<TValue>} rawPutOp - Store a value operation accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
@@ -79,6 +80,26 @@ class TypedDatabaseClass {
      * @returns {Promise<void>}
      */
     async put(key, value) {
+        await this.sublevel.put(key, value);
+    }
+
+    /**
+     * Store a value in the database, accepting an untyped value.
+     * For use only in unification adapters where values originate from the same
+     * schema and are therefore the correct runtime type despite being typed as
+     * unknown at the call site.  Keeping this separate from put preserves
+     * the typed boundary for normal callers.
+     *
+     * Implementation note: rawPut() and put() are intentionally identical at
+     * runtime — the distinction exists only at the JSDoc/type level.  rawPut()
+     * bypasses the TValue constraint so unification adapters can write values
+     * whose type is guaranteed by the schema invariant but cannot be expressed
+     * in the JSDoc type system without a cast.
+     * @param {DatabaseKey} key - The key to store
+     * @param {*} value - The value to store (must be TValue at runtime)
+     * @returns {Promise<void>}
+     */
+    async rawPut(key, value) {
         await this.sublevel.put(key, value);
     }
 

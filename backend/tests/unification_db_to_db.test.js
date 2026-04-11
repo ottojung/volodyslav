@@ -96,6 +96,13 @@ function makeFakeSchemaStorage() {
         return {
             async get(key) { return store.get(String(key)); },
             async put(key, value) { store.set(String(key), value); },
+            async rawPut(key, value) {
+                allOps.push({ _sublevel: name, type: 'put', key: String(key), value });
+                store.set(String(key), value);
+            },
+            async del(key) {
+                store.delete(String(key));
+            },
             putOp(key, value) {
                 return { _sublevel: name, type: 'put', key: String(key), value };
             },

@@ -81,9 +81,13 @@ interface, greatly simplifying both the core engine and every adapter.
 
 ## Equality comparison
 
-Values are opaque JSON objects. No assumptions are made about key ordering within objects.
-Equality is computed as `JSON.stringify(a) === JSON.stringify(b)` — no sorting, no
-canonicalization. Two values are equal only if their JSON representations are byte-identical.
+Values are opaque JSON objects. Equality is computed as
+`JSON.stringify(a) === JSON.stringify(b)` — no sorting, no canonicalization, and no
+normalization of object key order before comparison. Two values are equal only if their JSON
+representations are byte-identical. This means that object key insertion order is part of
+equality; the same logical value stored with a different key order is treated as different.
+No canonicalization is performed: values are compared as they come out of LevelDB or the
+filesystem.
 
 ## Adapter changes
 

@@ -181,6 +181,15 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
                 );
             }
             const absPath = resolveContainedPath(outputDir, relPath);
+            // P1: If a stale directory occupies this path (i.e. the previous
+            // schema had deeper keys under this prefix that haven't been deleted
+            // yet), remove it before creating the file.  This can happen when
+            // a key like values/event/a is added while values/event/a/b still
+            // exists as a file, because sorted order places the parent before its
+            // children so the put arrives before the child delete.
+            if (await capabilities.checker.directoryExists(absPath)) {
+                await capabilities.deleter.deleteDirectory(absPath);
+            }
             const file = await capabilities.creator.createFile(absPath);
             await capabilities.writer.writeFile(file, content);
         },

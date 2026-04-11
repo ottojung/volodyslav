@@ -26,7 +26,7 @@
  */
 
 const path = require('path');
-const { relativePathToKey, keyToRelativePath, parseValue } = require('../encoding');
+const { relativePathToKey, parseValue } = require('../encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -88,18 +88,17 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
     }
 
     /**
-     * Convert a raw LevelDB key back to the absolute file path.
-     * rawKey format: "!{sublevel}!..." where the outer prefix is stripped
-     * to get the inner key within the sublevel.
-     * We use relativePathToKey's inverse: keyToRelativePath + strip prefix.
-     * @param {string} rawKey
-     * @returns {string}
+     * Map from raw LevelDB key to the original absolute file path discovered
+     * during listSourceKeys().  Preserved because keyToRelativePath() always
+     * produces the canonical (uppercase) encoding, which would fail to match
+     * manually-created snapshot files that use tolerantly-accepted lowercase
+     * escape sequences (e.g. %2e instead of %2E).  This map lets readSource()
+     * use the actual discovered path for reading, preserving case exactly.
+     *
+     * Memory: O(num_source_files × avg_path_length) — key strings only, no values.
+     * @type {Map<string, string>}
      */
-    function rawKeyToAbsPath(rawKey) {
-        const fullRelPath = keyToRelativePath(rawKey);
-        const relPath = fullRelPath.slice(sublevelPathPrefix.length);
-        return path.join(inputDir, relPath.split('/').join(path.sep));
-    }
+    const sourceKeyToAbsPath = new Map();
 
     const rawKeyPrefix = '!' + sublevel + '!';
 
@@ -107,13 +106,17 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         async *listSourceKeys() {
             // Collect all file paths, map each to its raw DB key, then sort.
             // Sorting is required for the merge-join in core.js.
+            // The sourceKeyToAbsPath map is populated here so readSource() can
+            // use the original discovered path (P2: preserve path casing).
             //
             // Memory: O(num_files × avg_rawkey_length).  Only key strings are
             // held; file contents are never read during key enumeration.
             const allFiles = await walkFilesRecursively(capabilities, inputDir);
-            const rawKeys = allFiles.map(absPath => absPathToRawKey(absPath));
-            rawKeys.sort();
-            for (const rawKey of rawKeys) {
+            /** @type {Array<{rawKey: string, absPath: string}>} */
+            const entries = allFiles.map(absPath => ({ rawKey: absPathToRawKey(absPath), absPath }));
+            entries.sort((a, b) => (a.rawKey < b.rawKey ? -1 : a.rawKey > b.rawKey ? 1 : 0));
+            for (const { rawKey, absPath } of entries) {
+                sourceKeyToAbsPath.set(rawKey, absPath);
                 yield rawKey;
             }
         },
@@ -127,7 +130,13 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async readSource(rawKey) {
-            const absPath = rawKeyToAbsPath(rawKey);
+            // Use the original discovered path to preserve filename casing.
+            // keyToRelativePath() always produces canonical uppercase encoding,
+            // which would fail for manually-created files with lowercase escapes.
+            const absPath = sourceKeyToAbsPath.get(rawKey);
+            if (absPath === undefined) {
+                throw new Error(`fs_to_db readSource: no path recorded for key '${rawKey}'`);
+            }
             const content = await capabilities.reader.readFileAsText(absPath);
             return parseValue(content);
         },
