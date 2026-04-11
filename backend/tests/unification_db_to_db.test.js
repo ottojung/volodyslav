@@ -112,7 +112,7 @@ function makeFakeSchemaStorage() {
             delOp(key) {
                 return { _sublevel: name, type: 'del', key: String(key) };
             },
-            async *keys() { for (const k of store.keys()) yield k; },
+            async *keys() { for (const k of Array.from(store.keys()).sort()) yield k; },
         };
     }
 

@@ -157,12 +157,6 @@ function getTargetSubDb(storage, sublevel) {
     }
 }
 
-/**
- * Pending operation buffered during unification, applied all at once in flush().
- *
- * @typedef {{ type: 'put', sublevel: string, key: NodeKeyString, value: unknown } | { type: 'del', sublevel: string, key: NodeKeyString }} PendingOp
- */
-
 // ---------------------------------------------------------------------------
 // Key iteration
 // ---------------------------------------------------------------------------
@@ -194,14 +188,13 @@ async function* listAllKeys(source, sublevels) {
  * get() and keys() only).  SchemaStorage (LevelDB-backed), InMemorySchemaStorage,
  * and lazy migration sources all satisfy this interface without any casts.
  *
- * putTarget and deleteTarget buffer all ops in memory during unification.
- * flush() applies them all at once using direct rawPut()/del() calls on each
- * target sublevel (no batch() calls).  This minimises LevelDB round-trip
- * overhead without retaining any values in the buffer — only key strings and
- * value references are held.
+ * putTarget and deleteTarget write each operation immediately via direct
+ * rawPut()/del() calls on the target sublevel (no batch() calls, no buffering).
+ * This keeps peak memory at O(max_value_size) — at most one value is live in
+ * the call frame at any instant.
  *
- * Memory: O(num_changed_keys × avg_key_length) for the key buffer, plus
- * O(max_value_size) for the single source/target value read at any instant.
+ * Memory: O(max_value_size) for the single source/target value held during
+ * each individual put operation.
  *
  * @param {ReadableSchemaStorage} source
  * @param {SchemaStorage} target
@@ -211,12 +204,6 @@ async function* listAllKeys(source, sublevels) {
 function makeDbToDbAdapter(source, target, options = {}) {
     const { excludeSublevels = [] } = options;
     const sublevels = DATA_SUBLEVELS.filter(s => !excludeSublevels.includes(s));
-
-    // Buffer for all pending write operations.
-    // Memory: O(num_changed_keys × avg_key_length + num_changed_values).
-    // All ops are applied once in flush() to avoid per-key LevelDB round-trips.
-    /** @type {PendingOp[]} */
-    const pendingOps = [];
 
     return {
         listSourceKeys: () => listAllKeys(source, sublevels),
@@ -238,25 +225,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            pendingOps.push({ type: 'put', sublevel, key: stringToNodeKeyString(nodeKey), value });
+            await getTargetSubDb(target, sublevel).rawPut(stringToNodeKeyString(nodeKey), value);
         },
 
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            pendingOps.push({ type: 'del', sublevel, key: stringToNodeKeyString(nodeKey) });
-        },
-
-        async flush() {
-            // Apply all buffered ops using direct rawPut/del API.
-            // No batch() calls — each write goes straight to the sublevel.
-            for (const op of pendingOps) {
-                const subDb = getTargetSubDb(target, op.sublevel);
-                if (op.type === 'put') {
-                    await subDb.rawPut(op.key, op.value);
-                } else {
-                    await subDb.del(op.key);
-                }
-            }
+            await getTargetSubDb(target, sublevel).del(stringToNodeKeyString(nodeKey));
         },
     };
 }

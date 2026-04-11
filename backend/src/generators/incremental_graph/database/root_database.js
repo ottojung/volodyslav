@@ -276,14 +276,6 @@ class RootDatabaseClass {
     _ySchemaStorage;
 
     /**
-     * Cache of top-level sublevel instances, keyed by sublevel name.
-     * Avoids reconstructing the same sublevel wrapper on every _rawGetInSublevel call.
-     * @private
-     * @type {Map<string, SchemaSublevelType>}
-     */
-    _sublevelCache = new Map();
-
-    /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
      * @param {Version} version - The current application version
@@ -582,20 +574,13 @@ class RootDatabaseClass {
      * The innerKey is the portion of the raw LevelDB key after the
      * "!{sublevelName}!" prefix.  Returns undefined if not found.
      *
-     * Sublevel instances are cached so repeated calls for the same sublevel
-     * name do not reconstruct the wrapper object each time.
-     *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
      * @param {string} innerKey - Key within the sublevel.
      * @returns {Promise<unknown>}
      */
     async _rawGetInSublevel(sublevelName, innerKey) {
-        let sublevel = this._sublevelCache.get(sublevelName);
-        if (sublevel === undefined) {
-            /** @type {SchemaSublevelType} */
-            sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-            this._sublevelCache.set(sublevelName, sublevel);
-        }
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
         return await sublevel.get(stringToNodeKeyString(innerKey));
     }
 

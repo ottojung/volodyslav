@@ -100,8 +100,9 @@ Rewritten to the merge-join above. No `Set` objects. No begin/commit/rollback. M
   source and target iterators produce keys in the same lexicographic order.
 - `InMemorySchemaStorage.makeSubstorage.keys()` now sorts Map keys before yielding, to match
   LevelDB's byte-sorted order for ASCII NodeKey strings.
-- Writes are applied immediately (no buffer): each `putTarget`/`deleteTarget` calls
-  `target.batch([singleOp])` immediately. O(max_value_size) peak memory.
+- Writes are applied immediately (no buffering): each `putTarget` calls `rawPut()` and each
+  `deleteTarget` calls `del()` directly on the target sublevel. No `batch()` calls. O(max_value_size)
+  peak memory — at most one value is live in the call frame at any instant.
 
 ### `migration_runner.js` – `makeLazyMigrationSource`
 Each sublevel's `keys()` method sorts decision-map keys before yielding, so the lazy source

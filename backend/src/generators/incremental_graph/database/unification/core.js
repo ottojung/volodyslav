@@ -20,6 +20,15 @@
  *
  * Requirement: both listSourceKeys() and listTargetKeys() MUST yield keys in
  * ascending lexicographic order for the merge-join to produce correct results.
+ *
+ * Key ordering assumption: keys are compared with JS string operators (<, >),
+ * which use UCS-2/UTF-16 code-unit order.  LevelDB iterates keys in UTF-8
+ * byte order.  These orderings agree for all Unicode code points in the Basic
+ * Multilingual Plane (U+0000–U+FFFF), which covers every character that can
+ * appear in the internal NodeKey strings used here (ASCII alphanumerics plus
+ * the separator byte \x00).  Adapters that sort in JS (e.g. db_to_fs, fs_to_db)
+ * use Array.prototype.sort(), which also uses UCS-2 order and therefore
+ * produces the same ordering as LevelDB for these keys.
  */
 
 /**
