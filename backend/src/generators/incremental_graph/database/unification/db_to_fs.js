@@ -26,7 +26,7 @@
  */
 
 const path = require('path');
-const { keyToRelativePath, relativePathToKey, serializeValue } = require('../render');
+const { keyToRelativePath, serializeValue } = require('../render/encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -114,11 +114,18 @@ async function walkFilesRecursively(capabilities, dir) {
 function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
     const sublevelPrefix = sublevel + '/';
 
+    // Cache of relPath → serialized string built during listSourceKeys().
+    // Avoids a full O(n) sublevel scan per readSource() call (O(n^2) total).
+    /** @type {Map<string, string>} */
+    const sourceCache = new Map();
+
     return {
         async *listSourceKeys() {
-            for await (const [rawKey] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+            for await (const [rawKey, value] of rootDatabase._rawEntriesForSublevel(sublevel)) {
                 const fullRelPath = keyToRelativePath(rawKey);
-                yield fullRelPath.slice(sublevelPrefix.length);
+                const relPath = fullRelPath.slice(sublevelPrefix.length);
+                sourceCache.set(relPath, serializeValue(value));
+                yield relPath;
             }
         },
 
@@ -133,11 +140,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
         },
 
         async readSource(relPath) {
-            const rawKey = relativePathToKey(sublevelPrefix + relPath);
-            for await (const [key, value] of rootDatabase._rawEntriesForSublevel(sublevel)) {
-                if (key === rawKey) return serializeValue(value);
-            }
-            return undefined;
+            return sourceCache.get(relPath);
         },
 
         async readTarget(relPath) {

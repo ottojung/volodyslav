@@ -1,16 +1,15 @@
 /**
  * Tests for the core gentle-unification engine (unification/core.js).
  *
- * Validates:
+ * Covers core synchronization scenarios and failure handling, including:
  *   1. No-op convergence: running on already-identical stores writes nothing.
  *   2. Pure put: source has keys absent from target → all written.
  *   3. Pure delete: target has keys absent from source → all deleted.
  *   4. Mixed patch: some keys added, some removed, some unchanged.
  *   5. Value update: key exists in both but values differ → put.
- *   6. Deterministic order: same inputs produce same operation sequence.
- *   7. Error propagation: each phase error wraps cause and has correct type.
- *   8. Idempotency: running twice yields zero writes on second run.
- *   9. Stats accuracy: sourceCount, targetCount, putCount, deleteCount, unchangedCount.
+ *   6. Error propagation: each phase error wraps cause and has correct type.
+ *   7. Idempotency: running twice yields zero writes on second run.
+ *   8. Stats accuracy: sourceCount, targetCount, putCount, deleteCount, unchangedCount.
  */
 
 const {

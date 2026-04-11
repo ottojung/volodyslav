@@ -21,7 +21,7 @@
  */
 
 const path = require('path');
-const { relativePathToKey, keyToRelativePath, parseValue } = require('../render');
+const { relativePathToKey, keyToRelativePath, parseValue } = require('../render/encoding');
 const { stableStringify } = require('./db_to_db');
 const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
 
