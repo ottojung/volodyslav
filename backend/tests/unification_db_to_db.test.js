@@ -4,55 +4,18 @@
  * Validates:
  *   1. makeDbToDbAdapter correctly unifies two real SchemaStorages.
  *   2. makeInMemorySchemaStorage captures writes from applyDecisions-like code.
- *   3. stableStringify produces consistent equality results for object values.
- *   4. Only changed keys are written; unchanged keys are left alone.
- *   5. Keys present in target but absent from source are deleted.
- *   6. The adapter correctly handles all DATA_SUBLEVELS.
- *   7. Batch chunking works for large sets of ops.
+ *   3. Only changed keys are written; unchanged keys are left alone.
+ *   4. Keys present in target but absent from source are deleted.
+ *   5. The adapter correctly handles all DATA_SUBLEVELS.
  */
 
 const {
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
-    stableStringify,
     unifyStores,
 } = require('../src/generators/incremental_graph/database/unification');
 
 const { stringToNodeKeyString } = require('../src/generators/incremental_graph/database/types');
-
-// ---------------------------------------------------------------------------
-// stableStringify tests
-// ---------------------------------------------------------------------------
-
-describe('stableStringify', () => {
-    test('primitives are serialised like JSON.stringify', () => {
-        expect(stableStringify(null)).toBe('null');
-        expect(stableStringify(1)).toBe('1');
-        expect(stableStringify('hello')).toBe('"hello"');
-        expect(stableStringify(true)).toBe('true');
-    });
-
-    test('arrays preserve order', () => {
-        expect(stableStringify([3, 1, 2])).toBe('[3,1,2]');
-        expect(stableStringify([{ b: 2, a: 1 }])).toBe('[{"a":1,"b":2}]');
-    });
-
-    test('object keys are sorted alphabetically', () => {
-        expect(stableStringify({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
-        expect(stableStringify({ a: 1, b: 2 })).toBe('{"a":1,"b":2}');
-    });
-
-    test('nested objects have keys sorted at every level', () => {
-        const obj = { z: { y: 2, x: 1 }, a: 0 };
-        expect(stableStringify(obj)).toBe('{"a":0,"z":{"x":1,"y":2}}');
-    });
-
-    test('equal objects with different insertion order compare equal', () => {
-        const a = { x: 1, y: 2 };
-        const b = { y: 2, x: 1 };
-        expect(stableStringify(a)).toBe(stableStringify(b));
-    });
-});
 
 // ---------------------------------------------------------------------------
 // makeInMemorySchemaStorage tests

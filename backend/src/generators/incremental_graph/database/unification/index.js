@@ -6,6 +6,11 @@
  * implements the UnificationAdapter interface; the core unifyStores function
  * drives the common algorithm.
  *
+ * Unification is intentionally non-atomic: a failure mid-run may leave the
+ * target in a partially-updated state.  Atomicity is provided at a higher
+ * level by the replica-cutover mechanism.  The target is always an inactive
+ * replica that is not read until cutover succeeds.
+ *
  * Available adapters:
  *   makeDbToDbAdapter    — one SchemaStorage (or InMemorySchemaStorage) → another
  *   makeInMemorySchemaStorage — temporary in-memory capture store
@@ -25,14 +30,11 @@ const {
     isUnificationWriteError,
     UnificationDeleteError,
     isUnificationDeleteError,
-    UnificationCommitError,
-    isUnificationCommitError,
 } = require('./core');
 
 const {
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
-    stableStringify,
 } = require('./db_to_db');
 
 const { makeFsToDbAdapter } = require('./fs_to_db');
@@ -48,11 +50,8 @@ module.exports = {
     isUnificationWriteError,
     UnificationDeleteError,
     isUnificationDeleteError,
-    UnificationCommitError,
-    isUnificationCommitError,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
-    stableStringify,
     makeFsToDbAdapter,
     makeDbToFsAdapter,
 };

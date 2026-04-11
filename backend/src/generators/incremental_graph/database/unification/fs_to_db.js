@@ -9,21 +9,24 @@
  * strategy in scanFromFilesystem: instead of deleting the entire sublevel and
  * rewriting all entries, it issues only the necessary puts and deletes.
  *
+ * Writes are applied immediately (no buffering).  Atomicity is not guaranteed
+ * at this level; it is provided at a higher level by the replica-cutover
+ * mechanism.  The target sublevel is always an inactive replica that is not
+ * read until cutover succeeds.
+ *
  * Key space: raw LevelDB keys for the target sublevel
  * (e.g. "!x!!values!{\"head\":\"all_events\",\"args\":[]}").
  * - listSourceKeys walks the input directory and maps each file path to its
  *   corresponding raw DB key via relativePathToKey().
  * - listTargetKeys iterates the database sublevel directly.
  * - readSource reads and parses the file content.
- * - readTarget reads the deserialized value from the database.
- * - equals compares deserialized (JSON) values using stable stringify.
- * - putTarget and deleteTarget buffer operations and flush in chunks.
+ * - readTarget reads the deserialized value from the database on-demand.
+ * - equals compares deserialized (JSON) values using JSON.stringify.
+ * - putTarget and deleteTarget write/delete immediately.
  */
 
 const path = require('path');
 const { relativePathToKey, keyToRelativePath, parseValue } = require('../render');
-const { stableStringify } = require('./db_to_db');
-const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -98,11 +101,6 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         return path.join(inputDir, relPath.split('/').join(path.sep));
     }
 
-    /** @type {Array<{ rawKey: string, absPath: string }>} */
-    let pendingPuts = [];
-    /** @type {string[]} */
-    let pendingDeletes = [];
-
     const rawKeyPrefix = '!' + sublevel + '!';
 
     return {
@@ -138,51 +136,17 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         equals(sv, tv) {
-            return stableStringify(sv) === stableStringify(tv);
+            return JSON.stringify(sv) === JSON.stringify(tv);
         },
 
-        async putTarget(rawKey, _value) {
-            // Buffer (rawKey, absPath) only — the value is intentionally
-            // discarded here and re-read from the file during commit().
-            // This keeps memory at O(1) while preserving atomicity:
-            // if readSource() failed, putTarget() is never reached for
-            // that key, so the DB is left untouched on any read failure.
-            const absPath = rawKeyToAbsPath(rawKey);
-            pendingPuts.push({ rawKey, absPath });
+        async putTarget(rawKey, value) {
+            // Write immediately. O(max_value_size) memory: only one value live at once.
+            await rootDatabase._rawPutAll([{ key: rawKey, value }]);
         },
 
         async deleteTarget(rawKey) {
-            // Buffer the delete for the same atomicity reason as putTarget.
-            pendingDeletes.push(rawKey);
-        },
-
-        async commit() {
-            // Flush all buffered deletes first (in chunks), then re-read each
-            // source file and write it to the DB in chunks to keep memory at
-            // O(RAW_BATCH_CHUNK_SIZE × max_value_size) = O(max_value_size).
-            while (pendingDeletes.length > 0) {
-                await rootDatabase._rawDeleteKeys(pendingDeletes.splice(0, RAW_BATCH_CHUNK_SIZE));
-            }
-            /** @type {Array<{key: string, value: unknown}>} */
-            let batch = [];
-            for (const { rawKey, absPath } of pendingPuts) {
-                const content = await capabilities.reader.readFileAsText(absPath);
-                const value = parseValue(content);
-                batch.push({ key: rawKey, value });
-                if (batch.length >= RAW_BATCH_CHUNK_SIZE) {
-                    await rootDatabase._rawPutAll(batch);
-                    batch = [];
-                }
-            }
-            if (batch.length > 0) {
-                await rootDatabase._rawPutAll(batch);
-            }
-            pendingPuts = [];
-        },
-
-        async rollback() {
-            pendingPuts = [];
-            pendingDeletes = [];
+            // Delete immediately. No buffering needed.
+            await rootDatabase._rawDeleteKeys([rawKey]);
         },
     };
 }

@@ -47,7 +47,7 @@ const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_
 const { stringToNodeKeyString, versionToString } = require('./types');
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
-const { makeDbToDbAdapter, unifyStores, stableStringify } = require('./unification');
+const { makeDbToDbAdapter, unifyStores } = require('./unification');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -277,7 +277,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
             ops.push(T.revdeps.putOp(inputKey, dependents));
         } else {
             const existing = await T.revdeps.get(inputKey);
-            if (stableStringify(existing) !== stableStringify(dependents)) {
+            if (JSON.stringify(existing) !== JSON.stringify(dependents)) {
                 ops.push(T.revdeps.putOp(inputKey, dependents));
             }
         }

@@ -6,10 +6,15 @@
  * merge-join), reads values only for keys that exist in both stores, and issues
  * only the necessary puts and deletes.
  *
- * Memory policy: O(|X| + |k|) where |X| is the size of the largest single
- * value and |k| is the number of keys held by the adapter for sorting.
- * No key sets are materialised; at most one source value and one target value
- * live in memory at any instant.
+ * Memory policy: O(max(V, K)) where V is the size of the largest single value
+ * and K is the number of keys in the adapter.  At most one source value and
+ * one target value live in memory at any instant.
+ *
+ * Atomicity: unifyStores() is intentionally NOT atomic.  A failure mid-run
+ * may leave the target in a partially-updated state.  Atomicity is guaranteed
+ * at a higher level by the replica-cutover mechanism: the target store is
+ * always an *inactive* replica that is never read until cutover succeeds.
+ * Callers must not rely on rollback behaviour from this function.
  *
  * Requirement: both listSourceKeys() and listTargetKeys() MUST yield keys in
  * ascending lexicographic order for the merge-join to produce correct results.
@@ -114,28 +119,6 @@ function isUnificationDeleteError(object) {
 }
 
 /**
- * Thrown when committing the adapter's buffered operations fails.
- */
-class UnificationCommitError extends Error {
-    /**
-     * @param {unknown} cause
-     */
-    constructor(cause) {
-        super(`Failed to commit unification: ${cause}`);
-        this.name = 'UnificationCommitError';
-        this.cause = cause;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is UnificationCommitError}
- */
-function isUnificationCommitError(object) {
-    return object instanceof UnificationCommitError;
-}
-
-/**
  * Result statistics returned by unifyStores().
  *
  * @typedef {object} UnificationStats
@@ -149,6 +132,10 @@ function isUnificationCommitError(object) {
 /**
  * Adapter interface that every unification adapter must implement.
  *
+ * No start/commit/rollback lifecycle methods: unification is intentionally
+ * non-atomic (see module-level note).  Each putTarget/deleteTarget call may
+ * write to the target immediately.
+ *
  * @typedef {object} UnificationAdapter
  * @property {() => AsyncIterable<string>} listSourceKeys
  * @property {() => AsyncIterable<string>} listTargetKeys
@@ -157,9 +144,6 @@ function isUnificationCommitError(object) {
  * @property {(sourceValue: unknown, targetValue: unknown) => boolean} equals
  * @property {(key: string, value: unknown) => Promise<void>} putTarget
  * @property {(key: string) => Promise<void>} deleteTarget
- * @property {(() => Promise<void>) | undefined} [begin]
- * @property {(() => Promise<void>) | undefined} [commit]
- * @property {(() => Promise<void>) | undefined} [rollback]
  */
 
 /**
@@ -175,8 +159,9 @@ function isUnificationCommitError(object) {
  * ensure a stale prefix path (e.g. "values/foo") is encountered before the
  * new deeper path that would conflict with it (e.g. "values/foo/bar").
  *
- * Calls adapter.commit() if present.
- * Calls adapter.rollback() (best-effort) if an error occurs after begin().
+ * This function is NOT atomic: a failure mid-run may leave the target
+ * partially updated.  Atomicity is guaranteed at a higher level by the
+ * replica-cutover mechanism (see module-level note).
  *
  * REQUIREMENT: both listSourceKeys() and listTargetKeys() MUST yield keys in
  * ascending lexicographic order.
@@ -185,145 +170,122 @@ function isUnificationCommitError(object) {
  * @returns {Promise<UnificationStats>}
  */
 async function unifyStores(adapter) {
-    if (adapter.begin !== undefined) {
-        await adapter.begin();
-    }
+    const sourceIter = adapter.listSourceKeys()[Symbol.asyncIterator]();
+    const targetIter = adapter.listTargetKeys()[Symbol.asyncIterator]();
 
-    try {
-        const sourceIter = adapter.listSourceKeys()[Symbol.asyncIterator]();
-        const targetIter = adapter.listTargetKeys()[Symbol.asyncIterator]();
+    /**
+     * Advance the source iterator, wrapping errors as UnificationListError.
+     * @returns {Promise<IteratorResult<string>>}
+     */
+    const nextSource = async () => {
+        try {
+            return await sourceIter.next();
+        } catch (err) {
+            throw new UnificationListError('source', err);
+        }
+    };
 
-        /**
-         * Advance the source iterator, wrapping errors as UnificationListError.
-         * @returns {Promise<IteratorResult<string>>}
-         */
-        const nextSource = async () => {
+    /**
+     * Advance the target iterator, wrapping errors as UnificationListError.
+     * @returns {Promise<IteratorResult<string>>}
+     */
+    const nextTarget = async () => {
+        try {
+            return await targetIter.next();
+        } catch (err) {
+            throw new UnificationListError('target', err);
+        }
+    };
+
+    let sNext = await nextSource();
+    let tNext = await nextTarget();
+
+    let putCount = 0;
+    let deleteCount = 0;
+    let unchangedCount = 0;
+    let sourceCount = 0;
+    let targetCount = 0;
+
+    while (!sNext.done || !tNext.done) {
+        /** @type {number} */
+        let cmp;
+        if (sNext.done) {
+            cmp = 1;
+        } else if (tNext.done) {
+            cmp = -1;
+        } else {
+            const sk = String(sNext.value);
+            const tk = String(tNext.value);
+            cmp = sk < tk ? -1 : sk > tk ? 1 : 0;
+        }
+
+        if (cmp < 0) {
+            // Source-only key: put to target.
+            sourceCount++;
+            /** @type {unknown} */
+            let sourceValue;
             try {
-                return await sourceIter.next();
+                sourceValue = await adapter.readSource(sNext.value);
             } catch (err) {
-                throw new UnificationListError('source', err);
+                throw new UnificationReadError('source', sNext.value, err);
             }
-        };
-
-        /**
-         * Advance the target iterator, wrapping errors as UnificationListError.
-         * @returns {Promise<IteratorResult<string>>}
-         */
-        const nextTarget = async () => {
             try {
-                return await targetIter.next();
+                await adapter.putTarget(sNext.value, sourceValue);
             } catch (err) {
-                throw new UnificationListError('target', err);
+                throw new UnificationWriteError(sNext.value, err);
             }
-        };
-
-        let sNext = await nextSource();
-        let tNext = await nextTarget();
-
-        let putCount = 0;
-        let deleteCount = 0;
-        let unchangedCount = 0;
-        let sourceCount = 0;
-        let targetCount = 0;
-
-        while (!sNext.done || !tNext.done) {
-            /** @type {number} */
-            let cmp;
-            if (sNext.done) {
-                cmp = 1;
-            } else if (tNext.done) {
-                cmp = -1;
-            } else {
-                const sk = String(sNext.value);
-                const tk = String(tNext.value);
-                cmp = sk < tk ? -1 : sk > tk ? 1 : 0;
+            putCount++;
+            sNext = await nextSource();
+        } else if (cmp > 0) {
+            // Target-only key: delete from target.
+            targetCount++;
+            try {
+                await adapter.deleteTarget(tNext.value);
+            } catch (err) {
+                throw new UnificationDeleteError(tNext.value, err);
             }
-
-            if (cmp < 0) {
-                // Source-only key: put to target.
-                sourceCount++;
-                /** @type {unknown} */
-                let sourceValue;
-                try {
-                    sourceValue = await adapter.readSource(sNext.value);
-                } catch (err) {
-                    throw new UnificationReadError('source', sNext.value, err);
-                }
+            deleteCount++;
+            tNext = await nextTarget();
+        } else {
+            // Key present in both: compare values and put only if different.
+            sourceCount++;
+            targetCount++;
+            /** @type {unknown} */
+            let sourceValue;
+            try {
+                sourceValue = await adapter.readSource(sNext.value);
+            } catch (err) {
+                throw new UnificationReadError('source', sNext.value, err);
+            }
+            /** @type {unknown} */
+            let targetValue;
+            try {
+                targetValue = await adapter.readTarget(tNext.value);
+            } catch (err) {
+                throw new UnificationReadError('target', tNext.value, err);
+            }
+            if (!adapter.equals(sourceValue, targetValue)) {
                 try {
                     await adapter.putTarget(sNext.value, sourceValue);
                 } catch (err) {
                     throw new UnificationWriteError(sNext.value, err);
                 }
                 putCount++;
-                sNext = await nextSource();
-            } else if (cmp > 0) {
-                // Target-only key: delete from target.
-                targetCount++;
-                try {
-                    await adapter.deleteTarget(tNext.value);
-                } catch (err) {
-                    throw new UnificationDeleteError(tNext.value, err);
-                }
-                deleteCount++;
-                tNext = await nextTarget();
             } else {
-                // Key present in both: compare values and put only if different.
-                sourceCount++;
-                targetCount++;
-                /** @type {unknown} */
-                let sourceValue;
-                try {
-                    sourceValue = await adapter.readSource(sNext.value);
-                } catch (err) {
-                    throw new UnificationReadError('source', sNext.value, err);
-                }
-                /** @type {unknown} */
-                let targetValue;
-                try {
-                    targetValue = await adapter.readTarget(tNext.value);
-                } catch (err) {
-                    throw new UnificationReadError('target', tNext.value, err);
-                }
-                if (!adapter.equals(sourceValue, targetValue)) {
-                    try {
-                        await adapter.putTarget(sNext.value, sourceValue);
-                    } catch (err) {
-                        throw new UnificationWriteError(sNext.value, err);
-                    }
-                    putCount++;
-                } else {
-                    unchangedCount++;
-                }
-                sNext = await nextSource();
-                tNext = await nextTarget();
+                unchangedCount++;
             }
+            sNext = await nextSource();
+            tNext = await nextTarget();
         }
-
-        if (adapter.commit !== undefined) {
-            try {
-                await adapter.commit();
-            } catch (err) {
-                throw new UnificationCommitError(err);
-            }
-        }
-
-        return {
-            sourceCount,
-            targetCount,
-            putCount,
-            deleteCount,
-            unchangedCount,
-        };
-    } catch (err) {
-        if (adapter.rollback !== undefined) {
-            try {
-                await adapter.rollback();
-            } catch (_rollbackErr) {
-                // Best-effort; swallow rollback errors.
-            }
-        }
-        throw err;
     }
+
+    return {
+        sourceCount,
+        targetCount,
+        putCount,
+        deleteCount,
+        unchangedCount,
+    };
 }
 
 module.exports = {
@@ -336,6 +298,4 @@ module.exports = {
     isUnificationWriteError,
     UnificationDeleteError,
     isUnificationDeleteError,
-    UnificationCommitError,
-    isUnificationCommitError,
 };

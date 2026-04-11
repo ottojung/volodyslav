@@ -19,7 +19,6 @@ const {
     isUnificationReadError,
     isUnificationWriteError,
     isUnificationDeleteError,
-    isUnificationCommitError,
 } = require('../src/generators/incremental_graph/database/unification');
 
 // ---------------------------------------------------------------------------
@@ -159,36 +158,6 @@ describe('unifyStores', () => {
         expect(stats2.deleteCount).toBe(0);
     });
 
-    test('commit is called after phase 2 and 3', async () => {
-        const source = new Map([['x', 1]]);
-        const target = new Map();
-        let commitCalled = false;
-        const { adapter } = makeMapAdapter(source, target);
-        adapter.commit = async () => { commitCalled = true; };
-
-        await unifyStores(adapter);
-
-        expect(commitCalled).toBe(true);
-    });
-
-    test('begin is called before any reads or writes', async () => {
-        const callOrder = [];
-        const source = new Map([['k', 1]]);
-        const target = new Map();
-        const { adapter } = makeMapAdapter(source, target);
-        adapter.begin = async () => { callOrder.push('begin'); };
-        const origListSource = adapter.listSourceKeys.bind(adapter);
-        adapter.listSourceKeys = async function* () {
-            callOrder.push('listSource');
-            yield* origListSource();
-        };
-
-        await unifyStores(adapter);
-
-        expect(callOrder[0]).toBe('begin');
-        expect(callOrder[1]).toBe('listSource');
-    });
-
     // ── Error propagation ────────────────────────────────────────────────────
 
     test('listSourceKeys error → UnificationListError(source)', async () => {
@@ -307,45 +276,12 @@ describe('unifyStores', () => {
         expect(thrown.cause).toBe(cause);
     });
 
-    test('commit error → UnificationCommitError', async () => {
-        const cause = new Error('commit boom');
-        const source = new Map([['a', 1]]);
-        const target = new Map();
-        const { adapter } = makeMapAdapter(source, target);
-        adapter.commit = async () => { throw cause; };
-
-        let thrown;
-        try { await unifyStores(adapter); } catch (e) { thrown = e; }
-        expect(isUnificationCommitError(thrown)).toBe(true);
-        expect(thrown.cause).toBe(cause);
-    });
-
-    test('rollback is called on error after begin', async () => {
-        const cause = new Error('list boom');
-        let rollbackCalled = false;
-        const adapter = {
-            begin: async () => {},
-            listSourceKeys: async function* () { yield* []; throw cause; },
-            listTargetKeys: async function* () { yield* []; },
-            readSource: async () => undefined,
-            readTarget: async () => undefined,
-            equals: () => false,
-            putTarget: async () => {},
-            deleteTarget: async () => {},
-            rollback: async () => { rollbackCalled = true; },
-        };
-
-        try { await unifyStores(adapter); } catch (_) { /* expected */ }
-        expect(rollbackCalled).toBe(true);
-    });
-
     test('error type guards return false for non-matching types', () => {
         const err = new Error('generic');
         expect(isUnificationListError(err)).toBe(false);
         expect(isUnificationReadError(err)).toBe(false);
         expect(isUnificationWriteError(err)).toBe(false);
         expect(isUnificationDeleteError(err)).toBe(false);
-        expect(isUnificationCommitError(err)).toBe(false);
 
         expect(isUnificationListError(null)).toBe(false);
         expect(isUnificationListError(undefined)).toBe(false);

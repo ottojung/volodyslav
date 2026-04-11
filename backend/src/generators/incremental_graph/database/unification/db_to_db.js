@@ -12,12 +12,10 @@
  * Key format: "{sublevel}\x00{nodeKey}" where \x00 is used as an unambiguous
  * separator that cannot appear in either sublevel names or NodeKey JSON strings.
  *
- * Batch buffering: puts and deletes are accumulated and flushed in chunks of
- * RAW_BATCH_CHUNK_SIZE through target.batch() for efficiency.  commit() flushes
- * any remaining buffered operations.  rollback() discards the buffer without
- * flushing (already-flushed writes cannot be undone since LevelDB has no
- * rollback; this is acceptable because crash-safety is handled at a higher
- * level).
+ * Writes are applied immediately (no buffering).  Each put/delete is issued as
+ * a single-element batch to SchemaStorage.batch().  This keeps peak memory at
+ * O(max_value_size) and avoids any need for commit/rollback lifecycle methods.
+ * Atomicity is guaranteed at a higher level by the replica-cutover mechanism.
  *
  * Source type: the source may be any ReadableSchemaStorage — a real
  * SchemaStorage (LevelDB-backed) or a lazy source such as the migration source
@@ -29,7 +27,6 @@
  * values.  It satisfies ReadableSchemaStorage so it can be passed as source.
  */
 
-const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
 const { stringToNodeKeyString } = require('../types');
 
 /** @typedef {import('../root_database').SchemaStorage} SchemaStorage */
@@ -111,26 +108,6 @@ function parseCompositeKey(compositeKey) {
         sublevel: compositeKey.slice(0, idx),
         nodeKey: compositeKey.slice(idx + 1),
     };
-}
-
-/**
- * Stable JSON serialisation for deep equality comparison.
- * Object keys are sorted so {a:1,b:2} and {b:2,a:1} compare as equal.
- * Non-serialisable values (undefined, functions, symbols) are normalised to
- * the string "undefined" so the return is always a string.
- * @param {unknown} value
- * @returns {string}
- */
-function stableStringify(value) {
-    if (value === null || typeof value !== 'object') {
-        const s = JSON.stringify(value);
-        return s !== undefined ? s : 'undefined';
-    }
-    if (Array.isArray(value)) {
-        return '[' + value.map(stableStringify).join(',') + ']';
-    }
-    const entries = Object.entries(value).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
-    return '{' + entries.map(([key, entryValue]) => JSON.stringify(key) + ':' + stableStringify(entryValue)).join(',') + '}';
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +212,10 @@ async function* listAllKeys(source, sublevels) {
  * get() and keys() only).  SchemaStorage (LevelDB-backed), InMemorySchemaStorage,
  * and lazy migration sources all satisfy this interface without any casts.
  *
+ * Writes are applied immediately: each putTarget/deleteTarget call issues a
+ * single-element target.batch() right away.  No commit/rollback is needed.
+ * Atomicity is guaranteed at the replica-cutover level (see module-level note).
+ *
  * @param {ReadableSchemaStorage} source
  * @param {SchemaStorage} target
  * @param {{ excludeSublevels?: string[] }} [options]
@@ -243,29 +224,6 @@ async function* listAllKeys(source, sublevels) {
 function makeDbToDbAdapter(source, target, options = {}) {
     const { excludeSublevels = [] } = options;
     const sublevels = DATA_SUBLEVELS.filter(s => !excludeSublevels.includes(s));
-
-    /** @type {DatabaseBatchOperation[]} */
-    let pendingOps = [];
-
-    /**
-     * Flush a chunk of pending ops through the target SchemaStorage batch.
-     * @returns {Promise<void>}
-     */
-    async function flushChunk() {
-        if (pendingOps.length === 0) return;
-        const chunk = pendingOps.splice(0, RAW_BATCH_CHUNK_SIZE);
-        await target.batch(chunk);
-    }
-
-    /**
-     * Auto-flush when the pending buffer reaches the chunk size.
-     * @returns {Promise<void>}
-     */
-    async function maybeFlush() {
-        while (pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
-            await flushChunk();
-        }
-    }
 
     return {
         listSourceKeys: () => listAllKeys(source, sublevels),
@@ -282,33 +240,17 @@ function makeDbToDbAdapter(source, target, options = {}) {
         },
 
         equals(sv, tv) {
-            return stableStringify(sv) === stableStringify(tv);
+            return JSON.stringify(sv) === JSON.stringify(tv);
         },
 
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            pendingOps.push(makeSublevelPutOp(target, sublevel, stringToNodeKeyString(nodeKey), value));
-            await maybeFlush();
+            await target.batch([makeSublevelPutOp(target, sublevel, stringToNodeKeyString(nodeKey), value)]);
         },
 
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            pendingOps.push(getTargetSubDb(target, sublevel).delOp(stringToNodeKeyString(nodeKey)));
-            await maybeFlush();
-        },
-
-        async commit() {
-            // Flush all remaining buffered operations.
-            while (pendingOps.length > 0) {
-                await flushChunk();
-            }
-        },
-
-        async rollback() {
-            // Discard the in-memory buffer.  Already-flushed writes cannot be
-            // undone (LevelDB has no rollback); crash-safety is the caller's
-            // responsibility.
-            pendingOps = [];
+            await target.batch([getTargetSubDb(target, sublevel).delOp(stringToNodeKeyString(nodeKey))]);
         },
     };
 }
@@ -462,5 +404,4 @@ function makeInMemorySchemaStorage() {
 module.exports = {
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
-    stableStringify,
 };
