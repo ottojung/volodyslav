@@ -113,12 +113,15 @@ function parseCompositeKey(compositeKey) {
 /**
  * Stable JSON serialisation for deep equality comparison.
  * Object keys are sorted so {a:1,b:2} and {b:2,a:1} compare as equal.
+ * Non-serialisable values (undefined, functions, symbols) are normalised to
+ * the string "undefined" so the return is always a string.
  * @param {unknown} value
  * @returns {string}
  */
 function stableStringify(value) {
     if (value === null || typeof value !== 'object') {
-        return JSON.stringify(value);
+        const s = JSON.stringify(value);
+        return s !== undefined ? s : 'undefined';
     }
     if (Array.isArray(value)) {
         return '[' + value.map(stableStringify).join(',') + ']';
@@ -176,8 +179,9 @@ function getTargetSubDb(storage, sublevel) {
 
 /**
  * Create a typed put operation for the given target sublevel.
- * Dispatches by sublevel name to call the correctly-typed putOp.
- * Since putOp now accepts unknown values, no coercion is needed.
+ * Uses rawPutOp which accepts unknown values but preserves the typed putOp
+ * boundary for normal callers.  The value IS the correct runtime type because
+ * source and target share the same schema (DB→DB copy invariant).
  *
  * @param {SchemaStorage} target
  * @param {string} sublevel
@@ -187,12 +191,12 @@ function getTargetSubDb(storage, sublevel) {
  */
 function makeSublevelPutOp(target, sublevel, key, value) {
     switch (sublevel) {
-        case 'values':   return target.values.putOp(key, value);
-        case 'freshness': return target.freshness.putOp(key, value);
-        case 'inputs':   return target.inputs.putOp(key, value);
-        case 'revdeps':  return target.revdeps.putOp(key, value);
-        case 'counters': return target.counters.putOp(key, value);
-        case 'timestamps': return target.timestamps.putOp(key, value);
+        case 'values':   return target.values.rawPutOp(key, value);
+        case 'freshness': return target.freshness.rawPutOp(key, value);
+        case 'inputs':   return target.inputs.rawPutOp(key, value);
+        case 'revdeps':  return target.revdeps.rawPutOp(key, value);
+        case 'counters': return target.counters.rawPutOp(key, value);
+        case 'timestamps': return target.timestamps.rawPutOp(key, value);
         default: throw new Error(`Unknown sublevel name: ${sublevel}`);
     }
 }
@@ -375,6 +379,10 @@ function makeInMemorySchemaStorage() {
             },
             /** @returns {InMemoryPutOp} */
             putOp(/** @type {string} */ key, /** @type {unknown} */ value) {
+                return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
+            },
+            /** @returns {InMemoryPutOp} */
+            rawPutOp(/** @type {string} */ key, /** @type {*} */ value) {
                 return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
             },
             /** @returns {InMemoryDelOp} */

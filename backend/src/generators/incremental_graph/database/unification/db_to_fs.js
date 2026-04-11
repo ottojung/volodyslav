@@ -134,8 +134,10 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
 
         async readSource(relPath) {
             const rawKey = relativePathToKey(sublevelPrefix + relPath);
-            const value = await rootDatabase._rawGet(rawKey);
-            return serializeValue(value);
+            for await (const [key, value] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+                if (key === rawKey) return serializeValue(value);
+            }
+            return undefined;
         },
 
         async readTarget(relPath) {

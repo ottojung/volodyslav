@@ -136,6 +136,9 @@ function makeFakeSchemaStorage() {
             putOp(key, value) {
                 return { _sublevel: name, type: 'put', key: String(key), value };
             },
+            rawPutOp(key, value) {
+                return { _sublevel: name, type: 'put', key: String(key), value };
+            },
             delOp(key) {
                 return { _sublevel: name, type: 'del', key: String(key) };
             },

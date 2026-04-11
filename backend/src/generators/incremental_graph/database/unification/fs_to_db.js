@@ -103,17 +103,11 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
     /** @type {string[]} */
     let pendingDeletes = [];
 
-    async function flushPuts() {
-        while (pendingPuts.length >= RAW_BATCH_CHUNK_SIZE) {
-            await rootDatabase._rawPutAll(pendingPuts.splice(0, RAW_BATCH_CHUNK_SIZE));
-        }
-    }
-
-    async function flushDeletes() {
-        while (pendingDeletes.length >= RAW_BATCH_CHUNK_SIZE) {
-            await rootDatabase._rawDeleteKeys(pendingDeletes.splice(0, RAW_BATCH_CHUNK_SIZE));
-        }
-    }
+    // Cache of target key → value built during listTargetKeys().
+    // Avoids a separate per-key DB read in readTarget(); the full sublevel
+    // scan done by listTargetKeys() is necessary for key enumeration anyway.
+    /** @type {Map<string, unknown>} */
+    const targetCache = new Map();
 
     return {
         async *listSourceKeys() {
@@ -124,7 +118,8 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async *listTargetKeys() {
-            for await (const [rawKey] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+            for await (const [rawKey, value] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+                targetCache.set(rawKey, value);
                 yield rawKey;
             }
         },
@@ -136,7 +131,7 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async readTarget(rawKey) {
-            return await rootDatabase._rawGet(rawKey);
+            return targetCache.get(rawKey);
         },
 
         equals(sv, tv) {
@@ -144,21 +139,23 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async putTarget(rawKey, value) {
+            // Buffer the put; no DB writes until commit() so that a later
+            // readSource() failure leaves the database untouched.
             pendingPuts.push({ key: rawKey, value });
-            await flushPuts();
         },
 
         async deleteTarget(rawKey) {
+            // Buffer the delete for the same atomicity reason as putTarget.
             pendingDeletes.push(rawKey);
-            await flushDeletes();
         },
 
         async commit() {
-            if (pendingPuts.length > 0) {
-                await rootDatabase._rawPutAll(pendingPuts.splice(0));
+            // Flush all buffered deletes first, then puts, in chunks.
+            while (pendingDeletes.length > 0) {
+                await rootDatabase._rawDeleteKeys(pendingDeletes.splice(0, RAW_BATCH_CHUNK_SIZE));
             }
-            if (pendingDeletes.length > 0) {
-                await rootDatabase._rawDeleteKeys(pendingDeletes.splice(0));
+            while (pendingPuts.length > 0) {
+                await rootDatabase._rawPutAll(pendingPuts.splice(0, RAW_BATCH_CHUNK_SIZE));
             }
         },
 

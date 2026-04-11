@@ -373,7 +373,7 @@ function versionToString(Version) {
 /**
  * A database put operation.
  * @template T
- * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: DatabaseKey, value: unknown }} DatabasePutOperation
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: DatabaseKey, value: T }} DatabasePutOperation
  */
 
 /**

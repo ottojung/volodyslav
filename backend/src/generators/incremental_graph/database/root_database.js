@@ -659,18 +659,8 @@ class RootDatabaseClass {
     }
 
     /**
-     * Read a single raw key/value pair from the root LevelDB instance.
-     * Used by unification adapters that need random access to a raw key.
-     *
-     * @param {string} key - Full raw LevelDB key (e.g. "!x!!values!...").
-     * @returns {Promise<unknown>}
-     */
-    async _rawGet(key) {
-        return await this.db.get(stringToNodeKeyString(key));
-    }
-
-    /**
-     * Deletes a list of raw LevelDB keys in chunked batches.
+     * Deletes a list of raw LevelDB keys in a single batch.
+     * Callers are responsible for chunking (keeping the array ≤ RAW_BATCH_CHUNK_SIZE).
      * Used by FS→DB unification to remove stale keys without clearing the
      * entire sublevel.
      *
@@ -678,18 +668,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDeleteKeys(keys) {
-        /**
-         * @param {string} key
-         * @returns {{ type: 'del', key: NodeKeyString }}
-         */
-        function makeDelOp(key) {
-            return { type: 'del', key: stringToNodeKeyString(key) };
-        }
-
-        for (let i = 0; i < keys.length; i += RAW_BATCH_CHUNK_SIZE) {
-            const chunk = keys.slice(i, i + RAW_BATCH_CHUNK_SIZE);
-            await this.db.batch(chunk.map(makeDelOp));
-        }
+        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeKeyString(k) })));
     }
 
     /**

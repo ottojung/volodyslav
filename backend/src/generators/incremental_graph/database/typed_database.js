@@ -32,7 +32,8 @@
  * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: DatabaseKey, value: TValue) => Promise<void>} put - Store a value
  * @property {(key: DatabaseKey) => Promise<void>} del - Delete a value
- * @property {(key: DatabaseKey, value: unknown) => DatabasePutOperation<TValue>} putOp - Store a value operation (accepts unknown to support unification adapters)
+ * @property {(key: DatabaseKey, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
+ * @property {(key: DatabaseKey, value: *) => DatabasePutOperation<TValue>} rawPutOp - Store a value operation accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
  * @property {(key: DatabaseKey) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
  * @property {() => AsyncIterable<DatabaseKey>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
@@ -93,10 +94,24 @@ class TypedDatabaseClass {
     /**
      * Create a put operation for batch processing.
      * @param {DatabaseKey} key - The key to store
-     * @param {unknown} value - The value to store
+     * @param {TValue} value - The value to store
      * @returns {DatabasePutOperation<TValue>}
      */
     putOp(key, value) {
+        return { sublevel: this.sublevel, type: "put", key, value };
+    }
+
+    /**
+     * Create a put operation for batch processing, accepting an untyped value.
+     * For use only in unification adapters where values originate from the same
+     * schema and are therefore the correct runtime type despite being typed as
+     * unknown at the call site.  Keeping this separate from putOp preserves
+     * the typed boundary for normal callers.
+     * @param {DatabaseKey} key - The key to store
+     * @param {*} value - The value to store (must be TValue at runtime)
+     * @returns {DatabasePutOperation<TValue>}
+     */
+    rawPutOp(key, value) {
         return { sublevel: this.sublevel, type: "put", key, value };
     }
 
