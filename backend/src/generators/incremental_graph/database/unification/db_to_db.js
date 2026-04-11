@@ -69,17 +69,20 @@ const { stringToNodeKeyString } = require('../types');
  */
 
 /**
- * The data sublevel names covered by this adapter.
+ * The data sublevel names covered by this adapter, in alphabetical order.
+ * Alphabetical order ensures that composite keys "{sublevel}\x00{nodeKey}" are
+ * globally sorted (because 'c' < 'f' < 'i' < 'r' < 't' < 'v'), which is
+ * required for the merge-join in core.js to produce correct results.
  * The meta/version sublevel is intentionally excluded.
  * @type {readonly string[]}
  */
 const DATA_SUBLEVELS = Object.freeze([
-    'values',
+    'counters',
     'freshness',
     'inputs',
     'revdeps',
-    'counters',
     'timestamps',
+    'values',
 ]);
 
 /**
@@ -390,7 +393,11 @@ function makeInMemorySchemaStorage() {
                 return { type: 'del', sublevelTag: sublevelName, key: String(key) };
             },
             async *keys() {
-                for (const k of store.keys()) {
+                // Sort keys so the in-memory store yields in the same
+                // lexicographic order as LevelDB, which is required by the
+                // merge-join in core.js.
+                const sorted = [...store.keys()].sort();
+                for (const k of sorted) {
                     yield stringToNodeKeyString(k);
                 }
             },

@@ -26,7 +26,7 @@
  */
 
 const path = require('path');
-const { keyToRelativePath, serializeValue } = require('../render/encoding');
+const { keyToRelativePath, relativePathToKey, serializeValue } = require('../render');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -113,18 +113,21 @@ async function walkFilesRecursively(capabilities, dir) {
  */
 function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
     const sublevelPrefix = sublevel + '/';
-
-    // Cache of relPath → serialized string built during listSourceKeys().
-    // Avoids a full O(n) sublevel scan per readSource() call (O(n^2) total).
-    /** @type {Map<string, string>} */
-    const sourceCache = new Map();
+    const rawKeyPrefix = '!' + sublevel + '!';
 
     return {
         async *listSourceKeys() {
-            for await (const [rawKey, value] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+            // Collect all relPaths from the database then sort them.
+            // Sorting is required for the merge-join in core.js; LevelDB raw
+            // key order does not map monotonically to relPath sort order.
+            // No values are cached: readSource() does an on-demand DB lookup.
+            const relPaths = [];
+            for await (const [rawKey] of rootDatabase._rawEntriesForSublevel(sublevel)) {
                 const fullRelPath = keyToRelativePath(rawKey);
-                const relPath = fullRelPath.slice(sublevelPrefix.length);
-                sourceCache.set(relPath, serializeValue(value));
+                relPaths.push(fullRelPath.slice(sublevelPrefix.length));
+            }
+            relPaths.sort();
+            for (const relPath of relPaths) {
                 yield relPath;
             }
         },
@@ -133,14 +136,24 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
             if (!await capabilities.checker.directoryExists(outputDir)) {
                 return;
             }
+            // Collect all file relPaths then sort them.
             const allFiles = await walkFilesRecursively(capabilities, outputDir);
-            for (const absPath of allFiles) {
-                yield path.relative(outputDir, absPath).split(path.sep).join('/');
+            const relPaths = allFiles.map(
+                absPath => path.relative(outputDir, absPath).split(path.sep).join('/')
+            );
+            relPaths.sort();
+            for (const relPath of relPaths) {
+                yield relPath;
             }
         },
 
         async readSource(relPath) {
-            return sourceCache.get(relPath);
+            // On-demand DB read: O(log n) per call, O(max_value_size) memory.
+            const rawKey = relativePathToKey(sublevelPrefix + relPath);
+            const innerKey = rawKey.slice(rawKeyPrefix.length);
+            const value = await rootDatabase._rawGetInSublevel(sublevel, innerKey);
+            if (value === undefined) return undefined;
+            return serializeValue(value);
         },
 
         async readTarget(relPath) {

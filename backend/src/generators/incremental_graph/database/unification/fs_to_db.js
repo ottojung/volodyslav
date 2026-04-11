@@ -21,7 +21,7 @@
  */
 
 const path = require('path');
-const { relativePathToKey, keyToRelativePath, parseValue } = require('../render/encoding');
+const { relativePathToKey, keyToRelativePath, parseValue } = require('../render');
 const { stableStringify } = require('./db_to_db');
 const { RAW_BATCH_CHUNK_SIZE } = require('../constants');
 
@@ -98,28 +98,29 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         return path.join(inputDir, relPath.split('/').join(path.sep));
     }
 
-    /** @type {Array<{ key: string, value: unknown }>} */
+    /** @type {Array<{ rawKey: string, absPath: string }>} */
     let pendingPuts = [];
     /** @type {string[]} */
     let pendingDeletes = [];
 
-    // Cache of target key → value built during listTargetKeys().
-    // Avoids a separate per-key DB read in readTarget(); the full sublevel
-    // scan done by listTargetKeys() is necessary for key enumeration anyway.
-    /** @type {Map<string, unknown>} */
-    const targetCache = new Map();
+    const rawKeyPrefix = '!' + sublevel + '!';
 
     return {
         async *listSourceKeys() {
+            // Collect all file paths, map each to its raw DB key, then sort.
+            // Sorting is required for the merge-join in core.js.
             const allFiles = await walkFilesRecursively(capabilities, inputDir);
-            for (const absPath of allFiles) {
-                yield absPathToRawKey(absPath);
+            const rawKeys = allFiles.map(absPath => absPathToRawKey(absPath));
+            rawKeys.sort();
+            for (const rawKey of rawKeys) {
+                yield rawKey;
             }
         },
 
         async *listTargetKeys() {
-            for await (const [rawKey, value] of rootDatabase._rawEntriesForSublevel(sublevel)) {
-                targetCache.set(rawKey, value);
+            // Stream target keys in LevelDB order (already sorted); no value
+            // caching needed since readTarget() does an on-demand lookup.
+            for await (const [rawKey] of rootDatabase._rawEntriesForSublevel(sublevel)) {
                 yield rawKey;
             }
         },
@@ -131,17 +132,23 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async readTarget(rawKey) {
-            return targetCache.get(rawKey);
+            // On-demand read: O(log n) per call, O(1) memory.
+            const innerKey = rawKey.slice(rawKeyPrefix.length);
+            return await rootDatabase._rawGetInSublevel(sublevel, innerKey);
         },
 
         equals(sv, tv) {
             return stableStringify(sv) === stableStringify(tv);
         },
 
-        async putTarget(rawKey, value) {
-            // Buffer the put; no DB writes until commit() so that a later
-            // readSource() failure leaves the database untouched.
-            pendingPuts.push({ key: rawKey, value });
+        async putTarget(rawKey, _value) {
+            // Buffer (rawKey, absPath) only — the value is intentionally
+            // discarded here and re-read from the file during commit().
+            // This keeps memory at O(1) while preserving atomicity:
+            // if readSource() failed, putTarget() is never reached for
+            // that key, so the DB is left untouched on any read failure.
+            const absPath = rawKeyToAbsPath(rawKey);
+            pendingPuts.push({ rawKey, absPath });
         },
 
         async deleteTarget(rawKey) {
@@ -150,13 +157,27 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async commit() {
-            // Flush all buffered deletes first, then puts, in chunks.
+            // Flush all buffered deletes first (in chunks), then re-read each
+            // source file and write it to the DB in chunks to keep memory at
+            // O(RAW_BATCH_CHUNK_SIZE × max_value_size) = O(max_value_size).
             while (pendingDeletes.length > 0) {
                 await rootDatabase._rawDeleteKeys(pendingDeletes.splice(0, RAW_BATCH_CHUNK_SIZE));
             }
-            while (pendingPuts.length > 0) {
-                await rootDatabase._rawPutAll(pendingPuts.splice(0, RAW_BATCH_CHUNK_SIZE));
+            /** @type {Array<{key: string, value: unknown}>} */
+            let batch = [];
+            for (const { rawKey, absPath } of pendingPuts) {
+                const content = await capabilities.reader.readFileAsText(absPath);
+                const value = parseValue(content);
+                batch.push({ key: rawKey, value });
+                if (batch.length >= RAW_BATCH_CHUNK_SIZE) {
+                    await rootDatabase._rawPutAll(batch);
+                    batch = [];
+                }
             }
+            if (batch.length > 0) {
+                await rootDatabase._rawPutAll(batch);
+            }
+            pendingPuts = [];
         },
 
         async rollback() {

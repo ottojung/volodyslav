@@ -2,14 +2,17 @@
  * Core gentle-unification engine.
  *
  * Computes and applies a minimal mutation plan from a source store to a target
- * store.  Each call reads both stores' key sets once, compares values only for
- * keys that exist in both stores, and issues only the necessary puts and
- * deletes.
+ * store.  Each call advances both stores' key iterators in lockstep (a sorted
+ * merge-join), reads values only for keys that exist in both stores, and issues
+ * only the necessary puts and deletes.
  *
- * Memory policy: O(|X| + |k1| + |k2|) where |X| is the size of the largest
- * single value, |k1| is the number of source keys, and |k2| is the number of
- * target keys.  Key sets are materialised once into Sets; values are read and
- * compared one at a time and are never accumulated.
+ * Memory policy: O(|X| + |k|) where |X| is the size of the largest single
+ * value and |k| is the number of keys held by the adapter for sorting.
+ * No key sets are materialised; at most one source value and one target value
+ * live in memory at any instant.
+ *
+ * Requirement: both listSourceKeys() and listTargetKeys() MUST yield keys in
+ * ascending lexicographic order for the merge-join to produce correct results.
  */
 
 /**
@@ -162,15 +165,21 @@ function isUnificationCommitError(object) {
 /**
  * Apply a minimal mutation plan from the source to the target store.
  *
- * Algorithm:
- *   1. Materialise sourceKeys and targetKeys into Sets.
- *   2. For each source key:
- *      - If missing from target → put.
- *      - Else compare via adapter.equals(); if different → put, else skip.
- *   3. For each target key absent from source → delete.
- *   4. Call adapter.commit() if present.
+ * Algorithm: sorted merge-join over two sorted key streams.
+ *   - Advance both iterators in lockstep using string comparison.
+ *   - source key < target key → source-only → put.
+ *   - source key > target key → target-only → delete.
+ *   - source key = target key → compare values; put only if different.
  *
+ * Deletes are naturally processed before conflicting puts because sorted keys
+ * ensure a stale prefix path (e.g. "values/foo") is encountered before the
+ * new deeper path that would conflict with it (e.g. "values/foo/bar").
+ *
+ * Calls adapter.commit() if present.
  * Calls adapter.rollback() (best-effort) if an error occurs after begin().
+ *
+ * REQUIREMENT: both listSourceKeys() and listTargetKeys() MUST yield keys in
+ * ascending lexicographic order.
  *
  * @param {UnificationAdapter} adapter
  * @returns {Promise<UnificationStats>}
@@ -181,87 +190,115 @@ async function unifyStores(adapter) {
     }
 
     try {
-        // ── Phase 1: materialise key sets ────────────────────────────────────
-        /** @type {Set<string>} */
-        const sourceKeys = new Set();
-        try {
-            for await (const key of adapter.listSourceKeys()) {
-                sourceKeys.add(key);
-            }
-        } catch (err) {
-            throw new UnificationListError('source', err);
-        }
+        const sourceIter = adapter.listSourceKeys()[Symbol.asyncIterator]();
+        const targetIter = adapter.listTargetKeys()[Symbol.asyncIterator]();
 
-        /** @type {Set<string>} */
-        const targetKeys = new Set();
-        try {
-            for await (const key of adapter.listTargetKeys()) {
-                targetKeys.add(key);
+        /**
+         * Advance the source iterator, wrapping errors as UnificationListError.
+         * @returns {Promise<IteratorResult<string>>}
+         */
+        const nextSource = async () => {
+            try {
+                return await sourceIter.next();
+            } catch (err) {
+                throw new UnificationListError('source', err);
             }
-        } catch (err) {
-            throw new UnificationListError('target', err);
-        }
+        };
+
+        /**
+         * Advance the target iterator, wrapping errors as UnificationListError.
+         * @returns {Promise<IteratorResult<string>>}
+         */
+        const nextTarget = async () => {
+            try {
+                return await targetIter.next();
+            } catch (err) {
+                throw new UnificationListError('target', err);
+            }
+        };
+
+        let sNext = await nextSource();
+        let tNext = await nextTarget();
 
         let putCount = 0;
         let deleteCount = 0;
         let unchangedCount = 0;
+        let sourceCount = 0;
+        let targetCount = 0;
 
-        // ── Phase 2: deletes ─────────────────────────────────────────────────
-        // Deletes are issued before puts so that stale target paths cannot
-        // structurally conflict with new ones.  For example, if the target has
-        // a stale file at "values/foo" and the source now contains "values/foo/bar",
-        // the stale file must be removed before the new one can be created.
-        for (const key of targetKeys) {
-            if (!sourceKeys.has(key)) {
+        while (!sNext.done || !tNext.done) {
+            /** @type {number} */
+            let cmp;
+            if (sNext.done) {
+                cmp = 1;
+            } else if (tNext.done) {
+                cmp = -1;
+            } else {
+                const sk = String(sNext.value);
+                const tk = String(tNext.value);
+                cmp = sk < tk ? -1 : sk > tk ? 1 : 0;
+            }
+
+            if (cmp < 0) {
+                // Source-only key: put to target.
+                sourceCount++;
+                /** @type {unknown} */
+                let sourceValue;
                 try {
-                    await adapter.deleteTarget(key);
+                    sourceValue = await adapter.readSource(sNext.value);
                 } catch (err) {
-                    throw new UnificationDeleteError(key, err);
+                    throw new UnificationReadError('source', sNext.value, err);
+                }
+                try {
+                    await adapter.putTarget(sNext.value, sourceValue);
+                } catch (err) {
+                    throw new UnificationWriteError(sNext.value, err);
+                }
+                putCount++;
+                sNext = await nextSource();
+            } else if (cmp > 0) {
+                // Target-only key: delete from target.
+                targetCount++;
+                try {
+                    await adapter.deleteTarget(tNext.value);
+                } catch (err) {
+                    throw new UnificationDeleteError(tNext.value, err);
                 }
                 deleteCount++;
-            }
-        }
-
-        // ── Phase 3: puts ────────────────────────────────────────────────────
-        for (const key of sourceKeys) {
-            /** @type {unknown} */
-            let sourceValue;
-            try {
-                sourceValue = await adapter.readSource(key);
-            } catch (err) {
-                throw new UnificationReadError('source', key, err);
-            }
-
-            if (targetKeys.has(key)) {
+                tNext = await nextTarget();
+            } else {
+                // Key present in both: compare values and put only if different.
+                sourceCount++;
+                targetCount++;
+                /** @type {unknown} */
+                let sourceValue;
+                try {
+                    sourceValue = await adapter.readSource(sNext.value);
+                } catch (err) {
+                    throw new UnificationReadError('source', sNext.value, err);
+                }
                 /** @type {unknown} */
                 let targetValue;
                 try {
-                    targetValue = await adapter.readTarget(key);
+                    targetValue = await adapter.readTarget(tNext.value);
                 } catch (err) {
-                    throw new UnificationReadError('target', key, err);
+                    throw new UnificationReadError('target', tNext.value, err);
                 }
-
                 if (!adapter.equals(sourceValue, targetValue)) {
                     try {
-                        await adapter.putTarget(key, sourceValue);
+                        await adapter.putTarget(sNext.value, sourceValue);
                     } catch (err) {
-                        throw new UnificationWriteError(key, err);
+                        throw new UnificationWriteError(sNext.value, err);
                     }
                     putCount++;
                 } else {
                     unchangedCount++;
                 }
-            } else {
-                try {
-                    await adapter.putTarget(key, sourceValue);
-                } catch (err) {
-                    throw new UnificationWriteError(key, err);
-                }
-                putCount++;
+                sNext = await nextSource();
+                tNext = await nextTarget();
             }
         }
 
-        // ── Phase 4: commit ──────────────────────────────────────────────────
         if (adapter.commit !== undefined) {
             try {
                 await adapter.commit();
@@ -271,8 +308,8 @@ async function unifyStores(adapter) {
         }
 
         return {
-            sourceCount: sourceKeys.size,
-            targetCount: targetKeys.size,
+            sourceCount,
+            targetCount,
             putCount,
             deleteCount,
             unchangedCount,

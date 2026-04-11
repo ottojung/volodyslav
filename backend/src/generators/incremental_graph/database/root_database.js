@@ -570,32 +570,18 @@ class RootDatabaseClass {
     }
 
     /**
-     * Deletes all raw key/value pairs from the root LevelDB instance.
-     * Used by scanFromFilesystem to ensure stale keys (present in the database
-     * but absent from the snapshot directory) do not survive the restore.
-     * @returns {Promise<void>}
+     * Read a single raw value from a named sublevel by its inner key.
+     * The innerKey is the portion of the raw LevelDB key after the
+     * "!{sublevelName}!" prefix.  Returns undefined if not found.
+     *
+     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
+     * @param {string} innerKey - Key within the sublevel.
+     * @returns {Promise<unknown>}
      */
-    async _rawDeleteAll() {
-        /**
-         * @param {NodeKeyString} key
-         * @returns {{ type: 'del', key: NodeKeyString }}
-         */
-        function makeDelOp(key) {
-            return { type: 'del', key };
-        }
-
-        /** @type {NodeKeyString[]} */
-        const pending = [];
-        for await (const key of this.db.keys()) {
-            pending.push(key);
-            if (pending.length === RAW_BATCH_CHUNK_SIZE) {
-                await this.db.batch(pending.map(makeDelOp));
-                pending.length = 0;
-            }
-        }
-        if (pending.length > 0) {
-            await this.db.batch(pending.map(makeDelOp));
-        }
+    async _rawGetInSublevel(sublevelName, innerKey) {
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        return await sublevel.get(stringToNodeKeyString(innerKey));
     }
 
     /**

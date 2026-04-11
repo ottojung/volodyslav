@@ -143,10 +143,17 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * @returns {ReadableSchemaStorage}
  */
 function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
+    // Sort decision keys once so every sublevel's keys() yields in the same
+    // lexicographic order as LevelDB, which is required by the merge-join.
+    const sortedDecisionKeys = [...decisions.keys()].sort();
+    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
+
     return {
         values: {
             async *keys() {
-                for (const [nodeKey, decision] of decisions) {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
                     if (decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override") {
                         yield nodeKey;
@@ -168,7 +175,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
         },
         freshness: {
             async *keys() {
-                for (const [nodeKey, decision] of decisions) {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
                     if (decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override" || decision.kind === "invalidate") {
                         yield nodeKey;
@@ -188,7 +197,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
         },
         inputs: {
             async *keys() {
-                for (const [nodeKey, decision] of decisions) {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
                     if (decision.kind === "delete") continue;
                     if (decision.kind === "create") {
                         yield nodeKey;
@@ -207,7 +218,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
         },
         revdeps: {
             async *keys() {
-                for (const key of desiredRevdeps.keys()) {
+                for (const key of sortedRevdepKeys) {
                     yield key;
                 }
             },
@@ -217,7 +228,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
         },
         counters: {
             async *keys() {
-                for (const [nodeKey, decision] of decisions) {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
                     if (decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override") {
                         yield nodeKey;
@@ -240,7 +253,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
         },
         timestamps: {
             async *keys() {
-                for (const [nodeKey, decision] of decisions) {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
                     if (decision.kind === "delete" || decision.kind === "create") continue;
                     const ts = await prevStorage.timestamps.get(nodeKey);
                     if (ts !== undefined) yield nodeKey;

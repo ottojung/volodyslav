@@ -269,7 +269,7 @@ describe('makeDbToFsAdapter', () => {
         const db2 = await getRootDatabase(capabilities);
         try {
             await scanFromFilesystem(capabilities, db2, outputDir, 'x');
-            const rawVal = await db2._rawGet(X_VALUES_KEY);
+            const rawVal = await db2._rawGetInSublevel('x', '!values!{"head":"all_events","args":[]}');
             expect(rawVal).toEqual({ items: [10] });
         } finally {
             await db2.close();

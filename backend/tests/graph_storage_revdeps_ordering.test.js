@@ -19,8 +19,12 @@ function makeInMemoryDb(table) {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
         putOp(key, value) { return { type: "put", table, key, value }; },
+        rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
-        async *keys() { for (const key of store.keys()) yield key; },
+        async *keys() {
+            // Sort keys for merge-join compatibility.
+            for (const key of [...store.keys()].sort()) yield key;
+        },
         apply(operation) {
             if (operation.table !== table) return;
             if (operation.type === "put") {

@@ -38,10 +38,10 @@ function makeMapAdapter(sourceMap, targetMap) {
 
     const adapter = {
         async *listSourceKeys() {
-            for (const key of sourceMap.keys()) yield key;
+            for (const key of [...sourceMap.keys()].sort()) yield key;
         },
         async *listTargetKeys() {
-            for (const key of targetMap.keys()) yield key;
+            for (const key of [...targetMap.keys()].sort()) yield key;
         },
         async readSource(key) {
             return sourceMap.get(key);
