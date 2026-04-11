@@ -598,8 +598,11 @@ class RootDatabaseClass {
 
     /**
      * Write a raw key/value pair directly into the root LevelDB instance,
-     * bypassing the sublevel abstraction. Used by scanFromFilesystem to
-     * restore a snapshot produced by renderToFilesystem.
+     * bypassing the sublevel abstraction, using sync:false for performance.
+     * Used by fs_to_db unification adapter for individual key writes.
+     *
+     * Call _rawSync() once after all bulk unification writes are done to
+     * ensure the writes are flushed to durable storage.
      *
      * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
      * static typing expectations: `this.db` is documented as using
@@ -612,7 +615,50 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawPut(key, value) {
-        await this.db.put(stringToNodeKeyString(key), value);
+        // Avoid TypeScript excess-property checking by using a variable.
+        // Level's PutOptions type isn't visible here (typed as AbstractLevel),
+        // but classic-level supports sync at runtime.
+        const opts = { sync: false };
+        await this.db.put(stringToNodeKeyString(key), value, opts);
+    }
+
+    /**
+     * Delete a raw key directly from the root LevelDB instance,
+     * bypassing the sublevel abstraction, using sync:false for performance.
+     * Mirrors _rawPut(): used by fs_to_db unification adapter for individual
+     * key deletes.
+     *
+     * Call _rawSync() once after all bulk unification writes are done to
+     * ensure the writes are flushed to durable storage.
+     *
+     * @param {string} key
+     * @returns {Promise<void>}
+     */
+    async _rawDel(key) {
+        // Avoid TypeScript excess-property checking by using a variable.
+        const opts = { sync: false };
+        await this.db.del(stringToNodeKeyString(key), opts);
+    }
+
+    /**
+     * Force a single LevelDB fsync after a bulk unification pass.
+     *
+     * All writes issued by the unification adapters use sync:false (no per-write
+     * fsync) for performance.  This method submits an empty batch with sync:true,
+     * which causes LevelDB to flush the WAL up to and including all preceding
+     * writes without modifying any data.
+     *
+     * Must be called once after all unification writes are complete.
+     *
+     * @returns {Promise<void>}
+     */
+    async _rawSync() {
+        // An empty batch with sync:true is a no-op for data but forces LevelDB
+        // to flush the WAL, ensuring all preceding sync:false writes are durable.
+        // Use a variable to avoid TypeScript excess-property checking on the
+        // batch options (classic-level adds sync to AbstractBatchOptions).
+        const opts = { sync: true };
+        await this.db.batch([], opts);
     }
 
     /**

@@ -101,8 +101,11 @@ Rewritten to the merge-join above. No `Set` objects. No begin/commit/rollback. M
 - `InMemorySchemaStorage.makeSubstorage.keys()` now sorts Map keys before yielding, to match
   LevelDB's byte-sorted order for ASCII NodeKey strings.
 - Writes are applied immediately (no buffering): each `putTarget` calls `rawPut()` and each
-  `deleteTarget` calls `del()` directly on the target sublevel. No `batch()` calls. O(max_value_size)
-  peak memory — at most one value is live in the call frame at any instant.
+  `deleteTarget` calls `rawDel()` directly on the target sublevel. No `batch()` calls.
+  `rawPut`/`rawDel` use `sync:false` for performance. O(max_value_size) peak memory — at most
+  one value is live in the call frame at any instant.
+- Callers must invoke `rootDatabase._rawSync()` once after `unifyStores()` to flush the WAL
+  with a single fsync.
 
 ### `migration_runner.js` – `makeLazyMigrationSource`
 Each sublevel's `keys()` method sorts decision-map keys before yielding, so the lazy source
@@ -115,9 +118,11 @@ produces sorted output compatible with the merge-join when paired with a real (L
   caching.
 - `readTarget(rawKey)`: on-demand DB read via `rootDatabase._rawGetInSublevel(sublevel, innerKey)`.
   O(log n) per call, O(1) memory.
-- `putTarget(rawKey, value)`: writes the value immediately to the DB via `_rawPutAll([{key, value}])`.
-  One value in memory at a time. No buffering.
-- `deleteTarget(rawKey)`: deletes immediately via `_rawDeleteKeys([rawKey])`. No buffering.
+- `putTarget(rawKey, value)`: writes the value immediately via `rootDatabase._rawPut(rawKey, value)`
+  with `sync:false`. One value in memory at a time. No buffering.
+- `deleteTarget(rawKey)`: deletes immediately via `rootDatabase._rawDel(rawKey)` with `sync:false`.
+  No buffering.
+- `flush()`: calls `rootDatabase._rawSync()` to perform the single fsync after the merge-join.
 
 ### `db_to_fs.js`
 - `listSourceKeys()`: collects all relPaths from LevelDB → sorts → yields sorted. No value caching.
@@ -128,9 +133,15 @@ produces sorted output compatible with the merge-join when paired with a real (L
   O(max_value_size) peak memory.
 
 ### `root_database.js`
-New helper `_rawGetInSublevel(sublevelName, innerKey)`: opens (or returns a cached) sublevel with
-JSON encoding and calls `sublevel.get(innerKey)`.  Sublevel instances are cached by name in
-`_sublevelCache` so the wrapper is not reconstructed on every per-key read.
+- New helper `_rawGetInSublevel(sublevelName, innerKey)`: constructs a fresh sublevel wrapper via
+  `this.db.sublevel(sublevelName, { valueEncoding: 'json' })` on each call (no caching), then
+  calls `sublevel.get(innerKey)`. No `_sublevelCache` exists; per-key reads always build a new
+  wrapper to avoid unbounded memory growth in long-running processes.
+- `_rawPut(key, value)`: writes a single raw key to the root LevelDB instance with `sync:false`.
+  Used by `fs_to_db.js` putTarget.
+- `_rawDel(key)`: deletes a single raw key with `sync:false`. Used by `fs_to_db.js` deleteTarget.
+- `_rawSync()`: submits an empty batch with `sync:true` to force one LevelDB
+  WAL fsync. No data is written. Must be called once after all unification writes complete.
 
 ### `database/encoding.js`  (new — promoted from `render/encoding.js`)
 Encoding functions (`keyToRelativePath`, `relativePathToKey`, `serializeValue`, `parseValue`) are

@@ -12,10 +12,13 @@
  * Key format: "{sublevel}\x00{nodeKey}" where \x00 is used as an unambiguous
  * separator that cannot appear in either sublevel names or NodeKey JSON strings.
  *
- * Writes are buffered during unification and flushed once at the end via
- * flush(), using direct rawPut/del calls on each target sublevel (no batch()
- * API calls).  This avoids per-key batch overhead while keeping peak memory at
- * O(num_changed_keys × avg_key_length + max_value_size).
+ * Writes are applied immediately as differences are discovered, using
+ * rawPut()/rawDel() on each target sublevel (no batch() API calls, no
+ * buffering).  rawPut/rawDel use sync:false for performance; callers must
+ * invoke rootDatabase._rawSync() once after unifyStores() to flush all writes
+ * to durable storage with a single fsync.
+ * Peak memory is O(max_value_size) — at most one value lives in the call
+ * frame at any instant.
  * Atomicity is guaranteed at a higher level by the replica-cutover mechanism.
  *
  * Source type: the source may be any ReadableSchemaStorage — a real
@@ -230,7 +233,7 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            await getTargetSubDb(target, sublevel).del(stringToNodeKeyString(nodeKey));
+            await getTargetSubDb(target, sublevel).rawDel(stringToNodeKeyString(nodeKey));
         },
     };
 }
@@ -306,6 +309,10 @@ function makeInMemorySchemaStorage() {
                 store.set(String(key), value);
             },
             async del(/** @type {string} */ key) {
+                store.delete(String(key));
+            },
+            // rawDel() is identical to del() at runtime — mirrors rawPut().
+            async rawDel(/** @type {string} */ key) {
                 store.delete(String(key));
             },
             /** @returns {InMemoryPutOp} */

@@ -30,7 +30,7 @@ const { unifyStores } = require('../unification');
  * @property {FileWriter} writer - Writes serialised content to a file.
  * @property {FileReader} reader - Reads file content as a UTF-8 string.
  * @property {FileChecker} checker - Checks whether a path is a file or directory.
- * @property {FileDeleter} deleter - Deletes files.
+ * @property {FileDeleter} deleter - Deletes files and directories during reconciliation.
  * @property {DirScanner} scanner - Scans a directory (non-recursive).
  * @property {Logger} logger - Logger for progress messages.
  */

@@ -293,8 +293,8 @@ async function unifyStores(adapter) {
             }
         }
 
-        // Flush any buffered writes (e.g. db_to_db adapter batches writes for
-        // performance and applies them all at once here).
+        // Optional post-write hook: called after all puts/deletes to let the
+        // adapter perform a final step (e.g. one fsync via rootDatabase._rawSync()).
         if (adapter.flush !== undefined) {
             try {
                 await adapter.flush();

@@ -152,13 +152,19 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         },
 
         async putTarget(rawKey, value) {
-            // Write immediately. O(max_value_size) memory: only one value live at once.
-            await rootDatabase._rawPutAll([{ key: rawKey, value }]);
+            // Write immediately with sync:false. O(max_value_size) memory: only one value live at once.
+            // flush() will call rootDatabase._rawSync() to do the one final fsync.
+            await rootDatabase._rawPut(rawKey, value);
         },
 
         async deleteTarget(rawKey) {
-            // Delete immediately. No buffering needed.
-            await rootDatabase._rawDeleteKeys([rawKey]);
+            // Delete immediately with sync:false. No buffering needed.
+            await rootDatabase._rawDel(rawKey);
+        },
+
+        async flush() {
+            // One final fsync to flush all preceding sync:false writes to durable storage.
+            await rootDatabase._rawSync();
         },
     };
 }

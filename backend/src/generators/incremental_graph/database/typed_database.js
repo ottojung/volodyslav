@@ -31,8 +31,9 @@
  * @typedef {object} GenericDatabase
  * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: DatabaseKey, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: DatabaseKey, value: *) => Promise<void>} rawPut - Store a value accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
+ * @property {(key: DatabaseKey, value: *) => Promise<void>} rawPut - Store a value with sync:false (for unification adapters where runtime type is guaranteed by schema invariant)
  * @property {(key: DatabaseKey) => Promise<void>} del - Delete a value
+ * @property {(key: DatabaseKey) => Promise<void>} rawDel - Delete a value with sync:false (for unification adapters; mirrors rawPut)
  * @property {(key: DatabaseKey, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
  * @property {(key: DatabaseKey, value: *) => DatabasePutOperation<TValue>} rawPutOp - Store a value operation accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
  * @property {(key: DatabaseKey) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
@@ -84,23 +85,39 @@ class TypedDatabaseClass {
     }
 
     /**
-     * Store a value in the database, accepting an untyped value.
+     * Store a value in the database, accepting an untyped value, using sync:false.
      * For use only in unification adapters where values originate from the same
      * schema and are therefore the correct runtime type despite being typed as
      * unknown at the call site.  Keeping this separate from put preserves
      * the typed boundary for normal callers.
      *
-     * Implementation note: rawPut() and put() are intentionally identical at
-     * runtime — the distinction exists only at the JSDoc/type level.  rawPut()
-     * bypasses the TValue constraint so unification adapters can write values
-     * whose type is guaranteed by the schema invariant but cannot be expressed
-     * in the JSDoc type system without a cast.
+     * sync:false means the OS may buffer the write before flushing to disk.
+     * Callers must invoke rootDatabase._rawSync() once after all unification
+     * writes are complete to ensure durability.
      * @param {DatabaseKey} key - The key to store
      * @param {*} value - The value to store (must be TValue at runtime)
      * @returns {Promise<void>}
      */
     async rawPut(key, value) {
-        await this.sublevel.put(key, value);
+        // Avoid TypeScript excess-property checking by using a variable.
+        // abstract-level's AbstractPutOptions doesn't declare sync, but
+        // classic-level (the runtime implementation) supports it.
+        const opts = { sync: false };
+        await this.sublevel.put(key, value, opts);
+    }
+
+    /**
+     * Delete a value from the database using sync:false.
+     * Mirrors rawPut(): for use only in unification adapters.
+     * Callers must invoke rootDatabase._rawSync() once after all unification
+     * writes are complete to ensure durability.
+     * @param {DatabaseKey} key - The key to delete
+     * @returns {Promise<void>}
+     */
+    async rawDel(key) {
+        // Avoid TypeScript excess-property checking by using a variable.
+        const opts = { sync: false };
+        await this.sublevel.del(key, opts);
     }
 
     /**

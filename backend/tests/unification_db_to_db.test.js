@@ -103,6 +103,10 @@ function makeFakeSchemaStorage() {
             async del(key) {
                 store.delete(String(key));
             },
+            async rawDel(key) {
+                allOps.push({ _sublevel: name, type: 'del', key: String(key) });
+                store.delete(String(key));
+            },
             putOp(key, value) {
                 return { _sublevel: name, type: 'put', key: String(key), value };
             },

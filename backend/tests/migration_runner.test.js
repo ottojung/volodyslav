@@ -20,6 +20,7 @@ function makeInMemoryDb(table) {
         async put(key, value) { store.set(key, value); },
         async rawPut(key, value) { store.set(key, value); },
         async del(key) { store.delete(key); },
+        async rawDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
@@ -109,6 +110,7 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         async setMetaVersion(v) {
             setMetaVersionCalledWith = v;
         },
+        async _rawSync() {},
     };
 
     return {
@@ -353,6 +355,7 @@ describe("runMigration", () => {
                     switchToReplicaCalled = true;
                 },
                 async setMetaVersion(_v) {},
+                async _rawSync() {},
             };
 
             const nodeDefs = [{
@@ -476,6 +479,7 @@ describe("runMigration", () => {
                 async setMetaVersionForReplica(_name, _v) {},
                 async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
                 async setMetaVersion(_v) {},
+                async _rawSync() {},
             };
             const nodeDefs = [{
                 output: "A",
@@ -520,6 +524,7 @@ describe("runMigration", () => {
                 async setMetaVersionForReplica(_name, _v) {},
                 async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
                 async setMetaVersion(_v) {},
+                async _rawSync() {},
             };
             const nodeDefs = [{
                 output: "A",
@@ -913,7 +918,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const writeError = new Error("write failure");
         for (const name of ['values', 'freshness', 'inputs', 'revdeps', 'counters', 'timestamps']) {
             yStorage[name].rawPut = async () => { throw writeError; };
-            yStorage[name].del = async () => { throw writeError; };
+            yStorage[name].rawDel = async () => { throw writeError; };
         }
 
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -947,6 +952,7 @@ describe("x-namespace state preserved on migration failure", () => {
             async setMetaVersionForReplica() { throw metaError; },
             async switchToReplica() {},
             async setMetaVersion(_v) {},
+            async _rawSync() {},
         };
 
         await expect(
@@ -978,6 +984,7 @@ describe("x-namespace state preserved on migration failure", () => {
             async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() { throw swapError; },
             async setMetaVersion() {},
+            async _rawSync() {},
         };
 
         await expect(
@@ -1260,6 +1267,7 @@ describe("infrastructure failures", () => {
             async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() {},
             async setMetaVersion() {},
+            async _rawSync() {},
         };
 
         let caught;
@@ -1283,7 +1291,7 @@ describe("infrastructure failures", () => {
         const yStorage = makeSchemaStorage();
         for (const name of ['values', 'freshness', 'inputs', 'revdeps', 'counters', 'timestamps']) {
             yStorage[name].rawPut = async () => { throw unificationError; };
-            yStorage[name].del = async () => { throw unificationError; };
+            yStorage[name].rawDel = async () => { throw unificationError; };
         }
         const rootDatabase = {
             version: "2",
@@ -1295,6 +1303,7 @@ describe("infrastructure failures", () => {
             async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() {},
             async setMetaVersion() {},
+            async _rawSync() {},
         };
 
         let callbackRan = false;

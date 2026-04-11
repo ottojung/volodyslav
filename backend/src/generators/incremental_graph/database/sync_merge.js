@@ -171,6 +171,9 @@ async function copyReplicaGently(rootDatabase, from, to) {
     // Exclude revdeps: they will be recomputed from mergedInputsMap by
     // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
+    // One final fsync: all unification writes use sync:false for performance;
+    // _rawSync() re-writes current_replica with sync:true to flush the WAL.
+    await rootDatabase._rawSync();
 }
 
 /**

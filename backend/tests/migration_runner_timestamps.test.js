@@ -27,6 +27,7 @@ function makeInMemoryDb(table) {
         async put(key, value) { store.set(key, value); },
         async rawPut(key, value) { store.set(key, value); },
         async del(key) { store.delete(key); },
+        async rawDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
@@ -81,6 +82,7 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         async setMetaVersionForReplica(_name, _v) {},
         async switchToReplica(_name) {},
         async setMetaVersion(_v) {},
+        async _rawSync() {},
     };
     return { rootDatabase };
 }
