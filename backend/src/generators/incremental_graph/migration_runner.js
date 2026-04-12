@@ -385,7 +385,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Only changed keys are written; stale keys are deleted first.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
             // One final fsync: all unification writes use sync:false for performance;
-            // _rawSync() re-writes current_replica with sync:true to flush the WAL.
+            // _rawSync() issues an empty batch with sync:true to flush the WAL
+            // without rewriting any keys.
             await rootDatabase._rawSync();
 
             // Switch the active replica pointer to the target replica.
