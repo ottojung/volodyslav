@@ -172,7 +172,8 @@ async function copyReplicaGently(rootDatabase, from, to) {
     // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
     // One final fsync: all unification writes use sync:false for performance;
-    // _rawSync() re-writes current_replica with sync:true to flush the WAL.
+    // _rawSync() issues an empty batch with sync:true to durably flush the
+    // WAL/database state without mutating any keys.
     await rootDatabase._rawSync();
 }
 
