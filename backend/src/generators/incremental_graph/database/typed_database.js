@@ -99,10 +99,14 @@ class TypedDatabaseClass {
      * @returns {Promise<void>}
      */
     async rawPut(key, value) {
-        // Avoid TypeScript excess-property checking by using a variable.
-        // abstract-level's AbstractPutOptions doesn't declare sync, but
-        // classic-level (the runtime implementation) supports it.
-        const opts = { sync: false };
+        // Pass sync:false to avoid per-write fsyncs during bulk unification.
+        // classic-level supports sync at runtime; abstract-level's type for
+        // AbstractPutOptions is a "weak type" (all-optional properties) so
+        // TypeScript requires at least one recognised property to be present.
+        // keyEncoding:undefined is a valid AbstractPutOptions property (means
+        // "use default encoding") and satisfies the weak-type check without
+        // changing runtime behaviour.
+        const opts = { sync: false, keyEncoding: /** @type {undefined} */ (undefined) };
         await this.sublevel.put(key, value, opts);
     }
 
@@ -115,8 +119,9 @@ class TypedDatabaseClass {
      * @returns {Promise<void>}
      */
     async rawDel(key) {
-        // Avoid TypeScript excess-property checking by using a variable.
-        const opts = { sync: false };
+        // Pass sync:false to avoid per-write fsyncs during bulk unification.
+        // See rawPut() for the keyEncoding:undefined weak-type-check workaround.
+        const opts = { sync: false, keyEncoding: /** @type {undefined} */ (undefined) };
         await this.sublevel.del(key, opts);
     }
 

@@ -196,6 +196,12 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
 
         async deleteTarget(relPath) {
             const absPath = resolveContainedPath(outputDir, relPath);
+            // Tolerant delete: putTarget() may have already removed this path
+            // as part of deleting a stale ancestor directory (P1 conflict
+            // resolution).  If the file is already gone, that is not an error.
+            if (!await capabilities.checker.fileExists(absPath)) {
+                return;
+            }
             await capabilities.deleter.deleteFile(absPath);
         },
     };
