@@ -22,6 +22,8 @@
 
 const {
     unifyStores,
+    compareKeys,
+    sortKeysByUtf8,
     UnificationListError,
     isUnificationListError,
     UnificationReadError,
@@ -41,6 +43,8 @@ const { makeFsToDbAdapter } = require('./fs_to_db');
 const { makeDbToFsAdapter } = require('./db_to_fs');
 
 module.exports = {
+    compareKeys,
+    sortKeysByUtf8,
     unifyStores,
     UnificationListError,
     isUnificationListError,

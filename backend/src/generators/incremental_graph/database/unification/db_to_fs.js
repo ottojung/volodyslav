@@ -27,7 +27,7 @@
 
 const path = require('path');
 const { keyToRelativePath, relativePathToKey, serializeValue } = require('../encoding');
-const { compareKeys } = require('./core');
+const { sortKeysByUtf8 } = require('./core');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -131,7 +131,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
                 const fullRelPath = keyToRelativePath(rawKey);
                 relPaths.push(fullRelPath.slice(sublevelPrefix.length));
             }
-            relPaths.sort(compareKeys);
+            sortKeysByUtf8(relPaths);
             for (const relPath of relPaths) {
                 yield relPath;
             }
@@ -148,7 +148,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
             const relPaths = allFiles.map(
                 absPath => path.relative(outputDir, absPath).split(path.sep).join('/')
             );
-            relPaths.sort(compareKeys);
+            sortKeysByUtf8(relPaths);
             for (const relPath of relPaths) {
                 yield relPath;
             }

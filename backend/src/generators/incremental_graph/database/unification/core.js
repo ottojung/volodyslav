@@ -42,6 +42,25 @@ function compareKeys(a, b) {
 }
 
 /**
+ * Sort an array of raw keys in UTF-8 byte order in-place using a
+ * decorate-sort-undecorate strategy: each key's UTF-8 Buffer is computed once
+ * before sorting, so no Buffer is allocated more than once per key per call.
+ * No persistent cache is used; all Buffers are freed when the function returns.
+ *
+ * @param {string[]} keys - Mutable array; sorted in-place.
+ * @returns {string[]} The same array, now sorted.
+ */
+function sortKeysByUtf8(keys) {
+    /** @type {Array<{key: string, buf: Buffer}>} */
+    const decorated = keys.map(key => ({ key, buf: Buffer.from(key, 'utf8') }));
+    decorated.sort((a, b) => Buffer.compare(a.buf, b.buf));
+    for (const [i, item] of decorated.entries()) {
+        keys[i] = item.key;
+    }
+    return keys;
+}
+
+/**
  * Thrown when listing source or target keys fails.
  */
 class UnificationListError extends Error {
@@ -329,6 +348,7 @@ async function unifyStores(adapter) {
 
 module.exports = {
     compareKeys,
+    sortKeysByUtf8,
     unifyStores,
     UnificationListError,
     isUnificationListError,

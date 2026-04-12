@@ -40,6 +40,8 @@ const {
 } = require('./get_root_database');
 
 const {
+    compareKeys,
+    sortKeysByUtf8,
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
@@ -85,6 +87,8 @@ module.exports = {
     compareConstValue,
     compareNodeKey,
     compareNodeKeyStringByNodeKey,
+    compareKeys,
+    sortKeysByUtf8,
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,

@@ -14,7 +14,7 @@ const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
 const { compareNodeKeyStringByNodeKey } = require("./database");
-const { unifyStores, makeDbToDbAdapter } = require("./database");
+const { unifyStores, makeDbToDbAdapter, compareKeys, nodeKeyStringToString } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -144,9 +144,9 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  */
 function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
     // Sort decision keys once so every sublevel's keys() yields in the same
-    // lexicographic order as LevelDB, which is required by the merge-join.
-    const sortedDecisionKeys = [...decisions.keys()].sort();
-    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
+    // UTF-8 byte order as LevelDB, which is required by the merge-join.
+    const sortedDecisionKeys = [...decisions.keys()].sort((a, b) => compareKeys(nodeKeyStringToString(a), nodeKeyStringToString(b)));
+    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort((a, b) => compareKeys(nodeKeyStringToString(a), nodeKeyStringToString(b)));
 
     return {
         values: {

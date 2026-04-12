@@ -27,7 +27,6 @@
 
 const path = require('path');
 const { relativePathToKey, parseValue } = require('../encoding');
-const { compareKeys } = require('./core');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
@@ -57,6 +56,35 @@ class UnrecordedKeyError extends Error {
  */
 function isUnrecordedKeyError(object) {
     return object instanceof UnrecordedKeyError;
+}
+
+/**
+ * Thrown when two different file paths in the snapshot directory decode to the
+ * same raw LevelDB key (e.g. via differing percent-escape casing like %2e vs
+ * %2E).  Duplicate keys would violate the strictly-sorted-stream requirement of
+ * the merge-join and produce non-deterministic unification results.
+ */
+class DuplicateSourceKeyError extends Error {
+    /**
+     * @param {string} rawKey
+     * @param {string} path1 - First file path that decoded to rawKey.
+     * @param {string} path2 - Second file path that decoded to rawKey.
+     */
+    constructor(rawKey, path1, path2) {
+        super(`fs_to_db listSourceKeys: key '${rawKey}' maps to two paths: '${path1}' and '${path2}'`);
+        this.name = 'DuplicateSourceKeyError';
+        this.rawKey = rawKey;
+        this.path1 = path1;
+        this.path2 = path2;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is DuplicateSourceKeyError}
+ */
+function isDuplicateSourceKeyError(object) {
+    return object instanceof DuplicateSourceKeyError;
 }
 
 /**
@@ -139,10 +167,23 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
             const allFiles = await walkFilesRecursively(capabilities, inputDir);
             /** @type {Array<{rawKey: string, absPath: string}>} */
             const entries = allFiles.map(absPath => ({ rawKey: absPathToRawKey(absPath), absPath }));
-            entries.sort((a, b) => compareKeys(a.rawKey, b.rawKey));
-            for (const { rawKey, absPath } of entries) {
-                sourceKeyToAbsPath.set(rawKey, absPath);
-                yield rawKey;
+            // Sort in UTF-8 byte order using decorate-sort-undecorate so each
+            // buffer is computed once per entry (not once per comparison).
+            /** @type {Array<{rawKey: string, absPath: string, buf: Buffer}>} */
+            const decorated = entries.map(e => ({ rawKey: e.rawKey, absPath: e.absPath, buf: Buffer.from(e.rawKey, 'utf8') }));
+            decorated.sort((a, b) => Buffer.compare(a.buf, b.buf));
+            /** @type {{rawKey: string, absPath: string, buf: Buffer} | undefined} */
+            let prev;
+            for (const item of decorated) {
+                // Detect duplicate keys (two file paths that decode to the same
+                // raw DB key, e.g. differing only by percent-escape casing).
+                // Duplicates violate the strictly-sorted-stream requirement.
+                if (prev !== undefined && prev.rawKey === item.rawKey) {
+                    throw new DuplicateSourceKeyError(item.rawKey, prev.absPath, item.absPath);
+                }
+                sourceKeyToAbsPath.set(item.rawKey, item.absPath);
+                yield item.rawKey;
+                prev = item;
             }
         },
 
@@ -198,4 +239,6 @@ module.exports = {
     makeFsToDbAdapter,
     UnrecordedKeyError,
     isUnrecordedKeyError,
+    DuplicateSourceKeyError,
+    isDuplicateSourceKeyError,
 };

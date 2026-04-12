@@ -36,6 +36,7 @@
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
 
 const { stringToNodeKeyString } = require('../types');
+const { compareKeys } = require('./core');
 
 /**
  * Read-only view of a single sublevel — the minimum interface required by the
@@ -328,10 +329,10 @@ function makeInMemorySchemaStorage() {
                 return { type: 'del', sublevelTag: sublevelName, key: String(key) };
             },
             async *keys() {
-                // Sort keys so the in-memory store yields in the same
-                // lexicographic order as LevelDB, which is required by the
+                // Sort keys in UTF-8 byte order so the in-memory store yields
+                // in the same order as LevelDB, which is required by the
                 // merge-join in core.js.
-                const sorted = [...store.keys()].sort();
+                const sorted = [...store.keys()].sort(compareKeys);
                 for (const k of sorted) {
                     yield stringToNodeKeyString(k);
                 }
