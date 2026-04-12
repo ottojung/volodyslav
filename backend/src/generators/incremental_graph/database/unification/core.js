@@ -21,15 +21,25 @@
  * Requirement: both listSourceKeys() and listTargetKeys() MUST yield keys in
  * ascending lexicographic order for the merge-join to produce correct results.
  *
- * Key ordering assumption: keys are compared with JS string operators (<, >),
- * which use UCS-2/UTF-16 code-unit order.  LevelDB iterates keys in UTF-8
- * byte order.  These orderings agree for all Unicode code points in the Basic
- * Multilingual Plane (U+0000–U+FFFF), which covers every character that can
- * appear in the internal NodeKey strings used here (ASCII alphanumerics plus
- * the separator byte \x00).  Adapters that sort in JS (e.g. db_to_fs, fs_to_db)
- * use Array.prototype.sort(), which also uses UCS-2 order and therefore
- * produces the same ordering as LevelDB for these keys.
+ * Key ordering: keys are compared using UTF-8 byte order via Buffer.compare,
+ * which matches LevelDB's native iteration order for string keys.  Adapters
+ * that enumerate keys in JS (e.g. db_to_fs, fs_to_db) sort using the same
+ * compareKeys() helper exported from this module so all key streams use an
+ * identical ordering.
  */
+
+/**
+ * Compare two raw keys in UTF-8 byte order, matching LevelDB's iteration order.
+ * Use this comparator when sorting key arrays in adapter implementations so
+ * that JS-sorted lists are in the same order as LevelDB-iterated lists.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+function compareKeys(a, b) {
+    return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
 
 /**
  * Thrown when listing source or target keys fails.
@@ -230,7 +240,7 @@ async function unifyStores(adapter) {
             } else {
                 const sk = String(sNext.value);
                 const tk = String(tNext.value);
-                cmp = sk < tk ? -1 : sk > tk ? 1 : 0;
+                cmp = compareKeys(sk, tk);
             }
 
             if (cmp < 0) {
@@ -318,6 +328,7 @@ async function unifyStores(adapter) {
 }
 
 module.exports = {
+    compareKeys,
     unifyStores,
     UnificationListError,
     isUnificationListError,

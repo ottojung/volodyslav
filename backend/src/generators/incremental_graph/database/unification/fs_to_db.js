@@ -27,12 +27,37 @@
 
 const path = require('path');
 const { relativePathToKey, parseValue } = require('../encoding');
+const { compareKeys } = require('./core');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../../filesystem/dirscanner').DirScanner} DirScanner */
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
+
+/**
+ * Thrown when readSource() is called for a key that was never recorded in
+ * listSourceKeys().  This is a programming error (the merge-join should only
+ * call readSource() for keys it received from listSourceKeys()).
+ */
+class UnrecordedKeyError extends Error {
+    /**
+     * @param {string} rawKey
+     */
+    constructor(rawKey) {
+        super(`fs_to_db readSource: no path recorded for key '${rawKey}'`);
+        this.name = 'UnrecordedKeyError';
+        this.rawKey = rawKey;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is UnrecordedKeyError}
+ */
+function isUnrecordedKeyError(object) {
+    return object instanceof UnrecordedKeyError;
+}
 
 /**
  * Capabilities required by the FS→DB adapter.
@@ -114,7 +139,7 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
             const allFiles = await walkFilesRecursively(capabilities, inputDir);
             /** @type {Array<{rawKey: string, absPath: string}>} */
             const entries = allFiles.map(absPath => ({ rawKey: absPathToRawKey(absPath), absPath }));
-            entries.sort((a, b) => (a.rawKey < b.rawKey ? -1 : a.rawKey > b.rawKey ? 1 : 0));
+            entries.sort((a, b) => compareKeys(a.rawKey, b.rawKey));
             for (const { rawKey, absPath } of entries) {
                 sourceKeyToAbsPath.set(rawKey, absPath);
                 yield rawKey;
@@ -135,7 +160,7 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
             // which would fail for manually-created files with lowercase escapes.
             const absPath = sourceKeyToAbsPath.get(rawKey);
             if (absPath === undefined) {
-                throw new Error(`fs_to_db readSource: no path recorded for key '${rawKey}'`);
+                throw new UnrecordedKeyError(rawKey);
             }
             const content = await capabilities.reader.readFileAsText(absPath);
             return parseValue(content);
@@ -171,4 +196,6 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
 
 module.exports = {
     makeFsToDbAdapter,
+    UnrecordedKeyError,
+    isUnrecordedKeyError,
 };

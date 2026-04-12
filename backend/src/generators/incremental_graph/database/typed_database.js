@@ -106,7 +106,7 @@ class TypedDatabaseClass {
         // keyEncoding:undefined is a valid AbstractPutOptions property (means
         // "use default encoding") and satisfies the weak-type check without
         // changing runtime behaviour.
-        const opts = { sync: false, keyEncoding: /** @type {undefined} */ (undefined) };
+        const opts = { sync: false, keyEncoding: undefined };
         await this.sublevel.put(key, value, opts);
     }
 
@@ -121,7 +121,7 @@ class TypedDatabaseClass {
     async rawDel(key) {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See rawPut() for the keyEncoding:undefined weak-type-check workaround.
-        const opts = { sync: false, keyEncoding: /** @type {undefined} */ (undefined) };
+        const opts = { sync: false, keyEncoding: undefined };
         await this.sublevel.del(key, opts);
     }
 
