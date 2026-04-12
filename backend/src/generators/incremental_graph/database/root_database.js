@@ -563,10 +563,25 @@ class RootDatabaseClass {
     async *_rawEntriesForSublevel(sublevelName) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        const rawKeyPrefix = `!${sublevelName}!`;
         for await (const [key, value] of sublevel.iterator()) {
-            yield [rawKeyPrefix + key, value];
+            yield [`!${sublevelName}!` + key, value];
         }
+    }
+
+    /**
+     * Iterate over raw keys (no values) in a named top-level LevelDB sublevel.
+     * Like _rawEntriesForSublevel() but skips value decoding for callers that
+     * only need the key stream (e.g. listSourceKeys / listTargetKeys in the
+     * unification adapters).  Each yielded key is the full root-level key
+     * (e.g. `!x!!values!...`) reconstructed by prepending `!<sublevelName>!`.
+     *
+     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
+     * @returns {AsyncIterable<string>}
+     */
+    async *_rawKeysForSublevel(sublevelName) {
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        for await (const key of sublevel.keys()) { yield `!${sublevelName}!` + String(key); }
     }
 
     /**
@@ -576,7 +591,7 @@ class RootDatabaseClass {
      *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
      * @param {string} innerKey - Key within the sublevel.
-     * @returns {Promise<unknown>}
+     * @returns {Promise<unknown | undefined>}
      */
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */

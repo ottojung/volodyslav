@@ -190,7 +190,7 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
         async *listTargetKeys() {
             // Stream target keys in LevelDB order (already sorted); no value
             // caching needed since readTarget() does an on-demand lookup.
-            for await (const [rawKey] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+            for await (const rawKey of rootDatabase._rawKeysForSublevel(sublevel)) {
                 yield rawKey;
             }
         },

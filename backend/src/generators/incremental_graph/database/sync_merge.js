@@ -276,9 +276,9 @@ async function unifyRevdeps(T, mergedInputsMap) {
         targetKeys.add(String(key));
     }
 
-    // Accumulate ops for a single batch write.
-    // Memory: O(num_edges) — revdep values are small (arrays of node-key
-    // strings), so the total size is bounded by the number of graph edges.
+    // Accumulate ops for batch writes chunked by RAW_BATCH_CHUNK_SIZE.
+    // Memory: O(RAW_BATCH_CHUNK_SIZE × avg_revdep_size) per chunk — revdep
+    // values are small (arrays of node-key strings), so each chunk is bounded.
     /** @type {DatabaseBatchOperation[]} */
     const ops = [];
     for (const [inputStr, dependents] of desired) {
@@ -291,12 +291,18 @@ async function unifyRevdeps(T, mergedInputsMap) {
                 ops.push(T.revdeps.putOp(inputKey, dependents));
             }
         }
+        if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
+            await T.batch(ops.splice(0, ops.length));
+        }
     }
 
     // Delete stale entries.
     for (const existingKey of targetKeys) {
         if (!desired.has(existingKey)) {
             ops.push(T.revdeps.delOp(stringToNodeKeyString(existingKey)));
+        }
+        if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
+            await T.batch(ops.splice(0, ops.length));
         }
     }
 

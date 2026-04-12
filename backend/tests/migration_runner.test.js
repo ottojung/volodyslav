@@ -11,7 +11,7 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database'),
     runMigrationInTransaction: jest.fn(),
 }));
-const { runMigrationInTransaction: mockRunMigrationInTransaction } = require('../src/generators/incremental_graph/database');
+const { runMigrationInTransaction: mockRunMigrationInTransaction, compareKeys } = require('../src/generators/incremental_graph/database');
 
 function makeInMemoryDb(table) {
     const store = new Map();
@@ -25,8 +25,9 @@ function makeInMemoryDb(table) {
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
         async *keys() {
-            // Sort keys for merge-join compatibility.
-            for (const key of [...store.keys()].sort()) yield key;
+            // Sort keys in UTF-8 byte order to match LevelDB iteration order,
+            // which is required by the merge-join in core.js.
+            for (const key of [...store.keys()].sort(compareKeys)) yield key;
         },
         apply(operation) {
             if (operation.table === table) {

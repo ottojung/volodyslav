@@ -127,7 +127,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
             // held; values are never loaded here.  This fits within the O(n)
             // target where n = max(max_value_size, num_keys).
             const relPaths = [];
-            for await (const [rawKey] of rootDatabase._rawEntriesForSublevel(sublevel)) {
+            for await (const rawKey of rootDatabase._rawKeysForSublevel(sublevel)) {
                 const fullRelPath = keyToRelativePath(rawKey);
                 relPaths.push(fullRelPath.slice(sublevelPrefix.length));
             }

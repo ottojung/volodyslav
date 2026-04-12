@@ -242,6 +242,14 @@ async function unifyStores(adapter) {
     let sNext = await nextSource();
     let tNext = await nextTarget();
 
+    // Cache the UTF-8 Buffer for the current source/target key so each key is
+    // encoded at most once per iterator step.  Null means the buffer needs to
+    // be (re)computed for the new key after sNext/tNext has advanced.
+    /** @type {Buffer | null} */
+    let skBuf = null;
+    /** @type {Buffer | null} */
+    let tkBuf = null;
+
     let putCount = 0;
     let deleteCount = 0;
     let unchangedCount = 0;
@@ -259,7 +267,9 @@ async function unifyStores(adapter) {
             } else {
                 const sk = String(sNext.value);
                 const tk = String(tNext.value);
-                cmp = compareKeys(sk, tk);
+                if (skBuf === null) skBuf = Buffer.from(sk, 'utf8');
+                if (tkBuf === null) tkBuf = Buffer.from(tk, 'utf8');
+                cmp = Buffer.compare(skBuf, tkBuf);
             }
 
             if (cmp < 0) {
@@ -279,6 +289,7 @@ async function unifyStores(adapter) {
                 }
                 putCount++;
                 sNext = await nextSource();
+                skBuf = null; // key changed, recompute buffer on next comparison
             } else if (cmp > 0) {
                 // Target-only key: delete from target.
                 targetCount++;
@@ -289,6 +300,7 @@ async function unifyStores(adapter) {
                 }
                 deleteCount++;
                 tNext = await nextTarget();
+                tkBuf = null; // key changed, recompute buffer on next comparison
             } else {
                 // Key present in both: compare values and put only if different.
                 sourceCount++;
@@ -319,6 +331,8 @@ async function unifyStores(adapter) {
                 }
                 sNext = await nextSource();
                 tNext = await nextTarget();
+                skBuf = null; // both keys changed, recompute buffers on next comparison
+                tkBuf = null;
             }
         }
 

@@ -13,6 +13,7 @@ const {
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
     unifyStores,
+    compareKeys,
 } = require('../src/generators/incremental_graph/database/unification');
 
 const { stringToNodeKeyString } = require('../src/generators/incremental_graph/database/types');
@@ -116,7 +117,7 @@ function makeFakeSchemaStorage() {
             delOp(key) {
                 return { _sublevel: name, type: 'del', key: String(key) };
             },
-            async *keys() { for (const k of Array.from(store.keys()).sort()) yield k; },
+            async *keys() { for (const k of Array.from(store.keys()).sort(compareKeys)) yield k; },
         };
     }
 
