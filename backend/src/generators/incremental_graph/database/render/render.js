@@ -11,8 +11,7 @@
  */
 
 const { validateTopLevelSublevel } = require('./sublevel');
-const { makeDbToFsAdapter } = require('../unification');
-const { unifyStores } = require('../unification');
+const { makeDbToFsAdapter, unifyStores } = require('../unification');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */

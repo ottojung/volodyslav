@@ -46,7 +46,7 @@ tNext = await targetIter.next()
 while !sNext.done || !tNext.done:
   if      sNext.done:  cmp = +1   // only in target → delete
   else if tNext.done:  cmp = -1   // only in source → put
-  else:                cmp = sNext.value.localeCompare(tNext.value)
+  else:                cmp = compareKeys(sNext.value, tNext.value)  // UTF-8 byte order
 
   if cmp < 0:
     sv = readSource(sNext.value)
