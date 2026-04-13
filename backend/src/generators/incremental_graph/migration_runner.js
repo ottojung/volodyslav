@@ -147,15 +147,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
     // UTF-8 byte order as LevelDB, which is required by the merge-join.
     // Use decorate-sort-undecorate so each UTF-8 Buffer is allocated once per
     // key, not once per comparison.
-    const sortedDecisionKeys = [...decisions.keys()];
-    const decoratedDecisionKeys = sortedDecisionKeys.map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }));
-    decoratedDecisionKeys.sort((a, b) => Buffer.compare(a.buf, b.buf));
-    for (const [i, item] of decoratedDecisionKeys.entries()) sortedDecisionKeys[i] = item.key;
+    const sortedDecisionKeys = [...decisions.keys()]
+        .map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }))
+        .sort((a, b) => Buffer.compare(a.buf, b.buf))
+        .map(item => item.key);
 
-    const sortedRevdepKeys = [...desiredRevdeps.keys()];
-    const decoratedRevdepKeys = sortedRevdepKeys.map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }));
-    decoratedRevdepKeys.sort((a, b) => Buffer.compare(a.buf, b.buf));
-    for (const [i, item] of decoratedRevdepKeys.entries()) sortedRevdepKeys[i] = item.key;
+    const sortedRevdepKeys = [...desiredRevdeps.keys()]
+        .map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }))
+        .sort((a, b) => Buffer.compare(a.buf, b.buf))
+        .map(item => item.key);
 
     return {
         values: {
