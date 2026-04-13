@@ -14,7 +14,7 @@ const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
 const { compareNodeKeyStringByNodeKey } = require("./database");
-const { unifyStores, makeDbToDbAdapter, compareKeys, nodeKeyStringToString } = require("./database");
+const { unifyStores, makeDbToDbAdapter, nodeKeyStringToString } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -145,8 +145,17 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
 function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
     // Sort decision keys once so every sublevel's keys() yields in the same
     // UTF-8 byte order as LevelDB, which is required by the merge-join.
-    const sortedDecisionKeys = [...decisions.keys()].sort((a, b) => compareKeys(nodeKeyStringToString(a), nodeKeyStringToString(b)));
-    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort((a, b) => compareKeys(nodeKeyStringToString(a), nodeKeyStringToString(b)));
+    // Use decorate-sort-undecorate so each UTF-8 Buffer is allocated once per
+    // key, not once per comparison.
+    const sortedDecisionKeys = [...decisions.keys()];
+    const decoratedDecisionKeys = sortedDecisionKeys.map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }));
+    decoratedDecisionKeys.sort((a, b) => Buffer.compare(a.buf, b.buf));
+    for (const [i, item] of decoratedDecisionKeys.entries()) sortedDecisionKeys[i] = item.key;
+
+    const sortedRevdepKeys = [...desiredRevdeps.keys()];
+    const decoratedRevdepKeys = sortedRevdepKeys.map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }));
+    decoratedRevdepKeys.sort((a, b) => Buffer.compare(a.buf, b.buf));
+    for (const [i, item] of decoratedRevdepKeys.entries()) sortedRevdepKeys[i] = item.key;
 
     return {
         values: {

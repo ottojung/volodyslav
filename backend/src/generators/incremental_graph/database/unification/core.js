@@ -239,8 +239,20 @@ async function unifyStores(adapter) {
         }
     };
 
-    let sNext = await nextSource();
-    let tNext = await nextTarget();
+    /** @type {IteratorResult<string>} */
+    let sNext;
+    /** @type {IteratorResult<string>} */
+    let tNext;
+    try {
+        sNext = await nextSource();
+        tNext = await nextTarget();
+    } catch (err) {
+        await Promise.allSettled([
+            sourceIter.return?.(),
+            targetIter.return?.(),
+        ]);
+        throw err;
+    }
 
     // Cache the UTF-8 Buffer for the current source/target key so each key is
     // encoded at most once per iterator step.  Null means the buffer needs to
