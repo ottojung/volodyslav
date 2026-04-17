@@ -11,7 +11,10 @@ in one place and enforces it consistently.
 - [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`
 - [ ] Define construction and parsing around the exact full-string validity rule from the design: `/^[a-z_][a-z0-9_]*$/`
 - [ ] Reject invalid identifiers during construction, parsing, and before persistence, including explicit rejection of any string that does not match the entire validity rule and explicit rejection of `"!!"`
-- [ ] Generate random identifiers in that allowed format using the existing random-string helper and the repository's capabilities-driven seed pattern
+- [ ] Delete `backend/src/random/string.js` and its test `backend/tests/random_string.test.js`
+- [ ] Add `backend/src/random/variable_name.js` that generates identifiers matching `/^[a-z_][a-z0-9_]*$/` using the repository's capabilities-driven seed pattern
+- [ ] Export `variableName` from `backend/src/random/index.js` (removing the `string` export)
+- [ ] Migrate every existing caller of `random.string` (`backend/src/event/id.js`, `backend/src/runtime_identifier.js`) to use `random.variableName` instead
 
 ## 2. Database shape and lookup metadata
 

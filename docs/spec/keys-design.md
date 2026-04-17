@@ -136,13 +136,14 @@ fresh identifiers for `create`.
 
 ## Determinism
 
-`revdeps` stores `NodeIdentifier[]`, but deterministic ordering is still defined by the
-corresponding `NodeKey` order.
+`revdeps` stores `NodeIdentifier[]`, but deterministic ordering is defined by
+ascending serialized `NodeKeyString` order of the corresponding `NodeKey` values.
 
 So:
 
 - persisted reverse-dependency references are identifiers only
-- deterministic ordering is still derived from `node_id_to_key`
+- deterministic ordering is still derived from `node_id_to_key` by comparing the
+  serialized `NodeKeyString` values in ascending lexicographic order
 
 ## Filesystem snapshot format
 
