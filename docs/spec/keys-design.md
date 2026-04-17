@@ -113,10 +113,8 @@ All actual graph state and all graph-to-graph references must use `NodeIdentifie
 
 ### Dependency metadata
 
-- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }`
-- `revdeps[id] -> NodeIdentifier[]`
-
-`inputs` intentionally keeps its existing record shape because it must store both the dependency identifiers and the parallel `inputCounters` array. Only the referenced element type changes from `NodeKeyString[]` to `NodeIdentifier[]`. `revdeps` remains a plain array because it has no paired counter payload.
+- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }` — this intentionally keeps the existing record shape because it must store both dependency identifiers and the parallel `inputCounters` array; only the element type changes from `NodeKeyString[]` to `NodeIdentifier[]`
+- `revdeps[id] -> NodeIdentifier[]` — this remains a plain array because it has no paired counter payload
 
 ### Lookup metadata
 
@@ -227,8 +225,8 @@ So snapshots become less directly human-readable in the primary data sublevels, 
 `database/encoding.js` must distinguish three cases:
 
 1. meta sublevels with plain string keys (`_meta`, `meta`)
-2. lookup sublevels keyed by `NodeKey` (`node_key_to_id`)
-3. graph-state sublevels keyed by `NodeIdentifier` (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`, `node_id_to_key`)
+2. lookup sublevels, split into `NodeKey`-keyed (`node_key_to_id`) and `NodeIdentifier`-keyed (`node_id_to_key`) variants
+3. graph-state sublevels keyed by `NodeIdentifier` (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`)
 
 ## Invariants
 
