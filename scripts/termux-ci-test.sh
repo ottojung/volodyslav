@@ -12,7 +12,7 @@ apt-get install -q -y coreutils python build-essential file nodejs git
 uname -a
 id -a
 
-npm install -g node-gyp-build
+export PATH="$PWD/node_modules/.bin:$PWD/backend/node_modules/.bin:$PATH"
 npm ci
 npm run build
 npm run test-only
