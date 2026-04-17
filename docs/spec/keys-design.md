@@ -1,127 +1,32 @@
 # IncrementalGraph internal node identifiers
 
-## Problem
+## Purpose
 
-Today the incremental-graph database uses `NodeKeyString` as both:
+This document describes the target state for IncrementalGraph node addressing after
+internal `NodeIdentifier`s are introduced.
 
-- the public address of a node instance, and
-- the persisted storage key/reference for that node.
+The target state separates three concerns:
 
-That is visible in all current graph-state sublevels:
+- `NodeKey` is the semantic identity of a concrete node instance
+- `NodeIdentifier` is the persisted storage identity of a materialized node
+- filesystem snapshots and the HTTP inspection API operate directly on stored identifiers
 
-- `values`
-- `freshness`
-- `inputs`
-- `revdeps`
-- `counters`
-- `timestamps`
+## Terms
 
-These six sublevels are referred to below as the **graph-state sublevels**.
+- **NodeKey**: the schema-derived identity of a concrete node instance, based on
+  `(head, args)`
+- **NodeIdentifier**: the opaque random identifier attached to a materialized node
+- **graph-state sublevels**: `values`, `freshness`, `inputs`, `revdeps`, `counters`,
+  `timestamps`
 
-It is also visible in migration code and in the filesystem snapshot encoding, which currently renders keys such as:
+## Target-state boundary
 
-- `x/values/event/abc123`
-- `x/freshness/event/abc123`
-- `x/inputs/event/abc123`
-- `x/revdeps/event/abc123`
+### IncrementalGraph and Interface API
 
-This was acceptable while `NodeKey` was the only identity we needed. It is no longer sufficient because:
+The `IncrementalGraph` API and the higher-level `Interface` API continue to address
+nodes by `NodeKey`.
 
-1. `NodeKey` is schema-derived rather than universally unique.
-2. We now care about latin-1-safe storage keys.
-3. We want a stable internal address that can be used uniformly across persisted graph metadata.
-
-## Goal
-
-Introduce a new **internal-only** identifier for each materialized node:
-
-- random
-- latin-1 safe
-- stable for the lifetime of that node in storage
-- never exposed as part of the `IncrementalGraph` or `Interface` API
-
-Public APIs must continue to address nodes by `(head, args)` / `NodeKey`.
-
-## Non-goals
-
-- Changing the public `IncrementalGraph` API
-- Changing the public `Interface` API
-- Making callers pass node identifiers
-- Replacing `NodeKey` as the schema-level notion of node identity
-
-`NodeKey` remains the public and semantic identity. `NodeIdentifier` becomes the persisted storage identity.
-
-## New type
-
-Add a nominal type parallel to `EventId`:
-
-- module shape similar to `backend/src/event/id.js`
-- generated with the existing helper at `backend/src/random/string.js`, using the same capability-driven seed pattern as `backend/src/event/id.js` (`capabilities.seed`, not a raw system API)
-- stored as lowercase alphanumeric text, optionally with a `gid` prefix in examples
-
-Example values:
-
-- `gid0123456789abcdef`
-- `gidfedcba9876543210`
-
-Requirements:
-
-- latin-1 / ASCII only
-- collision checked against existing stored identifiers before commit
-- round-trippable with `make`, `fromString`, `toString`
-
-## Storage model
-
-### Rule
-
-All persisted graph state must address nodes by `NodeIdentifier`, not by `NodeKeyString`.
-
-This applies to:
-
-- keys in all graph-state sublevels
-- values inside `inputs`
-- values inside `revdeps`
-- migration-produced state
-- filesystem-rendered database snapshots
-
-### Required lookup metadata
-
-To preserve the current public API, the database also needs a bijection between public keys and internal identifiers.
-
-Add two new metadata sublevels:
-
-1. `node_key_to_id`
-   - key: `NodeKeyString`
-   - value: `NodeIdentifier`
-2. `node_id_to_key`
-   - key: `NodeIdentifier`
-   - value: `NodeKeyString`
-
-This is the **only** place where `NodeKeyString` may remain persisted as node-address metadata.
-All actual graph state and all graph-to-graph references must use `NodeIdentifier`.
-
-## New per-sublevel representation
-
-### Primary data
-
-- `values[id] -> ComputedValue`
-- `freshness[id] -> Freshness`
-- `counters[id] -> Counter`
-- `timestamps[id] -> TimestampRecord`
-
-### Dependency metadata
-
-- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }` — stores dependency identifiers and their corresponding counter values
-- `revdeps[id] -> NodeIdentifier[]` — stores reverse-dependency identifiers
-
-### Lookup metadata
-
-- `node_key_to_id[nodeKey] -> id`
-- `node_id_to_key[id] -> nodeKey`
-
-## Public/API boundary
-
-The boundary remains unchanged:
+That includes:
 
 - `pull(head, args)`
 - `invalidate(head, args)`
@@ -131,95 +36,145 @@ The boundary remains unchanged:
 - `getModificationTime(head, args)`
 - `listMaterializedNodes()`
 
-All of these continue to accept or return `NodeKey`-shaped data.
+For these APIs, callers do not pass `NodeIdentifier`s.
 
-Internally the flow becomes:
+### HTTP inspection API
 
-1. public API constructs `NodeKeyString`
-2. graph resolves `NodeKeyString -> NodeIdentifier`
-3. storage reads/writes by `NodeIdentifier`
-4. when public output is needed, graph resolves `NodeIdentifier -> NodeKeyString`
+The HTTP inspection API is not a user-facing API. It is an internal development and
+inspection surface.
 
-## Allocation rules
+In the target state, every HTTP operation that addresses or returns a concrete node
+instance uses `NodeIdentifier`, not `NodeKey`.
 
-### First materialization
+The older concrete-node HTTP shape based on `head/arg0/arg1/...` is not part of the
+target state.
 
-When a node is first materialized:
+## NodeIdentifier requirements
 
-1. compute its `NodeKeyString` as today
-2. look up `node_key_to_id[nodeKey]`
-3. if present, reuse it
-4. if absent:
-   - generate a fresh random `NodeIdentifier`
-   - verify `node_id_to_key[id]` does not already exist
-   - atomically write both lookup records
+A `NodeIdentifier` is an opaque random identifier with the following properties:
 
-Only after the lookup pair exists may graph-state records be written.
+- latin-1 / ASCII only
+- stable for the lifetime of that materialized node in storage
+- round-trippable as a nominal typed value
+- unique within the database
+- suitable for direct use as persisted key content and as a filesystem path segment
 
-### Recompute / invalidate / cache hit
+Stored key content for node identifiers MUST NOT contain the substring `"!!"`.
+That substring is reserved for sublevel delimiters in raw LevelDB keys and must appear
+only there.
 
-These operations must reuse the existing identifier. They must never allocate a second identifier for the same `NodeKeyString`.
+Example values:
 
-### Delete
+- `gid0123456789abcdef`
+- `gidfedcba9876543210`
 
-A true delete removes:
+## Persisted storage model
+
+All persisted graph state addresses nodes by `NodeIdentifier`, not by `NodeKeyString`.
+
+This applies to:
+
+- keys in all graph-state sublevels
+- values inside `inputs`
+- values inside `revdeps`
+- migration-produced state
+- filesystem-rendered snapshots
+- HTTP API addressing of concrete nodes
+
+### Graph-state sublevels
+
+- `values[id] -> ComputedValue`
+- `freshness[id] -> Freshness`
+- `counters[id] -> Counter`
+- `timestamps[id] -> TimestampRecord`
+- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }`
+- `revdeps[id] -> NodeIdentifier[]`
+
+### Lookup metadata
+
+The database contains an explicit bijection between the semantic identity and the
+persisted identity:
+
+- `node_key_to_id[nodeKey] -> id`
+- `node_id_to_key[id] -> nodeKey`
+
+`NodeKeyString` may remain persisted only in these lookup sublevels.
+
+## Allocation and stability
+
+Every materialized node has exactly one `NodeIdentifier`.
+
+When a concrete `NodeKey` becomes materialized:
+
+- if it already has an identifier, that identifier is reused
+- otherwise a fresh identifier is allocated and recorded in both lookup sublevels
+
+Recompute, invalidate, cache-hit, and migration-preserve flows keep the existing
+identifier.
+
+Delete removes:
 
 - all graph-state records keyed by `id`
 - `node_key_to_id[nodeKey]`
 - `node_id_to_key[id]`
 
-### Migration
+Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
+fresh identifiers for `create`.
 
-Migration decisions stay `NodeKey`-based at the callback/API layer.
+## Determinism
 
-When applying decisions:
+`revdeps` stores `NodeIdentifier[]`, but deterministic ordering is still defined by the
+corresponding `NodeKey` order.
 
-- `keep`, `override`, `invalidate`: preserve the existing identifier
-- `create`: allocate a new identifier
-- `delete`: remove the identifier and both lookup entries
+So the target state is:
 
-This keeps identifiers stable across compatible schema migrations.
+- persisted reverse-dependency references are identifiers only
+- deterministic ordering is still derived from `node_id_to_key`
 
-## Determinism and ordering
+## Filesystem snapshot format
 
-Today some internal arrays are kept in `NodeKey` order for determinism.
-That behavior should be preserved even after switching stored references to identifiers.
+`render()` and `scan()` operate on the new identifier-based keys, not on the older
+`NodeKey`-derived path form.
 
-Therefore:
+The older concrete-node filesystem shape:
 
-- `revdeps` stores `NodeIdentifier[]`
-- but insertion/sorting should still use the corresponding `NodeKey` order via `node_id_to_key`
+- `rendered/r/values/head/arg1/arg2/arg3`
 
-This keeps traversal behavior deterministic without leaking `NodeKey` into persisted references.
+is not part of the target state.
 
-## Filesystem rendering / snapshot format
+The target concrete-node filesystem shape is:
 
-The current renderer special-cases graph data sublevels as `NodeKey`-encoded paths.
-That must change.
+- `rendered/r/values/nodeid1`
 
-### New snapshot form
+and analogously for the other graph-state sublevels:
 
-Opaque graph-state files become identifier-addressed:
+- `rendered/r/freshness/nodeid1`
+- `rendered/r/inputs/nodeid1`
+- `rendered/r/revdeps/nodeid1`
+- `rendered/r/counters/nodeid1`
+- `rendered/r/timestamps/nodeid1`
 
-- `x/values/gid7k2w6f0m4r8q1p9s`
-- `x/freshness/gid7k2w6f0m4r8q1p9s`
-- `x/inputs/gid7k2w6f0m4r8q1p9s`
-- `x/revdeps/gid7k2w6f0m4r8q1p9s`
+Lookup metadata remains explicit and separate:
 
-Lookup metadata carries the readable mapping:
+- `rendered/r/node_key_to_id/{node-key-encoding}`
+- `rendered/r/node_id_to_key/nodeid1`
 
-- `x/node_key_to_id/event/abc123`
-- `x/node_id_to_key/gid7k2w6f0m4r8q1p9s`
+The snapshot format therefore exposes graph-state records directly by identifier and
+uses lookup tables for semantic readability.
 
-So snapshots become less directly human-readable in the primary data sublevels, but they retain inspectability via the explicit lookup tables.
+## No key↔path conversion in the target state
 
-### Encoding rule
+There must not be any code whose job is to convert concrete node keys to filesystem
+paths or to reconstruct concrete node keys from filesystem paths.
 
-`database/encoding.js` must distinguish three cases:
+In the target state:
 
-1. meta sublevels with plain string keys (`_meta`, `meta`)
-2. lookup sublevels, split into `NodeKey`-keyed (`node_key_to_id`) and `NodeIdentifier`-keyed (`node_id_to_key`) variants
-3. graph-state sublevels keyed by `NodeIdentifier` (the six graph-state sublevels defined above)
+- graph-state filesystem paths are direct identifier paths
+- scan consumes those direct identifier paths
+- render writes those direct identifier paths
+
+So the older model of encoding `NodeKey(head, args)` into path segments is absent from
+the target state.
 
 ## Invariants
 
@@ -227,29 +182,18 @@ For every materialized node identifier `id`:
 
 1. `node_id_to_key[id] = key`
 2. `node_key_to_id[key] = id`
-3. `values`, `freshness`, `inputs`, `counters`, `timestamps` for that node are keyed by `id`
+3. all graph-state records for that node are keyed by `id`
 4. every entry inside `inputs[id].inputs` is a valid `NodeIdentifier`
 5. every entry inside `revdeps[id]` is a valid `NodeIdentifier`
 
 No persisted graph edge may point directly to a `NodeKeyString`.
 
-## Corruption handling
+## Corruption conditions
 
-The implementation should treat these as database corruption:
+The following states are invalid:
 
 - `node_key_to_id[key]` exists but `node_id_to_key[id]` is missing
 - `node_id_to_key[id]` exists but `node_key_to_id[key]` is missing
 - lookup entries disagree about each other
 - a graph-state record exists for an id with no `node_id_to_key` entry
-- `inputs` / `revdeps` mention an unknown id
-
-## Minimal implementation strategy
-
-The smallest compatible refactor is:
-
-1. keep schema compilation and concrete-node creation keyed by `NodeKeyString`
-2. introduce identifier resolution only at the storage boundary
-3. change persisted sublevels and dependency payloads to identifiers
-4. translate back to `NodeKeyString` only when returning data to public callers
-
-This keeps the existing graph API intact while making identifiers a purely internal storage concern.
+- `inputs` or `revdeps` mention an unknown id
