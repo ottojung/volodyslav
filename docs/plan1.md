@@ -13,6 +13,7 @@
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
 - [ ] Update migration code so migration callbacks remain `NodeKey`-based while stored results become identifier-based
 - [ ] Preserve node identifiers across `keep` / `override` / `invalidate` migration decisions and allocate fresh ids for `create`
-- [ ] Update filesystem rendering and scanning (`database/encoding.js`, render/unification helpers, docs/tests) so graph-state paths use identifiers and lookup sublevels preserve readability
-- [ ] Update tests that currently assert raw `NodeKeyString` storage in `inputs`, `revdeps`, rendering, migration, and unification
+- [ ] Update `database/encoding.js` so graph-state paths use identifiers while lookup sublevels remain readable
+- [ ] Update render and unification helpers to match the new identifier-based snapshot format
+- [ ] Update docs and tests that currently assert raw `NodeKeyString` storage in `inputs`, `revdeps`, rendering, migration, and unification
 - [ ] Add focused tests for identifier allocation, lookup bijection, stable id reuse, migration preservation, and snapshot round-tripping

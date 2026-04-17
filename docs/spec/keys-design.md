@@ -23,6 +23,7 @@ It is also visible in migration code and in the filesystem snapshot encoding, wh
 - `x/values/event/abc123`
 - `x/freshness/event/abc123`
 - `x/inputs/event/abc123`
+- `x/revdeps/event/abc123`
 
 This was acceptable while `NodeKey` was the only identity we needed. It is no longer sufficient because:
 
