@@ -53,13 +53,13 @@ Public APIs must continue to address nodes by `(head, args)` / `NodeKey`.
 Add a nominal type parallel to `EventId`:
 
 - module shape similar to `backend/src/event/id.js`
-- generated from `random.string(capabilities, 16)`
+- generated with the existing helper at `backend/src/random/string.js` (via `random.string(capabilities, 16)`)
 - stored as lowercase alphanumeric text, optionally with a `gid` prefix in examples
 
 Example values:
 
-- `gid7k2w6f0m4r8q1p9s`
-- `gid0a1b2c3d4e5f6g7`
+- `gid0123456789abcdef`
+- `gidfedcba9876543210`
 
 Requirements:
 
@@ -115,6 +115,8 @@ All actual graph state and all graph-to-graph references must use `NodeIdentifie
 
 - `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }`
 - `revdeps[id] -> NodeIdentifier[]`
+
+`inputs` intentionally keeps its existing record shape because it must store both the dependency identifiers and the parallel `inputCounters` array. Only the referenced element type changes from `NodeKeyString[]` to `NodeIdentifier[]`. `revdeps` remains a plain array because it has no paired counter payload.
 
 ### Lookup metadata
 

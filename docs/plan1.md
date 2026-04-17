@@ -1,6 +1,6 @@
 # Plan: introduce internal node identifiers for IncrementalGraph
 
-- [ ] Add a `NodeIdentifier` nominal type module modeled on `backend/src/event/id.js`
+- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
 - [ ] Add lookup sublevels `node_key_to_id` and `node_id_to_key` to `root_database.js`
 - [ ] Refactor `graph_storage.js` so graph-state sublevels are keyed by `NodeIdentifier`, not `NodeKeyString`
