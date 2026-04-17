@@ -12,6 +12,7 @@ apt-get install -q -y coreutils python build-essential file nodejs git
 uname -a
 id -a
 
+npm install -g node-gyp-build
 npm ci
 npm run build
 npm run test-only
