@@ -12,6 +12,13 @@ apt-get install -q -y coreutils python build-essential file nodejs git termux-ex
 uname -a
 id -a
 
+sh /workspace/scripts/ensure-shebang.sh "$PWD"
+
+npm ci --skip-scripts
+
+sh /workspace/scripts/ensure-shebang.sh "$PWD"
+
 npm ci
+
 npm run build
 npm run test-only
