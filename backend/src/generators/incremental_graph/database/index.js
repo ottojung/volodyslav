@@ -32,11 +32,18 @@ const {
 } = require('./node_key');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
+/** @typedef {import('./unification').ReadableSchemaStorage} ReadableSchemaStorage */
 
 const {
     isDatabaseInitializationError,
     getRootDatabase,
 } = require('./get_root_database');
+
+const {
+    unifyStores,
+    makeDbToDbAdapter,
+    makeInMemorySchemaStorage,
+} = require('./unification');
 
 module.exports = {
     getRootDatabase,
@@ -78,4 +85,7 @@ module.exports = {
     compareConstValue,
     compareNodeKey,
     compareNodeKeyStringByNodeKey,
+    unifyStores,
+    makeDbToDbAdapter,
+    makeInMemorySchemaStorage,
 };

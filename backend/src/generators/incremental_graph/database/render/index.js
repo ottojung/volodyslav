@@ -6,16 +6,16 @@
  * encoding helpers used by both operations.
  */
 
+const { keyToRelativePath, relativePathToKey, serializeValue, parseValue } = require('../encoding');
 const { renderToFilesystem } = require('./render');
 const { scanFromFilesystem, isScanInputDirMissingError } = require('./scan');
-const { keyToRelativePath, relativePathToKey, serializeValue, parseValue } = require('./encoding');
 
 module.exports = {
-    renderToFilesystem,
-    scanFromFilesystem,
-    isScanInputDirMissingError,
     keyToRelativePath,
     relativePathToKey,
     serializeValue,
     parseValue,
+    renderToFilesystem,
+    scanFromFilesystem,
+    isScanInputDirMissingError,
 };

@@ -26,7 +26,9 @@ function makeInMemoryDb() {
     return {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
+        async rawPut(key, value) { store.set(key, value); },
         async del(key) { store.delete(key); },
+        async rawDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", sublevel: null, key, value }; },
         delOp(key) { return { type: "del", sublevel: null, key }; },
         async *keys() { for (const k of store.keys()) yield k; },

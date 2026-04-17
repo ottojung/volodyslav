@@ -1,0 +1,213 @@
+/**
+ * DB-to-filesystem unification adapter.
+ *
+ * Unifies one top-level database sublevel into a snapshot directory.  Only
+ * writes files whose serialised content differs from what is already on disk;
+ * deletes files that are absent from the database.
+ *
+ * This adapter is a drop-in replacement for the previous clear-then-write
+ * strategy in renderToFilesystem: instead of deleting the entire output
+ * directory and rewriting every file, it issues only the necessary file writes
+ * and deletes.
+ *
+ * Key space: relative file paths within the output directory
+ * (e.g. "values/all_events", "meta/version").
+ * - listSourceKeys iterates the database sublevel and maps each raw LevelDB key
+ *   to its relative file path via keyToRelativePath().
+ * - listTargetKeys walks the output directory and yields existing file paths.
+ * - readSource reads the database value and serialises it to a JSON string.
+ * - readTarget reads the existing file content.
+ * - equals compares serialised content strings directly.
+ * - putTarget writes (or overwrites) a file with the given content.
+ * - deleteTarget deletes an existing file.
+ *
+ * Empty parent directories that result from file deletions are not removed.
+ * The output directory is created automatically when the first file is written.
+ */
+
+const path = require('path');
+const { keyToRelativePath, relativePathToKey, serializeValue } = require('../encoding');
+
+/** @typedef {import('../root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../../../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
+
+/**
+ * Capabilities required by the DB→FS adapter.
+ * @typedef {object} DbToFsCapabilities
+ * @property {FileCreator} creator - Creates files (and parent directories) on disk.
+ * @property {FileWriter} writer - Writes content to a file.
+ * @property {FileReader} reader - Reads file content as a UTF-8 string.
+ * @property {FileChecker} checker - Checks whether a path is a file or directory.
+ * @property {FileDeleter} deleter - Deletes files.
+ * @property {DirScanner} scanner - Scans a directory (non-recursive).
+ */
+
+const PARENT_DIRECTORY_PREFIX = '..' + path.sep;
+
+/**
+ * @param {string} relativePath
+ * @returns {boolean}
+ */
+function isParentTraversal(relativePath) {
+    return relativePath === '..' || relativePath.startsWith(PARENT_DIRECTORY_PREFIX);
+}
+
+/**
+ * Resolves a relative path under baseDir and rejects paths that escape it.
+ * @param {string} baseDir
+ * @param {string} relPath
+ * @returns {string}
+ */
+function resolveContainedPath(baseDir, relPath) {
+    const resolvedBaseDir = path.resolve(baseDir);
+    const resolvedPath = path.resolve(baseDir, relPath);
+    const relativePath = path.relative(resolvedBaseDir, resolvedPath);
+    if (relativePath === '') {
+        throw new Error(
+            `Invalid relative path '${relPath}': resolved path points to the directory itself`
+        );
+    }
+    if (isParentTraversal(relativePath)) {
+        throw new Error(
+            `Invalid relative path '${relPath}': resolved path escapes the output directory '${resolvedBaseDir}'`
+        );
+    }
+    return resolvedPath;
+}
+
+/**
+ * Recursively collect all file paths under a directory.
+ * @param {DbToFsCapabilities} capabilities
+ * @param {string} dir
+ * @returns {Promise<string[]>}
+ */
+async function walkFilesRecursively(capabilities, dir) {
+    const children = await capabilities.scanner.scanDirectory(dir);
+    /** @type {string[]} */
+    const files = [];
+    for (const child of children) {
+        if (await capabilities.checker.directoryExists(child.path)) {
+            const nested = await walkFilesRecursively(capabilities, child.path);
+            files.push(...nested);
+        } else if (await capabilities.checker.fileExists(child.path)) {
+            files.push(child.path);
+        }
+    }
+    return files;
+}
+
+/**
+ * Create a DB-to-filesystem unification adapter.
+ *
+ * @param {DbToFsCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
+ * @param {string} outputDir - Absolute path of the target snapshot directory.
+ * @param {string} sublevel - Validated top-level sublevel name (e.g. "x", "_meta").
+ * @returns {UnificationAdapter}
+ */
+function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
+    const sublevelPrefix = sublevel + '/';
+    const rawKeyPrefix = '!' + sublevel + '!';
+
+    return {
+        async *listSourceKeys() {
+            // Collect all relPaths from the database then sort them.
+            // Sorting is required for the merge-join in core.js.  Keys are
+            // latin1 strings (no "!!" substring), so JS default string sort
+            // matches LevelDB byte order.
+            // No values are cached: readSource() does an on-demand DB lookup.
+            //
+            // Memory: O(num_keys × avg_relpath_length).  Only key strings are
+            // held; values are never loaded here.  This fits within the O(n)
+            // target where n = max(max_value_size, num_keys).
+            const relPaths = [];
+            for await (const rawKey of rootDatabase._rawKeysForSublevel(sublevel)) {
+                const fullRelPath = keyToRelativePath(rawKey);
+                relPaths.push(fullRelPath.slice(sublevelPrefix.length));
+            }
+            relPaths.sort();
+            for (const relPath of relPaths) {
+                yield relPath;
+            }
+        },
+
+        async *listTargetKeys() {
+            if (!await capabilities.checker.directoryExists(outputDir)) {
+                return;
+            }
+            // Collect all file relPaths then sort them.
+            // Memory: O(num_files × avg_relpath_length).  Only path strings;
+            // file contents are never loaded during key enumeration.
+            const allFiles = await walkFilesRecursively(capabilities, outputDir);
+            const relPaths = allFiles.map(
+                absPath => path.relative(outputDir, absPath).split(path.sep).join('/')
+            );
+            relPaths.sort();
+            for (const relPath of relPaths) {
+                yield relPath;
+            }
+        },
+
+        async readSource(relPath) {
+            // On-demand DB read: O(log n) per call, O(max_value_size) memory.
+            const rawKey = relativePathToKey(sublevelPrefix + relPath);
+            const innerKey = rawKey.slice(rawKeyPrefix.length);
+            const value = await rootDatabase._rawGetInSublevel(sublevel, innerKey);
+            if (value === undefined) return undefined;
+            return serializeValue(value);
+        },
+
+        async readTarget(relPath) {
+            const absPath = resolveContainedPath(outputDir, relPath);
+            if (!await capabilities.checker.fileExists(absPath)) {
+                return undefined;
+            }
+            return await capabilities.reader.readFileAsText(absPath);
+        },
+
+        equals(sv, tv) {
+            return sv === tv;
+        },
+
+        async putTarget(relPath, content) {
+            if (typeof content !== 'string') {
+                throw new Error(
+                    `db_to_fs putTarget: expected string content for "${relPath}", got ${typeof content}`
+                );
+            }
+            const absPath = resolveContainedPath(outputDir, relPath);
+            // P1: If a stale directory occupies this path (i.e. the previous
+            // schema had deeper keys under this prefix that haven't been deleted
+            // yet), remove it before creating the file.  This can happen when
+            // a key like values/event/a is added while values/event/a/b still
+            // exists as a file, because sorted order places the parent before its
+            // children so the put arrives before the child delete.
+            if (await capabilities.checker.directoryExists(absPath)) {
+                await capabilities.deleter.deleteDirectory(absPath);
+            }
+            const file = await capabilities.creator.createFile(absPath);
+            await capabilities.writer.writeFile(file, content);
+        },
+
+        async deleteTarget(relPath) {
+            const absPath = resolveContainedPath(outputDir, relPath);
+            // Tolerant delete: putTarget() may have already removed this path
+            // as part of deleting a stale ancestor directory (P1 conflict
+            // resolution).  If the file is already gone, that is not an error.
+            if (!await capabilities.checker.fileExists(absPath)) {
+                return;
+            }
+            await capabilities.deleter.deleteFile(absPath);
+        },
+    };
+}
+
+module.exports = {
+    makeDbToFsAdapter,
+};

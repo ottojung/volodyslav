@@ -26,11 +26,22 @@ function makeInMemoryDb(table) {
     return {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
+        async rawPut(key, value) { store.set(key, value); },
+        async del(key) { store.delete(key); },
+        async rawDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
-        async *keys() { for (const key of store.keys()) yield key; },
+        rawPutOp(key, value) { return { type: "put", table, key, value }; },
+        delOp(key) { return { type: "del", table, key }; },
+        async *keys() {
+            for (const key of [...store.keys()].sort()) yield key;
+        },
         apply(operation) {
-            if (operation.type === "put" && operation.table === table) {
-                store.set(operation.key, operation.value);
+            if (operation.table === table) {
+                if (operation.type === "put") {
+                    store.set(operation.key, operation.value);
+                } else if (operation.type === "del") {
+                    store.delete(operation.key);
+                }
             }
         },
     };
@@ -76,6 +87,7 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         async setMetaVersionForReplica(_name, _v) {},
         async switchToReplica(_name) {},
         async setMetaVersion(_v) {},
+        async _rawSync() {},
     };
     return { rootDatabase };
 }

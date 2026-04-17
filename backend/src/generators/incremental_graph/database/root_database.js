@@ -563,39 +563,40 @@ class RootDatabaseClass {
     async *_rawEntriesForSublevel(sublevelName) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        const rawKeyPrefix = `!${sublevelName}!`;
         for await (const [key, value] of sublevel.iterator()) {
-            yield [rawKeyPrefix + key, value];
+            yield [`!${sublevelName}!` + key, value];
         }
     }
 
     /**
-     * Deletes all raw key/value pairs from the root LevelDB instance.
-     * Used by scanFromFilesystem to ensure stale keys (present in the database
-     * but absent from the snapshot directory) do not survive the restore.
-     * @returns {Promise<void>}
+     * Iterate over raw keys (no values) in a named top-level LevelDB sublevel.
+     * Like _rawEntriesForSublevel() but skips value decoding for callers that
+     * only need the key stream (e.g. listSourceKeys / listTargetKeys in the
+     * unification adapters).  Each yielded key is the full root-level key
+     * (e.g. `!x!!values!...`) reconstructed by prepending `!<sublevelName>!`.
+     *
+     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
+     * @returns {AsyncIterable<string>}
      */
-    async _rawDeleteAll() {
-        /**
-         * @param {NodeKeyString} key
-         * @returns {{ type: 'del', key: NodeKeyString }}
-         */
-        function makeDelOp(key) {
-            return { type: 'del', key };
-        }
+    async *_rawKeysForSublevel(sublevelName) {
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        for await (const key of sublevel.keys()) { yield `!${sublevelName}!` + String(key); }
+    }
 
-        /** @type {NodeKeyString[]} */
-        const pending = [];
-        for await (const key of this.db.keys()) {
-            pending.push(key);
-            if (pending.length === RAW_BATCH_CHUNK_SIZE) {
-                await this.db.batch(pending.map(makeDelOp));
-                pending.length = 0;
-            }
-        }
-        if (pending.length > 0) {
-            await this.db.batch(pending.map(makeDelOp));
-        }
+    /**
+     * Read a single raw value from a named sublevel by its inner key.
+     * The innerKey is the portion of the raw LevelDB key after the
+     * "!{sublevelName}!" prefix.  Returns undefined if not found.
+     *
+     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
+     * @param {string} innerKey - Key within the sublevel.
+     * @returns {Promise<unknown | undefined>}
+     */
+    async _rawGetInSublevel(sublevelName, innerKey) {
+        /** @type {SchemaSublevelType} */
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        return await sublevel.get(stringToNodeKeyString(innerKey));
     }
 
     /**
@@ -612,8 +613,11 @@ class RootDatabaseClass {
 
     /**
      * Write a raw key/value pair directly into the root LevelDB instance,
-     * bypassing the sublevel abstraction. Used by scanFromFilesystem to
-     * restore a snapshot produced by renderToFilesystem.
+     * bypassing the sublevel abstraction, using sync:false for performance.
+     * Used by fs_to_db unification adapter for individual key writes.
+     *
+     * Call _rawSync() once after all bulk unification writes are done to
+     * ensure the writes are flushed to durable storage.
      *
      * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
      * static typing expectations: `this.db` is documented as using
@@ -626,7 +630,55 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawPut(key, value) {
-        await this.db.put(stringToNodeKeyString(key), value);
+        // Pass sync:false to avoid per-write fsyncs during bulk unification.
+        // classic-level supports sync at runtime; abstract-level's AbstractPutOptions
+        // is a "weak type" (all-optional properties) so TypeScript requires at least
+        // one recognised property to be present. keyEncoding:undefined is a valid
+        // AbstractPutOptions property and satisfies the weak-type check without
+        // changing runtime behaviour.
+        const opts = { sync: false, keyEncoding: undefined };
+        await this.db.put(stringToNodeKeyString(key), value, opts);
+    }
+
+    /**
+     * Delete a raw key directly from the root LevelDB instance,
+     * bypassing the sublevel abstraction, using sync:false for performance.
+     * Mirrors _rawPut(): used by fs_to_db unification adapter for individual
+     * key deletes.
+     *
+     * Call _rawSync() once after all bulk unification writes are done to
+     * ensure the writes are flushed to durable storage.
+     *
+     * @param {string} key
+     * @returns {Promise<void>}
+     */
+    async _rawDel(key) {
+        // Pass sync:false to avoid per-write fsyncs during bulk unification.
+        // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
+        const opts = { sync: false, keyEncoding: undefined };
+        await this.db.del(stringToNodeKeyString(key), opts);
+    }
+
+    /**
+     * Force a single LevelDB fsync after a bulk unification pass.
+     *
+     * All writes issued by the unification adapters use sync:false (no per-write
+     * fsync) for performance.  This method submits an empty batch with sync:true,
+     * which causes LevelDB to flush the WAL up to and including all preceding
+     * writes without modifying any data.
+     *
+     * Must be called once after all unification writes are complete.
+     *
+     * @returns {Promise<void>}
+     */
+    async _rawSync() {
+        // An empty batch with sync:true is a no-op for data but forces LevelDB
+        // to flush the WAL, ensuring all preceding sync:false writes are durable.
+        // keyEncoding:undefined is included so the options object has at least one
+        // recognised AbstractBatchOptions property, satisfying TypeScript's weak-type
+        // check without changing runtime behaviour.
+        const opts = { keyEncoding: undefined, sync: true };
+        await this.db.batch([], opts);
     }
 
     /**
@@ -656,6 +708,19 @@ class RootDatabaseClass {
             const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
             await this.db.batch(chunk.map(makePutOp));
         }
+    }
+
+    /**
+     * Deletes a list of raw LevelDB keys in a single batch.
+     * Callers are responsible for chunking (keeping the array ≤ RAW_BATCH_CHUNK_SIZE).
+     * Used by FS→DB unification to remove stale keys without clearing the
+     * entire sublevel.
+     *
+     * @param {string[]} keys - Full raw LevelDB keys to delete.
+     * @returns {Promise<void>}
+     */
+    async _rawDeleteKeys(keys) {
+        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeKeyString(k) })));
     }
 
     /**

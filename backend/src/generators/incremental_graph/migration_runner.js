@@ -14,6 +14,7 @@ const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
 const { compareNodeKeyStringByNodeKey } = require("./database");
+const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -23,7 +24,7 @@ const { compareNodeKeyStringByNodeKey } = require("./database");
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
-/** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
@@ -83,24 +84,22 @@ async function loadMaterializedNodes(storage) {
 }
 
 /**
- * Apply a finalized decisions map to the new version's storage.
- * Writes are committed atomically via a single batch call.
+ * Build the desired revdeps map from decisions, reading inputs from prevStorage.
+ *
+ * Memory: O(|keys|) — only stores key strings in the result map; no large
+ * values are retained.  Reads from prevStorage are streaming (one InputsRecord
+ * at a time).
+ *
  * @param {SchemaStorage} prevStorage
- * @param {SchemaStorage} newStorage
  * @param {Map<NodeKeyString, Decision>} decisions
- * @returns {Promise<void>}
+ * @returns {Promise<Map<NodeKeyString, NodeKeyString[]>>}
  */
-async function applyDecisions(prevStorage, newStorage, decisions) {
-    /** @type {DatabaseBatchOperation[]} */
-    const ops = [];
-
-    // Build reverse-deps for the new version from non-deleted nodes.
+async function buildDesiredRevdeps(prevStorage, decisions) {
     /** @type {Map<string, Set<NodeKeyString>>} */
-    const newRevdeps = new Map();
+    const revdepSets = new Map();
 
     for (const [nodeKey, decision] of decisions) {
-        if (decision.kind === "delete") continue;
-        if (decision.kind === "create") continue; // Skip: newly created nodes have no previous inputs to migrate
+        if (decision.kind === "delete" || decision.kind === "create") continue;
 
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;
@@ -109,80 +108,170 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
             const inputKey = stringToNodeKeyString(inputStr);
             const inputDecision = decisions.get(inputKey);
             if (inputDecision && inputDecision.kind === "delete") continue;
-            const existing = newRevdeps.get(inputStr);
+            const existing = revdepSets.get(inputStr);
             if (existing) {
                 existing.add(nodeKey);
             } else {
-                newRevdeps.set(inputStr, new Set([nodeKey]));
+                revdepSets.set(inputStr, new Set([nodeKey]));
             }
         }
     }
 
-    for (const [nodeKey, decision] of decisions) {
-        if (decision.kind === "delete") continue;
-
-        if (decision.kind === "create") {
-            // New node - write with initial value and empty inputs record.
-            ops.push(newStorage.values.putOp(nodeKey, await decision.value(nodeKey)));
-            ops.push(newStorage.freshness.putOp(nodeKey, "up-to-date"));
-            ops.push(newStorage.inputs.putOp(nodeKey, { inputs: [], inputCounters: [] }));
-            ops.push(newStorage.counters.putOp(nodeKey, 1));
-            continue;
-        }
-
-        const inputsRecord = await prevStorage.inputs.get(nodeKey);
-        if (!inputsRecord) continue;
-
-        // Copy inputs record (all non-deleted nodes keep their graph structure).
-        ops.push(newStorage.inputs.putOp(nodeKey, inputsRecord));
-
-        // Copy timestamps — preserve creation and modification history across migration.
-        const timestamp = await prevStorage.timestamps.get(nodeKey);
-        if (timestamp !== undefined) {
-            ops.push(newStorage.timestamps.putOp(nodeKey, timestamp));
-        }
-
-        if (decision.kind === "keep") {
-            const value = await prevStorage.values.get(nodeKey);
-            if (value !== undefined) {
-                ops.push(newStorage.values.putOp(nodeKey, value));
-            }
-            const oldFreshness = await prevStorage.freshness.get(nodeKey);
-            if (oldFreshness !== undefined) {
-                ops.push(newStorage.freshness.putOp(nodeKey, oldFreshness));
-            }
-            const counter = await prevStorage.counters.get(nodeKey);
-            if (counter !== undefined) {
-                ops.push(newStorage.counters.putOp(nodeKey, counter));
-            }
-        } else if (decision.kind === "override") {
-            ops.push(newStorage.values.putOp(nodeKey, await decision.value(nodeKey)));
-            ops.push(newStorage.freshness.putOp(nodeKey, "up-to-date"));
-            const prevCounter = await prevStorage.counters.get(nodeKey);
-            const newCounter = prevCounter !== undefined ? prevCounter + 1 : 1;
-            ops.push(newStorage.counters.putOp(nodeKey, newCounter));
-        } else if (decision.kind === "invalidate") {
-            // No value; mark potentially-outdated so graph recomputes on next pull.
-            ops.push(
-                newStorage.freshness.putOp(nodeKey, "potentially-outdated")
-            );
-            const counter = await prevStorage.counters.get(nodeKey);
-            if (counter !== undefined) {
-                ops.push(newStorage.counters.putOp(nodeKey, counter));
-            }
-        }
-    }
-
-    // Write reverse-deps for all non-deleted input nodes.
-    for (const [inputStr, depSet] of newRevdeps) {
+    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    const result = new Map();
+    for (const [inputStr, depSet] of revdepSets) {
         const inputKey = stringToNodeKeyString(inputStr);
-        const dependents = [...depSet].sort(compareNodeKeyStringByNodeKey);
-        ops.push(
-            newStorage.revdeps.putOp(inputKey, dependents)
-        );
+        result.set(inputKey, [...depSet].sort(compareNodeKeyStringByNodeKey));
     }
+    return result;
+}
 
-    await newStorage.batch(ops);
+/**
+ * Create a lazy read-only source that yields the desired migration state.
+ *
+ * Values are computed from prevStorage on demand — no values are accumulated
+ * in memory simultaneously.  Combined with makeDbToDbAdapter + unifyStores this
+ * achieves O(|max value| + |keys|) peak memory for migration, matching sync.
+ *
+ * For 'keep' decisions the target sublevel value is read twice (once during
+ * keys() to check existence, once during readSource()) — this is an I/O
+ * trade-off that avoids per-value memory retention.
+ *
+ * @param {SchemaStorage} prevStorage
+ * @param {Map<NodeKeyString, Decision>} decisions
+ * @param {Map<NodeKeyString, NodeKeyString[]>} desiredRevdeps
+ * @returns {ReadableSchemaStorage}
+ */
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
+    // Sort decision keys once so every sublevel's keys() yields in the same
+    // order as LevelDB.  Keys are latin1 strings (no "!!" substring), so JS
+    // default string sort matches LevelDB byte order.
+    // TODO: ConstValue arguments may contain non-latin1 characters; that case
+    // is tracked separately and will be addressed in a future change.
+    const sortedDecisionKeys = [...decisions.keys()].sort();
+
+    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
+
+    return {
+        values: {
+            async *keys() {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
+                    if (decision.kind === "delete") continue;
+                    if (decision.kind === "create" || decision.kind === "override") {
+                        yield nodeKey;
+                    } else if (decision.kind === "keep") {
+                        const v = await prevStorage.values.get(nodeKey);
+                        if (v !== undefined) yield nodeKey;
+                    }
+                    // 'invalidate': no value in values sublevel
+                }
+            },
+            async get(/** @type {NodeKeyString} */ key) {
+                const decision = decisions.get(key);
+                if (!decision) return undefined;
+                if (decision.kind === "create" || decision.kind === "override") {
+                    return await decision.value(key);
+                }
+                return await prevStorage.values.get(key);
+            },
+        },
+        freshness: {
+            async *keys() {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
+                    if (decision.kind === "delete") continue;
+                    if (decision.kind === "create" || decision.kind === "override" || decision.kind === "invalidate") {
+                        yield nodeKey;
+                    } else if (decision.kind === "keep") {
+                        const f = await prevStorage.freshness.get(nodeKey);
+                        if (f !== undefined) yield nodeKey;
+                    }
+                }
+            },
+            async get(/** @type {NodeKeyString} */ key) {
+                const decision = decisions.get(key);
+                if (!decision) return undefined;
+                if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
+                if (decision.kind === "invalidate") return "potentially-outdated";
+                return await prevStorage.freshness.get(key);
+            },
+        },
+        inputs: {
+            async *keys() {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
+                    if (decision.kind === "delete") continue;
+                    if (decision.kind === "create") {
+                        yield nodeKey;
+                    } else {
+                        const ir = await prevStorage.inputs.get(nodeKey);
+                        if (ir !== undefined) yield nodeKey;
+                    }
+                }
+            },
+            async get(/** @type {NodeKeyString} */ key) {
+                const decision = decisions.get(key);
+                if (!decision || decision.kind === "delete") return undefined;
+                if (decision.kind === "create") return { inputs: [], inputCounters: [] };
+                return await prevStorage.inputs.get(key);
+            },
+        },
+        revdeps: {
+            async *keys() {
+                for (const key of sortedRevdepKeys) {
+                    yield key;
+                }
+            },
+            async get(/** @type {NodeKeyString} */ key) {
+                return desiredRevdeps.get(key);
+            },
+        },
+        counters: {
+            async *keys() {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
+                    if (decision.kind === "delete") continue;
+                    if (decision.kind === "create" || decision.kind === "override") {
+                        yield nodeKey;
+                    } else {
+                        const c = await prevStorage.counters.get(nodeKey);
+                        if (c !== undefined) yield nodeKey;
+                    }
+                }
+            },
+            async get(/** @type {NodeKeyString} */ key) {
+                const decision = decisions.get(key);
+                if (!decision || decision.kind === "delete") return undefined;
+                if (decision.kind === "create") return 1;
+                if (decision.kind === "override") {
+                    const prev = await prevStorage.counters.get(key);
+                    return prev !== undefined ? prev + 1 : 1;
+                }
+                return await prevStorage.counters.get(key);
+            },
+        },
+        timestamps: {
+            async *keys() {
+                for (const nodeKey of sortedDecisionKeys) {
+                    const decision = decisions.get(nodeKey);
+                    if (!decision) continue;
+                    if (decision.kind === "delete" || decision.kind === "create") continue;
+                    const ts = await prevStorage.timestamps.get(nodeKey);
+                    if (ts !== undefined) yield nodeKey;
+                }
+            },
+            async get(/** @type {NodeKeyString} */ key) {
+                const decision = decisions.get(key);
+                if (!decision || decision.kind === "delete" || decision.kind === "create") return undefined;
+                return await prevStorage.timestamps.get(key);
+            },
+        },
+    };
 }
 
 /**
@@ -193,9 +282,10 @@ async function applyDecisions(prevStorage, newStorage, decisions) {
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *
- * Uses a replica-pointer-swap strategy: writes to the inactive replica, then
- * atomically switches the pointer. A failed migration leaves the active replica
- * unchanged.
+ * Uses a replica-pointer-swap strategy: writes the desired state to an
+ * in-memory store, gently unifies it into the inactive replica (writing only
+ * changed keys, deleting stale ones), then atomically switches the pointer.
+ * A failed migration leaves the active replica unchanged.
  *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database
@@ -251,11 +341,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const fromReplica = rootDatabase.currentReplicaName();
             const toReplica = rootDatabase.otherReplicaName();
 
-            // Clear target replica so no stale keys survive from previous attempts.
-            await rootDatabase.clearReplicaStorage(toReplica);
-
             const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
-            const newStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
             // Compile new schema and build head index for compatibility checks.
             const compiledNodes = nodeDefs.map(compileNodeDef);
@@ -278,11 +364,34 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
 
-            // Apply decisions atomically to the target replica.
-            await applyDecisions(prevStorage, newStorage, decisions);
-
-            // Write the version into the target replica's meta.
+            // The inactive replica may still carry the old application version
+            // in its meta sublevel.  Set the new version now — before calling
+            // unifyStores — so that SchemaStorage.batch() does not reject writes
+            // with SchemaBatchVersionError on the first flushed chunk.
+            //
+            // It is safe to write to the inactive replica before cutover:
+            // the replica's intermediate state is irrelevant until
+            // switchToReplica() succeeds.  A crash here leaves the active
+            // replica untouched.
+            const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
             await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
+
+            // Build the desired revdeps map.  Reads inputs from prevStorage once
+            // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
+            const desiredRevdeps = await buildDesiredRevdeps(prevStorage, decisions);
+
+            // Create a lazy source that computes desired values on demand.
+            // Combined with makeDbToDbAdapter + unifyStores this keeps peak
+            // memory at O(|max value| + |keys|), matching the sync path.
+            const lazySource = makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps);
+
+            // Gently unify the desired state into the target replica.
+            // Only changed keys are written; stale keys are deleted first.
+            await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+            // One final fsync: all unification writes use sync:false for performance;
+            // _rawSync() issues an empty batch with sync:true to flush the WAL
+            // without rewriting any keys.
+            await rootDatabase._rawSync();
 
             // Switch the active replica pointer to the target replica.
             // This is the atomic cutover: only runs after all writes succeed.

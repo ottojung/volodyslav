@@ -47,6 +47,7 @@ const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_
 const { stringToNodeKeyString, versionToString } = require('./types');
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const { makeDbToDbAdapter, unifyStores } = require('./unification');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -139,98 +140,41 @@ function compareIsoTimestamps(a, b) {
 }
 
 /**
- * Copy the entire contents of replica `from` into replica `to`,
- * clearing `to` first so no stale keys survive.
- * After copying, ensures `to`'s meta/version is always set to the
- * current application version — even when the source replica is empty
- * and `dst.batch([])` would otherwise perform no writes at all.
+ * Gently unify the entire contents of replica `from` into replica `to`.
+ * Only keys whose value differs are written; keys absent from the source
+ * are deleted from the target.  This replaces the previous clear-then-copy
+ * approach, minimising unnecessary writes.
+ *
+ * After unification, ensures `to`'s meta/version is always set to the
+ * current application version — even when both replicas were already
+ * identical and no data was written.
  *
  * @param {RootDatabase} rootDatabase
  * @param {ReplicaName} from
  * @param {ReplicaName} to
  * @returns {Promise<void>}
  */
-async function copyReplicaBitIdentically(rootDatabase, from, to) {
-    await rootDatabase.clearReplicaStorage(to);
-
+async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
 
-    /** @type {DatabaseBatchOperation[]} */
-    let pending = [];
-
-    /**
-     * Flush full chunks of `pending` to `dst`, leaving any partial chunk
-     * queued.  Tracks a start index and slices only the remaining tail once at
-     * the end, so total slice work is O(remaining) instead of O(N) per batch.
-     * @returns {Promise<void>}
-     */
-    async function flushPendingOps() {
-        let i = 0;
-        while (i + RAW_BATCH_CHUNK_SIZE <= pending.length) {
-            await dst.batch(pending.slice(i, i + RAW_BATCH_CHUNK_SIZE));
-            i += RAW_BATCH_CHUNK_SIZE;
-        }
-        if (i > 0) {
-            pending = pending.slice(i);
-        }
-    }
-
-    // Only `values` entries are chunked because their values can be
-    // arbitrarily large (node computation results).
+    // Set the target replica version BEFORE calling unifyStores.
+    // SchemaStorage.batch() enforces meta/version on the first write and throws
+    // SchemaBatchVersionError on mismatch.  After a successful migration the
+    // inactive replica may still carry the previous app version, so any sync
+    // that writes at least one key would fail during unification without this.
     //
-    // The other sublevels (freshness, inputs, counters, timestamps) hold
-    // bounded-size metadata, and project policy allows keeping arbitrarily
-    // many bounded-size key/value records in memory. We therefore keep this
-    // path simple and flush those metadata ops once at the end.
-    //
-    // `revdeps` are intentionally NOT copied here: mergeHostIntoReplica always
-    // deletes and rebuilds the entire revdeps index from the merged dependency
-    // map.  Copying them here would waste I/O only to have them overwritten.
-    for await (const key of src.values.keys()) {
-        const v = await src.values.get(key);
-        if (v !== undefined) {
-            pending.push(dst.values.putOp(key, v));
-            await flushPendingOps();
-        }
-    }
-    for await (const key of src.freshness.keys()) {
-        const v = await src.freshness.get(key);
-        if (v !== undefined) {
-            pending.push(dst.freshness.putOp(key, v));
-        }
-    }
-    for await (const key of src.inputs.keys()) {
-        const v = await src.inputs.get(key);
-        if (v !== undefined) {
-            pending.push(dst.inputs.putOp(key, v));
-        }
-    }
-    for await (const key of src.counters.keys()) {
-        const v = await src.counters.get(key);
-        if (v !== undefined) {
-            pending.push(dst.counters.putOp(key, v));
-        }
-    }
-    for await (const key of src.timestamps.keys()) {
-        const v = await src.timestamps.get(key);
-        if (v !== undefined) {
-            pending.push(dst.timestamps.putOp(key, v));
-        }
-    }
-
-    if (pending.length > 0) {
-        await dst.batch(pending);
-    }
-
-    // Guarantee that `to` always carries the current application version,
-    // even when `pending` was empty throughout (source replica has no data).
-    // When pending was non-empty, dst.batch() already initialized the version via
-    // buildSchemaStorage's first-write check; this call is idempotent.
-    // When pending was always empty, dst.batch() was never called, so without
-    // this call the switched-to replica would have no version and the next host
-    // merge would fail with HostVersionMismatchError.
+    // It is safe to write to the inactive replica before cutover: its
+    // intermediate state is irrelevant until switchToReplica() succeeds.
     await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
+
+    // Exclude revdeps: they will be recomputed from mergedInputsMap by
+    // unifyRevdeps() after the merge.  Copying them here wastes I/O.
+    await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
+    // One final fsync: all unification writes use sync:false for performance;
+    // _rawSync() issues an empty batch with sync:true to durably flush the
+    // WAL/database state without mutating any keys.
+    await rootDatabase._rawSync();
 }
 
 /**
@@ -282,58 +226,90 @@ async function buildTakeOps(T, H, key) {
 }
 
 /**
- * Build the complete revdeps index from the merged dependency map.
- * Returns batch operations that delete all existing revdeps and write the
- * freshly computed ones.
+ * Gently update the revdeps index in `T` to match the desired state derived
+ * from `mergedInputsMap`.  Only entries that differ are written; stale entries
+ * are deleted.
  *
- * Using `mergedInputsMap` (rather than re-reading T and H per-node) ensures
- * that nodes whose initial decision was 'take' (and thus used H.inputs for
- * the topo sort and taint propagation) continue to use H.inputs for revdeps
- * even if taint propagation subsequently changed their decision to 'invalidate'.
- *
- * Revdeps payloads are bounded-size key lists, so (by project policy) we
- * intentionally materialize the full revdeps operation set in memory rather
- * than chunking this path.
+ * This implements the same algorithm as unifyStores() but operates directly on
+ * typed revdeps to avoid unsafe value coercions.
  *
  * @param {SchemaStorage} T
  * @param {Map<NodeKeyString, NodeKeyString[]>} mergedInputsMap
- * @returns {Promise<DatabaseBatchOperation[]>}
+ * @returns {Promise<void>}
  */
-async function buildRebuildRevdepsOps(T, mergedInputsMap) {
-    /** @type {DatabaseBatchOperation[]} */
-    const ops = [];
-
-    // Delete all existing revdeps.
-    for await (const key of T.revdeps.keys()) {
-        ops.push(T.revdeps.delOp(key));
-    }
-
-    // Rebuild from the merged inputs map.
+async function unifyRevdeps(T, mergedInputsMap) {
+    // Compute the desired revdeps state from the merged inputs map.
+    // Use a Set per input key to automatically deduplicate dependents — an
+    // InputsRecord may contain the same input key more than once, and writing
+    // duplicate entries would trigger spurious downstream recomputation.
+    //
+    // Memory: O(num_edges) — we hold the full desired revdeps map before
+    // writing.  This is bounded by the number of nodes+edges in the graph,
+    // not by value sizes, so it fits within the O(n) target where
+    // n = max(max_value_size, num_nodes + num_edges).
     /** @type {Map<string, Set<NodeKeyString>>} */
-    const newRevdepsMap = new Map();
+    const desiredSets = new Map();
 
     for (const [node, inputKeys] of mergedInputsMap) {
         for (const inputKey of inputKeys) {
             const inputStr = String(inputKey);
-            const existing = newRevdepsMap.get(inputStr);
+            const existing = desiredSets.get(inputStr);
             if (existing) {
                 existing.add(node);
             } else {
-                newRevdepsMap.set(inputStr, new Set([node]));
+                desiredSets.set(inputStr, new Set([node]));
             }
         }
     }
 
-    for (const [inputStr, depSet] of newRevdepsMap) {
-        const inputKey = stringToNodeKeyString(inputStr);
-        const dependents = [...depSet].sort(compareNodeKeyStringByNodeKey);
-        ops.push(T.revdeps.putOp(inputKey, dependents));
+    // Convert to sorted arrays for determinism and stable serialisation.
+    /** @type {Map<string, NodeKeyString[]>} */
+    const desired = new Map();
+    for (const [key, depSet] of desiredSets) {
+        desired.set(key, [...depSet].sort(compareNodeKeyStringByNodeKey));
     }
 
-    return ops;
-}
+    // Materialise the current target key set.
+    /** @type {Set<string>} */
+    const targetKeys = new Set();
+    for await (const key of T.revdeps.keys()) {
+        targetKeys.add(String(key));
+    }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+    // Accumulate ops for batch writes chunked by RAW_BATCH_CHUNK_SIZE.
+    // Memory: O(RAW_BATCH_CHUNK_SIZE × avg_revdep_size) per chunk — revdep
+    // values are small (arrays of node-key strings), so each chunk is bounded.
+    /** @type {DatabaseBatchOperation[]} */
+    const ops = [];
+    for (const [inputStr, dependents] of desired) {
+        const inputKey = stringToNodeKeyString(inputStr);
+        if (!targetKeys.has(inputStr)) {
+            ops.push(T.revdeps.putOp(inputKey, dependents));
+        } else {
+            const existing = await T.revdeps.get(inputKey);
+            if (JSON.stringify(existing) !== JSON.stringify(dependents)) {
+                ops.push(T.revdeps.putOp(inputKey, dependents));
+            }
+        }
+        if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
+            await T.batch(ops.splice(0, ops.length));
+        }
+    }
+
+    // Delete stale entries.
+    for (const existingKey of targetKeys) {
+        if (!desired.has(existingKey)) {
+            ops.push(T.revdeps.delOp(stringToNodeKeyString(existingKey)));
+        }
+        if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
+            await T.batch(ops.splice(0, ops.length));
+        }
+    }
+
+    if (ops.length > 0) {
+        await T.batch(ops);
+    }
+}
 
 /**
  * Run the per-host graph merge algorithm for a single remote hostname.
@@ -377,8 +353,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         'Starting graph merge for host'
     );
 
-    // ── Step 1: Copy L → T bit-identically ──────────────────────────────────
-    await copyReplicaBitIdentically(rootDatabase, fromReplica, toReplica);
+    // ── Step 1: Gently copy L → T ────────────────────────────────────────────
+    await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
     const T = rootDatabase.schemaStorageForReplica(toReplica);
     const H = rootDatabase.hostnameSchemaStorage(hostname);
@@ -593,19 +569,17 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         await flushPendingOps();
     }
 
-    // Rebuild revdeps from scratch using the merged inputs map.
-    // buildRebuildRevdepsOps uses mergedInputsMap directly, ensuring nodes
-    // that were initially 'take' (H.inputs) but taint-propagated to 'invalidate'
-    // still use H.inputs for revdeps (consistent with the merged graph).
-    const revdepsOps = await buildRebuildRevdepsOps(T, mergedInputsMap);
-    for (const op of revdepsOps) {
-        pendingOps.push(op);
-        await flushPendingOps();
-    }
-
+    // Flush any remaining decisions ops before updating revdeps.
     if (pendingOps.length > 0) {
         await T.batch(pendingOps);
+        pendingOps = [];
     }
+
+    // Gently update revdeps using the merged inputs map.  Only changed entries
+    // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
+    // directly, ensuring nodes that were initially 'take' (H.inputs) but
+    // taint-propagated to 'invalidate' still use H.inputs for revdeps.
+    await unifyRevdeps(T, mergedInputsMap);
 
     // ── Step 8: Switch active replica pointer ────────────────────────────────
     await rootDatabase.switchToReplica(toReplica);
