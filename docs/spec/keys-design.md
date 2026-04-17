@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This document describes the target state for IncrementalGraph node addressing after
-internal `NodeIdentifier`s are introduced.
+This document defines the node-addressing model for IncrementalGraph storage,
+filesystem snapshots, and the HTTP inspection API.
 
-The target state separates three concerns:
+This model separates three concerns:
 
 - `NodeKey` is the semantic identity of a concrete node instance
 - `NodeIdentifier` is the persisted storage identity of a materialized node
@@ -19,7 +19,7 @@ The target state separates three concerns:
 - **graph-state sublevels**: `values`, `freshness`, `inputs`, `revdeps`, `counters`,
   `timestamps`
 
-## Target-state boundary
+## Boundary
 
 ### IncrementalGraph and Interface API
 
@@ -43,34 +43,43 @@ For these APIs, callers do not pass `NodeIdentifier`s.
 The HTTP inspection API is not a user-facing API. It is an internal development and
 inspection surface.
 
-In the target state, every HTTP operation that addresses or returns a concrete node
-instance uses `NodeIdentifier`, not `NodeKey`.
-
-The older concrete-node HTTP shape based on `head/arg0/arg1/...` is not part of the
-target state.
+Every HTTP operation that addresses or returns a concrete node instance uses
+`NodeIdentifier`.
 
 ## NodeIdentifier requirements
 
 A `NodeIdentifier` is an opaque random identifier with the following properties:
 
-- latin-1 / ASCII only
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal typed value
 - unique within the database
 - suitable for direct use as persisted key content and as a filesystem path segment
+- matches `/[a-z_][a-z0-9_]*/`
 
-Stored key content for node identifiers MUST NOT contain the substring `"!!"`.
-That substring is reserved for sublevel delimiters in raw LevelDB keys and must appear
-only there.
+So the allowed character set is:
 
-This requirement is part of the `NodeIdentifier` value definition itself. So any
-implementation that constructs, parses, or accepts a `NodeIdentifier` must enforce it,
-not just the documentation.
+- lowercase ASCII letters `a-z`
+- ASCII digits `0-9`
+- underscore `_`
+
+The first character is a lowercase ASCII letter or underscore.
+
+No other characters are permitted in a `NodeIdentifier`. In particular, a
+`NodeIdentifier` MUST NOT contain `/`, `\`, `.`, whitespace, control characters, `!`,
+or any other punctuation.
+
+A `NodeIdentifier` MUST NOT contain the substring `"!!"`. That substring is reserved
+for sublevel delimiters in raw LevelDB keys and must appear only there.
+
+These requirements are part of the `NodeIdentifier` value definition itself. So any
+implementation that constructs, parses, or accepts a `NodeIdentifier` must enforce
+them, not just the documentation.
 
 Example values:
 
-- `gid0123456789abcdef`
-- `gidfedcba9876543210`
+- `nodeid1`
+- `gid_0123456789abcdef`
+- `_cache3`
 
 ## Persisted storage model
 
@@ -130,23 +139,16 @@ fresh identifiers for `create`.
 `revdeps` stores `NodeIdentifier[]`, but deterministic ordering is still defined by the
 corresponding `NodeKey` order.
 
-So the target state is:
+So:
 
 - persisted reverse-dependency references are identifiers only
 - deterministic ordering is still derived from `node_id_to_key`
 
 ## Filesystem snapshot format
 
-`render()` and `scan()` operate on the new identifier-based keys, not on the older
-`NodeKey`-derived path form.
+`render()` and `scan()` operate on identifier-addressed graph-state paths.
 
-The older concrete-node filesystem shape:
-
-- `rendered/r/values/head/arg1/arg2/arg3`
-
-is not part of the target state.
-
-The target concrete-node filesystem shape is:
+Each graph-state record appears at a direct identifier path, for example:
 
 - `rendered/r/values/nodeid1`
 
@@ -166,7 +168,7 @@ Lookup metadata remains explicit and separate:
 The snapshot format therefore exposes graph-state records directly by identifier and
 uses lookup tables for semantic readability.
 
-## No key↔path conversion in the target state
+## No key↔path conversion
 
 There must not be any code whose job is to convert concrete node keys to filesystem
 paths or to reconstruct concrete node keys from filesystem paths.
@@ -177,14 +179,11 @@ This prohibition covers both:
 - incidental logic embedded inside render/scan/unification code that reconstructs a
   concrete `NodeKey` from path segments or encodes one into path segments
 
-In the target state:
+Accordingly:
 
 - graph-state filesystem paths are direct identifier paths
 - scan consumes those direct identifier paths
 - render writes those direct identifier paths
-
-So the older model of encoding `NodeKey(head, args)` into path segments is absent from
-the target state.
 
 ## Invariants
 
