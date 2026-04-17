@@ -2,6 +2,11 @@
 
 ## Purpose
 
+This document is the **intended target design specification** for IncrementalGraph
+node addressing. It describes the model as it is meant to be, not the current
+implementation state. The corresponding implementation work is tracked in
+`docs/plan1.md`.
+
 This document defines the node-addressing model for IncrementalGraph storage,
 filesystem snapshots, and the HTTP inspection API.
 
