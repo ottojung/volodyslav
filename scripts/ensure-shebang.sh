@@ -19,5 +19,5 @@ set -xe
 SH_PATH="$(command -v sh)"
 ENV_PATH="$(command -v env)"
 
-find "$TARGET" -type f -executable -exec sed -i "s@^#!.?/bin/sh@#! $SH_PATH@" {} +
-find "$TARGET" -type f -executable -exec sed -i "s@^#!.?/usr/bin/env@#! $ENV_PATH@" {} +
+find -- "$TARGET" -type f -executable -exec sed -i "s@^#!.?/bin/sh@#! $SH_PATH@" {} +
+find -- "$TARGET" -type f -executable -exec sed -i "s@^#!.?/usr/bin/env@#! $ENV_PATH@" {} +
