@@ -38,6 +38,11 @@ That includes:
 
 For these APIs, callers do not pass `NodeIdentifier`s.
 
+`NodeKey` is used exclusively at this user-facing boundary. It is not used for any
+internal logic. Inside the storage layer, all node addressing, sorting, and
+edge-following uses `NodeIdentifier` only. `NodeKey` values appear only as arguments
+or return values of user-facing API calls and in the bijection lookup tables.
+
 ### HTTP inspection API
 
 The HTTP inspection API is not a user-facing API. It is an internal development and
@@ -51,7 +56,7 @@ Every HTTP operation that addresses or returns a concrete node instance uses
 A `NodeIdentifier` is an opaque random identifier with the following properties:
 
 - stable for the lifetime of that materialized node in storage
-- round-trippable as a nominal typed value
+- round-trippable as a nominal type
 - unique within the database
 - suitable for direct use as persisted key content and as a filesystem path segment
 - matches `/^[a-z_][a-z0-9_]*$/` (full-string match)
@@ -136,14 +141,22 @@ fresh identifiers for `create`.
 
 ## Determinism
 
-`revdeps` stores `NodeIdentifier[]`, but deterministic ordering is defined by
-ascending serialized `NodeKeyString` order of the corresponding `NodeKey` values.
+`revdeps` stores `NodeIdentifier[]` in ascending lexicographic order of the identifier
+string itself.
 
-So:
+`NodeKey` is not consulted when ordering reverse-dependency lists. All internal
+sorting operates on `NodeIdentifier` values directly.
 
-- persisted reverse-dependency references are identifiers only
-- deterministic ordering is still derived from `node_id_to_key` by comparing the
-  serialized `NodeKeyString` values in ascending lexicographic order
+## Bijection cache
+
+The full contents of both lookup sublevels (`node_key_to_id` and `node_id_to_key`)
+are loaded into RAM and kept synchronized as an in-memory cache. All lookups between
+`NodeKey` and `NodeIdentifier` go through this cache, not through direct database
+reads at call time.
+
+The cache is authoritative for the bijection while the database is open. Writes to
+the lookup sublevels and updates to the cache are atomic from the perspective of the
+storage layer.
 
 ## Filesystem snapshot format
 

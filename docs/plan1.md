@@ -24,6 +24,7 @@ Extend the root database so graph state is identifier-addressed and the semantic
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
 - [ ] Add lookup sublevels `node_key_to_id` and `node_id_to_key` to `root_database.js`
 - [ ] Ensure the lookup sublevels represent a bijection and are written atomically with graph-state lifecycle changes
+- [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads
 
 ## 3. Storage boundary and lifecycle behavior
 
@@ -32,9 +33,9 @@ state and graph-to-graph references to `NodeIdentifier`.
 
 - [ ] Refactor `graph_storage.js` so graph-state sublevels are keyed by `NodeIdentifier`, not `NodeKeyString`
 - [ ] Add atomic helper(s) to resolve or allocate an identifier for a `NodeKeyString`
-- [ ] Keep `IncrementalGraph` and `Interface` APIs unchanged by translating `NodeKey` ↔ `NodeIdentifier` at the storage boundary
+- [ ] Keep `IncrementalGraph` and `Interface` APIs unchanged by translating `NodeKey` ↔ `NodeIdentifier` at the storage boundary; `NodeKey` must not appear in any internal storage logic beyond this translation step
 - [ ] Update `inputs` and `revdeps` persistence so all stored references are `NodeIdentifier[]`
-- [ ] Preserve deterministic revdeps ordering by sorting identifiers according to their mapped `NodeKey`
+- [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
 - [ ] Update `listMaterializedNodes()` and inspection helpers to map stored ids back to public node keys
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
