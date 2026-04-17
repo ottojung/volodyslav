@@ -18,47 +18,21 @@
  * always an *inactive* replica that is never read until cutover succeeds.
  * Callers must not rely on rollback behaviour from this function.
  *
- * Requirement: both listSourceKeys() and listTargetKeys() MUST yield keys in
- * ascending lexicographic order for the merge-join to produce correct results.
+ * Key requirement: all keys produced by listSourceKeys() and listTargetKeys()
+ * MUST be latin1 strings that do not contain the substring "!!" and MUST be
+ * yielded in ascending order (JS default string sort order).
  *
- * Key ordering: keys are compared using UTF-8 byte order via Buffer.compare,
- * which matches LevelDB's native iteration order for string keys.  Adapters
- * that enumerate keys in JS (e.g. db_to_fs, fs_to_db) sort using the same
- * compareKeys() helper exported from this module so all key streams use an
- * identical ordering.
- */
-
-/**
- * Compare two raw keys in UTF-8 byte order, matching LevelDB's iteration order.
- * Use this comparator when sorting key arrays in adapter implementations so
- * that JS-sorted lists are in the same order as LevelDB-iterated lists.
+ * For latin1 strings, JavaScript's default string comparison (by code point)
+ * is identical to byte-order comparison, which matches LevelDB's native
+ * iteration order.  Adapters that enumerate keys in JS (e.g. db_to_fs,
+ * fs_to_db) therefore sort using the plain Array.prototype.sort() with no
+ * custom comparator.
  *
- * @param {string} a
- * @param {string} b
- * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ * TODO: Some ConstValue arguments may contain arbitrary strings which could
+ * include characters outside the latin1 range.  When that happens, JS string
+ * comparison may diverge from LevelDB byte order.  This edge case is tracked
+ * separately and will be addressed in a future change.
  */
-function compareKeys(a, b) {
-    return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
-}
-
-/**
- * Sort an array of raw keys in UTF-8 byte order in-place using a
- * decorate-sort-undecorate strategy: each key's UTF-8 Buffer is computed once
- * before sorting, so no Buffer is allocated more than once per key per call.
- * No persistent cache is used; all Buffers are freed when the function returns.
- *
- * @param {string[]} keys - Mutable array; sorted in-place.
- * @returns {string[]} The same array, now sorted.
- */
-function sortKeysByUtf8(keys) {
-    /** @type {Array<{key: string, buf: Buffer}>} */
-    const decorated = keys.map(key => ({ key, buf: Buffer.from(key, 'utf8') }));
-    decorated.sort((a, b) => Buffer.compare(a.buf, b.buf));
-    for (const [i, item] of decorated.entries()) {
-        keys[i] = item.key;
-    }
-    return keys;
-}
 
 /**
  * Thrown when listing source or target keys fails.
@@ -254,14 +228,6 @@ async function unifyStores(adapter) {
         throw err;
     }
 
-    // Cache the UTF-8 Buffer for the current source/target key so each key is
-    // encoded at most once per iterator step.  Null means the buffer needs to
-    // be (re)computed for the new key after sNext/tNext has advanced.
-    /** @type {Buffer | null} */
-    let skBuf = null;
-    /** @type {Buffer | null} */
-    let tkBuf = null;
-
     let putCount = 0;
     let deleteCount = 0;
     let unchangedCount = 0;
@@ -279,9 +245,7 @@ async function unifyStores(adapter) {
             } else {
                 const sk = String(sNext.value);
                 const tk = String(tNext.value);
-                if (skBuf === null) skBuf = Buffer.from(sk, 'utf8');
-                if (tkBuf === null) tkBuf = Buffer.from(tk, 'utf8');
-                cmp = Buffer.compare(skBuf, tkBuf);
+                cmp = sk < tk ? -1 : sk > tk ? 1 : 0;
             }
 
             if (cmp < 0) {
@@ -301,7 +265,6 @@ async function unifyStores(adapter) {
                 }
                 putCount++;
                 sNext = await nextSource();
-                skBuf = null; // key changed, recompute buffer on next comparison
             } else if (cmp > 0) {
                 // Target-only key: delete from target.
                 targetCount++;
@@ -312,7 +275,6 @@ async function unifyStores(adapter) {
                 }
                 deleteCount++;
                 tNext = await nextTarget();
-                tkBuf = null; // key changed, recompute buffer on next comparison
             } else {
                 // Key present in both: compare values and put only if different.
                 sourceCount++;
@@ -343,8 +305,6 @@ async function unifyStores(adapter) {
                 }
                 sNext = await nextSource();
                 tNext = await nextTarget();
-                skBuf = null; // both keys changed, recompute buffers on next comparison
-                tkBuf = null;
             }
         }
 
@@ -373,8 +333,6 @@ async function unifyStores(adapter) {
 }
 
 module.exports = {
-    compareKeys,
-    sortKeysByUtf8,
     unifyStores,
     UnificationListError,
     isUnificationListError,

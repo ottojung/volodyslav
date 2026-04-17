@@ -160,21 +160,20 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
             // Collect all file paths, map each to its raw DB key, then sort.
             // Sorting is required for the merge-join in core.js.
             // The sourceKeyToAbsPath map is populated here so readSource() can
-            // use the original discovered path (P2: preserve path casing).
+            // use the original discovered path (preserve path casing).
+            //
+            // Keys are latin1 strings (no "!!" substring), so JS default string
+            // sort matches LevelDB byte order.
             //
             // Memory: O(num_files × avg_rawkey_length).  Only key strings are
             // held; file contents are never read during key enumeration.
             const allFiles = await walkFilesRecursively(capabilities, inputDir);
             /** @type {Array<{rawKey: string, absPath: string}>} */
             const entries = allFiles.map(absPath => ({ rawKey: absPathToRawKey(absPath), absPath }));
-            // Sort in UTF-8 byte order using decorate-sort-undecorate so each
-            // buffer is computed once per entry (not once per comparison).
-            /** @type {Array<{rawKey: string, absPath: string, buf: Buffer}>} */
-            const decorated = entries.map(e => ({ rawKey: e.rawKey, absPath: e.absPath, buf: Buffer.from(e.rawKey, 'utf8') }));
-            decorated.sort((a, b) => Buffer.compare(a.buf, b.buf));
-            /** @type {{rawKey: string, absPath: string, buf: Buffer} | undefined} */
+            entries.sort((a, b) => a.rawKey < b.rawKey ? -1 : a.rawKey > b.rawKey ? 1 : 0);
+            /** @type {{rawKey: string, absPath: string} | undefined} */
             let prev;
-            for (const item of decorated) {
+            for (const item of entries) {
                 // Detect duplicate keys (two file paths that decode to the same
                 // raw DB key, e.g. differing only by percent-escape casing).
                 // Duplicates violate the strictly-sorted-stream requirement.

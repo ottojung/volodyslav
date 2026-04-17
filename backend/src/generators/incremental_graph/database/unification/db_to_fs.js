@@ -27,7 +27,6 @@
 
 const path = require('path');
 const { keyToRelativePath, relativePathToKey, serializeValue } = require('../encoding');
-const { sortKeysByUtf8 } = require('./core');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -119,8 +118,9 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
     return {
         async *listSourceKeys() {
             // Collect all relPaths from the database then sort them.
-            // Sorting is required for the merge-join in core.js; LevelDB raw
-            // key order does not map monotonically to relPath sort order.
+            // Sorting is required for the merge-join in core.js.  Keys are
+            // latin1 strings (no "!!" substring), so JS default string sort
+            // matches LevelDB byte order.
             // No values are cached: readSource() does an on-demand DB lookup.
             //
             // Memory: O(num_keys × avg_relpath_length).  Only key strings are
@@ -131,7 +131,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
                 const fullRelPath = keyToRelativePath(rawKey);
                 relPaths.push(fullRelPath.slice(sublevelPrefix.length));
             }
-            sortKeysByUtf8(relPaths);
+            relPaths.sort();
             for (const relPath of relPaths) {
                 yield relPath;
             }
@@ -148,7 +148,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
             const relPaths = allFiles.map(
                 absPath => path.relative(outputDir, absPath).split(path.sep).join('/')
             );
-            sortKeysByUtf8(relPaths);
+            relPaths.sort();
             for (const relPath of relPaths) {
                 yield relPath;
             }

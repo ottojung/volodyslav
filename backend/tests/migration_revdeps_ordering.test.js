@@ -8,7 +8,7 @@
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const { serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { compareNodeKeyStringByNodeKey } = require("../src/generators/incremental_graph/database/node_key");
-const { stringToNodeName, compareKeys } = require("../src/generators/incremental_graph/database");
+const { stringToNodeName } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 
@@ -33,9 +33,7 @@ function makeInMemoryDb(table) {
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
         async *keys() {
-            // Sort keys in UTF-8 byte order to match LevelDB iteration order,
-            // which is required by the merge-join in core.js.
-            for (const key of [...store.keys()].sort(compareKeys)) yield key;
+            for (const key of [...store.keys()].sort()) yield key;
         },
         apply(operation) {
             if (operation.table === table) {

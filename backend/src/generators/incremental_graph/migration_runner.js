@@ -14,7 +14,7 @@ const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { runMigrationInTransaction } = require("./database");
 const { compareNodeKeyStringByNodeKey } = require("./database");
-const { unifyStores, makeDbToDbAdapter, nodeKeyStringToString } = require("./database");
+const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -144,18 +144,13 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  */
 function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
     // Sort decision keys once so every sublevel's keys() yields in the same
-    // UTF-8 byte order as LevelDB, which is required by the merge-join.
-    // Use decorate-sort-undecorate so each UTF-8 Buffer is allocated once per
-    // key, not once per comparison.
-    const sortedDecisionKeys = [...decisions.keys()]
-        .map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }))
-        .sort((a, b) => Buffer.compare(a.buf, b.buf))
-        .map(item => item.key);
+    // order as LevelDB.  Keys are latin1 strings (no "!!" substring), so JS
+    // default string sort matches LevelDB byte order.
+    // TODO: ConstValue arguments may contain non-latin1 characters; that case
+    // is tracked separately and will be addressed in a future change.
+    const sortedDecisionKeys = [...decisions.keys()].sort();
 
-    const sortedRevdepKeys = [...desiredRevdeps.keys()]
-        .map(k => ({ key: k, buf: Buffer.from(nodeKeyStringToString(k), 'utf8') }))
-        .sort((a, b) => Buffer.compare(a.buf, b.buf))
-        .map(item => item.key);
+    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
 
     return {
         values: {

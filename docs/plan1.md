@@ -37,6 +37,15 @@ merge-join** over sorted key streams.
 
 Both `listSourceKeys()` and `listTargetKeys()` MUST yield keys in ascending lexicographic order.
 
+Keys MUST be latin1 strings that do not contain the substring `!!`.  For latin1 strings,
+JavaScript's default string comparison (by code point) is identical to byte-order comparison,
+which matches LevelDB's native iteration order.  Adapters that sort keys in JS can therefore
+use the plain `Array.prototype.sort()` with no custom comparator.
+
+> **TODO**: Some ConstValue arguments may contain characters outside the latin1 range.  In that
+> case JS string comparison may diverge from LevelDB byte order.  This edge case is tracked
+> separately and will be addressed in a future change.
+
 ### Pseudocode
 
 ```
@@ -46,7 +55,7 @@ tNext = await targetIter.next()
 while !sNext.done || !tNext.done:
   if      sNext.done:  cmp = +1   // only in target → delete
   else if tNext.done:  cmp = -1   // only in source → put
-  else:                cmp = compareKeys(sNext.value, tNext.value)  // UTF-8 byte order
+  else:                cmp = sNext.value < tNext.value ? -1 : sNext.value > tNext.value ? 1 : 0
 
   if cmp < 0:
     sv = readSource(sNext.value)
