@@ -54,7 +54,7 @@ A `NodeIdentifier` is an opaque random identifier with the following properties:
 - round-trippable as a nominal typed value
 - unique within the database
 - suitable for direct use as persisted key content and as a filesystem path segment
-- matches `/[a-z_][a-z0-9_]*/`
+- matches `/^[a-z_][a-z0-9_]*$/` (full-string match)
 
 So the allowed character set is:
 
@@ -170,20 +170,33 @@ uses lookup tables for semantic readability.
 
 ## No key↔path conversion
 
-There must not be any code whose job is to convert concrete node keys to filesystem
-paths or to reconstruct concrete node keys from filesystem paths.
+Outside the explicit lookup-metadata namespace, there must not be any code whose job
+is to convert concrete node keys to filesystem paths or to reconstruct concrete node
+keys from filesystem paths.
 
-This prohibition covers both:
+This prohibition applies to graph-state addressing and covers both:
 
-- dedicated helper functions for `NodeKey ↔ path` conversion
+- dedicated helper functions for `NodeKey ↔ path` conversion used for graph-state
+  files
 - incidental logic embedded inside render/scan/unification code that reconstructs a
-  concrete `NodeKey` from path segments or encodes one into path segments
+  concrete `NodeKey` from graph-state path segments or encodes one into graph-state
+  path segments
+
+The following lookup-metadata paths are explicitly exempt from this prohibition:
+
+- `rendered/r/node_key_to_id/{node-key-encoding}`
+- `rendered/r/node_id_to_key/nodeid1`
+
+Those paths may encode or decode `NodeKey` values for the sole purpose of reading and
+writing the lookup tables. They must not be treated as a general filesystem addressing
+scheme for graph-state records.
 
 Accordingly:
 
 - graph-state filesystem paths are direct identifier paths
 - scan consumes those direct identifier paths
 - render writes those direct identifier paths
+- any `NodeKey ↔ path` logic is limited to the lookup-metadata namespace above
 
 ## Invariants
 
