@@ -7,7 +7,7 @@ Today the incremental-graph database uses `NodeKeyString` as both:
 - the public address of a node instance, and
 - the persisted storage key/reference for that node.
 
-That is visible in all current graph sublevels:
+That is visible in all current graph-state sublevels:
 
 - `values`
 - `freshness`
@@ -15,6 +15,8 @@ That is visible in all current graph sublevels:
 - `revdeps`
 - `counters`
 - `timestamps`
+
+These six sublevels are referred to below as the **graph-state sublevels**.
 
 It is also visible in migration code and in the filesystem snapshot encoding, which currently renders keys such as:
 
@@ -53,7 +55,7 @@ Public APIs must continue to address nodes by `(head, args)` / `NodeKey`.
 Add a nominal type parallel to `EventId`:
 
 - module shape similar to `backend/src/event/id.js`
-- generated with the existing helper at `backend/src/random/string.js` (via `random.string(capabilities, 16)`)
+- generated with the existing helper at `backend/src/random/string.js`, using the same capability-driven seed pattern as `backend/src/event/id.js` (`capabilities.seed`, not a raw system API)
 - stored as lowercase alphanumeric text, optionally with a `gid` prefix in examples
 
 Example values:
@@ -75,12 +77,7 @@ All persisted graph state must address nodes by `NodeIdentifier`, not by `NodeKe
 
 This applies to:
 
-- keys in `values`
-- keys in `freshness`
-- keys in `inputs`
-- keys in `revdeps`
-- keys in `counters`
-- keys in `timestamps`
+- keys in all graph-state sublevels
 - values inside `inputs`
 - values inside `revdeps`
 - migration-produced state
@@ -113,8 +110,8 @@ All actual graph state and all graph-to-graph references must use `NodeIdentifie
 
 ### Dependency metadata
 
-- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }` — this intentionally keeps the existing record shape because it must store both dependency identifiers and the parallel `inputCounters` array; only the element type changes from `NodeKeyString[]` to `NodeIdentifier[]`
-- `revdeps[id] -> NodeIdentifier[]` — this remains a plain array because it has no paired counter payload
+- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }` — stores dependency identifiers and their corresponding counter values
+- `revdeps[id] -> NodeIdentifier[]` — stores reverse-dependency identifiers
 
 ### Lookup metadata
 
@@ -166,12 +163,7 @@ These operations must reuse the existing identifier. They must never allocate a 
 
 A true delete removes:
 
-- `values[id]`
-- `freshness[id]`
-- `inputs[id]`
-- `revdeps[id]`
-- `counters[id]`
-- `timestamps[id]`
+- all graph-state records keyed by `id`
 - `node_key_to_id[nodeKey]`
 - `node_id_to_key[id]`
 
@@ -226,7 +218,7 @@ So snapshots become less directly human-readable in the primary data sublevels, 
 
 1. meta sublevels with plain string keys (`_meta`, `meta`)
 2. lookup sublevels, split into `NodeKey`-keyed (`node_key_to_id`) and `NodeIdentifier`-keyed (`node_id_to_key`) variants
-3. graph-state sublevels keyed by `NodeIdentifier` (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`)
+3. graph-state sublevels keyed by `NodeIdentifier` (the six graph-state sublevels defined above)
 
 ## Invariants
 
