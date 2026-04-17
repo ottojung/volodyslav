@@ -630,10 +630,13 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawPut(key, value) {
-        // Avoid TypeScript excess-property checking by using a variable.
-        // Level's PutOptions type isn't visible here (typed as AbstractLevel),
-        // but classic-level supports sync at runtime.
-        const opts = { sync: false };
+        // Pass sync:false to avoid per-write fsyncs during bulk unification.
+        // classic-level supports sync at runtime; abstract-level's AbstractPutOptions
+        // is a "weak type" (all-optional properties) so TypeScript requires at least
+        // one recognised property to be present. keyEncoding:undefined is a valid
+        // AbstractPutOptions property and satisfies the weak-type check without
+        // changing runtime behaviour.
+        const opts = { sync: false, keyEncoding: undefined };
         await this.db.put(stringToNodeKeyString(key), value, opts);
     }
 
@@ -650,8 +653,9 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDel(key) {
-        // Avoid TypeScript excess-property checking by using a variable.
-        const opts = { sync: false };
+        // Pass sync:false to avoid per-write fsyncs during bulk unification.
+        // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
+        const opts = { sync: false, keyEncoding: undefined };
         await this.db.del(stringToNodeKeyString(key), opts);
     }
 
@@ -670,9 +674,10 @@ class RootDatabaseClass {
     async _rawSync() {
         // An empty batch with sync:true is a no-op for data but forces LevelDB
         // to flush the WAL, ensuring all preceding sync:false writes are durable.
-        // Use a variable to avoid TypeScript excess-property checking on the
-        // batch options (classic-level adds sync to AbstractBatchOptions).
-        const opts = { sync: true };
+        // keyEncoding:undefined is included so the options object has at least one
+        // recognised AbstractBatchOptions property, satisfying TypeScript's weak-type
+        // check without changing runtime behaviour.
+        const opts = { keyEncoding: undefined, sync: true };
         await this.db.batch([], opts);
     }
 
