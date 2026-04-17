@@ -45,12 +45,12 @@ describe('makeInMemorySchemaStorage', () => {
 
         const ops = [
             storage.freshness.putOp(nodeKey, 'outdated'),
-            storage.counters.putOp(nodeKey, { count: 5, seed: 'x' }),
+            storage.counters.putOp(nodeKey, 5),
         ];
         await storage.batch(ops);
 
         expect(await storage.freshness.get(nodeKey)).toBe('outdated');
-        expect(await storage.counters.get(nodeKey)).toEqual({ count: 5, seed: 'x' });
+        expect(await storage.counters.get(nodeKey)).toBe(5);
         // Other sublevels untouched
         expect(await storage.values.get(nodeKey)).toBeUndefined();
     });
@@ -205,7 +205,7 @@ describe('makeDbToDbAdapter', () => {
         await src.freshness.put(k, 'fresh');
         await src.inputs.put(k, { inputs: [], inputCounters: [] });
         await src.revdeps.put(k, ['dep1']);
-        await src.counters.put(k, { count: 1, seed: 's' });
+        await src.counters.put(k, 1);
         await src.timestamps.put(k, { createdAt: 'x', modifiedAt: 'y' });
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
@@ -217,7 +217,7 @@ describe('makeDbToDbAdapter', () => {
         expect(dstData.freshness.get(k)).toBe('fresh');
         expect(dstData.inputs.get(k)).toEqual({ inputs: [], inputCounters: [] });
         expect(dstData.revdeps.get(k)).toEqual(['dep1']);
-        expect(dstData.counters.get(k)).toEqual({ count: 1, seed: 's' });
+        expect(dstData.counters.get(k)).toBe(1);
         expect(dstData.timestamps.get(k)).toEqual({ createdAt: 'x', modifiedAt: 'y' });
     });
 
