@@ -63,6 +63,10 @@ Stored key content for node identifiers MUST NOT contain the substring `"!!"`.
 That substring is reserved for sublevel delimiters in raw LevelDB keys and must appear
 only there.
 
+This requirement is part of the `NodeIdentifier` value definition itself. So any
+implementation that constructs, parses, or accepts a `NodeIdentifier` must enforce it,
+not just the documentation.
+
 Example values:
 
 - `gid0123456789abcdef`
@@ -166,6 +170,12 @@ uses lookup tables for semantic readability.
 
 There must not be any code whose job is to convert concrete node keys to filesystem
 paths or to reconstruct concrete node keys from filesystem paths.
+
+This prohibition covers both:
+
+- dedicated helper functions for `NodeKey ↔ path` conversion
+- incidental logic embedded inside render/scan/unification code that reconstructs a
+  concrete `NodeKey` from path segments or encodes one into path segments
 
 In the target state:
 
