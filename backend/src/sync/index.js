@@ -174,27 +174,8 @@ function _syncConflictor(initiating, attaching) {
 }
 
 // ---------------------------------------------------------------------------
-// Capabilities thunk
+// Exclusive process
 // ---------------------------------------------------------------------------
-
-/**
- * Capabilities for the current (or most-recently started) sync run.
- * Set by `synchronizeAll` before each `invoke` call.
- * @type {Capabilities | undefined}
- */
-let _capabilities;
-
-/**
- * Zero-arg thunk returning the capabilities for the current sync run.
- * Provided to `makeExclusiveProcess` so subscriber errors are always logged.
- * @returns {Capabilities}
- */
-function getCapabilities() {
-    if (_capabilities === undefined) {
-        throw new Error("synchronizeAll: capabilities not set for current run");
-    }
-    return _capabilities;
-}
 
 /**
  * Shared ExclusiveProcess for synchronization.
@@ -223,7 +204,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
      * @returns {Promise<void>}
      */
     procedure: (mutateState, options) => {
-        const capabilities = getCapabilities();
+        const capabilities = synchronizeAllExclusiveProcess.getCapabilities();
         const started_at = capabilities.datetime.now().toISOString();
         const reset_to_hostname = options?.resetToHostname;
         const runningHostname = capabilities.environment.hostname();
@@ -283,7 +264,6 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
             });
     },
     conflictor: _syncConflictor,
-    getCapabilities,
 });
 
 /**
@@ -307,8 +287,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
  * @throws {SynchronizeAllError}
  */
 function synchronizeAll(capabilities, options, subscriber) {
-    _capabilities = capabilities;
-    return synchronizeAllExclusiveProcess.invoke(options, subscriber).result;
+    return synchronizeAllExclusiveProcess.invoke(capabilities, options, subscriber).result;
 }
 
 /**

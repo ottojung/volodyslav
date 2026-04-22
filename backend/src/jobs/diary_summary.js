@@ -46,29 +46,6 @@ const { getType: getEventType } = require("../event");
  */
 
 // ---------------------------------------------------------------------------
-// Capabilities thunk
-// ---------------------------------------------------------------------------
-
-/**
- * Capabilities for the current (or most-recently started) diary summary run.
- * Set by `runDiarySummaryPipeline` before each `invoke` call.
- * @type {Capabilities | undefined}
- */
-let _capabilities;
-
-/**
- * Zero-arg thunk returning the capabilities for the current diary summary run.
- * Provided to `makeExclusiveProcess` so subscriber errors are always logged.
- * @returns {Capabilities}
- */
-function getCapabilities() {
-    if (_capabilities === undefined) {
-        throw new Error("runDiarySummaryPipeline: capabilities not set for current run");
-    }
-    return _capabilities;
-}
-
-// ---------------------------------------------------------------------------
 // Exclusive process
 // ---------------------------------------------------------------------------
 
@@ -93,7 +70,7 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
      * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
      */
     procedure: (mutateState) => {
-        const capabilities = getCapabilities();
+        const capabilities = diarySummaryExclusiveProcess.getCapabilities();
         const started_at = capabilities.datetime.now().toISOString();
 
         // Sync transformer → state updated synchronously before invoke returns.
@@ -165,7 +142,6 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
     },
     // All concurrent calls attach to the same run — no queuing needed.
     conflictor: () => "attach",
-    getCapabilities,
 });
 
 /**
@@ -180,8 +156,7 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
 function runDiarySummaryPipeline(capabilities, subscriber) {
-    _capabilities = capabilities;
-    return diarySummaryExclusiveProcess.invoke(undefined, subscriber).result;
+    return diarySummaryExclusiveProcess.invoke(capabilities, undefined, subscriber).result;
 }
 
 /**
