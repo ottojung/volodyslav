@@ -34,6 +34,5 @@ export TZ='UTC'
 export _='/data/data/com.termux/files/usr/bin/sh'
 
 npm ci
-
 npm run build
 npm run test-only
