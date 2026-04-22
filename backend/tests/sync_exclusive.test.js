@@ -179,7 +179,7 @@ describe("sync — ExclusiveProcess adoption", () => {
                 .mockReturnValue(deferred.promise);
 
             const receivedStates = [];
-            synchronizeAllExclusiveProcess.invoke({ capabilities }, (s) => receivedStates.push(s));
+            synchronizeAll(capabilities, undefined, (s) => receivedStates.push(s));
 
             // First subscriber notification happens synchronously (running state)
             // then further notifications happen asynchronously

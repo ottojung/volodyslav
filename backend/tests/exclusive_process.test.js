@@ -284,10 +284,10 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
-                getCapabilities: (_arg) => fakeCapabilities,
+                getCapabilities: () => fakeCapabilities,
             });
 
-            ep.invoke(fakeCapabilities, (_s) => { throw new Error("boom"); });
+            ep.invoke(undefined, (_s) => { throw new Error("boom"); });
 
             doMutate();
             await new Promise((r) => setImmediate(r));
@@ -313,10 +313,10 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
-                getCapabilities: (_arg) => fakeCapabilities,
+                getCapabilities: () => fakeCapabilities,
             });
 
-            ep.invoke(fakeCapabilities, (_s) => Promise.reject(new Error("async boom")));
+            ep.invoke(undefined, (_s) => Promise.reject(new Error("async boom")));
 
             doMutate();
             await new Promise((r) => setImmediate(r));

@@ -118,7 +118,7 @@ class AttacherHandleClass extends ExclusiveProcessHandleBaseClass {
 // ─── ExclusiveProcess class ───────────────────────────────────────────────────
 
 /** @typedef {import('./logger').Logger} Logger */
-/** @typedef {{ logger: Logger }} CapabilitiesWithLogger */
+/** @typedef {{ logger: Logger }} ExclusiveProcessCapabilities */
 
 /**
  * Ensures only one instance of an async computation runs at a time, with
@@ -136,7 +136,7 @@ class ExclusiveProcessClass {
      * @param {S} initialState
      * @param {(mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>, arg: A) => Promise<T>} procedure
      * @param {(initiating: A, attaching: A) => "attach" | "queue"} conflictor
-     * @param {(arg: A) => CapabilitiesWithLogger} getCapabilities
+     * @param {() => ExclusiveProcessCapabilities} getCapabilities
      */
     constructor(initialState, procedure, conflictor, getCapabilities) {
         if (this.__brand !== undefined) {
@@ -148,7 +148,7 @@ class ExclusiveProcessClass {
         this._procedure = procedure;
         /** @type {(initiating: A, attaching: A) => "attach" | "queue"} */
         this._conflictor = conflictor;
-        /** @type {(arg: A) => CapabilitiesWithLogger} */
+        /** @type {() => ExclusiveProcessCapabilities} */
         this._getCapabilities = getCapabilities;
         /** @type {Promise<T> | null} */
         this._currentPromise = null;
@@ -273,7 +273,7 @@ class ExclusiveProcessClass {
      *
      * @param {((state: S) => void | Promise<void>)[]} subscribers
      * @param {S} state
-     * @param {CapabilitiesWithLogger} capabilities
+     * @param {ExclusiveProcessCapabilities} capabilities
      */
     _notifySubscribers(subscribers, state, capabilities) {
         for (const sub of subscribers) {
@@ -308,9 +308,9 @@ class ExclusiveProcessClass {
         const subscribers = subscriber !== null ? [subscriber] : [];
         this._subscribers = subscribers;
 
-        // Extract the capabilities for this run from the arg.
-        /** @type {CapabilitiesWithLogger} */
-        const capabilities = this._getCapabilities(arg);
+        // Extract the capabilities for this run.
+        /** @type {ExclusiveProcessCapabilities} */
+        const capabilities = this._getCapabilities();
 
         /**
          * Promise chain used to serialize *queued* state mutations for this run
@@ -468,7 +468,7 @@ class ExclusiveProcessClass {
  * @template A - Type of the single argument passed to the procedure.
  * @template T - Return type of the procedure.
  * @template [S=undefined] - State type.
- * @param {{ initialState: S, procedure: (mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>, arg: A) => Promise<T>, conflictor: (initiating: A, attaching: A) => "attach" | "queue", getCapabilities: (arg: A) => CapabilitiesWithLogger }} options
+ * @param {{ initialState: S, procedure: (mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>, arg: A) => Promise<T>, conflictor: (initiating: A, attaching: A) => "attach" | "queue", getCapabilities: () => ExclusiveProcessCapabilities }} options
  * @returns {ExclusiveProcessClass<A, T, S>}
  */
 function makeExclusiveProcess(options) {

@@ -358,10 +358,10 @@ describe("runDiarySummaryPipeline", () => {
         // Track state via subscriber.
         /** @type {import('../src/jobs/diary_summary').DiarySummaryRunState[]} */
         const states = [];
-        diarySummaryExclusiveProcess.invoke({ capabilities }, (state) => {
+        runDiarySummaryPipeline(capabilities, (state) => {
             states.push(JSON.parse(JSON.stringify(state)));
         });
-        await diarySummaryExclusiveProcess.invoke({ capabilities }).result;
+        await runDiarySummaryPipeline(capabilities);
 
         // Find a state where the entry was pending (queued but not yet processed).
         const pendingState = states.find(

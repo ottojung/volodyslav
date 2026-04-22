@@ -198,7 +198,7 @@ describe("diary summary — ExclusiveProcess adoption", () => {
                 .mockReturnValue(deferred.promise.then(() => undefined));
 
             const receivedStates = [];
-            diarySummaryExclusiveProcess.invoke({ capabilities }, (s) => receivedStates.push(s));
+            runDiarySummaryPipeline(capabilities, (s) => receivedStates.push(s));
 
             deferred.resolve();
             await new Promise((r) => setImmediate(r));

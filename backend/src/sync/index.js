@@ -163,22 +163,38 @@ function makeSyncErrorResponse(error) {
  * If the new caller has no reset requirement (`resetToHostname` is absent),
  * any ongoing run is acceptable and the new call attaches.
  *
- * @param {{ capabilities: Capabilities, options?: { resetToHostname?: string } }} initiating
- * @param {{ capabilities: Capabilities, options?: { resetToHostname?: string } }} attaching
+ * @param {{ resetToHostname?: string } | undefined} initiating
+ * @param {{ resetToHostname?: string } | undefined} attaching
  * @returns {"attach" | "queue"}
  */
 function _syncConflictor(initiating, attaching) {
-    const incomingReset = attaching.options?.resetToHostname;
+    const incomingReset = attaching?.resetToHostname;
     if (incomingReset === undefined) return "attach";
-    return incomingReset !== initiating.options?.resetToHostname ? "queue" : "attach";
+    return incomingReset !== initiating?.resetToHostname ? "queue" : "attach";
 }
 
+// ---------------------------------------------------------------------------
+// Capabilities thunk
+// ---------------------------------------------------------------------------
+
 /**
- * Argument type for `synchronizeAllExclusiveProcess`.
- * `capabilities` is part of the argument so the procedure can use it directly.
- *
- * @typedef {{ capabilities: Capabilities, options?: { resetToHostname?: string } }} SyncArg
+ * Capabilities for the current (or most-recently started) sync run.
+ * Set by `synchronizeAll` before each `invoke` call.
+ * @type {Capabilities | undefined}
  */
+let _capabilities;
+
+/**
+ * Zero-arg thunk returning the capabilities for the current sync run.
+ * Provided to `makeExclusiveProcess` so subscriber errors are always logged.
+ * @returns {Capabilities}
+ */
+function getCapabilities() {
+    if (_capabilities === undefined) {
+        throw new Error("synchronizeAll: capabilities not set for current run");
+    }
+    return _capabilities;
+}
 
 /**
  * Shared ExclusiveProcess for synchronization.
@@ -203,10 +219,11 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
     initialState: { status: "idle" },
     /**
      * @param {(fn: (state: SyncState) => SyncState | Promise<SyncState>) => Promise<void>} mutateState
-     * @param {SyncArg} arg
+     * @param {{ resetToHostname?: string } | undefined} options
      * @returns {Promise<void>}
      */
-    procedure: (mutateState, { capabilities, options }) => {
+    procedure: (mutateState, options) => {
+        const capabilities = getCapabilities();
         const started_at = capabilities.datetime.now().toISOString();
         const reset_to_hostname = options?.resetToHostname;
         const runningHostname = capabilities.environment.hostname();
@@ -266,7 +283,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
             });
     },
     conflictor: _syncConflictor,
-    getCapabilities: ({ capabilities }) => capabilities,
+    getCapabilities,
 });
 
 /**
@@ -285,11 +302,13 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
  *
  * @param {Capabilities} capabilities
  * @param {{ resetToHostname?: string }} [options]
+ * @param {((state: SyncState) => void | Promise<void>) | null} [subscriber]
  * @returns {Promise<void>}
  * @throws {SynchronizeAllError}
  */
-function synchronizeAll(capabilities, options) {
-    return synchronizeAllExclusiveProcess.invoke({ capabilities, options }).result;
+function synchronizeAll(capabilities, options, subscriber) {
+    _capabilities = capabilities;
+    return synchronizeAllExclusiveProcess.invoke(options, subscriber).result;
 }
 
 /**

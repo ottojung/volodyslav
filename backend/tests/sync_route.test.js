@@ -8,15 +8,15 @@ let mockState = { status: "idle" };
 
 jest.mock("../src/sync", () => {
     return {
+        synchronizeAll: jest.fn().mockImplementation(() => Promise.resolve()),
         synchronizeAllExclusiveProcess: {
-            invoke: jest.fn().mockImplementation(() => ({ result: Promise.resolve() })),
             getState: jest.fn().mockImplementation(() => mockState),
         },
         isSynchronizeAllError: jest.fn((error) => error?.name === "SynchronizeAllError"),
     };
 });
 
-const { synchronizeAllExclusiveProcess } = require("../src/sync");
+const { synchronizeAll, synchronizeAllExclusiveProcess } = require("../src/sync");
 const { makeRouter } = require("../src/routes/sync");
 
 function getTestCapabilities() {
@@ -44,14 +44,14 @@ async function makeAppWithCapabilities() {
 describe("sync route", () => {
     beforeEach(() => {
         mockState = { status: "idle" };
-        synchronizeAllExclusiveProcess.invoke.mockClear();
+        synchronizeAll.mockClear();
         synchronizeAllExclusiveProcess.getState.mockClear();
     });
 
-    it("POST /sync calls invoke and returns the current state", async () => {
-        synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
+    it("POST /sync calls synchronizeAll and returns the current state", async () => {
+        synchronizeAll.mockImplementation(() => {
             mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
-            return { result: Promise.resolve() };
+            return Promise.resolve();
         });
         const app = await makeApp();
 
@@ -59,15 +59,16 @@ describe("sync route", () => {
 
         expect(response.statusCode).toBe(202);
         expect(response.body.status).toBe("running");
-        expect(synchronizeAllExclusiveProcess.invoke).toHaveBeenCalledWith(
-            expect.objectContaining({ options: {} }),
+        expect(synchronizeAll).toHaveBeenCalledWith(
+            expect.any(Object),
+            {},
         );
     });
 
     it("POST /sync observes background rejection to avoid unhandled promise rejection", async () => {
-        synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
+        synchronizeAll.mockImplementation(() => {
             mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
-            return { result: Promise.reject(new Error("sync failed")) };
+            return Promise.reject(new Error("sync failed"));
         });
         const app = await makeApp();
 
@@ -128,10 +129,10 @@ describe("sync route", () => {
         expect(response.body.status).toBe("idle");
     });
 
-    it("POST /sync passes reset_to_hostname in options to invoke", async () => {
-        synchronizeAllExclusiveProcess.invoke.mockImplementation(() => {
+    it("POST /sync passes reset_to_hostname in options to synchronizeAll", async () => {
+        synchronizeAll.mockImplementation(() => {
             mockState = { status: "running", started_at: "2024-01-01T00:00:00.000Z", steps: [] };
-            return { result: Promise.resolve() };
+            return Promise.resolve();
         });
         const app = await makeApp();
 
@@ -140,8 +141,9 @@ describe("sync route", () => {
             .send({ reset_to_hostname: "alice" });
 
         expect(response.statusCode).toBe(202);
-        expect(synchronizeAllExclusiveProcess.invoke).toHaveBeenCalledWith(
-            expect.objectContaining({ options: { resetToHostname: "alice" } }),
+        expect(synchronizeAll).toHaveBeenCalledWith(
+            expect.any(Object),
+            { resetToHostname: "alice" },
         );
     });
 

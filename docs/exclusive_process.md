@@ -85,11 +85,29 @@ The procedure is called fresh on each new run.
 
 To always attach (never queue), pass `conflictor: () => "attach"`.
 
-**`getCapabilities(arg) → { logger, ... }`** — called at the start of each
-run to obtain a capabilities object used for subscriber error reporting.
-Receives the same `arg` that was passed to `invoke`, so capabilities embedded
-in the arg can be used:
-`getCapabilities: ({ capabilities }) => capabilities`.
+**`getCapabilities() → ExclusiveProcessCapabilities`** — zero-argument thunk called
+at the start of each run to obtain a capabilities object used for subscriber
+error reporting.  Typically a closure over the module-level capabilities
+variable that is set before each `invoke` call:
+```js
+let _capabilities;
+const getCapabilities = () => _capabilities;
+
+const ep = makeExclusiveProcess({
+    initialState: undefined,
+    procedure: (mutateState) => {
+        const capabilities = getCapabilities();
+        // use capabilities...
+    },
+    conflictor: () => "attach",
+    getCapabilities,
+});
+
+function run(capabilities) {
+    _capabilities = capabilities;
+    return ep.invoke(undefined).result;
+}
+```
 
 ---
 
@@ -145,7 +163,7 @@ const ep = makeExclusiveProcess({
         return Promise.resolve("done");
     },
     conflictor: () => "attach",
-    getCapabilities: (arg) => arg,
+    getCapabilities: () => ({ logger: noopLogger }),
 });
 
 const steps1 = [];
@@ -172,7 +190,7 @@ const ep = makeExclusiveProcess({
     initialState: undefined,
     procedure: (_fanOut, _arg) => Promise.reject(new Error("oops")),
     conflictor: () => "attach",
-    getCapabilities: (arg) => arg,
+    getCapabilities: () => ({ logger: noopLogger }),
 });
 
 const h1 = ep.invoke(undefined); // initiator
