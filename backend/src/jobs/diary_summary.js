@@ -150,7 +150,7 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
     },
     // All concurrent calls attach to the same run — no queuing needed.
     conflictor: () => "attach",
-    getLogger: ({ capabilities }) => capabilities.logger,
+    getCapabilities: ({ capabilities }) => capabilities,
 });
 
 /**

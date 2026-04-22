@@ -58,7 +58,7 @@ resets to idle, so the next `invoke` starts a fresh run.
 
 ## API
 
-### `makeExclusiveProcess<A, T, C>({ procedure, conflictor, getLogger? }) → ExclusiveProcess<A, T, C>`
+### `makeExclusiveProcess<A, T, C>({ procedure, conflictor, getCapabilities? }) → ExclusiveProcess<A, T, C>`
 
 Creates a new, idle `ExclusiveProcess`.
 
@@ -67,9 +67,9 @@ Creates a new, idle `ExclusiveProcess`.
 
 - `fanOut: (cbArg: C) => void` — class-managed wrapper; call this to
   broadcast progress events to all current callers.  If a caller's callback
-  throws, the error is caught and logged via `logger.logError` (when a
-  `getLogger` function is provided); fan-out continues to the remaining
-  callbacks uninterrupted.
+  throws, the error is caught and logged via `capabilities.logger.logError`
+  (when a `getCapabilities` function is provided); fan-out continues to the
+  remaining callbacks uninterrupted.
 - `arg: A` — per-invocation argument passed by the caller.
 
 The procedure is called fresh on each new run.
@@ -85,10 +85,11 @@ The procedure is called fresh on each new run.
 
 To always attach (never queue), pass `conflictor: () => "attach"`.
 
-**`getLogger(arg) → Logger`** *(optional)* — called at the start of each run
-to obtain the logger used for subscriber error reporting.  Receives the same
-`arg` that was passed to `invoke`, so capabilities embedded in the arg can be
-used: `getLogger: ({ capabilities }) => capabilities.logger`.
+**`getCapabilities(arg) → { logger, ... }`** *(optional)* — called at the
+start of each run to obtain a capabilities object used for subscriber error
+reporting.  Receives the same `arg` that was passed to `invoke`, so
+capabilities embedded in the arg can be used:
+`getCapabilities: ({ capabilities }) => capabilities`.
 
 ---
 

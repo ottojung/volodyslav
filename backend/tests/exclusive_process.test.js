@@ -252,9 +252,10 @@ describe("ExclusiveProcess", () => {
             expect(received).toEqual([99]);
         });
 
-        it("logs a thrown subscriber error via getLogger", async () => {
+        it("logs a thrown subscriber error via getCapabilities", async () => {
             const loggedErrors = [];
             const fakeLogger = { logError: (obj, _msg) => loggedErrors.push(obj) };
+            const fakeCapabilities = { logger: fakeLogger };
             let doMutate;
             const ep = makeExclusiveProcess({
                 initialState: 0,
@@ -267,10 +268,10 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
-                getLogger: (_arg) => fakeLogger,
+                getCapabilities: (_arg) => fakeCapabilities,
             });
 
-            ep.invoke({ logger: fakeLogger }, (_s) => { throw new Error("boom"); });
+            ep.invoke(fakeCapabilities, (_s) => { throw new Error("boom"); });
 
             doMutate();
             await new Promise((r) => setImmediate(r));
@@ -280,9 +281,10 @@ describe("ExclusiveProcess", () => {
             expect(loggedErrors[0].err.message).toBe("boom");
         });
 
-        it("logs an async subscriber rejection via getLogger", async () => {
+        it("logs an async subscriber rejection via getCapabilities", async () => {
             const loggedErrors = [];
             const fakeLogger = { logError: (obj, _msg) => loggedErrors.push(obj) };
+            const fakeCapabilities = { logger: fakeLogger };
             let doMutate;
             const ep = makeExclusiveProcess({
                 initialState: 0,
@@ -295,10 +297,10 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
-                getLogger: (_arg) => fakeLogger,
+                getCapabilities: (_arg) => fakeCapabilities,
             });
 
-            ep.invoke({ logger: fakeLogger }, (_s) => Promise.reject(new Error("async boom")));
+            ep.invoke(fakeCapabilities, (_s) => Promise.reject(new Error("async boom")));
 
             doMutate();
             await new Promise((r) => setImmediate(r));
