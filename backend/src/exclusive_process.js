@@ -117,6 +117,8 @@ class AttacherHandleClass extends ExclusiveProcessHandleBaseClass {
 
 // ─── ExclusiveProcess class ───────────────────────────────────────────────────
 
+/** @typedef {import('./logger').Logger} Logger */
+
 /**
  * Ensures only one instance of an async computation runs at a time, with
  * shared mutable state and subscriber notifications.
@@ -133,8 +135,9 @@ class ExclusiveProcessClass {
      * @param {S} initialState
      * @param {(mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>, arg: A) => Promise<T>} procedure
      * @param {(initiating: A, attaching: A) => "attach" | "queue"} conflictor
+     * @param {((arg: A) => Logger) | null} getLogger
      */
-    constructor(initialState, procedure, conflictor) {
+    constructor(initialState, procedure, conflictor, getLogger) {
         if (this.__brand !== undefined) {
             throw new Error("ExclusiveProcess is a nominal type");
         }
@@ -144,6 +147,8 @@ class ExclusiveProcessClass {
         this._procedure = procedure;
         /** @type {(initiating: A, attaching: A) => "attach" | "queue"} */
         this._conflictor = conflictor;
+        /** @type {((arg: A) => Logger) | null} */
+        this._getLogger = getLogger;
         /** @type {Promise<T> | null} */
         this._currentPromise = null;
         /** @type {{ value: A } | null} */
@@ -267,18 +272,23 @@ class ExclusiveProcessClass {
      *
      * @param {((state: S) => void | Promise<void>)[]} subscribers
      * @param {S} state
+     * @param {Logger | null} logger
      */
-    _notifySubscribers(subscribers, state) {
+    _notifySubscribers(subscribers, state, logger) {
         for (const sub of subscribers) {
             try {
                 const maybePromise = sub(state);
                 if (maybePromise instanceof Promise) {
                     maybePromise.then(undefined, (err) => {
-                        console.error("ExclusiveProcess: async subscriber error", err);
+                        if (logger !== null) {
+                            logger.logError({ err }, "ExclusiveProcess: async subscriber error");
+                        }
                     });
                 }
             } catch (err) {
-                console.error("ExclusiveProcess: subscriber threw an error", err);
+                if (logger !== null) {
+                    logger.logError({ err }, "ExclusiveProcess: subscriber threw an error");
+                }
             }
         }
     }
@@ -300,6 +310,11 @@ class ExclusiveProcessClass {
         /** @type {((state: S) => void | Promise<void>)[]} */
         const subscribers = subscriber !== null ? [subscriber] : [];
         this._subscribers = subscribers;
+
+        // Extract the logger for this run from the arg, if a getLogger function
+        // was provided.
+        /** @type {Logger | null} */
+        const logger = this._getLogger !== null ? this._getLogger(arg) : null;
 
         /**
          * Promise chain used to serialize *queued* state mutations for this run
@@ -337,7 +352,7 @@ class ExclusiveProcessClass {
                 if (!(fnResult instanceof Promise)) {
                     // Preserve synchronous update behavior for sync transformers.
                     this._state = fnResult;
-                    this._notifySubscribers(subscribers, fnResult);
+                    this._notifySubscribers(subscribers, fnResult, logger);
                     return Promise.resolve();
                 }
 
@@ -345,7 +360,7 @@ class ExclusiveProcessClass {
                 const asyncMutationPromise = fnResult.then((newState) => {
                     if (!isRunActive) return;
                     this._state = newState;
-                    this._notifySubscribers(subscribers, newState);
+                    this._notifySubscribers(subscribers, newState, logger);
                 });
                 pendingMutation = asyncMutationPromise.then(
                     () => {
@@ -365,7 +380,7 @@ class ExclusiveProcessClass {
                 return Promise.resolve(fn(this._state)).then((newState) => {
                     if (!isRunActive) return;
                     this._state = newState;
-                    this._notifySubscribers(subscribers, newState);
+                    this._notifySubscribers(subscribers, newState, logger);
                 });
             });
 
@@ -457,14 +472,15 @@ class ExclusiveProcessClass {
  * @template A - Type of the single argument passed to the procedure.
  * @template T - Return type of the procedure.
  * @template [S=undefined] - State type.
- * @param {{ initialState: S, procedure: (mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>, arg: A) => Promise<T>, conflictor: (initiating: A, attaching: A) => "attach" | "queue" }} options
+ * @param {{ initialState: S, procedure: (mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>, arg: A) => Promise<T>, conflictor: (initiating: A, attaching: A) => "attach" | "queue", getLogger?: (arg: A) => Logger }} options
  * @returns {ExclusiveProcessClass<A, T, S>}
  */
 function makeExclusiveProcess(options) {
     return new ExclusiveProcessClass(
         options.initialState,
         options.procedure,
-        options.conflictor
+        options.conflictor,
+        options.getLogger ?? null
     );
 }
 

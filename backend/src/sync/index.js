@@ -266,6 +266,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
             });
     },
     conflictor: _syncConflictor,
+    getLogger: ({ capabilities }) => capabilities.logger,
 });
 
 /**

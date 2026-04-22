@@ -252,6 +252,62 @@ describe("ExclusiveProcess", () => {
             expect(received).toEqual([99]);
         });
 
+        it("logs a thrown subscriber error via getLogger", async () => {
+            const loggedErrors = [];
+            const fakeLogger = { logError: (obj, _msg) => loggedErrors.push(obj) };
+            let doMutate;
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    return new Promise((resolve) => {
+                        doMutate = () => {
+                            mutateState(() => 1);
+                            resolve();
+                        };
+                    });
+                },
+                conflictor: () => "attach",
+                getLogger: (_arg) => fakeLogger,
+            });
+
+            ep.invoke({ logger: fakeLogger }, (_s) => { throw new Error("boom"); });
+
+            doMutate();
+            await new Promise((r) => setImmediate(r));
+
+            expect(loggedErrors.length).toBe(1);
+            expect(loggedErrors[0].err).toBeInstanceOf(Error);
+            expect(loggedErrors[0].err.message).toBe("boom");
+        });
+
+        it("logs an async subscriber rejection via getLogger", async () => {
+            const loggedErrors = [];
+            const fakeLogger = { logError: (obj, _msg) => loggedErrors.push(obj) };
+            let doMutate;
+            const ep = makeExclusiveProcess({
+                initialState: 0,
+                procedure: (mutateState, _arg) => {
+                    return new Promise((resolve) => {
+                        doMutate = () => {
+                            mutateState(() => 1);
+                            resolve();
+                        };
+                    });
+                },
+                conflictor: () => "attach",
+                getLogger: (_arg) => fakeLogger,
+            });
+
+            ep.invoke({ logger: fakeLogger }, (_s) => Promise.reject(new Error("async boom")));
+
+            doMutate();
+            await new Promise((r) => setImmediate(r));
+
+            expect(loggedErrors.length).toBe(1);
+            expect(loggedErrors[0].err).toBeInstanceOf(Error);
+            expect(loggedErrors[0].err.message).toBe("async boom");
+        });
+
         it("subscribers are cleared between runs", async () => {
             const firstRunStates = [];
             const secondRunStates = [];
