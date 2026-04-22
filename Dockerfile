@@ -1,7 +1,7 @@
-FROM termux/termux-docker:aarch64
+FROM node:25.8
 WORKDIR /workspace
 RUN apt-get update -y
-RUN apt-get install -y nodejs rsync git
+RUN apt-get install -y rsync git
 COPY scripts/development/termux-notification /usr/local/bin/termux-notification
 COPY scripts/development/termux-wifi-connectioninfo /usr/local/bin/termux-wifi-connectioninfo
 COPY scripts/development/volodyslav-daily-tasks /usr/local/bin/volodyslav-daily-tasks
