@@ -12,6 +12,6 @@ jobs:
       - name: Run Termux (arm64)
         run: |
           docker run \
-            --rm -it \
+            --rm \
             --security-opt seccomp:unconfined \
             -- termux-ci-test
