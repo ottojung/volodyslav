@@ -10,6 +10,8 @@ apt-get update -qq
 #apt-get -qq -y -o Dpkg::Options::="--force-confnew" upgrade
 apt-get install -q -y coreutils python build-essential file nodejs git termux-exec
 
+bash -il -xe -c '
+
 uname -a
 id -a
 export
@@ -18,3 +20,4 @@ npm ci
 
 npm run build
 npm run test-only
+'
