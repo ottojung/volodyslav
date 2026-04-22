@@ -16,6 +16,8 @@ function makeDeferred() {
     return { promise, resolve, reject };
 }
 
+const noopCapabilities = { logger: { logError: () => {} } };
+
 // Helper: make a procedure that ignores mutateState and runs a simple async fn.
 // procedure: (mutateState, arg) => Promise<T>
 function simpleProcedure(fn) {
@@ -29,6 +31,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.resolve()),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             expect(isExclusiveProcess(ep)).toBe(true);
         });
@@ -39,11 +42,13 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             const ep2 = makeExclusiveProcess({
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep1.invoke(undefined);
@@ -65,6 +70,7 @@ describe("ExclusiveProcess", () => {
                     return Promise.resolve();
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             await ep.invoke("hello").result;
             expect(received).toBe("hello");
@@ -79,6 +85,7 @@ describe("ExclusiveProcess", () => {
                     return Promise.resolve();
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             await ep.invoke(undefined).result;
             expect(ep.getState()).toBe("updated-2");
@@ -91,6 +98,7 @@ describe("ExclusiveProcess", () => {
                 initialState: { status: "idle" },
                 procedure: simpleProcedure(() => Promise.resolve()),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             expect(ep.getState()).toEqual({ status: "idle" });
         });
@@ -104,6 +112,7 @@ describe("ExclusiveProcess", () => {
                     return deferred.promise;
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke(undefined);
@@ -121,6 +130,7 @@ describe("ExclusiveProcess", () => {
                     await mutateState(() => Promise.resolve(2));
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             await ep.invoke(undefined).result;
@@ -140,6 +150,7 @@ describe("ExclusiveProcess", () => {
                     return Promise.all([first, second]).then(() => undefined);
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             await ep.invoke(undefined).result;
@@ -156,6 +167,7 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             await ep.invoke(undefined).result;
             expect(ep.getState()).toEqual({ status: "done" });
@@ -174,6 +186,7 @@ describe("ExclusiveProcess", () => {
                     return deferred.promise;
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke(undefined);
@@ -191,6 +204,7 @@ describe("ExclusiveProcess", () => {
                     return Promise.resolve();
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke(undefined, (s) => states.push(s));
@@ -212,6 +226,7 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const initiatorStates = [];
@@ -241,6 +256,7 @@ describe("ExclusiveProcess", () => {
                     });
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke(undefined, (_s) => { throw new Error("subscriber error"); });
@@ -277,8 +293,8 @@ describe("ExclusiveProcess", () => {
             await new Promise((r) => setImmediate(r));
 
             expect(loggedErrors.length).toBe(1);
-            expect(loggedErrors[0].err).toBeInstanceOf(Error);
-            expect(loggedErrors[0].err.message).toBe("boom");
+            expect(loggedErrors[0].error).toBeInstanceOf(Error);
+            expect(loggedErrors[0].error.message).toBe("boom");
         });
 
         it("logs an async subscriber rejection via getCapabilities", async () => {
@@ -306,8 +322,8 @@ describe("ExclusiveProcess", () => {
             await new Promise((r) => setImmediate(r));
 
             expect(loggedErrors.length).toBe(1);
-            expect(loggedErrors[0].err).toBeInstanceOf(Error);
-            expect(loggedErrors[0].err.message).toBe("async boom");
+            expect(loggedErrors[0].error).toBeInstanceOf(Error);
+            expect(loggedErrors[0].error.message).toBe("async boom");
         });
 
         it("subscribers are cleared between runs", async () => {
@@ -324,6 +340,7 @@ describe("ExclusiveProcess", () => {
                     return d.promise.then(() => undefined);
                 },
                 conflictor: () => "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined, (s) => firstRunStates.push(s));
@@ -348,6 +365,7 @@ describe("ExclusiveProcess", () => {
                     return Promise.resolve();
                 },
                 conflictor: () => "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             await ep.invoke(undefined).result;
@@ -370,6 +388,7 @@ describe("ExclusiveProcess", () => {
                     return deferred.promise;
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const handle = ep.invoke(undefined);
@@ -389,6 +408,7 @@ describe("ExclusiveProcess", () => {
                     return 42;
                 }),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const handle = ep.invoke(undefined);
@@ -405,6 +425,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.resolve(++run)),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             await ep.invoke(undefined).result;
@@ -422,6 +443,7 @@ describe("ExclusiveProcess", () => {
                     fail ? Promise.reject(new Error("boom")) : Promise.resolve("recovered")
                 ),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             await ep.invoke(undefined).result.catch(() => {});
@@ -441,6 +463,7 @@ describe("ExclusiveProcess", () => {
                     return "ok";
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const handle = ep.invoke(undefined);
@@ -462,6 +485,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined);
@@ -483,6 +507,7 @@ describe("ExclusiveProcess", () => {
                     return deferred.promise;
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke(undefined);
@@ -502,6 +527,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined);
@@ -524,6 +550,7 @@ describe("ExclusiveProcess", () => {
                     return deferred.promise;
                 },
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke(undefined);
@@ -543,6 +570,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const handles = [
@@ -576,6 +604,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure((_type) => deferreds[callIndex++].promise),
                 conflictor: (current, incoming) => current !== incoming ? "queue" : "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke("A");
@@ -606,6 +635,7 @@ describe("ExclusiveProcess", () => {
                     return [deferred1, deferred2][callIndex++].promise;
                 },
                 conflictor: (current, incoming) => current !== incoming ? "queue" : "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke("A");
@@ -633,6 +663,7 @@ describe("ExclusiveProcess", () => {
                     return [deferred1, deferred2][callIndex++].promise;
                 },
                 conflictor: (cur, nw) => cur !== nw ? "queue" : "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             ep.invoke("A");
@@ -663,6 +694,7 @@ describe("ExclusiveProcess", () => {
                     return d.promise.then(() => `done-${arg}`);
                 },
                 conflictor: (cur, nw) => cur !== nw ? "queue" : "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             const statesB = [];
@@ -693,6 +725,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: (_mutateState, _arg) => { calls++; return deferred.promise; },
                 conflictor: (cur, nw) => cur !== nw ? "queue" : "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke("same");
@@ -712,6 +745,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure((_v) => [deferred1, deferred2][callIndex++].promise),
                 conflictor: (c, n) => c !== n ? "queue" : "attach",
+                getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke("A");
@@ -734,6 +768,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.reject(new Error("failure"))),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const handle = ep.invoke(undefined);
@@ -747,6 +782,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined);
@@ -770,6 +806,7 @@ describe("ExclusiveProcess", () => {
                     fail ? Promise.reject(new Error("crash")) : Promise.resolve("fresh")
                 ),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined);
@@ -790,6 +827,7 @@ describe("ExclusiveProcess", () => {
                     fail ? deferred.promise : Promise.resolve("new-run")
                 ),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined);
@@ -814,6 +852,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.resolve()),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             }))).toBe(true);
         });
 
@@ -833,6 +872,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             const handle = ep.invoke(undefined);
             expect(isExclusiveProcessHandle(handle)).toBe(true);
@@ -845,6 +885,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             ep.invoke(undefined);
             const attacher = ep.invoke(undefined);
@@ -866,6 +907,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.resolve()),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             expect(ep.isRunning()).toBe(false);
         });
@@ -876,6 +918,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => deferred.promise),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             ep.invoke(undefined);
             expect(ep.isRunning()).toBe(true);
@@ -887,6 +930,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.resolve("done")),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             await ep.invoke(undefined).result;
             expect(ep.isRunning()).toBe(false);
@@ -897,6 +941,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(() => Promise.reject(new Error("fail"))),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             await ep.invoke(undefined).result.catch(() => {});
             expect(ep.isRunning()).toBe(false);
@@ -910,6 +955,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(async () => ++runCount),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
 
             const h1 = ep.invoke(undefined);
@@ -929,6 +975,7 @@ describe("ExclusiveProcess", () => {
                 initialState: undefined,
                 procedure: simpleProcedure(async () => ++runCount),
                 conflictor: () => "attach",
+getCapabilities: () => noopCapabilities,
             });
             const results = [];
 

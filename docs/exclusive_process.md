@@ -58,7 +58,7 @@ resets to idle, so the next `invoke` starts a fresh run.
 
 ## API
 
-### `makeExclusiveProcess<A, T, C>({ procedure, conflictor, getCapabilities? }) → ExclusiveProcess<A, T, C>`
+### `makeExclusiveProcess<A, T, C>({ initialState, procedure, conflictor, getCapabilities }) → ExclusiveProcess<A, T, C>`
 
 Creates a new, idle `ExclusiveProcess`.
 
@@ -68,7 +68,7 @@ Creates a new, idle `ExclusiveProcess`.
 - `fanOut: (cbArg: C) => void` — class-managed wrapper; call this to
   broadcast progress events to all current callers.  If a caller's callback
   throws, the error is caught and logged via `capabilities.logger.logError`
-  (when a `getCapabilities` function is provided); fan-out continues to the
+  via the capabilities returned by `getCapabilities`; fan-out continues to the
   remaining callbacks uninterrupted.
 - `arg: A` — per-invocation argument passed by the caller.
 
@@ -85,10 +85,10 @@ The procedure is called fresh on each new run.
 
 To always attach (never queue), pass `conflictor: () => "attach"`.
 
-**`getCapabilities(arg) → { logger, ... }`** *(optional)* — called at the
-start of each run to obtain a capabilities object used for subscriber error
-reporting.  Receives the same `arg` that was passed to `invoke`, so
-capabilities embedded in the arg can be used:
+**`getCapabilities(arg) → { logger, ... }`** — called at the start of each
+run to obtain a capabilities object used for subscriber error reporting.
+Receives the same `arg` that was passed to `invoke`, so capabilities embedded
+in the arg can be used:
 `getCapabilities: ({ capabilities }) => capabilities`.
 
 ---
@@ -138,12 +138,14 @@ callbacks registered by attachers that joined after the run started.
 
 ```javascript
 const ep = makeExclusiveProcess({
+    initialState: undefined,
     procedure: (fanOut, arg) => {
         fanOut("step-1");
         fanOut("step-2");
         return Promise.resolve("done");
     },
     conflictor: () => "attach",
+    getCapabilities: (arg) => arg,
 });
 
 const steps1 = [];
@@ -167,8 +169,10 @@ the computation.
 
 ```javascript
 const ep = makeExclusiveProcess({
+    initialState: undefined,
     procedure: (_fanOut, _arg) => Promise.reject(new Error("oops")),
     conflictor: () => "attach",
+    getCapabilities: (arg) => arg,
 });
 
 const h1 = ep.invoke(undefined); // initiator
@@ -188,8 +192,10 @@ fresh computation.
 
 ```javascript
 const ep = makeExclusiveProcess({
+    initialState: undefined,
     procedure: (_fanOut, _arg) => Promise.reject(new Error("first failure")),
     conflictor: () => "attach",
+    getCapabilities: (arg) => arg,
 });
 await ep.invoke(undefined).result.catch(() => {});
 // ep is now idle again
@@ -231,6 +237,7 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
     },
     // All concurrent calls attach to the same run — no queuing needed.
     conflictor: () => "attach",
+    getCapabilities: ({ capabilities }) => capabilities,
 });
 
 function runDiarySummaryPipeline(capabilities, callbacks) {
@@ -263,6 +270,7 @@ const synchronizeAllExclusiveProcess = makeExclusiveProcess({
         if (incomingReset === undefined) return "attach";
         return incomingReset !== initiating.options?.resetToHostname ? "queue" : "attach";
     },
+    getCapabilities: ({ capabilities }) => capabilities,
 });
 
 function synchronizeAll(capabilities, options, onStepComplete) {
