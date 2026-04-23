@@ -6,6 +6,7 @@ const {
     readTranscribedUntilMs,
     readKnownGaps,
 } = require("../src/live_diary/session_state");
+const { MAX_NEW_AUDIO_MS } = require("../src/live_diary/planner");
 const { startSession, chunksBinarySublevel, chunkKey } = require("../src/audio_recording_session");
 const { getMockedRootCapabilities } = require("./spies");
 const {
@@ -19,6 +20,10 @@ const {
 const { TEST_PCM_FORMAT } = require("./pcm_helpers");
 
 const SESSION_ID = "pull-cycle-test-session";
+
+// Low sample rate used by window-cap tests to keep PCM buffers tiny
+// (100 Hz × 16-bit mono = 200 bytes per second).
+const LOW_RATE_FORMAT = { sampleRateHz: 100, channels: 1, bitDepth: 16 };
 
 function makeCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -199,5 +204,106 @@ describe("_runPullCycle degraded exits", () => {
         expect(gaps).toHaveLength(1);
         expect(gaps[0]?.startMs).toBe(10_000);
         expect(gaps[0]?.endMs).toBe(20_000);
+    });
+});
+
+describe("_runPullCycle window cap", () => {
+    // Helper: compute the PCM byte size for a given duration at the low-rate format.
+    function pcmBytesForMs(durationMs) {
+        return Math.ceil(durationMs * LOW_RATE_FORMAT.sampleRateHz / 1000) *
+            (LOW_RATE_FORMAT.bitDepth / 8) * LOW_RATE_FORMAT.channels;
+    }
+
+    it("advances watermark only to transcribedUntilMs + MAX_NEW_AUDIO_MS when processableEndMs exceeds the cap", async () => {
+        const caps = makeCapabilities();
+        const nowMs = 1_000_000;
+        await startSession(caps, SESSION_ID);
+        await writeTranscribedUntilMs(caps.temporary, SESSION_ID, 0);
+        await writeKnownGaps(caps.temporary, SESSION_ID, []);
+
+        // One large fragment that spans from 0 to MAX_NEW_AUDIO_MS + 60 s.
+        const bigEndMs = MAX_NEW_AUDIO_MS + 60_000;
+        await writeFragmentIndex(caps.temporary, SESSION_ID, {
+            sequence: 0,
+            startMs: 0,
+            endMs: bigEndMs,
+            contentHash: "big-frag",
+            ingestedAtMs: nowMs - 1_000,
+            ...LOW_RATE_FORMAT,
+        });
+        // Provide enough binary PCM bytes to cover the full fragment duration.
+        const pcmSize = pcmBytesForMs(bigEndMs);
+        await chunksBinarySublevel(caps.temporary, SESSION_ID).put(chunkKey(0), Buffer.alloc(pcmSize, 0x01));
+
+        const result = await _runPullCycle(caps, SESSION_ID, bigEndMs, nowMs, 10_000);
+
+        expect(result.status).toBe("ok");
+        // Watermark must NOT advance to bigEndMs; the cap limits it to MAX_NEW_AUDIO_MS.
+        expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(MAX_NEW_AUDIO_MS);
+    });
+
+    it("advances watermark to processableEndMs when the window is within the cap", async () => {
+        const caps = makeCapabilities();
+        const nowMs = 1_000_000;
+        await startSession(caps, SESSION_ID);
+        await writeTranscribedUntilMs(caps.temporary, SESSION_ID, 0);
+        await writeKnownGaps(caps.temporary, SESSION_ID, []);
+
+        const smallEndMs = 30_000; // Well within MAX_NEW_AUDIO_MS
+        await writeFragmentIndex(caps.temporary, SESSION_ID, {
+            sequence: 0,
+            startMs: 0,
+            endMs: smallEndMs,
+            contentHash: "small-frag",
+            ingestedAtMs: nowMs - 1_000,
+            ...LOW_RATE_FORMAT,
+        });
+        const pcmSize = pcmBytesForMs(smallEndMs);
+        await chunksBinarySublevel(caps.temporary, SESSION_ID).put(chunkKey(0), Buffer.alloc(pcmSize, 0x01));
+
+        const result = await _runPullCycle(caps, SESSION_ID, smallEndMs, nowMs, 10_000);
+
+        expect(result.status).toBe("ok");
+        expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(smallEndMs);
+    });
+
+    it("successive pull cycles catch up incrementally when a long backlog exists", async () => {
+        const caps = makeCapabilities();
+        const nowMs = 1_000_000;
+        await startSession(caps, SESSION_ID);
+        await writeTranscribedUntilMs(caps.temporary, SESSION_ID, 0);
+        await writeKnownGaps(caps.temporary, SESSION_ID, []);
+
+        // Two back-to-back fragments totalling 2 × MAX_NEW_AUDIO_MS.
+        const mid = MAX_NEW_AUDIO_MS;
+        const end = 2 * MAX_NEW_AUDIO_MS;
+        await writeFragmentIndex(caps.temporary, SESSION_ID, {
+            sequence: 0,
+            startMs: 0,
+            endMs: mid,
+            contentHash: "frag-0",
+            ingestedAtMs: nowMs - 2_000,
+            ...LOW_RATE_FORMAT,
+        });
+        await writeFragmentIndex(caps.temporary, SESSION_ID, {
+            sequence: 1,
+            startMs: mid,
+            endMs: end,
+            contentHash: "frag-1",
+            ingestedAtMs: nowMs - 1_000,
+            ...LOW_RATE_FORMAT,
+        });
+        await chunksBinarySublevel(caps.temporary, SESSION_ID).put(chunkKey(0), Buffer.alloc(pcmBytesForMs(mid), 0x01));
+        await chunksBinarySublevel(caps.temporary, SESSION_ID).put(chunkKey(1), Buffer.alloc(pcmBytesForMs(mid), 0x01));
+
+        // First pull cycle: advances to MAX_NEW_AUDIO_MS.
+        const r1 = await _runPullCycle(caps, SESSION_ID, end, nowMs, 10_000);
+        expect(r1.status).toBe("ok");
+        expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(MAX_NEW_AUDIO_MS);
+
+        // Second pull cycle: advances to 2 × MAX_NEW_AUDIO_MS.
+        const r2 = await _runPullCycle(caps, SESSION_ID, end, nowMs, 10_000);
+        expect(r2.status).toBe("ok");
+        expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(end);
     });
 });

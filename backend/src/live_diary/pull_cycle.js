@@ -241,7 +241,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     );
 
     // Compute the new last-range metadata (clamped to the actual new region).
-    const newLastRange = _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs);
+    const newLastRange = _computeNewLastRange(candidates, transcribedUntilMs, windowEndMs);
 
     if (!newWindowTranscript) {
         // Silent window — commit watermark + gaps but preserve transcript state.
@@ -249,7 +249,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         const existingRunning = await readStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY);
         const existingWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
         await commitPullState(temporary, sessionId, {
-            transcribedUntilMs: processableEndMs,
+            transcribedUntilMs: windowEndMs,
             knownGaps: gapScan.updatedGaps,
             lastRange: newLastRange,
             lastWindowTranscript: existingLastWindowTranscript,
@@ -312,7 +312,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
 
     /** @type {import('./session_state').PullStateCommit} */
     const baseBundle = {
-        transcribedUntilMs: processableEndMs,
+        transcribedUntilMs: windowEndMs,
         knownGaps: gapScan.updatedGaps,
         lastRange: newLastRange,
         lastWindowTranscript: newWindowTranscript,
@@ -393,15 +393,15 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
  * Compute the last-transcribed-range metadata from the current pull's fragments.
  * Clamps firstStartMs to transcribedUntilMs so that already-transcribed audio
  * is not counted in the new region (which would inflate the overlap estimate).
- * Returns null if there are no new fragments in the processable range.
+ * Returns null if there are no new fragments in the transcribed range.
  * @param {import('../temporary/database/types').LiveDiaryFragmentIndexEntry[]} candidates
  * @param {number} transcribedUntilMs
- * @param {number} processableEndMs
+ * @param {number} windowEndMs - End of the transcription window (may be capped below processableEndMs).
  * @returns {LastTranscribedRange | null}
  */
-function _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs) {
+function _computeNewLastRange(candidates, transcribedUntilMs, windowEndMs) {
     const newFragments = candidates.filter(
-        (f) => f.startMs < processableEndMs && f.endMs > transcribedUntilMs
+        (f) => f.startMs < windowEndMs && f.endMs > transcribedUntilMs
     );
     if (newFragments.length === 0) return null;
     const firstNewFrag = newFragments[0];
@@ -409,7 +409,7 @@ function _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs) 
     if (firstNewFrag === undefined || lastNewFrag === undefined) return null;
     return {
         firstStartMs: Math.max(firstNewFrag.startMs, transcribedUntilMs),
-        lastEndMs: Math.min(lastNewFrag.endMs, processableEndMs),
+        lastEndMs: Math.min(lastNewFrag.endMs, windowEndMs),
         fragmentCount: newFragments.length,
     };
 }

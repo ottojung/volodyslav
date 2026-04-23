@@ -2,7 +2,7 @@
  * Unit tests for live_diary/planner.js.
  */
 
-const { computeEffectiveOverlapMs, planWindow, MIN_OVERLAP_MS, OVERLAP_CAP_MS } = require("../src/live_diary/planner");
+const { computeEffectiveOverlapMs, planWindow, MIN_OVERLAP_MS, OVERLAP_CAP_MS, MAX_NEW_AUDIO_MS } = require("../src/live_diary/planner");
 
 describe("computeEffectiveOverlapMs", () => {
     it("returns MIN_OVERLAP_MS when prevNewDurationMs is null (no prior pull)", () => {
@@ -83,5 +83,38 @@ describe("planWindow", () => {
         });
         expect(result.effectiveOverlapMs).toBe(MIN_OVERLAP_MS);
         expect(result.windowStartMs).toBe(40_000);
+    });
+
+    it("caps windowEndMs at transcribedUntilMs + MAX_NEW_AUDIO_MS when processableEndMs is much larger", () => {
+        const hugeEndMs = MAX_NEW_AUDIO_MS * 10; // way beyond cap
+        const result = planWindow({
+            transcribedUntilMs: 0,
+            processableEndMs: hugeEndMs,
+            prevNewDurationMs: null,
+        });
+        // Cap: windowEndMs = min(hugeEndMs, 0 + MAX_NEW_AUDIO_MS) = MAX_NEW_AUDIO_MS
+        expect(result.windowEndMs).toBe(MAX_NEW_AUDIO_MS);
+        expect(result.windowStartMs).toBe(0);
+    });
+
+    it("does not cap windowEndMs when processableEndMs is within MAX_NEW_AUDIO_MS of watermark", () => {
+        const smallEnd = MAX_NEW_AUDIO_MS / 2;
+        const result = planWindow({
+            transcribedUntilMs: 0,
+            processableEndMs: smallEnd,
+            prevNewDurationMs: null,
+        });
+        expect(result.windowEndMs).toBe(smallEnd);
+    });
+
+    it("cap is relative to transcribedUntilMs, not zero", () => {
+        const watermark = 60_000;
+        const processableEnd = watermark + MAX_NEW_AUDIO_MS + 60_000; // 1 min past cap
+        const result = planWindow({
+            transcribedUntilMs: watermark,
+            processableEndMs: processableEnd,
+            prevNewDurationMs: null,
+        });
+        expect(result.windowEndMs).toBe(watermark + MAX_NEW_AUDIO_MS);
     });
 });

@@ -25,6 +25,20 @@ const MIN_OVERLAP_MS = 10_000;
 const OVERLAP_CAP_MS = 60_000;
 
 /**
+ * Maximum duration of NEW audio (i.e. beyond the current watermark) that one
+ * pull cycle may transcribe.  Bounding this prevents unbounded PCM allocation
+ * when transcription keeps failing and the watermark never advances: without a
+ * cap the window would grow to cover the entire recording session.
+ *
+ * At 16 kHz / 16-bit / mono, 5 minutes of new audio costs
+ *   5 × 60 × 16 000 × 2 = 9.6 MB of PCM.
+ * The pull cycle needs to hold the assembled PCM plus the WAV twice in memory
+ * at peak (source buffer + WAV header copy), so the per-cycle allocation stays
+ * well under 30 MB even at the cap.
+ */
+const MAX_NEW_AUDIO_MS = 5 * 60 * 1_000; // 5 minutes
+
+/**
  * @typedef {object} PlannerInput
  * @property {number} transcribedUntilMs - High-watermark already integrated into the running transcript.
  * @property {number} processableEndMs - End of the new contiguous range to transcribe this pull.
@@ -35,7 +49,10 @@ const OVERLAP_CAP_MS = 60_000;
 /**
  * @typedef {object} PlannerResult
  * @property {number} windowStartMs - Start of the transcription window (includes overlap).
- * @property {number} windowEndMs - End of the transcription window (= processableEndMs).
+ * @property {number} windowEndMs - End of the transcription window.  Equals
+ *   `processableEndMs` when the new-audio duration fits within `MAX_NEW_AUDIO_MS`;
+ *   otherwise capped at `transcribedUntilMs + MAX_NEW_AUDIO_MS` so that each
+ *   pull cycle allocates a bounded amount of PCM.
  * @property {number} effectiveOverlapMs - Overlap duration actually used.
  */
 
@@ -62,9 +79,13 @@ function planWindow(input) {
     const { transcribedUntilMs, processableEndMs, prevNewDurationMs } = input;
     const effectiveOverlapMs = computeEffectiveOverlapMs(prevNewDurationMs);
     const windowStartMs = Math.max(0, transcribedUntilMs - effectiveOverlapMs);
+    // Cap new-audio duration to MAX_NEW_AUDIO_MS so that each pull cycle
+    // allocates a bounded amount of PCM regardless of how much audio has
+    // accumulated without a successful transcription.
+    const windowEndMs = Math.min(processableEndMs, transcribedUntilMs + MAX_NEW_AUDIO_MS);
     return {
         windowStartMs,
-        windowEndMs: processableEndMs,
+        windowEndMs,
         effectiveOverlapMs,
     };
 }
@@ -72,6 +93,7 @@ function planWindow(input) {
 module.exports = {
     MIN_OVERLAP_MS,
     OVERLAP_CAP_MS,
+    MAX_NEW_AUDIO_MS,
     computeEffectiveOverlapMs,
     planWindow,
 };
