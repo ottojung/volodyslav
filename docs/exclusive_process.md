@@ -34,7 +34,7 @@ three type parameters:
 
 - **`A`** — type of the single argument accepted by each invocation.
 - **`T`** — return type of the computation.
-- **`C`** — type of each progress event broadcast by the computation.
+- **`S`** — type of the shared state and of the payload delivered to subscriber callbacks.
 
 ```
 ExclusiveProcess<A, T, S>
@@ -129,8 +129,9 @@ every time the procedure calls `mutateState` for the remainder of the run.
 
 ### `exclusiveProcess.getCapabilities() → ExclusiveProcessCapabilities`
 
-Returns the capabilities supplied to the most recent `invoke` call.  Throws if
-called before any run has ever started.
+Returns the capabilities supplied to the most recently *started* run.  Throws if
+called before any run has ever started.  Queued (pending) invocations do not
+update the return value of this method until the queued run actually begins.
 
 Procedures retrieve capabilities by calling this method on the outer-scope
 instance rather than receiving them as a parameter:
