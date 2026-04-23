@@ -2,8 +2,13 @@
  * Graph-facing API methods for the generators interface.
  */
 
+/** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
+
+const { withMutex } = require("../incremental_graph/lock");
+
 /**
  * @typedef {object} InterfaceGraphAccess
+ * @property {() => GeneratorsCapabilities} _getCapabilities
  * @property {() => Promise<void>} ensureInitialized
  * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
  * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
@@ -19,15 +24,21 @@
  */
 async function internalUpdate(interfaceInstance, newEntries) {
     await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._allEventsBox === null) {
-        throw new Error("Impossible: expected all_events box to be initialized");
-    }
-    interfaceInstance._allEventsBox.value = newEntries;
-    await interfaceInstance._requireInitializedGraph().invalidate("all_events");
-    // Immediately pull to persist the new value to the database so it survives restarts.
-    // Without this, a restart before the next pull would cause the initial empty state to
-    // be computed and stored, resulting in data loss.
-    await interfaceInstance._requireInitializedGraph().pull("all_events");
+    // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
+    // (which also acquires MUTEX_KEY via withExclusiveMode) cannot run between
+    // the invalidate and pull calls and set _incrementalGraph to null.
+    const capabilities = interfaceInstance._getCapabilities();
+    await withMutex(capabilities.sleeper, async () => {
+        if (interfaceInstance._allEventsBox === null) {
+            throw new Error("Impossible: expected all_events box to be initialized");
+        }
+        interfaceInstance._allEventsBox.value = newEntries;
+        await interfaceInstance._requireInitializedGraph().invalidate("all_events");
+        // Immediately pull to persist the new value to the database so it survives restarts.
+        // Without this, a restart before the next pull would cause the initial empty state to
+        // be computed and stored, resulting in data loss.
+        await interfaceInstance._requireInitializedGraph().pull("all_events");
+    });
 }
 
 /**
@@ -37,13 +48,18 @@ async function internalUpdate(interfaceInstance, newEntries) {
  */
 async function internalSetConfig(interfaceInstance, config) {
     await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._configBox === null) {
-        throw new Error("Impossible: expected config box to be initialized");
-    }
-    interfaceInstance._configBox.value = config;
-    await interfaceInstance._requireInitializedGraph().invalidate("config");
-    // Immediately pull to persist the new value to the database so it survives restarts.
-    await interfaceInstance._requireInitializedGraph().pull("config");
+    // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
+    // cannot run between the invalidate and pull calls.
+    const capabilities = interfaceInstance._getCapabilities();
+    await withMutex(capabilities.sleeper, async () => {
+        if (interfaceInstance._configBox === null) {
+            throw new Error("Impossible: expected config box to be initialized");
+        }
+        interfaceInstance._configBox.value = config;
+        await interfaceInstance._requireInitializedGraph().invalidate("config");
+        // Immediately pull to persist the new value to the database so it survives restarts.
+        await interfaceInstance._requireInitializedGraph().pull("config");
+    });
 }
 
 /**
@@ -53,13 +69,18 @@ async function internalSetConfig(interfaceInstance, config) {
  */
 async function internalSetDiarySummary(interfaceInstance, value) {
     await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._diarySummaryBox === null) {
-        throw new Error("Impossible: expected diary summary box to be initialized");
-    }
-    interfaceInstance._diarySummaryBox.value = value;
-    await interfaceInstance._requireInitializedGraph().invalidate("diary_most_important_info_summary");
-    // Immediately pull to persist the new value to the database so it survives restarts.
-    await interfaceInstance._requireInitializedGraph().pull("diary_most_important_info_summary");
+    // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
+    // cannot run between the invalidate and pull calls.
+    const capabilities = interfaceInstance._getCapabilities();
+    await withMutex(capabilities.sleeper, async () => {
+        if (interfaceInstance._diarySummaryBox === null) {
+            throw new Error("Impossible: expected diary summary box to be initialized");
+        }
+        interfaceInstance._diarySummaryBox.value = value;
+        await interfaceInstance._requireInitializedGraph().invalidate("diary_most_important_info_summary");
+        // Immediately pull to persist the new value to the database so it survives restarts.
+        await interfaceInstance._requireInitializedGraph().pull("diary_most_important_info_summary");
+    });
 }
 
 /**
@@ -69,12 +90,17 @@ async function internalSetDiarySummary(interfaceInstance, value) {
  */
 async function internalSetOntology(interfaceInstance, ontology) {
     await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._ontologyBox === null) {
-        throw new Error("Impossible: expected ontology box to be initialized");
-    }
-    interfaceInstance._ontologyBox.value = ontology;
-    await interfaceInstance._requireInitializedGraph().invalidate("ontology");
-    await interfaceInstance._requireInitializedGraph().pull("ontology");
+    // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
+    // cannot run between the invalidate and pull calls.
+    const capabilities = interfaceInstance._getCapabilities();
+    await withMutex(capabilities.sleeper, async () => {
+        if (interfaceInstance._ontologyBox === null) {
+            throw new Error("Impossible: expected ontology box to be initialized");
+        }
+        interfaceInstance._ontologyBox.value = ontology;
+        await interfaceInstance._requireInitializedGraph().invalidate("ontology");
+        await interfaceInstance._requireInitializedGraph().pull("ontology");
+    });
 }
 
 /**

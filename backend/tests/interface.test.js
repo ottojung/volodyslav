@@ -174,6 +174,73 @@ describe("generators/interface", () => {
             await expect(iface.update([])).resolves.toBeUndefined();
         });
 
+        test("does not fail when synchronizeDatabase() runs concurrently between invalidate and pull", async () => {
+            // Regression test for the race condition where synchronizeDatabase() sets
+            // _incrementalGraph to null between the invalidate() and pull() calls in
+            // internalUpdate(), causing "Impossible: expected non-null".
+            const capabilities = await getTestCapabilities();
+            const iface = capabilities.interface;
+            await iface.ensureInitialized();
+
+            // Use deferred promises to control timing deterministically.
+            /** @type {() => void} */
+            let resolveInvalidateDone;
+            const invalidateDone = new Promise((resolve) => {
+                resolveInvalidateDone = resolve;
+            });
+            /** @type {() => void} */
+            let resolveAllowReturn;
+            const allowReturn = new Promise((resolve) => {
+                resolveAllowReturn = resolve;
+            });
+
+            // Intercept invalidate() to create a controlled pause: after invalidate
+            // completes (releasing observe mode), we signal that the race window is open,
+            // then wait before returning so the test can inject a concurrent sync.
+            const graph = iface._incrementalGraph;
+            const originalInvalidate = graph.invalidate.bind(graph);
+            graph.invalidate = async (...args) => {
+                const result = await originalInvalidate(...args);
+                // Observe mode has now been released — the race window is open.
+                resolveInvalidateDone();
+                // Hold here until the test releases us.
+                await allowReturn;
+                return result;
+            };
+
+            // Start update() — it will block inside our patched invalidate().
+            const updatePromise = iface.update([makeEvent("event-1", "concurrent")]);
+
+            // Wait until invalidate has finished (observe mode released).
+            await invalidateDone;
+
+            // Start synchronizeDatabase() NOW — this is the race: sync can acquire
+            // exclusive mode (since observe mode is released) and set _incrementalGraph
+            // to null before update() reaches pull().
+            // With the fix (MUTEX_KEY held by update()), sync is blocked here.
+            const syncPromise = iface.synchronizeDatabase();
+
+            // Give the event loop a chance to process any immediately-runnable microtasks
+            // (in particular, let synchronizeDatabase try to acquire its locks).
+            await new Promise((resolve) => setImmediate(resolve));
+
+            // Allow invalidate() to return — update() will now proceed to pull().
+            // Without the fix, _incrementalGraph is null here → ERROR.
+            // With the fix, sync is still blocked → _incrementalGraph is non-null → OK.
+            resolveAllowReturn();
+
+            // update() should succeed.
+            await expect(updatePromise).resolves.toBeUndefined();
+
+            // Let sync finish too.
+            await syncPromise;
+
+            // Verify the events survive.
+            const events = await iface.getAllEvents();
+            expect(events).toHaveLength(1);
+            expect(events[0].id.identifier).toBe("event-1");
+        });
+
         test("events survive a simulated restart (synchronizeDatabase reopen)", async () => {
             // Regression test: events must not reset to [] after a restart.
             // Before the fix, update() only invalidated all_events without persisting the
