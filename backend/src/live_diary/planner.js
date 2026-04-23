@@ -25,6 +25,21 @@ const MIN_OVERLAP_MS = 10_000;
 const OVERLAP_CAP_MS = 60_000;
 
 /**
+ * Maximum duration of a single transcription window.
+ *
+ * Caps the total window size (overlap + new audio) so that each pull cycle
+ * loads at most a bounded amount of PCM into memory.  Without this cap, a
+ * stalled watermark (e.g. due to repeated transcription failures) combined
+ * with an ever-growing fragment list causes the window — and therefore the
+ * in-memory PCM buffer — to grow without bound, eventually triggering an OOM
+ * crash.
+ *
+ * At 16 kHz / 16-bit / mono the cap translates to ~38.4 MB of raw PCM per
+ * pull cycle, well within normal operating memory bounds.
+ */
+const MAX_WINDOW_DURATION_MS = 20 * 60_000; // 20 minutes
+
+/**
  * @typedef {object} PlannerInput
  * @property {number} transcribedUntilMs - High-watermark already integrated into the running transcript.
  * @property {number} processableEndMs - End of the new contiguous range to transcribe this pull.
@@ -35,7 +50,7 @@ const OVERLAP_CAP_MS = 60_000;
 /**
  * @typedef {object} PlannerResult
  * @property {number} windowStartMs - Start of the transcription window (includes overlap).
- * @property {number} windowEndMs - End of the transcription window (= processableEndMs).
+ * @property {number} windowEndMs - End of the transcription window (capped at windowStartMs + MAX_WINDOW_DURATION_MS).
  * @property {number} effectiveOverlapMs - Overlap duration actually used.
  */
 
@@ -62,9 +77,14 @@ function planWindow(input) {
     const { transcribedUntilMs, processableEndMs, prevNewDurationMs } = input;
     const effectiveOverlapMs = computeEffectiveOverlapMs(prevNewDurationMs);
     const windowStartMs = Math.max(0, transcribedUntilMs - effectiveOverlapMs);
+    // Cap the window so PCM assembly never allocates more than MAX_WINDOW_DURATION_MS
+    // worth of audio.  Without this cap a stalled watermark (e.g. repeated
+    // transcription failures) causes the window to grow without bound as new
+    // fragments arrive, eventually causing an OOM crash.
+    const windowEndMs = Math.min(processableEndMs, windowStartMs + MAX_WINDOW_DURATION_MS);
     return {
         windowStartMs,
-        windowEndMs: processableEndMs,
+        windowEndMs,
         effectiveOverlapMs,
     };
 }
@@ -72,6 +92,7 @@ function planWindow(input) {
 module.exports = {
     MIN_OVERLAP_MS,
     OVERLAP_CAP_MS,
+    MAX_WINDOW_DURATION_MS,
     computeEffectiveOverlapMs,
     planWindow,
 };
