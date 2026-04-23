@@ -1,4 +1,6 @@
 const { _runPullCycle } = require("../src/live_diary/pull_cycle");
+const { MAX_WINDOW_DURATION_MS } = require("../src/live_diary/planner");
+const { MAX_WINDOW_PCM_BYTES } = require("../src/live_diary/pull_window_cap");
 const {
     writeFragmentIndex,
     writeKnownGaps,
@@ -117,6 +119,30 @@ async function putChunk(temporary, sessionId, sequence, byteLength = 16000) {
     await chunks.put(chunkKey(sequence), Buffer.alloc(byteLength, 0x01));
 }
 
+async function seedSingleLargeFragment(capabilities, params) {
+    const {
+        startMs = 0,
+        endMs = 10 * 60 * 60 * 1000,
+        sampleRateHz = TEST_PCM_FORMAT.sampleRateHz,
+        channels = TEST_PCM_FORMAT.channels,
+        bitDepth = TEST_PCM_FORMAT.bitDepth,
+        nowMs = 1_000_000,
+    } = params;
+    await startSession(capabilities, SESSION_ID);
+    await writeTranscribedUntilMs(capabilities.temporary, SESSION_ID, 0);
+    await writeKnownGaps(capabilities.temporary, SESSION_ID, []);
+    await writeFragmentIndex(capabilities.temporary, SESSION_ID, {
+        sequence: 0,
+        startMs,
+        endMs,
+        contentHash: "frag-large",
+        ingestedAtMs: nowMs - 5_000,
+        sampleRateHz,
+        channels,
+        bitDepth,
+    });
+}
+
 describe("_runPullCycle degraded exits", () => {
     it("does not advance watermark when a planned-window fragment index exists but binary chunk is missing", async () => {
         const caps = makeCapabilities();
@@ -199,5 +225,39 @@ describe("_runPullCycle degraded exits", () => {
         expect(gaps).toHaveLength(1);
         expect(gaps[0]?.startMs).toBe(10_000);
         expect(gaps[0]?.endMs).toBe(20_000);
+    });
+});
+
+describe("_runPullCycle window caps", () => {
+    it("advances watermark only to capped window end (not full processableEndMs)", async () => {
+        const caps = makeCapabilities();
+        const nowMs = 1_000_000;
+        await seedSingleLargeFragment(caps, { nowMs });
+        await putChunk(caps.temporary, SESSION_ID, 0);
+
+        const result = await _runPullCycle(caps, SESSION_ID, 10 * 60 * 60 * 1000, nowMs, 10_000);
+
+        expect(result.status).toBe("ok");
+        expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(MAX_WINDOW_DURATION_MS);
+    });
+
+    it("applies additional PCM-byte budget cap for high-rate formats", async () => {
+        const caps = makeCapabilities();
+        const nowMs = 1_000_000;
+        await seedSingleLargeFragment(caps, {
+            nowMs,
+            sampleRateHz: 48_000,
+            channels: 2,
+            bitDepth: 16,
+        });
+        await putChunk(caps.temporary, SESSION_ID, 0);
+
+        const result = await _runPullCycle(caps, SESSION_ID, 10 * 60 * 60 * 1000, nowMs, 10_000);
+
+        expect(result.status).toBe("ok");
+        const watermark = await readTranscribedUntilMs(caps.temporary, SESSION_ID);
+        const expectedByPcmBudget = Math.floor((MAX_WINDOW_PCM_BYTES * 1000) / (48_000 * 2 * (16 / 8)));
+        expect(watermark).toBe(expectedByPcmBudget);
+        expect(watermark).toBeLessThan(MAX_WINDOW_DURATION_MS);
     });
 });
