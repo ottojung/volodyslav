@@ -4,7 +4,7 @@
 
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
-const { withMutex } = require("../incremental_graph/lock");
+const { withMutex } = require("../incremental_graph");
 
 /**
  * @typedef {object} InterfaceGraphAccess
