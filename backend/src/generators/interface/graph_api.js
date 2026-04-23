@@ -8,7 +8,8 @@ const { withMutex } = require("../incremental_graph/lock");
 
 /**
  * @typedef {object} InterfaceGraphAccess
- * @property {() => GeneratorsCapabilities} _getCapabilities
+ * @property {() => GeneratorsCapabilities} _getCapabilities - Returns the capabilities object,
+ *   used to obtain the sleeper for acquiring MUTEX_KEY during critical sections.
  * @property {() => Promise<void>} ensureInitialized
  * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
  * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
