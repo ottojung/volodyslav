@@ -25,7 +25,6 @@ const {
     writeKnownGaps,
 } = require("./session_state");
 const { buildWav } = require("./wav_utils");
-const { planWindow } = require("./planner");
 const { assemblePcm } = require("./assembler");
 const { scanGaps } = require("./gap_tracker");
 const {
@@ -38,13 +37,14 @@ const {
     deduplicateQuestions,
 } = require("./text_processing");
 const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
+const { planWindowWithCaps } = require("./pull_window_planning");
+const { computeNewLastRange } = require("./last_transcribed_range");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../ai/diary_questions').AIDiaryQuestions} AIDiaryQuestions */
 /** @typedef {import('../ai/transcript_recombination').AITranscriptRecombination} AITranscriptRecombination */
-/** @typedef {import('./session_state').LastTranscribedRange} LastTranscribedRange */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../filesystem/reader').FileReader} FileReader */
@@ -141,11 +141,24 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         ? lastRange.lastEndMs - lastRange.firstStartMs
         : null;
 
-    const { windowStartMs, windowEndMs, effectiveOverlapMs } = planWindow({
+    const windowPlan = planWindowWithCaps({
         transcribedUntilMs,
         processableEndMs,
         prevNewDurationMs,
+        candidates,
     });
+    if (windowPlan === null) {
+        return { status: "no_candidates" };
+    }
+    const {
+        windowStartMs,
+        plannedWindowEndMs,
+        committedThroughMs,
+        effectiveOverlapMs,
+        sampleRateHz,
+        channels,
+        bitDepth,
+    } = windowPlan;
 
     capabilities.logger.logDebug(
         {
@@ -153,30 +166,34 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
             transcribedUntilMs,
             processableEndMs,
             windowStartMs,
-            windowEndMs,
+            plannedWindowEndMs,
+            committedThroughMs,
             effectiveOverlapMs,
             hasDegradedGap: gapScan.hasDegradedGap,
         },
         "Pull cycle: window planned"
     );
 
-    // 6. Assemble PCM for [windowStartMs, windowEndMs].
-    const firstCandidate = candidates[0];
-    if (firstCandidate === undefined) {
-        // Unreachable: candidates.length > 0 was checked above.
-        return { status: "no_candidates" };
+    if (committedThroughMs <= transcribedUntilMs) {
+        capabilities.logger.logWarning(
+            { sessionId, transcribedUntilMs, windowStartMs, plannedWindowEndMs, committedThroughMs },
+            "Pull cycle: capped window does not include new audio; skipping cycle"
+        );
+        await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
+        return { status: "degraded_transcription" };
     }
-    const { sampleRateHz, channels, bitDepth } = firstCandidate;
+
+    // 6. Assemble PCM for [windowStartMs, committedThroughMs].
 
     /** @type {import('./assembler').AssemblerFragment[]} */
     const assemblerFragments = [];
     let hasMissingBinaryInWindow = false;
     for (const frag of allFragments) {
-        if (frag.endMs <= windowStartMs || frag.startMs >= windowEndMs) continue;
+        if (frag.endMs <= windowStartMs || frag.startMs >= committedThroughMs) continue;
         const pcm = await loadFragmentPcm(temporary, sessionId, frag.sequence);
         if (pcm === null) {
             hasMissingBinaryInWindow = true;
-            capabilities.logger.logWarning({ sessionId, sequence: frag.sequence, fragmentStartMs: frag.startMs, fragmentEndMs: frag.endMs, windowStartMs, windowEndMs }, "Pull cycle: binary PCM missing for fragment in planned window — blocking watermark advance for this cycle");
+            capabilities.logger.logWarning({ sessionId, sequence: frag.sequence, fragmentStartMs: frag.startMs, fragmentEndMs: frag.endMs, windowStartMs, committedThroughMs }, "Pull cycle: binary PCM missing for fragment in planned window — blocking watermark advance for this cycle");
             continue;
         }
         assemblerFragments.push({ ...frag, pcm });
@@ -192,7 +209,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         combinedPcm = assemblePcm({
             fragments: assemblerFragments,
             windowStartMs,
-            windowEndMs,
+            windowEndMs: committedThroughMs,
             sampleRateHz,
             channels,
             bitDepth,
@@ -236,12 +253,12 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     }
 
     capabilities.logger.logDebug(
-        { sessionId, transcriptLength: newWindowTranscript.length, windowStartMs, windowEndMs },
+        { sessionId, transcriptLength: newWindowTranscript.length, windowStartMs, committedThroughMs },
         "Pull cycle: transcription result"
     );
 
     // Compute the new last-range metadata (clamped to the actual new region).
-    const newLastRange = _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs);
+    const newLastRange = computeNewLastRange(candidates, transcribedUntilMs, committedThroughMs);
 
     if (!newWindowTranscript) {
         // Silent window — commit watermark + gaps but preserve transcript state.
@@ -249,7 +266,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         const existingRunning = await readStringField(temporary, sessionId, RUNNING_TRANSCRIPT_KEY);
         const existingWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
         await commitPullState(temporary, sessionId, {
-            transcribedUntilMs: processableEndMs,
+            transcribedUntilMs: committedThroughMs,
             knownGaps: gapScan.updatedGaps,
             lastRange: newLastRange,
             lastWindowTranscript: existingLastWindowTranscript,
@@ -307,12 +324,11 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
             ? updatedRunningTranscript.slice(runningTranscript.length)
             : merged;
     const fragmentWordCount = newTranscriptPortion.split(/\s+/).filter(Boolean).length;
-    const storedWordCount = await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY);
-    const cumulativeWordCount = (parseInt(storedWordCount, 10) || 0) + fragmentWordCount;
+    const cumulativeWordCount = (parseInt(await readStringField(temporary, sessionId, WORDS_SINCE_LAST_QUESTION_KEY), 10) || 0) + fragmentWordCount;
 
     /** @type {import('./session_state').PullStateCommit} */
     const baseBundle = {
-        transcribedUntilMs: processableEndMs,
+        transcribedUntilMs: committedThroughMs,
         knownGaps: gapScan.updatedGaps,
         lastRange: newLastRange,
         lastWindowTranscript: newWindowTranscript,
@@ -387,31 +403,6 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     });
 
     return { status: "ok", degradedGap: gapScan.hasDegradedGap };
-}
-
-/**
- * Compute the last-transcribed-range metadata from the current pull's fragments.
- * Clamps firstStartMs to transcribedUntilMs so that already-transcribed audio
- * is not counted in the new region (which would inflate the overlap estimate).
- * Returns null if there are no new fragments in the processable range.
- * @param {import('../temporary/database/types').LiveDiaryFragmentIndexEntry[]} candidates
- * @param {number} transcribedUntilMs
- * @param {number} processableEndMs
- * @returns {LastTranscribedRange | null}
- */
-function _computeNewLastRange(candidates, transcribedUntilMs, processableEndMs) {
-    const newFragments = candidates.filter(
-        (f) => f.startMs < processableEndMs && f.endMs > transcribedUntilMs
-    );
-    if (newFragments.length === 0) return null;
-    const firstNewFrag = newFragments[0];
-    const lastNewFrag = newFragments[newFragments.length - 1];
-    if (firstNewFrag === undefined || lastNewFrag === undefined) return null;
-    return {
-        firstStartMs: Math.max(firstNewFrag.startMs, transcribedUntilMs),
-        lastEndMs: Math.min(lastNewFrag.endMs, processableEndMs),
-        fragmentCount: newFragments.length,
-    };
 }
 
 module.exports = {

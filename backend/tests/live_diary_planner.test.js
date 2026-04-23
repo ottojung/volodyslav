@@ -2,7 +2,7 @@
  * Unit tests for live_diary/planner.js.
  */
 
-const { computeEffectiveOverlapMs, planWindow, MIN_OVERLAP_MS, OVERLAP_CAP_MS } = require("../src/live_diary/planner");
+const { computeEffectiveOverlapMs, planWindow, MIN_OVERLAP_MS, OVERLAP_CAP_MS, MAX_WINDOW_DURATION_MS } = require("../src/live_diary/planner");
 
 describe("computeEffectiveOverlapMs", () => {
     it("returns MIN_OVERLAP_MS when prevNewDurationMs is null (no prior pull)", () => {
@@ -83,5 +83,54 @@ describe("planWindow", () => {
         });
         expect(result.effectiveOverlapMs).toBe(MIN_OVERLAP_MS);
         expect(result.windowStartMs).toBe(40_000);
+    });
+
+    it("caps windowEndMs to windowStartMs + MAX_WINDOW_DURATION_MS when processableEndMs is very large", () => {
+        // Simulate a stalled watermark (transcribedUntilMs = 0) with a huge processableEndMs
+        // (e.g. many hours of audio uploaded while transcription kept failing).
+        const result = planWindow({
+            transcribedUntilMs: 0,
+            processableEndMs: 10 * 60 * 60 * 1000, // 10 hours
+            prevNewDurationMs: null,
+        });
+        // windowStartMs = max(0, 0 - 10000) = 0
+        expect(result.windowStartMs).toBe(0);
+        // windowEndMs must be capped, not the full 10 hours
+        expect(result.windowEndMs).toBe(MAX_WINDOW_DURATION_MS);
+        expect(result.windowEndMs).toBeLessThan(10 * 60 * 60 * 1000);
+    });
+
+    it("caps windowEndMs to windowStartMs + MAX_WINDOW_DURATION_MS when watermark is non-zero", () => {
+        const transcribedUntilMs = 5 * 60 * 1000; // 5 minutes
+        const result = planWindow({
+            transcribedUntilMs,
+            processableEndMs: 10 * 60 * 60 * 1000, // 10 hours
+            prevNewDurationMs: 20_000,
+        });
+        // effectiveOverlap = 20000 ms
+        // windowStartMs = max(0, 300000 - 20000) = 280000
+        expect(result.windowStartMs).toBe(280_000);
+        // windowEndMs must be capped at windowStartMs + MAX_WINDOW_DURATION_MS
+        expect(result.windowEndMs).toBe(280_000 + MAX_WINDOW_DURATION_MS);
+        expect(result.windowEndMs).toBeLessThan(10 * 60 * 60 * 1000);
+    });
+
+    it("does not cap windowEndMs when processableEndMs is within the limit", () => {
+        const result = planWindow({
+            transcribedUntilMs: 0,
+            processableEndMs: 60_000, // 1 minute, well within cap
+            prevNewDurationMs: null,
+        });
+        expect(result.windowEndMs).toBe(60_000);
+    });
+
+    it("caps windowEndMs exactly at the boundary", () => {
+        const result = planWindow({
+            transcribedUntilMs: 0,
+            processableEndMs: MAX_WINDOW_DURATION_MS, // exactly at cap
+            prevNewDurationMs: null,
+        });
+        // windowStartMs = 0, cap = 0 + MAX_WINDOW_DURATION_MS = MAX_WINDOW_DURATION_MS
+        expect(result.windowEndMs).toBe(MAX_WINDOW_DURATION_MS);
     });
 });
