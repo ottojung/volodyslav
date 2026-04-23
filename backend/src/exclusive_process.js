@@ -117,6 +117,17 @@ class AttacherHandleClass extends ExclusiveProcessHandleBaseClass {
 
 // ─── ExclusiveProcess class ───────────────────────────────────────────────────
 
+/** @typedef {import('./logger').Logger} Logger */
+/**
+ * The capabilities type stored and returned by `ExclusiveProcess`.
+ * Aliased to the full `Capabilities` type so that procedures can access
+ * any capability via `exclusiveProcessInstance.getCapabilities()`.
+ * `ExclusiveProcess` itself only uses `capabilities.logger` internally
+ * (for subscriber error logging).
+ *
+ * @typedef {import('./capabilities/root').Capabilities} ExclusiveProcessCapabilities
+ */
+
 /**
  * Ensures only one instance of an async computation runs at a time, with
  * shared mutable state and subscriber notifications.
@@ -144,6 +155,8 @@ class ExclusiveProcessClass {
         this._procedure = procedure;
         /** @type {(initiating: A, attaching: A) => "attach" | "queue"} */
         this._conflictor = conflictor;
+        /** @type {ExclusiveProcessCapabilities | undefined} */
+        this._currentCapabilities = undefined;
         /** @type {Promise<T> | null} */
         this._currentPromise = null;
         /** @type {{ value: A } | null} */
@@ -151,6 +164,8 @@ class ExclusiveProcessClass {
         /** @type {((state: S) => void | Promise<void>)[]} */
         this._subscribers = [];
         // Queued (pending) invocation state
+        /** @type {ExclusiveProcessCapabilities | undefined} */
+        this._pendingCapabilities = undefined;
         /** @type {{ value: A } | null} */
         this._pendingArgHolder = null;
         /**
@@ -185,17 +200,30 @@ class ExclusiveProcessClass {
     }
 
     /**
+     * Returns the capabilities for the current (or most-recently started) run.
+     * Set at the start of each run via `invoke`.
+     * @returns {ExclusiveProcessCapabilities}
+     */
+    getCapabilities() {
+        if (this._currentCapabilities === undefined) {
+            throw new Error("ExclusiveProcess: getCapabilities() called before any run was started");
+        }
+        return this._currentCapabilities;
+    }
+
+    /**
      * Invoke the managed computation.
      *
+     * @param {ExclusiveProcessCapabilities} capabilities - Capabilities for this run (stored on the instance, accessible via `getCapabilities()`).
      * @param {A} arg - Argument forwarded to the procedure when starting.
      * @param {((state: S) => void | Promise<void>) | null} [subscriber] - Optional subscriber.
      * @returns {InitiatorHandleClass<S, T> | AttacherHandleClass<S, T>}
      */
-    invoke(arg, subscriber) {
+    invoke(capabilities, arg, subscriber) {
         const sub = subscriber ?? null;
 
         if (this._currentPromise === null) {
-            return this._startRun(arg, sub);
+            return this._startRun(capabilities, arg, sub);
         }
 
         // A run is active — ask the conflictor whether to attach or queue.
@@ -214,6 +242,7 @@ class ExclusiveProcessClass {
                         resolve = res;
                         reject = rej;
                     });
+                    this._pendingCapabilities = capabilities;
                     this._pendingArgHolder = { value: arg };
                     this._pendingSubscriber = sub;
                     this._pendingResolve = resolve;
@@ -221,8 +250,9 @@ class ExclusiveProcessClass {
                     this._pendingPromise = promise;
                     return new AttacherHandleClass(this._state, promise);
                 } else {
-                    // Subsequent queued calls: last-write-wins on arg;
+                    // Subsequent queued calls: last-write-wins on arg and capabilities;
                     // compose subscribers so all queued callers receive notifications.
+                    this._pendingCapabilities = capabilities;
                     this._pendingArgHolder = { value: arg };
                     if (sub !== null) {
                         const existing = this._pendingSubscriber;
@@ -269,16 +299,17 @@ class ExclusiveProcessClass {
      * @param {S} state
      */
     _notifySubscribers(subscribers, state) {
+        const capabilities = this.getCapabilities();
         for (const sub of subscribers) {
             try {
                 const maybePromise = sub(state);
                 if (maybePromise instanceof Promise) {
                     maybePromise.then(undefined, (err) => {
-                        console.error("ExclusiveProcess: async subscriber error", err);
+                        capabilities.logger.logError({ error: err }, "ExclusiveProcess: async subscriber error");
                     });
                 }
             } catch (err) {
-                console.error("ExclusiveProcess: subscriber threw an error", err);
+                capabilities.logger.logError({ error: err }, "ExclusiveProcess: subscriber threw an error");
             }
         }
     }
@@ -286,11 +317,13 @@ class ExclusiveProcessClass {
     /**
      * Start a fresh run.
      *
+     * @param {ExclusiveProcessCapabilities} capabilities
      * @param {A} arg
      * @param {((state: S) => void | Promise<void>) | null} subscriber
      * @returns {InitiatorHandleClass<S, T>}
      */
-    _startRun(arg, subscriber) {
+    _startRun(capabilities, arg, subscriber) {
+        this._currentCapabilities = capabilities;
         this._currentArgHolder = { value: arg };
 
         // Capture a per-run array in the `mutateState` closure so that state
@@ -428,25 +461,27 @@ class ExclusiveProcessClass {
     _drainPending() {
         if (this._pendingPromise === null) return;
 
+        const pendingCapabilities = this._pendingCapabilities;
         const argHolder = this._pendingArgHolder;
         const pendingSubscriber = this._pendingSubscriber;
         const pendingResolve = this._pendingResolve;
         const pendingReject = this._pendingReject;
 
-        if (argHolder === null || pendingResolve === null || pendingReject === null) {
+        if (pendingCapabilities === undefined || argHolder === null || pendingResolve === null || pendingReject === null) {
             throw new Error(
                 "ExclusiveProcess internal invariant violated: " +
-                "pending promise exists but pending arg/resolve/reject are null"
+                "pending promise exists but pending capabilities/arg/resolve/reject are null"
             );
         }
 
+        this._pendingCapabilities = undefined;
         this._pendingArgHolder = null;
         this._pendingSubscriber = null;
         this._pendingResolve = null;
         this._pendingReject = null;
         this._pendingPromise = null;
 
-        const handle = this._startRun(argHolder.value, pendingSubscriber);
+        const handle = this._startRun(pendingCapabilities, argHolder.value, pendingSubscriber);
         handle.result.then(pendingResolve, pendingReject);
     }
 }

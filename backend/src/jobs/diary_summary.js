@@ -50,14 +50,6 @@ const { getType: getEventType } = require("../event");
 // ---------------------------------------------------------------------------
 
 /**
- * Argument type for `diarySummaryExclusiveProcess`.
- * `capabilities` is part of the argument so the procedure can use it directly
- * without relying on a module-level closure variable.
- *
- * @typedef {{ capabilities: Capabilities }} DiarySummaryArg
- */
-
-/**
  * Shared ExclusiveProcess for the diary summary pipeline.
  *
  * The procedure uses `mutateState` to transition the state through:
@@ -75,10 +67,10 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
     initialState: { status: "idle" },
     /**
      * @param {(fn: (state: DiarySummaryRunState) => DiarySummaryRunState | Promise<DiarySummaryRunState>) => Promise<void>} mutateState
-     * @param {DiarySummaryArg} arg
      * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
      */
-    procedure: (mutateState, { capabilities }) => {
+    procedure: (mutateState) => {
+        const capabilities = diarySummaryExclusiveProcess.getCapabilities();
         const started_at = capabilities.datetime.now().toISOString();
 
         // Sync transformer → state updated synchronously before invoke returns.
@@ -160,10 +152,11 @@ const diarySummaryExclusiveProcess = makeExclusiveProcess({
  * propagates to all callers.
  *
  * @param {Capabilities} capabilities
+ * @param {((state: DiarySummaryRunState) => void | Promise<void>) | null} [subscriber]
  * @returns {Promise<DiaryMostImportantInfoSummaryEntry>}
  */
-function runDiarySummaryPipeline(capabilities) {
-    return diarySummaryExclusiveProcess.invoke({ capabilities }).result;
+function runDiarySummaryPipeline(capabilities, subscriber) {
+    return diarySummaryExclusiveProcess.invoke(capabilities, undefined, subscriber).result;
 }
 
 /**

@@ -1,5 +1,5 @@
 const express = require("express");
-const { diarySummaryExclusiveProcess } = require("../jobs");
+const { diarySummaryExclusiveProcess, runDiarySummaryPipeline } = require("../jobs");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('../generators/incremental_graph/database/types').DiaryMostImportantInfoSummaryEntry} DiaryMostImportantInfoSummaryEntry */
@@ -71,8 +71,7 @@ function makeRouter(capabilities) {
             return;
         }
 
-        const run = diarySummaryExclusiveProcess.invoke({ capabilities });
-        run.result.catch((error) => {
+        runDiarySummaryPipeline(capabilities).catch((error) => {
             const errorMessage = error instanceof Error ? error.message : String(error);
             capabilities.logger.logError(
                 { error, errorMessage },

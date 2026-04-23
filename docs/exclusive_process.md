@@ -34,21 +34,21 @@ three type parameters:
 
 - **`A`** — type of the single argument accepted by each invocation.
 - **`T`** — return type of the computation.
-- **`C`** — type of each progress event broadcast by the computation.
+- **`S`** — type of the shared state and of the payload delivered to subscriber callbacks.
 
 ```
-ExclusiveProcess<A, T, C>
+ExclusiveProcess<A, T, S>
   │
-  ├─ invoke(arg, cb?) ─ first caller  → starts run, becomes INITIATOR
-  │                                     cb registered in fan-out list
+  ├─ invoke(cap, arg, cb?) ─ first caller  → starts run, becomes INITIATOR
+  │                                          cb registered in fan-out list
   │
-  └─ invoke(arg, cb?) ─ second caller → conflictor decides:
-                                         "attach" → coalesces onto running run
-                                         "queue"  → waits for a fresh run
+  └─ invoke(cap, arg, cb?) ─ second caller → conflictor decides:
+                                             "attach" → coalesces onto running run
+                                             "queue"  → waits for a fresh run
 ```
 
-When the procedure calls `fanOut(event)`, every registered caller callback
-receives the event — including callbacks from attachers that joined after
+When the procedure calls `mutateState(fn)`, every registered caller callback
+receives the new state — including callbacks from attachers that joined after
 the run started.
 
 After the computation finishes (success *or* error) the `ExclusiveProcess`
@@ -58,20 +58,38 @@ resets to idle, so the next `invoke` starts a fresh run.
 
 ## API
 
-### `makeExclusiveProcess<A, T, C>({ procedure, conflictor }) → ExclusiveProcess<A, T, C>`
+### `makeExclusiveProcess<A, T, S>({ initialState, procedure, conflictor }) → ExclusiveProcess<A, T, S>`
 
 Creates a new, idle `ExclusiveProcess`.
 
-**`procedure(fanOut, arg)`** — the async computation to run.  Must return a
+**`procedure(mutateState, arg)`** — the async computation to run.  Must return a
 `Promise<T>`.
 
-- `fanOut: (cbArg: C) => void` — class-managed wrapper; call this to
-  broadcast progress events to all current callers.  If a caller's callback
-  throws, the error is caught and logged via `console.error`; fan-out
-  continues to the remaining callbacks uninterrupted.
+- `mutateState: (fn: (state: S) => S | Promise<S>) => Promise<void>` — class-managed
+  wrapper; call this to update shared state and notify all current subscribers.
+  If a subscriber throws or returns a rejected promise, the error is caught and
+  logged via `capabilities.logger.logError` using the capabilities supplied to
+  `invoke`; fan-out continues to the remaining subscribers uninterrupted.
 - `arg: A` — per-invocation argument passed by the caller.
 
-The procedure is called fresh on each new run.
+The procedure is called fresh on each new run.  It retrieves the current
+capabilities via `exclusiveProcessInstance.getCapabilities()`, referencing the
+outer-scope instance:
+
+```js
+const ep = makeExclusiveProcess({
+    initialState: undefined,
+    procedure: (mutateState) => {
+        const capabilities = ep.getCapabilities();
+        // use capabilities...
+    },
+    conflictor: () => "attach",
+});
+
+function run(capabilities) {
+    return ep.invoke(capabilities, undefined).result;
+}
+```
 
 **`conflictor(initiating, attaching) → "attach" | "queue"`** — called when
 `invoke` arrives while a run is already in progress.
@@ -86,23 +104,43 @@ To always attach (never queue), pass `conflictor: () => "attach"`.
 
 ---
 
-### `exclusiveProcess.invoke(arg, callerCallback?) → ExclusiveProcessHandle<T>`
+### `exclusiveProcess.invoke(capabilities, arg, callerCallback?) → ExclusiveProcessHandle<T>`
 
 | State before call | `conflictor` decision | Behaviour |
 |---|---|---|
-| Idle | — | Starts the run with `arg`; caller is the *initiator* |
+| Idle | — | Starts the run with `capabilities` and `arg`; caller is the *initiator* |
 | Running | `"attach"` | Attaches; caller becomes an *attacher* |
 | Running | `"queue"` | Queues behind the current run |
 
-`callerCallback` is registered in the class-managed fan-out list for the
-current run (or for the queued run, if queuing).  It will be called every
-time the procedure calls `fanOut(event)` for the remainder of the run.
+`capabilities` is stored on the instance for the duration of the run and is
+accessible via `exclusiveProcess.getCapabilities()`.
+
+`callerCallback` is registered in the class-managed state-update fan-out list
+for the current run (or for the queued run, if queuing).  It will be called
+every time the procedure calls `mutateState` for the remainder of the run.
 
 **Queuing semantics (when `conflictor` returns `"queue"`)**:
-- Last-write-wins on `arg`: the most-recently queued `arg` is used when the
-  queued run starts.
+- Last-write-wins on `arg` and `capabilities`: the most-recently queued values
+  are used when the queued run starts.
 - All queued callers' callbacks are **composed**: every queued caller receives
-  fan-out events from the queued run, even if their `arg` was overwritten.
+  state updates from the queued run, even if their `arg` was overwritten.
+
+---
+
+### `exclusiveProcess.getCapabilities() → ExclusiveProcessCapabilities`
+
+Returns the capabilities supplied to the most recently *started* run.  Throws if
+called before any run has ever started.  Queued (pending) invocations do not
+update the return value of this method until the queued run actually begins.
+
+Procedures retrieve capabilities by calling this method on the outer-scope
+instance rather than receiving them as a parameter:
+
+```js
+const ep = makeExclusiveProcess({ ... });
+// Inside procedure:
+const capabilities = ep.getCapabilities();
+```
 
 ---
 
@@ -123,18 +161,19 @@ the thrown error on failure.
 
 ## Guarantees
 
-### Progress events reach all concurrent callers
+### State updates reach all concurrent callers
 
-Because all handles for the same run share the same fan-out list, every event
-emitted via `fanOut` is delivered to every registered callback — including
+Because all handles for the same run share the same fan-out list, every state
+mutation via `mutateState` is delivered to every registered callback — including
 callbacks registered by attachers that joined after the run started.
 
 ```javascript
 const ep = makeExclusiveProcess({
-    procedure: (fanOut, arg) => {
-        fanOut("step-1");
-        fanOut("step-2");
-        return Promise.resolve("done");
+    initialState: [],
+    procedure: async (mutateState) => {
+        await mutateState((s) => [...s, "step-1"]);
+        await mutateState((s) => [...s, "step-2"]);
+        return "done";
     },
     conflictor: () => "attach",
 });
@@ -142,14 +181,14 @@ const ep = makeExclusiveProcess({
 const steps1 = [];
 const steps2 = [];
 
-const h1 = ep.invoke(undefined, (e) => steps1.push(e)); // initiator
-const h2 = ep.invoke(undefined, (e) => steps2.push(e)); // attacher
+const h1 = ep.invoke(capabilities, undefined, (s) => steps1.push(s)); // initiator
+const h2 = ep.invoke(capabilities, undefined, (s) => steps2.push(s)); // attacher
 
 await Promise.all([h1.result, h2.result]);
 
-// Both callers received every event
-console.log(steps1); // ["step-1", "step-2"]
-console.log(steps2); // ["step-1", "step-2"]
+// Both callers received every state update
+console.log(steps1); // [["step-1"], ["step-1", "step-2"]]
+console.log(steps2); // [["step-1"], ["step-1", "step-2"]]
 ```
 
 ### Errors propagate to all callers
@@ -160,12 +199,13 @@ the computation.
 
 ```javascript
 const ep = makeExclusiveProcess({
-    procedure: (_fanOut, _arg) => Promise.reject(new Error("oops")),
+    initialState: undefined,
+    procedure: (_mutateState, _arg) => Promise.reject(new Error("oops")),
     conflictor: () => "attach",
 });
 
-const h1 = ep.invoke(undefined); // initiator
-const h2 = ep.invoke(undefined); // attacher
+const h1 = ep.invoke(capabilities, undefined); // initiator
+const h2 = ep.invoke(capabilities, undefined); // attacher
 
 await Promise.all([
     h1.result.catch(e => console.error("h1:", e.message)), // "oops"
@@ -181,12 +221,13 @@ fresh computation.
 
 ```javascript
 const ep = makeExclusiveProcess({
-    procedure: (_fanOut, _arg) => Promise.reject(new Error("first failure")),
+    initialState: undefined,
+    procedure: (_mutateState, _arg) => Promise.reject(new Error("first failure")),
     conflictor: () => "attach",
 });
-await ep.invoke(undefined).result.catch(() => {});
+await ep.invoke(capabilities, undefined).result.catch(() => {});
 // ep is now idle again
-const h = ep.invoke(undefined, ...);
+const h = ep.invoke(capabilities, undefined);
 console.log(h.isInitiator); // true
 ```
 
@@ -200,40 +241,26 @@ Create one `ExclusiveProcess` instance per long-running operation.  The
 instance must be accessible from every call-site that participates in the
 exclusion (typically both the route handler *and* the scheduled job).
 
-Non-parametric dependencies (such as `capabilities`) can be included in the
-`arg` object.  The `conflictor` should inspect only the fields that matter for
-queuing and ignore the rest.
+Pass `capabilities` via `invoke` — the procedure retrieves them from the
+instance using `exclusiveProcessInstance.getCapabilities()`:
 
 ```javascript
 // backend/src/jobs/diary_summary.js
 const { makeExclusiveProcess } = require("../exclusive_process");
 
-/**
- * @typedef {{ type: "entryQueued", path: string }
- *          | { type: "entryProcessed", path: string, status: "success" | "error" }
- * } DiarySummaryEvent
- */
-
 const diarySummaryExclusiveProcess = makeExclusiveProcess({
-    // procedure receives fanOut and arg directly
-    procedure: (fanOut, { capabilities }) => {
-        return _runPipelineUnlocked(capabilities, {
-            onEntryQueued:    (path)         => fanOut({ type: "entryQueued", path }),
-            onEntryProcessed: (path, status) => fanOut({ type: "entryProcessed", path, status }),
-        });
+    initialState: { status: "idle" },
+    procedure: (mutateState) => {
+        // Capabilities come from the instance, not from the arg.
+        const capabilities = diarySummaryExclusiveProcess.getCapabilities();
+        return _runPipelineUnlocked(capabilities);
     },
     // All concurrent calls attach to the same run — no queuing needed.
     conflictor: () => "attach",
 });
 
-function runDiarySummaryPipeline(capabilities, callbacks) {
-    const callerCallback = callbacks
-        ? (event) => {
-            if (event.type === "entryQueued")    callbacks.onEntryQueued?.(event.path);
-            else if (event.type === "entryProcessed") callbacks.onEntryProcessed?.(event.path, event.status);
-          }
-        : undefined;
-    return diarySummaryExclusiveProcess.invoke({ capabilities }, callerCallback).result;
+function runDiarySummaryPipeline(capabilities, subscriber) {
+    return diarySummaryExclusiveProcess.invoke(capabilities, undefined, subscriber).result;
 }
 
 module.exports = { runDiarySummaryPipeline, diarySummaryExclusiveProcess };
@@ -242,24 +269,28 @@ module.exports = { runDiarySummaryPipeline, diarySummaryExclusiveProcess };
 ### Options queuing (sync use-case)
 
 When different callers may supply incompatible arguments, use `conflictor` to
-ensure conflicting calls are never silently dropped:
+ensure conflicting calls are never silently dropped.  Capabilities are passed
+separately via `invoke` and the conflictor only inspects `arg` (options):
 
 ```javascript
 // backend/src/sync/index.js
 const synchronizeAllExclusiveProcess = makeExclusiveProcess({
-    procedure: (fanOut, { capabilities, options }) => {
-        return _synchronizeAllUnlocked(capabilities, options, fanOut);
+    initialState: { status: "idle" },
+    procedure: (mutateState, options) => {
+        // Capabilities come from the instance, not from options.
+        const capabilities = synchronizeAllExclusiveProcess.getCapabilities();
+        return _synchronizeAllUnlocked(capabilities, options);
     },
-    // conflictor ignores capabilities; only inspects resetToHostname
+    // conflictor only inspects options (resetToHostname), not capabilities
     conflictor: (initiating, attaching) => {
-        const incomingReset = attaching.options?.resetToHostname;
+        const incomingReset = attaching?.resetToHostname;
         if (incomingReset === undefined) return "attach";
-        return incomingReset !== initiating.options?.resetToHostname ? "queue" : "attach";
+        return incomingReset !== initiating?.resetToHostname ? "queue" : "attach";
     },
 });
 
-function synchronizeAll(capabilities, options, onStepComplete) {
-    return synchronizeAllExclusiveProcess.invoke({ capabilities, options }, onStepComplete).result;
+function synchronizeAll(capabilities, options, subscriber) {
+    return synchronizeAllExclusiveProcess.invoke(capabilities, options, subscriber).result;
 }
 ```
 

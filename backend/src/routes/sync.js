@@ -1,5 +1,5 @@
 const express = require("express");
-const { synchronizeAllExclusiveProcess } = require("../sync");
+const { synchronizeAll, synchronizeAllExclusiveProcess } = require("../sync");
 const { isValidHostname, parseHeadsRefHostnameBranch } = require("../hostname");
 
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
@@ -82,8 +82,7 @@ function makeRouter(capabilities) {
             "Sync endpoint called"
         );
 
-        const syncHandle = synchronizeAllExclusiveProcess.invoke({ capabilities, options });
-        syncHandle.result.catch((error) => {
+        synchronizeAll(capabilities, options).catch((error) => {
             capabilities.logger.logError(
                 { error, resetToHostname, method: req.method, url: req.originalUrl, client_ip: req.ip },
                 "Background sync failed"

@@ -6,12 +6,11 @@ const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 jest.mock("../src/jobs/diary_summary", () => ({
     runDiarySummaryPipeline: jest.fn(),
     diarySummaryExclusiveProcess: {
-        invoke: jest.fn(),
         getState: jest.fn(),
     },
 }));
 
-const { diarySummaryExclusiveProcess } = require("../src/jobs/diary_summary");
+const { runDiarySummaryPipeline, diarySummaryExclusiveProcess } = require("../src/jobs/diary_summary");
 const { makeRouter } = require("../src/routes/diary_summary");
 
 /** @returns {import('../src/capabilities/root').Capabilities} */
@@ -76,7 +75,7 @@ const TIMESTAMPS = {
 
 describe("diary summary route", () => {
     beforeEach(() => {
-        diarySummaryExclusiveProcess.invoke.mockReset();
+        runDiarySummaryPipeline.mockReset();
         diarySummaryExclusiveProcess.getState.mockReset();
         diarySummaryExclusiveProcess.getState.mockReturnValue({ status: "idle" });
     });
@@ -92,13 +91,12 @@ describe("diary summary route", () => {
             summary: makeSummaryEntry(),
         };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue(runningState);
-            const result = deferred.promise.then((summary) => {
+            return deferred.promise.then((summary) => {
                 diarySummaryExclusiveProcess.getState.mockReturnValue({ ...successState, summary });
                 return summary;
             });
-            return { isInitiator: true, result };
         });
 
         const app = await makeApp();
@@ -125,9 +123,9 @@ describe("diary summary route", () => {
         const deferred = makeDeferred();
         const runningState = { status: "running", started_at: TIMESTAMPS.started_at, entries: [] };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue(runningState);
-            return { isInitiator: true, result: deferred.promise };
+            return deferred.promise;
         });
 
         const app = await makeApp();
@@ -148,9 +146,9 @@ describe("diary summary route", () => {
             entries: [{ eventId: "event-1", status: "pending" }],
         };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue(runningStateWithEntry);
-            return { isInitiator: true, result: deferred.promise };
+            return deferred.promise;
         });
 
         const app = await makeApp();
@@ -175,9 +173,9 @@ describe("diary summary route", () => {
             summary,
         };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue(successState);
-            return { isInitiator: true, result: Promise.resolve(summary) };
+            return Promise.resolve(summary);
         });
 
         const app = await makeApp();
@@ -201,9 +199,9 @@ describe("diary summary route", () => {
             summary,
         };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue(successState);
-            return { isInitiator: true, result: Promise.resolve(summary) };
+            return Promise.resolve(summary);
         });
 
         const app = await makeApp();
@@ -226,7 +224,7 @@ describe("diary summary route", () => {
             error: "AI service unavailable",
         };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             const result = Promise.reject(new Error("AI service unavailable"));
             result.catch(() => {
                 diarySummaryExclusiveProcess.getState.mockReturnValue(errorState);
@@ -236,7 +234,7 @@ describe("diary summary route", () => {
                 started_at: TIMESTAMPS.started_at,
                 entries: [],
             });
-            return { isInitiator: true, result };
+            return result;
         });
 
         const app = await makeApp();
@@ -251,15 +249,15 @@ describe("diary summary route", () => {
     });
 
     it("POST /diary-summary/run observes background rejection to avoid unhandled promise rejection", async () => {
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
-            const result = Promise.reject(new Error("AI service unavailable"));
-            result.catch(() => {});
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue({
                 status: "running",
                 started_at: TIMESTAMPS.started_at,
                 entries: [],
             });
-            return { isInitiator: true, result };
+            const result = Promise.reject(new Error("AI service unavailable"));
+            result.catch(() => {});
+            return result;
         });
         const app = await makeApp();
 
@@ -287,13 +285,13 @@ describe("diary summary route", () => {
         expect(response.body.error).toBe("Graph not initialized");
     });
 
-    it("returns running state when POST is called while already running (invoke called twice)", async () => {
+    it("returns running state when POST is called while already running (runDiarySummaryPipeline called twice)", async () => {
         const deferred = makeDeferred();
         const runningState = { status: "running", started_at: TIMESTAMPS.started_at, entries: [] };
 
-        diarySummaryExclusiveProcess.invoke.mockImplementation(() => {
+        runDiarySummaryPipeline.mockImplementation(() => {
             diarySummaryExclusiveProcess.getState.mockReturnValue(runningState);
-            return { isInitiator: false, currentState: runningState, result: deferred.promise };
+            return deferred.promise;
         });
 
         const app = await makeApp();
@@ -303,7 +301,7 @@ describe("diary summary route", () => {
 
         expect(first.statusCode).toBe(202);
         expect(second.statusCode).toBe(202);
-        expect(diarySummaryExclusiveProcess.invoke).toHaveBeenCalledTimes(2);
+        expect(runDiarySummaryPipeline).toHaveBeenCalledTimes(2);
 
         deferred.resolve(makeSummaryEntry());
     });
