@@ -254,7 +254,7 @@ Example response:
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Public API: re-exports `transaction`, `checkpoint`, `checkpointSession`, and `workingRepository` |
+| `index.js` | Public API: re-exports `transaction`, `checkpoint`, `checkpointSession`, `workingRepository`, `ensureCurrentBranch`, and other gitstore helpers exposed from the package entry point |
 | `transaction.js` | Acquires per-`workingPath` mutex, then delegates to retry layer |
 | `transaction_retry.js` | Retry loop; distinguishes push vs. non-push errors |
 | `transaction_attempt.js` | Single attempt: temp tree lifecycle, clone, transform, push |
