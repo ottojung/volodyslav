@@ -8,7 +8,7 @@ const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitch
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const {
     checkpointDatabase,
-    runMigrationInTransaction,
+    checkpointMigration,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
@@ -57,7 +57,7 @@ module.exports = {
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,
-    runMigrationInTransaction,
+    checkpointMigration,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,

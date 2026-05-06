@@ -12,7 +12,7 @@ const { compileNodeDef } = require("./compiled_node");
 const { stringToNodeKeyString } = require("./database");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
-const { runMigrationInTransaction } = require("./database");
+const { checkpointMigration } = require("./database");
 const { compareNodeKeyStringByNodeKey } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
@@ -332,7 +332,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         prevVersion, currentVersion
     }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
 
-    await runMigrationInTransaction(
+    await checkpointMigration(
         capabilities,
         rootDatabase,
         `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`,

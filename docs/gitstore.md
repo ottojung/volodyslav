@@ -278,13 +278,13 @@ All three follow the project's error-as-value convention: use the corresponding 
 | `runtime_state_storage/transaction.js` | `"runtime-state-repository"` | `"empty"` | Writes transient runtime state; local-only, never pushed to a remote |
 | `runtime_state_storage/synchronize.js` | `"runtime-state-repository"` | `"empty"` | Ensures the local-only runtime state repo exists |
 | `generators/incremental_graph/database/gitstore.js` (`checkpointDatabase`) | `"generators-database"` | `"empty"` or a `RemoteLocation` | Records a single rendered snapshot commit of the live incremental-graph database |
-| `generators/incremental_graph/database/gitstore.js` (`runMigrationInTransaction`) | `"generators-database"` | `"empty"` | Runs a migration recording pre/post rendered snapshot commits; uses `checkpointSession` (no temp clone or push) |
+| `generators/incremental_graph/database/gitstore.js` (`checkpointMigration`) | `"generators-database"` | `"empty"` | Runs a migration recording pre/post rendered snapshot commits; uses `checkpointSession` (no temp clone or push) |
 
 ---
 
 ## Incremental-Graph Checkpoint Policy
 
-`runMigrationInTransaction` (in `generators/incremental_graph/database/gitstore.js`)
+`checkpointMigration` (in `generators/incremental_graph/database/gitstore.js`)
 wraps each `runMigration` call in a single `checkpointSession` and records two
 commits — one before the migration callback runs and one after it completes
 successfully. Normal incremental-graph writes do **not** trigger migration snapshots.
@@ -295,7 +295,7 @@ stream of near-identical commits with little historical value.  Migration bounda
 represent discrete, application-level schema transitions that are worth preserving
 as durable snapshots.
 
-Because both `checkpointDatabase` and `runMigrationInTransaction` write to a
+Because both `checkpointDatabase` and `checkpointMigration` write to a
 local-only (`"empty"`) repository that has no concurrent remote writers, they use
 `checkpointSession` rather than `transaction`.  `checkpointSession` commits
 directly to the persistent working copy's work tree — no temporary clone or

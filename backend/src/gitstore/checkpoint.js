@@ -24,6 +24,7 @@ const path = require("path");
 const { commit } = require("./wrappers");
 const workingRepository = require("./working_repository");
 const { gitStoreMutexKey } = require("./mutex");
+const { ensureCurrentBranch } = require("./branch_setup");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -97,16 +98,26 @@ async function checkpoint(capabilities, workingPath, initial_state, message) {
  * (e.g. rendering files into the work tree) or issue multiple commits within
  * a single mutex scope.
  *
- * Use this instead of `transaction` when the repository is local-only
- * (`"empty"` initial state) and you are the only writer.  There is no
- * clone/push overhead and no retry logic.
+ * Before invoking the callback, `checkpointSession` ensures the working copy
+ * is on the hostname branch (derived from `capabilities.environment`).  This
+ * guard is skipped when the repository has no commits yet (unborn branch), so
+ * callbacks that create the initial commit are still supported.
+ *
+ * Use this instead of `transaction` when you are the only writer (local-only
+ * or remote-backed repository where you control all updates).  There is no
+ * clone/push overhead and no retry logic.  When the repository is remote-backed
+ * (`RemoteLocation` initial state), the caller is responsible for ensuring no
+ * concurrent remote writers will conflict — `checkpointSession` commits only to
+ * the local working copy and never pushes.
  *
  * @template T
  * @param {Capabilities} capabilities
  * @param {string} workingPath - Logical name of the local repository
  *   (relative to `environment.workingDirectory()`).
  * @param {RemoteLocation | "empty"} initial_state - How to create the
- *   repository the first time it is accessed.
+ *   repository the first time it is accessed.  Pass `"empty"` for a
+ *   local-only repository, or a `{ url }` object for a remote-backed
+ *   repository (commits go only to the local working copy; no push).
  * @param {(session: { workDir: string, commit: (message: string) => Promise<void> }) => Promise<T>} callback
  *   Called while holding the mutex. Receives the work-tree directory and a
  *   `commit(message)` helper pre-bound to the correct `gitDir`/`workDir`.
@@ -125,6 +136,18 @@ async function checkpointSession(capabilities, workingPath, initial_state, callb
         // getRepository returns <workDir>/<workingPath>/.git
         // so the work directory is its parent.
         const workDir = path.dirname(gitDir);
+
+        // Ensure we commit on the correct hostname branch.  git checkout cannot
+        // operate on an unborn branch (no commits yet), so we skip the guard in
+        // that case; the callback is expected to create the initial commit
+        // (e.g. via ensureCheckpointRepoIsClean) before calling commit().
+        const hasCommits = await capabilities.git
+            .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "HEAD")
+            .then(() => true)
+            .catch(() => false);
+        if (hasCommits) {
+            await ensureCurrentBranch(capabilities, workDir);
+        }
 
         return await callback({
             workDir,

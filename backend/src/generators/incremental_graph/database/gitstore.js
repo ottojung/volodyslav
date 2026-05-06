@@ -16,7 +16,7 @@
  *
  * ## Checkpoint policy
  *
- * Migration snapshots are taken only at migration boundaries. `runMigrationInTransaction`
+ * Migration snapshots are taken only at migration boundaries. `checkpointMigration`
  * wraps each migration in a single checkpointSession and records two commits:
  * one before the migration logic runs and one after it completes successfully.
  * Normal incremental-graph writes (i.e. `invalidate` + `pull` cycles) do NOT
@@ -119,7 +119,7 @@ function pathToLiveDatabase(capabilities) {
  * unborn branch (git init completed but first commit never made).
  *
  * This function is called at the start of every `checkpointDatabase` and
- * `runMigrationInTransaction` session to ensure rendering starts from a clean,
+ * `checkpointMigration` session to ensure rendering starts from a clean,
  * deterministic baseline.
  *
  * @param {CheckpointCapabilities} capabilities
@@ -237,7 +237,7 @@ async function checkpointDatabase(
  * @param {() => Promise<T>} callback
  * @returns {Promise<T>}
  */
-async function runMigrationInTransaction(
+async function checkpointMigration(
     capabilities,
     rootDatabase,
     preMessage,
@@ -294,7 +294,7 @@ async function runMigrationInTransaction(
 
 module.exports = {
     checkpointDatabase,
-    runMigrationInTransaction,
+    checkpointMigration,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
