@@ -116,8 +116,10 @@ describe('mergeHostIntoReplica', () => {
 
             await mergeHostIntoReplica(logger, db, hostname);
 
+            // Equal timestamps → 'keep' decision for all nodes; no H-only nodes.
+            // Since there are no changes, the active replica must NOT switch.
             const newActive = db.currentReplicaName();
-            expect(newActive).toBe('y');
+            expect(newActive).toBe('x');
 
             const T = db.schemaStorageForReplica(newActive);
             const merged = await T.values.get(nodeA);
@@ -268,7 +270,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('replica pointer switches after successful merge', async () => {
+    test('replica pointer switches after successful merge when H has new nodes', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -282,10 +284,40 @@ describe('mergeHostIntoReplica', () => {
             const before = db.currentReplicaName();
             expect(before).toBe('x');
 
+            // Add an H-only node to trigger a real merge with changes.
+            const nodeA = nk('a');
+            const remoteValue = { value: { id: 'a', type: 'test', description: 'remote-only' }, isDirty: false };
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS1, [], remoteValue);
+
             await mergeHostIntoReplica(logger, db, hostname);
 
             const after = db.currentReplicaName();
             expect(after).toBe('y');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('does not switch replica when remote has no new nodes', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setMetaVersion(appVersionStr);
+            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+
+            const before = db.currentReplicaName();
+            expect(before).toBe('x');
+
+            // H has no nodes at all → no force-take roots, no H-only nodes.
+            await mergeHostIntoReplica(logger, db, hostname);
+
+            const after = db.currentReplicaName();
+            expect(after).toBe('x');
         } finally {
             if (db) await db.close();
         }
@@ -418,11 +450,10 @@ describe('mergeHostIntoReplica', () => {
     });
 
     test('preserves replica version when source replica is empty', async () => {
-        // When the local replica has no data (ops is empty),
-        // dst.batch([]) performs no writes. Without the explicit
-        // setMetaVersionForReplica call, the switched-to replica would
-        // have no version and the next host merge would fail with
-        // HostVersionMismatchError(local=(none), remote=<version>).
+        // When the local replica has no data and H also has no data, no switch
+        // occurs and the active replica retains its version.  The subsequent
+        // host merge (which does carry data) must still work because the active
+        // replica (x) already has the correct version recorded.
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -435,10 +466,10 @@ describe('mergeHostIntoReplica', () => {
             await db.setMetaVersion(appVersionStr);
             await db.setHostnameMeta(hostname1, 'version', appVersionStr);
 
-            // Merge first host (empty local replica → ops is empty).
+            // Merge first host (empty local replica, empty H → no changes).
             await mergeHostIntoReplica(logger, db, hostname1);
-            // Replica pointer now points to 'y'.
-            expect(db.currentReplicaName()).toBe('y');
+            // Replica pointer stays on 'x' because there were no changes.
+            expect(db.currentReplicaName()).toBe('x');
 
             // Second host: same version, with one node.
             const hostname2 = 'peer2';
@@ -448,8 +479,9 @@ describe('mergeHostIntoReplica', () => {
             const H2 = db.hostnameSchemaStorage(hostname2);
             await writeNode(H2, nodeA, TS1, [], remoteValue);
 
-            // Should NOT throw HostVersionMismatchError even though the first
-            // merge left an empty 'y' replica with no version before this fix.
+            // Should NOT throw HostVersionMismatchError because the active
+            // replica (x) already has the correct version from the initial
+            // setMetaVersion call above.
             await expect(
                 mergeHostIntoReplica(logger, db, hostname2)
             ).resolves.toBeUndefined();

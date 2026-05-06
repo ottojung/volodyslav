@@ -364,6 +364,19 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
 
+            // If every node was kept unchanged, the schema data is identical
+            // across versions.  There is no need to write to the inactive replica
+            // or perform a replica pointer switch.  Just bump the version directly
+            // on the active replica and return.  This is safe: the single version
+            // write is atomic, and if it crashes midway the next boot detects
+            // prevVersion ≠ currentVersion and re-runs the migration (which will
+            // again find all-keep and take this same path).
+            const hasDataChanges = [...decisions.values()].some(d => d.kind !== 'keep');
+            if (!hasDataChanges) {
+                await rootDatabase.setMetaVersion(rootDatabase.version);
+                return;
+            }
+
             // The inactive replica may still carry the old application version
             // in its meta sublevel.  Set the new version now — before calling
             // unifyStores — so that SchemaStorage.batch() does not reject writes
@@ -396,6 +409,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Switch the active replica pointer to the target replica.
             // This is the atomic cutover: only runs after all writes succeed.
             await rootDatabase.switchToReplica(toReplica);
+
         }
     );
 

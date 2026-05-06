@@ -4,27 +4,31 @@
  * This module implements the structured, LevelDB-level merge that replaces the
  * previous git-textual merge.  For each remote hostname, the algorithm:
  *
- *   1. Copies the active local replica L into the inactive replica T
- *      bit-identically (L and T become identical).
- *   2. Collects all nodes from T and H; computes initial per-node decisions
- *      from modification timestamps:
- *      - T-newer (or H absent) → 'keep'; if strictly newer, flag as force-keep root.
+ *   0. Checks that L and H are at the same schema version.
+ *   1. Computes initial per-node decisions by comparing L and H timestamps:
+ *      - L-newer (or H absent) → 'keep'; if strictly newer, flag as force-keep root.
  *      - H-newer → 'take'; flag as force-take root.
  *      - Equal timestamps → 'keep'.
- *      Builds a merged dependency map using H.inputs for 'take' and H-only nodes,
+ *      Also discovers H-only nodes (nodes present in H but not in L).
+ *   1b. If no force-take roots and no H-only nodes exist, the remote contributed
+ *      no changes.  The algorithm returns immediately without touching the
+ *      inactive replica or switching the active replica pointer.
+ *   2. Copies the active local replica L into the inactive replica T
+ *      bit-identically (L and T become identical).
+ *   3. Builds a merged dependency map using H.inputs for 'take' and H-only nodes,
  *      T.inputs for all others.
- *   3. Builds a stable topological ordering of the merged graph, which also
+ *   4. Builds a stable topological ordering of the merged graph, which also
  *      detects cycles across the full merged structure (T + H-only additions +
  *      rewired edges from taken nodes).
- *   4. Propagates force-keep and force-take flags through the merged topological
+ *   5. Propagates force-keep and force-take flags through the merged topological
  *      order using the merged inputs map, so each node inherits the taint of its
  *      most-upstream forced ancestor (even across rewired edges).
- *   5. Nodes tainted by both force-keep and force-take are 'invalidate'.
- *   6. H-only nodes are always 'take'; those with keepTainted ancestors get
+ *   6. Nodes tainted by both force-keep and force-take are 'invalidate'.
+ *   7. H-only nodes are always 'take'; those with keepTainted ancestors get
  *      freshness overridden to `potentially-outdated`.
- *   7. Applies all decisions to T in one atomic batch, rebuilding the revdeps
+ *   8. Applies all decisions to T in one atomic batch, rebuilding the revdeps
  *      index from scratch.
- *   8. Switches the active replica pointer to T.
+ *   9. Switches the active replica pointer to T.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
@@ -319,8 +323,10 @@ async function unifyRevdeps(T, mergedInputsMap) {
  * - The live database is locked for the duration of this call.
  *
  * Post-conditions (on success):
- * - The inactive replica contains the merged result.
- * - The active replica pointer is switched to the (previously inactive) replica.
+ * - If any remote changes were detected (H has newer nodes or H-only nodes),
+ *   the inactive replica contains the merged result and the active replica
+ *   pointer is switched to the (previously inactive) replica.
+ * - If no changes were detected, the active replica pointer is left unchanged.
  * - Hostname staging storage is NOT cleared here; the caller is responsible.
  *
  * @param {Logger} logger
@@ -353,17 +359,17 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         'Starting graph merge for host'
     );
 
-    // ── Step 1: Gently copy L → T ────────────────────────────────────────────
-    await copyReplicaGently(rootDatabase, fromReplica, toReplica);
-
-    const T = rootDatabase.schemaStorageForReplica(toReplica);
+    // ── Steps 2a–2b run against L (the current active replica) BEFORE the copy.
+    // This lets us detect whether there are any remote changes at all, and skip
+    // the expensive copy + switch when there are none.
+    const L = rootDatabase.schemaStorageForReplica(fromReplica);
     const H = rootDatabase.hostnameSchemaStorage(hostname);
 
     // ── Step 2: Collect nodes and build merged dependency map ────────────────
     //
-    // Initial timestamp decisions are computed for all T nodes.  Then the
+    // Initial timestamp decisions are computed for all L nodes.  Then the
     // merged inputs map is built using H.inputs for every node whose initial
-    // decision is 'take' and T.inputs for all others.  H-only nodes use
+    // decision is 'take' and L/T.inputs for all others.  H-only nodes use
     // H.inputs.  This merged map is the single source of truth for both the
     // topological sort and the taint-propagation pass, which guarantees:
     //
@@ -372,7 +378,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     //   b) Taint propagation correctly invalidates nodes whose ancestors
     //      change because a taken node rewired its inputs.
 
-    // ── 2a: Per-node timestamp comparison for T nodes ─────────────────────────
+    // ── 2a: Per-node timestamp comparison for L nodes ─────────────────────────
     /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
     const initialDecisions = new Map();
     /** @type {Set<NodeKeyString>} */
@@ -380,8 +386,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     /** @type {Set<NodeKeyString>} */
     const forceTakeRoots = new Set();
 
-    for await (const node of T.inputs.keys()) {
-        const tTimestamps = await T.timestamps.get(node);
+    for await (const node of L.inputs.keys()) {
+        const tTimestamps = await L.timestamps.get(node);
         const hTimestamps = await H.timestamps.get(node);
 
         const cmp = compareIsoTimestamps(tTimestamps?.modifiedAt, hTimestamps?.modifiedAt);
@@ -405,6 +411,23 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             hOnlyNodes.add(key);
         }
     }
+
+    // ── Early exit: no changes ────────────────────────────────────────────────
+    // If H has no nodes that are strictly newer than L (forceTakeRoots is empty)
+    // and no H-only nodes, the merged result is identical to L.  Skip the
+    // expensive copy + write + replica switch.
+    if (forceTakeRoots.size === 0 && hOnlyNodes.size === 0) {
+        logger.logInfo(
+            { hostname, fromReplica },
+            'No changes from remote; skipping merge and replica switch'
+        );
+        return;
+    }
+
+    // ── Step 1: Gently copy L → T ────────────────────────────────────────────
+    await copyReplicaGently(rootDatabase, fromReplica, toReplica);
+
+    const T = rootDatabase.schemaStorageForReplica(toReplica);
 
     // ── 2c: Build merged inputs map ──────────────────────────────────────────
     // For 'take' nodes: use H.inputs (the remote may have rewired edges).

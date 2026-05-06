@@ -321,7 +321,7 @@ describe("runMigration", () => {
             }];
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
-                await storage.keep(nodeKey);
+                await storage.invalidate(nodeKey);
             });
 
             // y namespace is populated with the migrated node's inputs record.
@@ -366,12 +366,58 @@ describe("runMigration", () => {
             }];
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
-                await storage.keep(nodeKey);
+                await storage.invalidate(nodeKey);
             });
 
             expect(switchToReplicaCalled).toBe(true);
             expect(callOrder[0]).toEqual({ action: "setMetaVersionForReplica", name: "y", arg: "2.0.0" });
             expect(callOrder[1]).toEqual({ action: "switchToReplica", name: "y" });
+        });
+
+        test("all-keep migration: setMetaVersion on active replica, no switchToReplica", async () => {
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const nodeKey = toJsonKey("A");
+            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+
+            const callOrder = [];
+            const yStorage = makeSchemaStorage();
+            const rootDatabase = {
+                version: "2.0.0",
+                async getMetaVersion() { return "1.0.0"; },
+                getSchemaStorage() { return xStorage; },
+                currentReplicaName() { return 'x'; },
+                otherReplicaName() { return 'y'; },
+                schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+                async clearReplicaStorage(_name) {},
+                async setMetaVersionForReplica(name, v) {
+                    callOrder.push({ action: "setMetaVersionForReplica", name, arg: v });
+                },
+                async switchToReplica(name) {
+                    callOrder.push({ action: "switchToReplica", name });
+                },
+                async setMetaVersion(v) {
+                    callOrder.push({ action: "setMetaVersion", arg: v });
+                },
+                async _rawSync() {},
+            };
+
+            const nodeDefs = [{
+                output: "A",
+                inputs: [],
+                computor: async () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }];
+
+            await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            // All-keep: version is bumped on the active replica directly; no switch.
+            expect(callOrder).toContainEqual({ action: "setMetaVersion", arg: "2.0.0" });
+            expect(callOrder.every(e => e.action !== "switchToReplica")).toBe(true);
+            expect(callOrder.every(e => e.action !== "setMetaVersionForReplica")).toBe(true);
         });
 
         test("calls switchToReplica with 'y' on successful migration", async () => {
@@ -400,7 +446,7 @@ describe("runMigration", () => {
             }];
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
-                await storage.keep(nodeKey);
+                await storage.invalidate(nodeKey);
             });
 
             expect(mock.switchToReplicaCalled).toBe(true);
@@ -489,7 +535,7 @@ describe("runMigration", () => {
             }];
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
-                await storage.keep(nodeKey);
+                await storage.invalidate(nodeKey);
             });
 
             const preIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:pre-migration"));
@@ -924,7 +970,7 @@ describe("x-namespace state preserved on migration failure", () => {
 
         await expect(
             runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
-                async (storage) => { await storage.keep(nodeKey); })
+                async (storage) => { await storage.invalidate(nodeKey); })
         ).rejects.toMatchObject({ cause: writeError });
 
         expect(mock.switchToReplicaCalled).toBe(false);
@@ -956,7 +1002,7 @@ describe("x-namespace state preserved on migration failure", () => {
 
         await expect(
             runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
-                async (storage) => { await storage.keep(nodeKey); })
+                async (storage) => { await storage.invalidate(nodeKey); })
         ).rejects.toBe(metaError);
 
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
@@ -988,7 +1034,7 @@ describe("x-namespace state preserved on migration failure", () => {
 
         await expect(
             runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
-                async (storage) => { await storage.keep(nodeKey); })
+                async (storage) => { await storage.invalidate(nodeKey); })
         ).rejects.toBe(swapError);
 
         // x was never modified by migration code — only switchToReplica would do that
