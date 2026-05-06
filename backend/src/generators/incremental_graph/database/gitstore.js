@@ -28,7 +28,6 @@
 const path = require('path');
 const gitstore = require('../../../gitstore');
 const { checkpointSession } = gitstore;
-const { resetAndCleanRepository } = gitstore.workingRepository;
 const { renderToFilesystem } = require('./render');
 
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
@@ -107,34 +106,6 @@ function pathToLiveDatabase(capabilities) {
         capabilities.environment.workingDirectory(),
         LIVE_DATABASE_WORKING_PATH
     );
-}
-
-/**
- * Reset and clean the checkpoint git repository to a known-good state before
- * any computation.
- *
- * The checkpoint repository cannot be assumed to be in any particular state
- * when computations begin — a previous process may have crashed mid-operation,
- * leaving behind MERGE_HEAD, staged files, untracked artifacts, or even an
- * unborn branch (git init completed but first commit never made).
- *
- * This function is called at the start of every `checkpointDatabase` and
- * `checkpointMigration` session to ensure rendering starts from a clean,
- * deterministic baseline.
- *
- * @param {CheckpointCapabilities} capabilities
- * @returns {Promise<void>}
- */
-async function ensureCheckpointRepoIsClean(capabilities) {
-    const gitDir = path.join(
-        capabilities.environment.workingDirectory(),
-        CHECKPOINT_WORKING_PATH,
-        ".git"
-    );
-    const headFile = path.join(gitDir, "HEAD");
-    if ((await capabilities.checker.fileExists(headFile)) !== null) {
-        await resetAndCleanRepository(capabilities, CHECKPOINT_WORKING_PATH);
-    }
 }
 
 /**

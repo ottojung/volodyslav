@@ -25,7 +25,6 @@ const { commit } = require("./wrappers");
 const workingRepository = require("./working_repository");
 const { gitStoreMutexKey } = require("./mutex");
 const { ensureCurrentBranch } = require("./branch_setup");
-const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -102,16 +101,16 @@ async function checkpoint(capabilities, workingPath, initial_state, message) {
  * **Before invoking the callback**, `checkpointSession` always performs the
  * following steps:
  *
- * 1. **Reset and clean** (when the repository has at least one commit): aborts
- *    any in-progress `merge`/`rebase`/`cherry-pick`/`revert`, then runs
- *    `git reset --hard HEAD` and `git clean -fd`.  This discards all
- *    uncommitted changes and untracked files in the work tree.  Do not call
- *    `checkpointSession` if the working copy may contain uncommitted state you
- *    want to preserve — use the lower-level gitstore APIs instead.
+ * 1. **Reset and clean** (unconditionally): aborts any in-progress
+ *    `merge`/`rebase`/`cherry-pick`/`revert`, then runs `git reset --hard HEAD`
+ *    and `git clean -fd`.  This discards all uncommitted changes and untracked
+ *    files in the work tree.  For a repository with no commits yet (unborn
+ *    branch), an initial empty commit is created first so that the reset/clean
+ *    can proceed.  Do not call `checkpointSession` if the working copy may
+ *    contain uncommitted state you want to preserve — use the lower-level
+ *    gitstore APIs instead.
  * 2. **Ensure hostname branch**: checks out the `<hostname>-main` branch
- *    derived from `capabilities.environment`.  For a repository with no commits
- *    yet (unborn branch), HEAD is set via `git symbolic-ref` instead, so the
- *    first commit created by the callback lands on the correct branch.
+ *    derived from `capabilities.environment`.
  *
  * Use this instead of `transaction` when you are the only writer (local-only
  * or remote-backed repository where you control all updates).  There is no
@@ -147,30 +146,13 @@ async function checkpointSession(capabilities, workingPath, initial_state, callb
         // so the work directory is its parent.
         const workDir = path.dirname(gitDir);
 
-        const hasCommits = await capabilities.git
-            .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "HEAD")
-            .then(() => true)
-            .catch(() => false);
-
-        if (hasCommits) {
-            // Clean the working copy (abort any in-progress merge/rebase, reset --hard
-            // HEAD, remove untracked files) BEFORE switching branches.  git checkout
-            // refuses to switch when uncommitted or unmerged changes exist, so running
-            // ensureCurrentBranch first would fail on exactly the interrupted states
-            // these paths are meant to recover from.
-            await workingRepository.resetAndCleanRepository(capabilities, workingPath);
-            await ensureCurrentBranch(capabilities, workDir);
-        } else {
-            // Unborn branch: git checkout cannot operate without any commits.  Point
-            // HEAD at the hostname branch via symbolic-ref so that the first commit
-            // created by the callback (e.g. via ensureCheckpointRepoIsClean) lands on
-            // the correct branch rather than whatever default git init chose.
-            const branch = defaultBranch(capabilities);
-            await capabilities.git.call(
-                "-C", workDir, "-c", "safe.directory=*",
-                "symbolic-ref", "HEAD", `refs/heads/${branch}`
-            );
-        }
+        // Clean the working copy unconditionally (abort any in-progress merge/rebase,
+        // reset --hard HEAD, remove untracked files) BEFORE switching branches.
+        // For unborn repositories (no commits yet), resetAndCleanRepository creates
+        // an initial empty commit first so that the subsequent reset/clean and
+        // ensureCurrentBranch can always operate.
+        await workingRepository.resetAndCleanRepository(capabilities, workingPath);
+        await ensureCurrentBranch(capabilities, workDir);
 
         return await callback({
             workDir,
