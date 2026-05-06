@@ -62,6 +62,41 @@ const RECOMBINATION_MODEL = "gpt-5.4-mini";
 /** Number of LLM call attempts before falling back to programmatic recombination. */
 const MAX_RETRY_ATTEMPTS = 5;
 
+/** Estimated LLM output throughput for chat completions (words per second). */
+const LLM_OUTPUT_RATE_WPS = 75;
+
+/**
+ * Fixed overhead per API call (ms): network round-trip, queue wait, model initialization.
+ * Generous to avoid false positives under API load.
+ */
+const LLM_CALL_OVERHEAD_MS = 30_000;
+
+/**
+ * Count words in a text string.
+ * @param {string} text
+ * @returns {number}
+ */
+function countWords(text) {
+    return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Compute a per-attempt timeout for a single recombination API call (ms).
+ *
+ * The output is validated to be a subset of the combined inputs (no hallucinations),
+ * so the output word count is bounded by the sum of input word counts.  Generation
+ * time is estimated from that upper bound at LLM_OUTPUT_RATE_WPS words per second,
+ * plus a fixed overhead for API latency and queue wait.
+ *
+ * @param {string} existingOverlapText - Existing transcript covering the overlap zone.
+ * @param {string} newFragment - New window transcript text.
+ * @returns {number} Timeout in milliseconds.
+ */
+function computeRecombinationTimeoutMs(existingOverlapText, newFragment) {
+    const wordCount = countWords(existingOverlapText) + countWords(newFragment);
+    return Math.ceil(wordCount / LLM_OUTPUT_RATE_WPS) * 1_000 + LLM_CALL_OVERHEAD_MS;
+}
+
 const SYSTEM_PROMPT = `You are a transcript editor.
 
 You receive two overlapping transcript segments from the same audio recording.
@@ -269,9 +304,10 @@ function validateCombination(result, segment1, segment2) {
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
  * @param {string} newFragment - New fragment of at most FRAGMENT_MAX_WORDS words.
+ * @param {AbortSignal} signal - Abort signal for cancellation.
  * @returns {Promise<string>} The recombined text.
  */
-async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment) {
+async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, signal) {
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
@@ -286,7 +322,7 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
         const response = await client.chat.completions.create({
             model: RECOMBINATION_MODEL,
             messages,
-        });
+        }, { signal });
         rawText = response.choices[0]?.message?.content?.trim() ?? "";
     } catch (error) {
         throw new AITranscriptRecombinationError(
@@ -317,8 +353,11 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
 
 /**
  * Recombine a single fragment with retry logic.
- * Tries up to MAX_RETRY_ATTEMPTS times.  Falls back to programmaticRecombination
- * if every attempt throws.
+ * Tries up to MAX_RETRY_ATTEMPTS times.  Each individual attempt is bounded
+ * by a per-call timeout computed from the actual input sizes — if a single
+ * call does not complete in time, the attempt is aborted and the loop retries
+ * with a fresh controller.
+ * Falls back to programmaticRecombination if every attempt fails or times out.
  * @param {function(string): OpenAI} makeClient
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText
@@ -327,10 +366,18 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
  */
 async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment) {
     for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        const timeoutMs = computeRecombinationTimeoutMs(existingOverlapText, newFragment);
+        const attemptController = new AbortController();
+        const timerId = setTimeout(
+            () => attemptController.abort(),
+            timeoutMs
+        );
         try {
-            return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment);
+            return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, attemptController.signal);
         } catch {
-            // Try again on next iteration; fall through to programmatic on last attempt.
+            // Timed out or API error — retry with a fresh attempt controller.
+        } finally {
+            clearTimeout(timerId);
         }
     }
     return programmaticRecombination(existingOverlapText, newFragment);
@@ -339,13 +386,12 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
 /**
  * Recombine two overlapping transcript segments using an LLM with retry logic.
  *
- * The expected inputs are exact transcriptions of two 20-second audio windows:
- *   existingOverlapText: transcription of [T-30s, T-10s]
- *   newWindowText:       transcription of [T-20s, T]
- * which share a 10-second overlap in [T-20s, T-10s].
+ * Both inputs are transcriptions of two pull-cycle windows that share an
+ * overlap region.  Each attempt is bounded by a per-call timeout derived from
+ * the actual word count of the inputs via computeRecombinationTimeoutMs.
  *
- * The LLM attempts to merge both inputs into a single clean transcript (with up
- * to MAX_RETRY_ATTEMPTS retries and a programmatic fallback on exhaustion).
+ * Up to MAX_RETRY_ATTEMPTS are made; if all attempts fail or time out the
+ * function falls back to programmaticRecombination and never throws.
  *
  * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
  * @param {Capabilities} capabilities
@@ -369,7 +415,7 @@ async function recombineOverlap(makeClient, capabilities, existingOverlapText, n
  */
 function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
-    const makeClient = memoize((apiKey) => new OpenAI({ apiKey }));
+    const makeClient = memoize(/** @param {string} apiKey */ (apiKey) => new OpenAI({ apiKey }));
     return {
         recombineOverlap: (existingOverlapText, newWindowText) =>
             recombineOverlap(makeClient, getCapabilitiesMemo(), existingOverlapText, newWindowText),
@@ -381,6 +427,7 @@ module.exports = {
     isAITranscriptRecombinationError,
     RECOMBINATION_MODEL,
     MAX_RETRY_ATTEMPTS,
+    computeRecombinationTimeoutMs,
     SYSTEM_PROMPT,
     makeUserPrompt,
     makeWordSet,

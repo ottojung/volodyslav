@@ -130,8 +130,8 @@ function mimeTypeForPath(filePath) {
  * @typedef {object} AITranscription
  * @property {(fileStream: import('fs').ReadStream) => Promise<string>} transcribeStream
  * @property {(fileStream: import('fs').ReadStream) => Promise<TranscriptionResult>} transcribeStreamDetailed
- * @property {(fileStream: import('fs').ReadStream) => Promise<string>} transcribeStreamPrecise
- * @property {(fileStream: import('fs').ReadStream) => Promise<TranscriptionResult>} transcribeStreamPreciseDetailed
+ * @property {(fileStream: import('fs').ReadStream, signal: AbortSignal) => Promise<string>} transcribeStreamPrecise
+ * @property {(fileStream: import('fs').ReadStream, signal: AbortSignal) => Promise<TranscriptionResult>} transcribeStreamPreciseDetailed
  * @property {() => Transcriber} getTranscriberInfo
  */
 
@@ -140,19 +140,23 @@ function mimeTypeForPath(filePath) {
  * @param {function(string): OpenAI} makeClient - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
+ * @param {AbortSignal} signal - Abort signal to cancel the in-flight HTTP request.
  * @returns {Promise<TranscriptionResult>}
  */
-async function transcribeStreamPreciseDetailed(makeClient, capabilities, fileStream) {
+async function transcribeStreamPreciseDetailed(makeClient, capabilities, fileStream, signal) {
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
     let rawResponse;
     try {
-        rawResponse = await client.audio.transcriptions.create({
-            file: fileStream,
-            model: PRECISE_TRANSCRIBER_MODEL,
-            response_format: "json",
-        });
+        rawResponse = await client.audio.transcriptions.create(
+            {
+                file: fileStream,
+                model: PRECISE_TRANSCRIBER_MODEL,
+                response_format: "json",
+            },
+            { signal }
+        );
     } catch (error) {
         throw new AITranscriptionError(
             `Failed to generate precise transcription: ${error instanceof Error ? error.message : String(error)}`,
@@ -193,10 +197,11 @@ async function transcribeStreamPreciseDetailed(makeClient, capabilities, fileStr
  * @param {function(string): OpenAI} makeClient - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
+ * @param {AbortSignal} signal - Abort signal to cancel the in-flight HTTP request.
  * @returns {Promise<string>}
  */
-async function transcribeStreamPrecise(makeClient, capabilities, fileStream) {
-    const result = await transcribeStreamPreciseDetailed(makeClient, capabilities, fileStream);
+async function transcribeStreamPrecise(makeClient, capabilities, fileStream, signal) {
+    const result = await transcribeStreamPreciseDetailed(makeClient, capabilities, fileStream, signal);
     capabilities.logger.logInfo(
         {
             file: fileStream.path,
@@ -419,10 +424,10 @@ function make(getCapabilities) {
         transcribeStream: (fileStream) => transcribeStream(makeClient, getCapabilitiesMemo(), fileStream),
         transcribeStreamDetailed: (fileStream) =>
             transcribeStreamDetailed(makeClient, getCapabilitiesMemo(), fileStream),
-        transcribeStreamPrecise: (fileStream) =>
-            transcribeStreamPrecise(makeOpenAIClient, getCapabilitiesMemo(), fileStream),
-        transcribeStreamPreciseDetailed: (fileStream) =>
-            transcribeStreamPreciseDetailed(makeOpenAIClient, getCapabilitiesMemo(), fileStream),
+        transcribeStreamPrecise: (fileStream, signal) =>
+            transcribeStreamPrecise(makeOpenAIClient, getCapabilitiesMemo(), fileStream, signal),
+        transcribeStreamPreciseDetailed: (fileStream, signal) =>
+            transcribeStreamPreciseDetailed(makeOpenAIClient, getCapabilitiesMemo(), fileStream, signal),
         getTranscriberInfo,
     };
 }

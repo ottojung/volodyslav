@@ -19,6 +19,8 @@ const initialQuestions = require("./diary_initial_questions");
 const {
     AIDiaryQuestionsError,
     isAIDiaryQuestionsError,
+    AIDiaryQuestionsCallTimeoutError,
+    isAIDiaryQuestionsCallTimeoutError,
 } = require("./diary_questions_error");
 
 /** @typedef {import('../environment').Environment} Environment */
@@ -31,6 +33,48 @@ const {
 const DIARY_QUESTIONS_MODEL = "gpt-5.4-mini";
 const TARGET_QUESTION_COUNT = 5;
 const MIN_QUESTION_COUNT = 0;
+
+/**
+ * LLM output rate for chat completions (words per second).
+ * Used to estimate generation time from output size.
+ */
+const LLM_OUTPUT_RATE_WPS = 75;
+
+/**
+ * Maximum words per question as constrained by the system prompt.
+ * The system prompt instructs: "Each question should be concise (8-22 words)".
+ */
+const MAX_WORDS_PER_QUESTION = 22;
+
+/**
+ * Approximate HTTP body upload rate for LLM API calls (characters per ms).
+ * At ~100 KB/s, which is conservative for typical network conditions.
+ */
+const LLM_HTTP_BODY_CHARS_PER_MS = 100;
+
+/**
+ * Fixed overhead per API call (ms): queue wait, cold start, network round-trip.
+ * Generous to avoid false positives under API load.
+ */
+const LLM_CALL_OVERHEAD_MS = 30_000;
+
+/**
+ * Compute a per-call timeout for question generation based on actual inputs.
+ *
+ * Two components:
+ *   - HTTP body transfer: proportional to transcript character count (dominant for long sessions)
+ *   - Output generation: bounded by maxQuestions × MAX_WORDS_PER_QUESTION words at LLM_OUTPUT_RATE_WPS
+ *   - Fixed overhead for queue wait, model initialization, and network round-trip
+ *
+ * @param {string} transcriptSoFar - The transcript text sent in the request body.
+ * @param {number} maxQuestions - Maximum number of questions requested.
+ * @returns {number} Timeout in milliseconds.
+ */
+function computeQuestionsTimeoutMs(transcriptSoFar, maxQuestions) {
+    const transferMs = Math.ceil(transcriptSoFar.length / LLM_HTTP_BODY_CHARS_PER_MS);
+    const outputMs = Math.ceil(maxQuestions * MAX_WORDS_PER_QUESTION / LLM_OUTPUT_RATE_WPS) * 1_000;
+    return transferMs + outputMs + LLM_CALL_OVERHEAD_MS;
+}
 
 const SYSTEM_PROMPT = `You are a warm, kind diary companion.
 Your job is to propose short optional questions a person may reflect on while speaking.
@@ -153,6 +197,11 @@ function isDiaryQuestion(raw) {
 
 /**
  * Generates diary companion questions using OpenAI.
+ *
+ * Each call is bounded by a per-call timeout computed from the actual inputs
+ * via computeQuestionsTimeoutMs.  If the API does not respond within that
+ * window an AIDiaryQuestionsCallTimeoutError is thrown.
+ *
  * @param {function(string): OpenAI} makeClient - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {string} transcriptSoFar - The merged transcript text so far.
@@ -166,6 +215,10 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
         return [];
     }
 
+    const timeoutMs = computeQuestionsTimeoutMs(transcriptSoFar, clampedMax);
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), timeoutMs);
+
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
@@ -177,9 +230,12 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
             model: DIARY_QUESTIONS_MODEL,
             messages,
             response_format: { type: "json_object" },
-        });
+        }, { signal: controller.signal });
         rawText = response.choices[0]?.message?.content?.trim() ?? "";
     } catch (error) {
+        if (controller.signal.aborted) {
+            throw new AIDiaryQuestionsCallTimeoutError(transcriptSoFar.length, clampedMax, timeoutMs);
+        }
         if (isAIDiaryQuestionsError(error)) {
             throw error;
         }
@@ -187,6 +243,8 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
             `Failed to generate diary questions: ${error instanceof Error ? error.message : String(error)}`,
             error
         );
+    } finally {
+        clearTimeout(timerId);
     }
 
     if (!rawText) {
@@ -245,6 +303,8 @@ function make(getCapabilities) {
 module.exports = {
     make,
     isAIDiaryQuestionsError,
+    isAIDiaryQuestionsCallTimeoutError,
+    computeQuestionsTimeoutMs,
     DIARY_QUESTIONS_MODEL,
     TARGET_QUESTION_COUNT,
     MIN_QUESTION_COUNT,

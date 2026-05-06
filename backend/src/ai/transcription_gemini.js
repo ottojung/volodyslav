@@ -233,4 +233,6 @@ module.exports = {
     isRetryableGeminiError,
     withGeminiTransientRetry,
     waitForUploadedFileToBeActive,
+    FILE_ACTIVATION_MAX_ATTEMPTS,
+    FILE_ACTIVATION_POLL_DELAY_MS,
 };

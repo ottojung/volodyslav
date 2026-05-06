@@ -10,6 +10,7 @@ const { OpenAI } = require("openai");
 const {
     RECOMBINATION_MODEL,
     MAX_RETRY_ATTEMPTS,
+    computeRecombinationTimeoutMs,
     SYSTEM_PROMPT,
     isAITranscriptRecombinationError,
     make,
@@ -49,6 +50,20 @@ function setupMockClient(responseText) {
 
     return { mockCreate };
 }
+
+// ─── recombination timeout ───────────────────────────────────────────────────
+
+describe("computeRecombinationTimeoutMs", () => {
+    it("uses total input words with output-rate and fixed overhead", () => {
+        const timeout = computeRecombinationTimeoutMs("one two three", "four five");
+        const expected = Math.ceil(5 / 75) * 1_000 + 30_000;
+        expect(timeout).toBe(expected);
+    });
+
+    it("returns fixed overhead for empty input", () => {
+        expect(computeRecombinationTimeoutMs("", "")).toBe(30_000);
+    });
+});
 
 // ─── makeWordSet ──────────────────────────────────────────────────────────────
 
@@ -298,13 +313,18 @@ describe("recombineOverlap", () => {
 
         expect(result).toBe("I walked to the store");
         expect(OpenAI).toHaveBeenCalledWith({ apiKey: "test-api-key" });
-        expect(mockCreate).toHaveBeenCalledWith({
-            model: RECOMBINATION_MODEL,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: makeUserPrompt("I walked to", "walked to the store") },
-            ],
-        });
+        expect(mockCreate).toHaveBeenCalledWith(
+            {
+                model: RECOMBINATION_MODEL,
+                messages: [
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: makeUserPrompt("I walked to", "walked to the store") },
+                ],
+            },
+            // Each attempt uses its own per-call AbortController internally;
+            // we verify that some AbortSignal is forwarded to the API.
+            expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
     });
 
     it("falls back to programmatic recombination (not throw) when model returns invalid combination", async () => {

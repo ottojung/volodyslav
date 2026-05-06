@@ -10,5 +10,6 @@ module.exports = {
     diaryQuestions,
     transcriptRecombination,
     programmaticRecombination: transcriptRecombination.programmaticRecombination,
+    isAIDiaryQuestionsCallTimeoutError: diaryQuestions.isAIDiaryQuestionsCallTimeoutError,
     diarySummary,
 };
