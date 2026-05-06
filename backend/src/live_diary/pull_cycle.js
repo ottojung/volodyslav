@@ -289,24 +289,14 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     let merged;
     if (lastWindowTranscript) {
         const prepared = prepareTranscriptForRecombination(newWindowTranscript);
-        try {
-            merged = await withStepTimeout(
-                "recombination",
-                (signal) => capabilities.aiTranscriptRecombination.recombineOverlap(
-                    lastWindowTranscript,
-                    prepared.textForRecombination,
-                    signal
-                ),
-                stepTimeoutMs
-            );
-            merged = appendRemovedTailWord(merged, prepared.removedTailWord);
-        } catch (error) {
-            capabilities.logger.logError(
-                { sessionId, error: error instanceof Error ? error.message : String(error) },
-                "Pull cycle: recombination failed — using new window transcript directly"
-            );
-            merged = newWindowTranscript;
-        }
+        // recombineOverlap never throws — each attempt is bounded by its own
+        // internal per-call timeout, and all failures fall back to programmatic
+        // recombination.  No outer withStepTimeout is needed here.
+        merged = await capabilities.aiTranscriptRecombination.recombineOverlap(
+            lastWindowTranscript,
+            prepared.textForRecombination
+        );
+        merged = appendRemovedTailWord(merged, prepared.removedTailWord);
     } else {
         merged = newWindowTranscript;
     }

@@ -310,7 +310,9 @@ describe("recombineOverlap", () => {
                     { role: "user", content: makeUserPrompt("I walked to", "walked to the store") },
                 ],
             },
-            { signal }
+            // Each attempt uses its own per-call AbortController internally;
+            // we verify that some AbortSignal is forwarded to the API.
+            expect.objectContaining({ signal: expect.any(AbortSignal) })
         );
     });
 
