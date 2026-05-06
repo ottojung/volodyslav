@@ -72,11 +72,38 @@ await checkpoint(capabilities, workingPath, initial_state, message);
 // returns void; creates a new commit only when there are changes to commit
 ```
 
+### `checkpointSession` — multi-commit access
+
+When you need to render files into the work tree and then commit, or when you need
+more than one commit within a single mutex scope, use `checkpointSession`:
+
+```javascript
+await checkpointSession(capabilities, workingPath, initial_state, async ({ workDir, commit }) => {
+    // render files into workDir, then commit
+    await commit("pre-migration snapshot");
+    // … run migration …
+    await commit("post-migration snapshot");
+});
+```
+
+`checkpointSession` acquires the same per-path mutex as `checkpoint` and provides:
+
+- `workDir` — absolute path to the local working copy's work tree
+- `commit(message)` — stages all changes and commits (no-op when clean)
+
+**Before invoking the callback**, `checkpointSession` always performs these steps automatically:
+
+1. **Reset and clean**: aborts any in-progress `merge`/`rebase`/`cherry-pick`/`revert`, then makes the repository clean. On a repository that already has commits, this includes `git reset --hard HEAD` and `git clean -fd`. On an unborn repository (no commits yet), gitstore still runs this cleanup path and may first create an `"Initial empty commit"` so the work tree can be reset into a deterministic clean state. This **discards all uncommitted changes and untracked files** in the work tree.
+2. **Ensure hostname branch**: checks out the `<hostname>-main` branch with `git checkout -B`, creating or resetting that branch as needed, including after unborn-repository initialization.
+
+Do not call `checkpointSession` if the working copy may contain uncommitted state you want to preserve. Use the lower-level gitstore APIs directly in that case.
+
 ### When to use a checkpoint vs. a transaction
 
 | Situation | Use |
 |---|---|
-| You are the only writer (local-only `"empty"` repo) | `checkpoint` |
+| You are the only writer (local-only `"empty"` repo), single commit | `checkpoint` |
+| You are the only writer and need multiple commits or custom pre-commit work | `checkpointSession` |
 | You need changes to survive a concurrent remote push | `transaction` |
 | You want a cheap point-in-time snapshot before later synchronisation | `checkpoint` |
 | You need to apply a read-modify-write against the latest remote state | `transaction` |
@@ -90,7 +117,7 @@ A `transaction` pushes new commits into the working copy's `.git` directory but 
 The typical safe pattern is:
 
 - Use `transaction` for repositories that stage related changes before one final update.
-- Use `checkpoint` for local-only "empty" repositories (`runtime_state_storage` pattern) where the work tree is the single source of truth.
+- Use `checkpoint` / `checkpointSession` for local-only "empty" repositories (`runtime_state_storage` pattern) where the work tree is the single source of truth.
 
 ### No-op safety
 
@@ -98,7 +125,7 @@ When the working tree is clean (no changes since the last commit), `checkpoint` 
 
 ### Mutex
 
-Like `transaction`, `checkpoint` acquires the per-`workingPath` mutex before doing any work. It is therefore safe to interleave checkpoints and transactions on the same `workingPath` from the same process without risking a partial commit.
+Like `transaction`, `checkpoint` and `checkpointSession` acquire the per-`workingPath` mutex before doing any work. It is therefore safe to interleave checkpoints and transactions on the same `workingPath` from the same process without risking a partial commit.
 
 ---
 
@@ -227,11 +254,11 @@ Example response:
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Public API: re-exports `transaction`, `checkpoint`, and `workingRepository` |
+| `index.js` | Public API: re-exports `transaction`, `checkpoint`, `checkpointSession`, `workingRepository`, `ensureCurrentBranch`, and other gitstore helpers exposed from the package entry point |
 | `transaction.js` | Acquires per-`workingPath` mutex, then delegates to retry layer |
 | `transaction_retry.js` | Retry loop; distinguishes push vs. non-push errors |
 | `transaction_attempt.js` | Single attempt: temp tree lifecycle, clone, transform, push |
-| `checkpoint.js` | Checkpoint: `add --all` + `commit` directly on local working copy; no-op when clean (nothing to commit) |
+| `checkpoint.js` | Checkpoint: `add --all` + `commit` directly on local working copy; no-op when clean (nothing to commit). Also exposes `checkpointSession` for multi-commit operations within one mutex scope. |
 | `working_repository.js` | Persistent local copy: create, synchronize, expose `.git` path |
 | `wrappers.js` | Thin wrappers over raw `git` calls: `clone`, `pull`, `push`, `commit`, `init`, `makePushable` |
 | `transaction_logging.js` | Structured log messages for every stage of the retry lifecycle |
@@ -257,21 +284,36 @@ All three follow the project's error-as-value convention: use the corresponding 
 |---|---|---|---|
 | `runtime_state_storage/transaction.js` | `"runtime-state-repository"` | `"empty"` | Writes transient runtime state; local-only, never pushed to a remote |
 | `runtime_state_storage/synchronize.js` | `"runtime-state-repository"` | `"empty"` | Ensures the local-only runtime state repo exists |
-| `generators/incremental_graph/database/gitstore.js` (`checkpointDatabase`) | `"generators-database"` | `"empty"` | Records a single rendered snapshot commit of the live incremental-graph database |
-| `generators/incremental_graph/database/gitstore.js` (`runMigrationInTransaction`) | `"generators-database"` | `"empty"` | Runs a migration inside one gitstore transaction with pre/post rendered snapshot commits |
+| `generators/incremental_graph/database/gitstore.js` (`checkpointDatabase`) | `"generators-database"` | `"empty"` or a `RemoteLocation` | Records a single rendered snapshot commit of the live incremental-graph database |
+| `generators/incremental_graph/database/gitstore.js` (`checkpointMigration`) | `"generators-database"` | `"empty"` | Runs a migration recording pre/post rendered snapshot commits; uses `checkpointSession` (no temp clone or push) |
 
 ---
 
 ## Incremental-Graph Checkpoint Policy
 
-`runMigrationInTransaction` (in `generators/incremental_graph/database/gitstore.js`)
-wraps each `runMigration` call in a single gitstore transaction and records two
-commits in that transaction — one before the migration callback runs and one
-after it completes successfully. Normal incremental-graph writes do **not**
-trigger migration snapshots.
+`checkpointMigration` (in `generators/incremental_graph/database/gitstore.js`)
+wraps each `runMigration` call in a single `checkpointSession` and records two
+commits — one before the migration callback runs and one after it completes
+successfully. Normal incremental-graph writes do **not** trigger migration snapshots.
 
 This is intentional.  LevelDB produces many small internal files at high frequency
 during ordinary operation, and checkpointing every write would create an unbounded
 stream of near-identical commits with little historical value.  Migration boundaries
 represent discrete, application-level schema transitions that are worth preserving
 as durable snapshots.
+
+`checkpointMigration` always writes to a local-only (`"empty"`) repository, so it
+uses `checkpointSession` rather than `transaction`. `checkpointDatabase` also uses
+`checkpointSession`, but it is not limited to local-only repositories: some call
+sites initialise it from a `RemoteLocation`. In those remote-backed cases, the
+checkpoint still commits directly in the persistent working copy for its target
+branch rather than cloning and pushing via `transaction`; this is acceptable
+because the checkpoint branch is scoped to this writer (for example by hostname),
+while the per-path mutex still serialises concurrent in-process callers.
+
+If the migration callback fails, the pre-migration commit is already visible in
+the checkpoint repository.  This is intentional: it provides a useful diagnostic
+snapshot of the database state immediately before the failed migration attempt.
+(This differs from the previous transaction-based approach, where atomicity would
+suppress the pre-migration commit on failure — leaving no checkpoint record of
+the attempt at all.)

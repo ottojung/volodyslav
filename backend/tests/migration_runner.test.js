@@ -9,9 +9,9 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 jest.mock('../src/generators/incremental_graph/database', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database'),
-    runMigrationInTransaction: jest.fn(),
+    checkpointMigration: jest.fn(),
 }));
-const { runMigrationInTransaction: mockRunMigrationInTransaction } = require('../src/generators/incremental_graph/database');
+const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
 
 function makeInMemoryDb(table) {
     const store = new Map();
@@ -142,9 +142,9 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    mockRunMigrationInTransaction.mockReset();
-    mockRunMigrationInTransaction.mockImplementation(async (_caps, _db, _pre, _post, callback) => await callback());
-    capabilities.runMigrationInTransaction = mockRunMigrationInTransaction;
+    mockCheckpointMigration.mockReset();
+    mockCheckpointMigration.mockImplementation(async (_caps, _db, _pre, _post, callback) => await callback());
+    capabilities.checkpointMigration = mockCheckpointMigration;
     return capabilities;
 }
 
@@ -244,7 +244,7 @@ describe("runMigration", () => {
             expect(mock.setMetaVersionCalledWith).toBe("1.0.0");
         });
 
-        test("does not call runMigrationInTransaction", async () => {
+        test("does not call checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -257,7 +257,7 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
 
-            expect(capabilities.runMigrationInTransaction).not.toHaveBeenCalled();
+            expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
         });
     });
 
@@ -280,7 +280,7 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("does not call runMigrationInTransaction", async () => {
+        test("does not call checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -293,7 +293,7 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
 
-            expect(capabilities.runMigrationInTransaction).not.toHaveBeenCalled();
+            expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
         });
     });
 
@@ -406,7 +406,7 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(true);
         });
 
-        test("calls runMigrationInTransaction once for the whole migration", async () => {
+        test("calls checkpointMigration once for the whole migration", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -415,7 +415,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(capabilities.runMigrationInTransaction).toHaveBeenCalledTimes(1);
+            expect(capabilities.checkpointMigration).toHaveBeenCalledTimes(1);
         });
 
         test("pre-migration checkpoint message contains both the old and new version", async () => {
@@ -430,7 +430,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            const preMessage = capabilities.runMigrationInTransaction.mock.calls[0][2];
+            const preMessage = capabilities.checkpointMigration.mock.calls[0][2];
             expect(preMessage).toContain("pre-migration:");
             expect(preMessage).toContain("1.0.0");
             expect(preMessage).toContain("2.0.0");
@@ -448,15 +448,15 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            const postMessage = capabilities.runMigrationInTransaction.mock.calls[0][3];
+            const postMessage = capabilities.checkpointMigration.mock.calls[0][3];
             expect(postMessage).toContain("post-migration:");
             expect(postMessage).toContain("2.0.0");
         });
 
-        test("pre-migration commit happens before switchToReplica inside the transaction", async () => {
+        test("pre-migration commit happens before switchToReplica inside the checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
-            capabilities.runMigrationInTransaction.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
+            capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
                 callOrder.push(`checkpoint:${preMessage}`);
                 await callback();
                 callOrder.push(`checkpoint:${postMessage}`);
@@ -498,10 +498,10 @@ describe("runMigration", () => {
             expect(switchIdx).toBeGreaterThan(preIdx);
         });
 
-        test("post-migration commit happens after switchToReplica inside the transaction", async () => {
+        test("post-migration commit happens after switchToReplica inside the checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
-            capabilities.runMigrationInTransaction.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
+            capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
                 callOrder.push(`checkpoint:${preMessage}`);
                 await callback();
                 callOrder.push(`checkpoint:${postMessage}`);
@@ -644,12 +644,12 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("callback throws: transaction attempts the pre-migration commit step before failing", async () => {
+        test("callback throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
             const callOrder = [];
-            capabilities.runMigrationInTransaction.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
+            capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
                 callOrder.push(`checkpoint:${preMessage}`);
                 await callback();
                 callOrder.push(`checkpoint:${postMessage}`);
@@ -661,17 +661,17 @@ describe("runMigration", () => {
                 })
             ).rejects.toThrow("intentional failure");
 
-            expect(capabilities.runMigrationInTransaction).toHaveBeenCalledTimes(1);
+            expect(capabilities.checkpointMigration).toHaveBeenCalledTimes(1);
             expect(callOrder).toHaveLength(1);
             expect(callOrder[0]).toContain("pre-migration:");
         });
 
-        test("finalize throws: transaction attempts the pre-migration commit step before failing", async () => {
+        test("finalize throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
             const callOrder = [];
-            capabilities.runMigrationInTransaction.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
+            capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
                 callOrder.push(`checkpoint:${preMessage}`);
                 await callback();
                 callOrder.push(`checkpoint:${postMessage}`);
@@ -684,7 +684,7 @@ describe("runMigration", () => {
                 })
             ).rejects.toThrow();
 
-            expect(capabilities.runMigrationInTransaction).toHaveBeenCalledTimes(1);
+            expect(capabilities.checkpointMigration).toHaveBeenCalledTimes(1);
             expect(callOrder).toHaveLength(1);
             expect(callOrder[0]).toContain("pre-migration:");
         });
@@ -1149,10 +1149,10 @@ describe("error identity: exact thrown object propagates", () => {
         expect(caught).toBe(specificError);
     });
 
-    test("exact Error from runMigrationInTransaction setup propagates", async () => {
+    test("exact Error from checkpointMigration setup propagates", async () => {
         const capabilities = await getTestCapabilities();
         const checkpointError = new Error("pre-checkpoint failure");
-        capabilities.runMigrationInTransaction.mockRejectedValueOnce(checkpointError);
+        capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
 
         const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1246,7 +1246,7 @@ describe("error identity: exact thrown object propagates", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Infrastructure failures (getMetaVersion, clearStorage, runMigrationInTransaction)
+// Infrastructure failures (getMetaVersion, clearStorage, checkpointMigration)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("infrastructure failures", () => {
@@ -1277,7 +1277,7 @@ describe("infrastructure failures", () => {
         }
 
         expect(caught).toBe(metaError);
-        expect(capabilities.runMigrationInTransaction).not.toHaveBeenCalled();
+        expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
     });
 
     test("unification rawPut throws: error propagates, callback was run, switchToReplica not called", async () => {
@@ -1315,10 +1315,10 @@ describe("infrastructure failures", () => {
         expect(callbackRan).toBe(true);
     });
 
-    test("runMigrationInTransaction setup throws: migration does not run, switchToReplica not called", async () => {
+    test("checkpointMigration setup throws: migration does not run, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const checkpointError = new Error("checkpoint failure");
-        capabilities.runMigrationInTransaction.mockRejectedValueOnce(checkpointError);
+        capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
 
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1341,10 +1341,10 @@ describe("infrastructure failures", () => {
         expect(freshMock.switchToReplicaCalled).toBe(false);
     });
 
-    test("runMigrationInTransaction setup throws: x-namespace data unchanged", async () => {
+    test("checkpointMigration setup throws: x-namespace data unchanged", async () => {
         const capabilities = await getTestCapabilities();
         const checkpointError = new Error("pre-checkpoint failure");
-        capabilities.runMigrationInTransaction.mockRejectedValueOnce(checkpointError);
+        capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
 
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -1362,11 +1362,11 @@ describe("infrastructure failures", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("post-migration commit failure from runMigrationInTransaction leaves the migration already applied", async () => {
+    test("post-migration commit failure from checkpointMigration leaves the migration already applied", async () => {
         const capabilities = await getTestCapabilities();
         const postError = new Error("post-checkpoint failure");
 
-        capabilities.runMigrationInTransaction
+        capabilities.checkpointMigration
             .mockImplementationOnce(async (_caps, _db, _preMessage, _postMessage, callback) => {
                 await callback();
                 throw postError;
@@ -1436,20 +1436,20 @@ describe("retry after failure", () => {
 
         const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false };
 
-        // First attempt: one transaction call, but it fails after the pre commit
+        // First attempt: one checkpointMigration call, but it fails after the pre commit
         await expect(
             runMigration(capabilities, rootDatabase, [nodeDef], async () => { throw new Error("fail"); })
         ).rejects.toThrow();
 
-        expect(capabilities.runMigrationInTransaction).toHaveBeenCalledTimes(1);
-        capabilities.runMigrationInTransaction.mockClear();
+        expect(capabilities.checkpointMigration).toHaveBeenCalledTimes(1);
+        capabilities.checkpointMigration.mockClear();
 
-        // Second (successful) attempt: one fresh transaction call
+        // Second (successful) attempt: one fresh checkpointMigration call
         await runMigration(capabilities, rootDatabase, [nodeDef], async (storage) => {
             await storage.keep(nodeKey);
         });
 
-        expect(capabilities.runMigrationInTransaction).toHaveBeenCalledTimes(1);
+        expect(capabilities.checkpointMigration).toHaveBeenCalledTimes(1);
     });
 
     test("UndecidedNodes failure then correct callback: x-values reflect successful migration in y", async () => {

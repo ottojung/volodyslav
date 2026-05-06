@@ -12,9 +12,9 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 jest.mock('../src/generators/incremental_graph/database', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database'),
-    runMigrationInTransaction: jest.fn(),
+    checkpointMigration: jest.fn(),
 }));
-const { runMigrationInTransaction: mockRunMigrationInTransaction } = require('../src/generators/incremental_graph/database');
+const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared test infrastructure
@@ -95,9 +95,9 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    mockRunMigrationInTransaction.mockReset();
-    mockRunMigrationInTransaction.mockImplementation(async (_caps, _db, _pre, _post, callback) => await callback());
-    capabilities.runMigrationInTransaction = mockRunMigrationInTransaction;
+    mockCheckpointMigration.mockReset();
+    mockCheckpointMigration.mockImplementation(async (_caps, _db, _pre, _post, callback) => await callback());
+    capabilities.checkpointMigration = mockCheckpointMigration;
     return capabilities;
 }
 

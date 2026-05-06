@@ -24,6 +24,7 @@ const path = require("path");
 const { commit } = require("./wrappers");
 const workingRepository = require("./working_repository");
 const { gitStoreMutexKey } = require("./mutex");
+const { ensureCurrentBranch } = require("./branch_setup");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -89,6 +90,78 @@ async function checkpoint(capabilities, workingPath, initial_state, message) {
     });
 }
 
+/**
+ * Acquire the checkpoint mutex and provide direct access to the working copy.
+ *
+ * Like `checkpoint`, but hands the caller a `workDir` path and a bound
+ * `commit(message)` helper so that it can perform custom pre-commit work
+ * (e.g. rendering files into the work tree) or issue multiple commits within
+ * a single mutex scope.
+ *
+ * **Before invoking the callback**, `checkpointSession` always performs the
+ * following steps:
+ *
+ * 1. **Reset and clean** (unconditionally): aborts any in-progress
+ *    `merge`/`rebase`/`cherry-pick`/`revert`, then runs `git reset --hard HEAD`
+ *    and `git clean -fd`.  This discards all uncommitted changes and untracked
+ *    files in the work tree.  For a repository with no commits yet (unborn
+ *    branch), an initial empty commit is created first so that the reset/clean
+ *    can proceed.  Do not call `checkpointSession` if the working copy may
+ *    contain uncommitted state you want to preserve — use the lower-level
+ *    gitstore APIs instead.
+ * 2. **Ensure hostname branch**: checks out the `<hostname>-main` branch
+ *    derived from `capabilities.environment`.
+ *
+ * Use this instead of `transaction` when you are the only writer (local-only
+ * or remote-backed repository where you control all updates).  There is no
+ * clone/push overhead and no retry logic.  When the repository is remote-backed
+ * (`RemoteLocation` initial state), the caller is responsible for ensuring no
+ * concurrent remote writers will conflict — `checkpointSession` commits only to
+ * the local working copy and never pushes.
+ *
+ * @template T
+ * @param {Capabilities} capabilities
+ * @param {string} workingPath - Logical name of the local repository
+ *   (relative to `environment.workingDirectory()`).
+ * @param {RemoteLocation | "empty"} initial_state - How to create the
+ *   repository the first time it is accessed.  Pass `"empty"` for a
+ *   local-only repository, or a `{ url }` object for a remote-backed
+ *   repository (commits go only to the local working copy; no push).
+ * @param {(session: { workDir: string, commit: (message: string) => Promise<void> }) => Promise<T>} callback
+ *   Called while holding the mutex. Receives the work-tree directory and a
+ *   `commit(message)` helper pre-bound to the correct `gitDir`/`workDir`.
+ * @returns {Promise<T>}
+ * @throws {import('./working_repository').WorkingRepositoryError} When the
+ *   repository cannot be initialised.
+ */
+async function checkpointSession(capabilities, workingPath, initial_state, callback) {
+    return await capabilities.sleeper.withMutex(gitStoreMutexKey(workingPath), async () => {
+        const gitDir = await workingRepository.getRepository(
+            capabilities,
+            workingPath,
+            initial_state
+        );
+
+        // getRepository returns <workDir>/<workingPath>/.git
+        // so the work directory is its parent.
+        const workDir = path.dirname(gitDir);
+
+        // Clean the working copy unconditionally (abort any in-progress merge/rebase,
+        // reset --hard HEAD, remove untracked files) BEFORE switching branches.
+        // For unborn repositories (no commits yet), resetAndCleanRepository creates
+        // an initial empty commit first so that the subsequent reset/clean and
+        // ensureCurrentBranch can always operate.
+        await workingRepository.resetAndCleanRepository(capabilities, workingPath);
+        await ensureCurrentBranch(capabilities, workDir);
+
+        return await callback({
+            workDir,
+            commit: (message) => commit(capabilities, gitDir, workDir, message),
+        });
+    });
+}
+
 module.exports = {
     checkpoint,
+    checkpointSession,
 };

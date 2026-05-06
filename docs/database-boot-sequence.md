@@ -46,7 +46,7 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 1. **Live DB exists**: directory existence at `<workingDirectory>/generators-leveldb` only.
 2. **Fresh DB**: a newly initialized DB where active replica version metadata is absent.
 3. **Current version**: the application version expected by the running build.
-4. **Migration transaction**: the transactional write sequence that prepares migrated replica state.
+4. **Migration checkpoint**: the `checkpointSession`-based write sequence (via `checkpointMigration`) that prepares migrated replica state and records pre/post rendered snapshots.
 5. **Replica cutover**: the committed switch of `_meta/current_replica` from old replica to migrated replica.
 6. **Fatal startup crash**: startup abort where IncrementalGraph is not exposed.
 7. **Structural validation**: boot-time checks for `_meta/format == xy-v2` and `_meta/current_replica ∈ {x,y}`.
@@ -102,7 +102,7 @@ flowchart TD
 
     I --> J{Version already current?}
     J -->|Yes| K[No migration]
-    J -->|No| L[Run migration transaction + replica cutover]
+    J -->|No| L[Run migration checkpoint + replica cutover]
 
     K --> M[Expose IncrementalGraph]
     L --> M
@@ -139,7 +139,7 @@ After structural validation:
 1. Read active replica version metadata.
 2. If no version is recorded (fresh DB), record current version.
 3. If version equals current version, continue.
-4. If version differs, run migration transaction and then perform replica cutover.
+4. If version differs, run migration checkpoint (via `checkpointMigration`) and then perform replica cutover.
 
 ### 7.4 Exposure boundary
 
@@ -164,7 +164,7 @@ This document claims consistency at the **live RootDatabase boundary**, specific
 
 Migration/cutover guarantees are **restart-safety guarantees** around named cut-points, not a blanket claim of atomic rollback for every external side effect.
 
-The following are outside this guarantee boundary unless explicitly covered by the same transaction path:
+The following are outside this guarantee boundary unless explicitly covered by the same checkpoint/cutover path:
 
 - rendered snapshot refresh work,
 - git-visible checkpoint/update side effects,
@@ -182,7 +182,7 @@ This protocol is restart-safe by re-running deterministic checks from the beginn
 2. **Crash after fallback normal sync success, before DB open**
    - Next start follows same path as above (open/validate/version-check).
 
-3. **Crash during migration transaction before replica cutover commit**
+3. **Crash during migration checkpoint before replica cutover commit**
    - Active replica pointer remains at old replica; next start retries migration path.
 
 4. **Crash after replica cutover commit, before follow-up side effects**
@@ -249,7 +249,7 @@ These touchpoints are informative and do not define protocol semantics.
 - `backend/src/generators/interface/lifecycle.js` (startup orchestration boundary)
 - `backend/src/generators/incremental_graph/database/root_database.js` (format/pointer checks)
 - `backend/src/generators/incremental_graph/migration_runner.js` (version/migration behavior)
-- `backend/src/generators/incremental_graph/database/gitstore.js` (migration snapshot/transaction integration)
+- `backend/src/generators/incremental_graph/database/gitstore.js` (migration snapshot/checkpoint integration)
 - `backend/src/generators/incremental_graph/database/synchronize.js` (bootstrap sync behaviors)
 
 ---
@@ -260,3 +260,4 @@ These touchpoints are informative and do not define protocol semantics.
 2. Soft recovery from format mismatch.
 3. General corruption-repair workflow for malformed local/remote data.
 4. Expanding bootstrap fallback beyond the single explicit missing-hostname-branch condition.
+

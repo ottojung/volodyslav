@@ -11,7 +11,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const {
     checkpointDatabase,
-    runMigrationInTransaction,
+    checkpointMigration,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
@@ -404,13 +404,13 @@ describe("checkpointDatabase", () => {
     });
 });
 
-describe("runMigrationInTransaction", () => {
-    test("records pre-migration and post-migration commits inside one transaction", async () => {
+describe("checkpointMigration", () => {
+    test("records pre-migration and post-migration commits in one checkpointSession", async () => {
         const capabilities = getTestCapabilities();
         const key = '!x!!values!{"head":"event","args":["migration"]}';
         const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
         try {
-            const result = await runMigrationInTransaction(
+            const result = await checkpointMigration(
                 capabilities,
                 db,
                 "pre-migration: 1 → 2",
@@ -436,13 +436,13 @@ describe("runMigrationInTransaction", () => {
         }
     });
 
-    test("does not persist pre-migration commit if the migration callback fails", async () => {
+    test("persists pre-migration commit even if the migration callback fails", async () => {
         const capabilities = getTestCapabilities();
         const key = '!x!!values!{"head":"event","args":["migration-fail"]}';
         const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
         try {
             await expect(
-                runMigrationInTransaction(
+                checkpointMigration(
                     capabilities,
                     db,
                     "pre-migration: fail",
@@ -455,8 +455,15 @@ describe("runMigrationInTransaction", () => {
             ).rejects.toThrow("migration failure");
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(capabilities, gitDir)).toBe(1);
-            expect(allTrackedFiles(capabilities, gitDir)).toEqual([]);
+            // The pre-migration commit IS persisted even though the callback failed.
+            // This is intentional: it provides a useful diagnostic snapshot of the
+            // database state immediately before the failed migration attempt.
+            // +1 for the "Initial empty commit" created by getRepository on first use
+            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(latestCommitMessage(gitDir)).toBe("pre-migration: fail");
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
+            ).toBe(JSON.stringify({ version: "before" }, null, 2));
         } finally {
             await db.close();
         }
@@ -530,7 +537,7 @@ describe("dirty-state recovery", () => {
         }
     });
 
-    test("runMigrationInTransaction recovers when MERGE_HEAD is present", async () => {
+    test("checkpointMigration recovers when MERGE_HEAD is present", async () => {
         const capabilities = getTestCapabilities();
         const key = '!x!!values!{"head":"event","args":["merge-head-recovery"]}';
         const db = await seedDatabase(capabilities, [[key, { v: 1 }]]);
@@ -546,7 +553,7 @@ describe("dirty-state recovery", () => {
             );
 
             // The migration must succeed despite the leftover merge state.
-            const result = await runMigrationInTransaction(
+            const result = await checkpointMigration(
                 capabilities,
                 db,
                 "pre-migration",
