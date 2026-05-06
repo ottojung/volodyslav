@@ -269,9 +269,10 @@ function validateCombination(result, segment1, segment2) {
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
  * @param {string} newFragment - New fragment of at most FRAGMENT_MAX_WORDS words.
+ * @param {AbortSignal} signal - Abort signal for cancellation.
  * @returns {Promise<string>} The recombined text.
  */
-async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment) {
+async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, signal) {
     const apiKey = capabilities.environment.openaiAPIKey();
     const client = makeClient(apiKey);
 
@@ -286,7 +287,7 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
         const response = await client.chat.completions.create({
             model: RECOMBINATION_MODEL,
             messages,
-        });
+        }, { signal });
         rawText = response.choices[0]?.message?.content?.trim() ?? "";
     } catch (error) {
         throw new AITranscriptRecombinationError(
@@ -323,13 +324,20 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText
  * @param {string} newFragment
+ * @param {AbortSignal} signal - Abort signal; retries stop immediately when aborted.
  * @returns {Promise<string>}
  */
-async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment) {
+async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment, signal) {
     for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        if (signal.aborted) {
+            break;
+        }
         try {
-            return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment);
+            return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, signal);
         } catch {
+            if (signal.aborted) {
+                break;
+            }
             // Try again on next iteration; fall through to programmatic on last attempt.
         }
     }
@@ -351,15 +359,16 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
  * @param {string} newWindowText - New window transcript text.
+ * @param {AbortSignal} signal - Abort signal; propagated to the LLM API call.
  * @returns {Promise<string>} The recombined transcript text.
  */
-async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
-    return recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newWindowText);
+async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText, signal) {
+    return recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newWindowText, signal);
 }
 
 /**
  * @typedef {object} AITranscriptRecombination
- * @property {(existingOverlapText: string, newWindowText: string) => Promise<string>} recombineOverlap
+ * @property {(existingOverlapText: string, newWindowText: string, signal: AbortSignal) => Promise<string>} recombineOverlap
  */
 
 /**
@@ -371,8 +380,8 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
     const makeClient = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        recombineOverlap: (existingOverlapText, newWindowText) =>
-            recombineOverlap(makeClient, getCapabilitiesMemo(), existingOverlapText, newWindowText),
+        recombineOverlap: (existingOverlapText, newWindowText, signal) =>
+            recombineOverlap(makeClient, getCapabilitiesMemo(), existingOverlapText, newWindowText, signal),
     };
 }
 

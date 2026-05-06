@@ -30,27 +30,31 @@ function isLiveDiaryStepTimeoutError(object) {
 /**
  * @template T
  * @param {string} step
- * @param {() => Promise<T>} operation
+ * @param {(signal: AbortSignal) => Promise<T>} operation
  * @param {number} timeoutMs
  * @returns {Promise<T>}
  */
 async function withStepTimeout(step, operation, timeoutMs) {
+    const controller = new AbortController();
     /** @type {NodeJS.Timeout | undefined} */
     let timer;
+    const timeoutError = new LiveDiaryStepTimeoutError(step, timeoutMs);
     const timeoutPromise = new Promise((_resolve, reject) => {
         timer = setTimeout(() => {
-            reject(new LiveDiaryStepTimeoutError(step, timeoutMs));
+            controller.abort(timeoutError);
+            reject(timeoutError);
         }, timeoutMs);
     });
     try {
         return await Promise.race([
-            operation(),
+            operation(controller.signal),
             timeoutPromise,
         ]);
     } finally {
         if (timer !== undefined) {
             clearTimeout(timer);
         }
+        controller.abort();
     }
 }
 

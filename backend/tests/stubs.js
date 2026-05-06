@@ -269,7 +269,7 @@ function stubAiDiarySummary(capabilities) {
 function stubAiTranscriptRecombination(capabilities) {
     capabilities.aiTranscriptRecombination.recombineOverlap = jest
         .fn()
-        .mockImplementation((_existingOverlapText, newWindowText) =>
+        .mockImplementation((_existingOverlapText, newWindowText, _signal) =>
             Promise.resolve(newWindowText)
         );
 }

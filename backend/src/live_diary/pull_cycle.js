@@ -233,7 +233,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     try {
         newWindowTranscript = await withStepTimeout(
             "transcription",
-            () => transcribeBuffer(windowWav, "audio/wav", capabilities),
+            (_signal) => transcribeBuffer(windowWav, "audio/wav", capabilities),
             stepTimeoutMs
         );
     } catch (error) {
@@ -292,9 +292,10 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         try {
             merged = await withStepTimeout(
                 "recombination",
-                () => capabilities.aiTranscriptRecombination.recombineOverlap(
+                (signal) => capabilities.aiTranscriptRecombination.recombineOverlap(
                     lastWindowTranscript,
-                    prepared.textForRecombination
+                    prepared.textForRecombination,
+                    signal
                 ),
                 stepTimeoutMs
             );
@@ -363,7 +364,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     try {
         allQuestions = await withStepTimeout(
             "question_generation",
-            () => capabilities.aiDiaryQuestions.generateQuestions(
+            (_signal) => capabilities.aiDiaryQuestions.generateQuestions(
                 updatedRunningTranscript,
                 askedQuestions,
                 maxQuestions
