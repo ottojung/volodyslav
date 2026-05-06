@@ -7,11 +7,12 @@
 const { MAX_WINDOW_PCM_BYTES } = require("./pull_window_cap");
 
 /**
- * Conservative Whisper API upload bandwidth (bytes per millisecond); 1 MiB/s.
+ * Conservative Whisper API upload bandwidth expressed in bytes per millisecond.
+ * Represents 1 MiB per second: 1024*1024 bytes / 1000 ms.
  * At this rate the largest possible audio window (~40 MiB PCM → WAV) takes
  * roughly 40 s to upload.
  */
-const WHISPER_UPLOAD_BANDWIDTH_BYTES_PER_MS = (1024 * 1024) / 1_000; // 1 MiB/s
+const WHISPER_UPLOAD_BANDWIDTH_BYTES_PER_MS = 1024 * 1024 / 1_000; // 1 MiB / 1000 ms
 
 /**
  * Estimated Whisper generation time for the longest audio window (ms).
