@@ -69,6 +69,9 @@ const MAX_RETRY_ATTEMPTS = 5;
  */
 const WINDOW_MAX_DURATION_MS = 20 * 60_000; // 20 minutes
 
+/** Milliseconds in one minute — used in speech-rate conversions. */
+const MS_PER_MINUTE = 60_000;
+
 /** Conservative estimate of average English speech rate (words per minute). */
 const AVG_SPEECH_RATE_WPM = 150;
 
@@ -83,7 +86,7 @@ const LLM_CALL_OVERHEAD_MS = 10_000;
  *
  * Derived from the worst-case input size: two overlapping windows, each
  * WINDOW_MAX_DURATION_MS of audio at AVG_SPEECH_RATE_WPM:
- *   max_words   = 2 × (WINDOW_MAX_DURATION_MS / 60_000) × AVG_SPEECH_RATE_WPM
+ *   max_words   = 2 × (WINDOW_MAX_DURATION_MS / MS_PER_MINUTE) × AVG_SPEECH_RATE_WPM
  *   generate_ms = ⌈max_words / LLM_OUTPUT_RATE_WPS⌉ × 1000
  *
  * With current values: ⌈2 × 20 × 150 / 75⌉ × 1000 + 10000 = 90 000 ms.
@@ -92,7 +95,7 @@ const LLM_CALL_OVERHEAD_MS = 10_000;
  */
 const RECOMBINATION_ATTEMPT_TIMEOUT_MS =
     Math.ceil(
-        2 * (WINDOW_MAX_DURATION_MS / 60_000) * AVG_SPEECH_RATE_WPM / LLM_OUTPUT_RATE_WPS
+        2 * (WINDOW_MAX_DURATION_MS / MS_PER_MINUTE) * AVG_SPEECH_RATE_WPM / LLM_OUTPUT_RATE_WPS
     ) * 1_000 + LLM_CALL_OVERHEAD_MS;
 
 const SYSTEM_PROMPT = `You are a transcript editor.
@@ -378,8 +381,12 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
         );
         // Forward outer abort to the active attempt so in-flight HTTP calls are
         // cancelled immediately — not just on the next between-attempt check.
-        const forwardAbort = () => attemptController.abort(signal?.reason);
-        signal?.addEventListener("abort", forwardAbort, { once: true });
+        const forwardAbort = signal
+            ? () => attemptController.abort(signal.reason)
+            : undefined;
+        if (forwardAbort !== undefined) {
+            signal?.addEventListener("abort", forwardAbort, { once: true });
+        }
         try {
             return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, attemptController.signal);
         } catch {
@@ -389,7 +396,9 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
             // Timed out or API error — retry with a fresh attempt controller.
         } finally {
             clearTimeout(timerId);
-            signal?.removeEventListener("abort", forwardAbort);
+            if (forwardAbort !== undefined) {
+                signal?.removeEventListener("abort", forwardAbort);
+            }
         }
     }
     return programmaticRecombination(existingOverlapText, newFragment);
