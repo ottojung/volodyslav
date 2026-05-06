@@ -248,8 +248,6 @@ async function checkpointMigration(
         CHECKPOINT_WORKING_PATH,
         "empty",
         async ({ workDir, commit }) => {
-            capabilities.logger.logDebug({ preMessage, postMessage }, "Ensuring checkpoint repository is clean");
-            await ensureCheckpointRepoIsClean(capabilities);
             capabilities.logger.logDebug({ preMessage, postMessage }, "Rendering pre-migration database snapshot");
             await renderToFilesystem(
                 capabilities,
