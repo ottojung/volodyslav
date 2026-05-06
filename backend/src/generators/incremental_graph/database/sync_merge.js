@@ -24,7 +24,8 @@
  *      freshness overridden to `potentially-outdated`.
  *   7. Applies all decisions to T in one atomic batch, rebuilding the revdeps
  *      index from scratch.
- *   8. Switches the active replica pointer to T.
+ *   8. Switches the active replica pointer to T only when merge decisions
+ *      actually changed replica contents.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
@@ -320,7 +321,8 @@ async function unifyRevdeps(T, mergedInputsMap) {
  *
  * Post-conditions (on success):
  * - The inactive replica contains the merged result.
- * - The active replica pointer is switched to the (previously inactive) replica.
+ * - The active replica pointer is switched to the (previously inactive)
+ *   replica only if the merge introduced data changes.
  * - Hostname staging storage is NOT cleared here; the caller is responsible.
  *
  * @param {Logger} logger
@@ -347,6 +349,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     const fromReplica = rootDatabase.currentReplicaName();
     const toReplica = rootDatabase.otherReplicaName();
+    let mergeChangedReplica = false;
 
     logger.logInfo(
         { hostname, fromReplica, toReplica },
@@ -514,6 +517,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     for (const [node, decision] of decisions) {
         if (decision === 'take') {
+            mergeChangedReplica = true;
             const takeOps = await buildTakeOps(T, H, node);
             pendingOps.push(...takeOps);
             // H-only nodes whose ancestors include a locally-kept (T-newer) node
@@ -521,7 +525,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             // data from H so the node exists in T and the revdeps index is
             // correct, but override freshness to force recomputation.
             if (hOnlyNeedsInvalidate.has(node)) {
-                pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
+                const currentFreshness = await T.freshness.get(node);
+                if (currentFreshness !== 'potentially-outdated') {
+                    mergeChangedReplica = true;
+                    pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
+                }
             }
         } else if (decision === 'invalidate') {
             // If the node was initially 'take' (H newer) but got tainted to
@@ -530,10 +538,15 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             // mergedInputsMap and rebuilt revdeps. We then force freshness to
             // potentially-outdated to trigger recomputation.
             if (initialDecisions.get(node) === 'take') {
+                mergeChangedReplica = true;
                 const takeOps = await buildTakeOps(T, H, node);
                 pendingOps.push(...takeOps);
             }
-            pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
+            const currentFreshness = await T.freshness.get(node);
+            if (currentFreshness !== 'potentially-outdated') {
+                mergeChangedReplica = true;
+                pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
+            }
             // Advance modifiedAt to H's value so the next sync does not see H as
             // newer and re-invalidate this node in an endless cycle.
             //
@@ -561,6 +574,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
                         createdAt: tTimestamps?.createdAt ?? hTimestamps.createdAt,
                         modifiedAt: hTimestamps.modifiedAt,
                     };
+                    if (
+                        tTimestamps === undefined ||
+                        tTimestamps.createdAt !== advanced.createdAt ||
+                        tTimestamps.modifiedAt !== advanced.modifiedAt
+                    ) {
+                        mergeChangedReplica = true;
+                    }
                     pendingOps.push(T.timestamps.putOp(node, advanced));
                 }
             }
@@ -581,15 +601,17 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // taint-propagated to 'invalidate' still use H.inputs for revdeps.
     await unifyRevdeps(T, mergedInputsMap);
 
-    // ── Step 8: Switch active replica pointer ────────────────────────────────
-    await rootDatabase.switchToReplica(toReplica);
+    // ── Step 8: Switch active replica pointer only if merge changed data ─────
+    if (mergeChangedReplica) {
+        await rootDatabase.switchToReplica(toReplica);
+    }
 
     const kept = [...decisions.values()].filter(d => d === 'keep').length;
     const taken = [...decisions.values()].filter(d => d === 'take').length;
     const invalidated = [...decisions.values()].filter(d => d === 'invalidate').length;
 
     logger.logInfo(
-        { hostname, fromReplica, toReplica, kept, taken, invalidated },
+        { hostname, fromReplica, toReplica, kept, taken, invalidated, mergeChangedReplica },
         'Graph merge completed for host'
     );
 }

@@ -8,6 +8,8 @@ The protocol is intentionally fail-fast: it prefers crashing on ambiguous or str
 
 This document specifies **startup behavior only**. It does not specify steady-state synchronization, runtime merge behavior outside boot, or corruption-repair workflows.
 
+For clarity: steady-state sync merge now performs replica cutover only when merge writes actually change data. No-op sync merges keep `_meta/current_replica` unchanged. Migration cutover behavior is unchanged and still always switches because migration updates replica version metadata.
+
 ---
 
 ## 2) Data model and storage layers
@@ -260,4 +262,3 @@ These touchpoints are informative and do not define protocol semantics.
 2. Soft recovery from format mismatch.
 3. General corruption-repair workflow for malformed local/remote data.
 4. Expanding bootstrap fallback beyond the single explicit missing-hostname-branch condition.
-

@@ -117,7 +117,7 @@ describe('mergeHostIntoReplica', () => {
             await mergeHostIntoReplica(logger, db, hostname);
 
             const newActive = db.currentReplicaName();
-            expect(newActive).toBe('y');
+            expect(newActive).toBe('x');
 
             const T = db.schemaStorageForReplica(newActive);
             const merged = await T.values.get(nodeA);
@@ -268,7 +268,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('replica pointer switches after successful merge', async () => {
+    test('replica pointer does not switch when merge introduces no changes', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -278,6 +278,33 @@ describe('mergeHostIntoReplica', () => {
             const appVersionStr = db.version;
             await db.setMetaVersion(appVersionStr);
             await db.setHostnameMeta(hostname, 'version', appVersionStr);
+
+            const before = db.currentReplicaName();
+            expect(before).toBe('x');
+
+            await mergeHostIntoReplica(logger, db, hostname);
+
+            const after = db.currentReplicaName();
+            expect(after).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('replica pointer switches when merge introduces changes', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setMetaVersion(appVersionStr);
+            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+
+            const nodeA = nk('a');
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS1, [], { value: { id: 'a', type: 'test', description: 'remote' }, isDirty: false });
 
             const before = db.currentReplicaName();
             expect(before).toBe('x');
@@ -435,10 +462,10 @@ describe('mergeHostIntoReplica', () => {
             await db.setMetaVersion(appVersionStr);
             await db.setHostnameMeta(hostname1, 'version', appVersionStr);
 
-            // Merge first host (empty local replica → ops is empty).
+            // Merge first host (empty local replica and empty host input).
             await mergeHostIntoReplica(logger, db, hostname1);
-            // Replica pointer now points to 'y'.
-            expect(db.currentReplicaName()).toBe('y');
+            // No changes were introduced, so cutover is skipped.
+            expect(db.currentReplicaName()).toBe('x');
 
             // Second host: same version, with one node.
             const hostname2 = 'peer2';
