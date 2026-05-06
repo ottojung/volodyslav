@@ -63,12 +63,37 @@ const RECOMBINATION_MODEL = "gpt-5.4-mini";
 const MAX_RETRY_ATTEMPTS = 5;
 
 /**
- * Per-attempt timeout for a single OpenAI chat completion call.
- * Each individual attempt in the retry loop is bounded by this value;
- * if the call does not complete in time the attempt controller is aborted
- * and the retry loop starts a fresh attempt (up to MAX_RETRY_ATTEMPTS).
+ * Maximum duration of a single transcription window (ms).
+ * Must be kept in sync with MAX_WINDOW_DURATION_MS in backend/src/live_diary/planner.js.
+ * Cannot be imported from there: live_diary depends on ai, so ai must not depend on live_diary.
  */
-const RECOMBINATION_ATTEMPT_TIMEOUT_MS = 90_000; // 90 s per single API call
+const WINDOW_MAX_DURATION_MS = 20 * 60_000; // 20 minutes
+
+/** Conservative estimate of average English speech rate (words per minute). */
+const AVG_SPEECH_RATE_WPM = 150;
+
+/** Estimated LLM output throughput for chat completions (words per second). */
+const LLM_OUTPUT_RATE_WPS = 75;
+
+/** Fixed overhead per API call: network round-trip and queue latency (ms). */
+const LLM_CALL_OVERHEAD_MS = 10_000;
+
+/**
+ * Per-attempt timeout for a single OpenAI recombination API call (ms).
+ *
+ * Derived from the worst-case input size: two overlapping windows, each
+ * WINDOW_MAX_DURATION_MS of audio at AVG_SPEECH_RATE_WPM:
+ *   max_words   = 2 × (WINDOW_MAX_DURATION_MS / 60_000) × AVG_SPEECH_RATE_WPM
+ *   generate_ms = ⌈max_words / LLM_OUTPUT_RATE_WPS⌉ × 1000
+ *
+ * With current values: ⌈2 × 20 × 150 / 75⌉ × 1000 + 10000 = 90 000 ms.
+ * If WINDOW_MAX_DURATION_MS or the throughput estimates change, the timeout
+ * adjusts automatically.
+ */
+const RECOMBINATION_ATTEMPT_TIMEOUT_MS =
+    Math.ceil(
+        2 * (WINDOW_MAX_DURATION_MS / 60_000) * AVG_SPEECH_RATE_WPM / LLM_OUTPUT_RATE_WPS
+    ) * 1_000 + LLM_CALL_OVERHEAD_MS;
 
 const SYSTEM_PROMPT = `You are a transcript editor.
 
@@ -330,11 +355,15 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
  * by RECOMBINATION_ATTEMPT_TIMEOUT_MS — if a single call does not complete in
  * time, the attempt is aborted and the loop retries with a fresh controller.
  * Falls back to programmaticRecombination if every attempt fails or times out.
+ *
+ * If an outer `signal` is provided and becomes aborted while an attempt is
+ * in flight, the active attempt is cancelled immediately (via a forwarded
+ * abort listener) and no further attempts are made.
  * @param {function(string): OpenAI} makeClient
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText
  * @param {string} newFragment
- * @param {AbortSignal} [signal] - Optional outer abort signal; retries stop immediately when aborted.
+ * @param {AbortSignal} [signal] - Optional outer abort signal.
  * @returns {Promise<string>}
  */
 async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment, signal) {
@@ -342,14 +371,15 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
         if (signal?.aborted) {
             break;
         }
-        // Per-attempt AbortController: aborted by the per-call timeout.
-        // The outer signal is checked before and after each attempt to stop
-        // the retry loop without requiring event listener wiring.
         const attemptController = new AbortController();
         const timerId = setTimeout(
             () => attemptController.abort(),
             RECOMBINATION_ATTEMPT_TIMEOUT_MS
         );
+        // Forward outer abort to the active attempt so in-flight HTTP calls are
+        // cancelled immediately — not just on the next between-attempt check.
+        const forwardAbort = () => attemptController.abort(signal?.reason);
+        signal?.addEventListener("abort", forwardAbort, { once: true });
         try {
             return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, attemptController.signal);
         } catch {
@@ -359,6 +389,7 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
             // Timed out or API error — retry with a fresh attempt controller.
         } finally {
             clearTimeout(timerId);
+            signal?.removeEventListener("abort", forwardAbort);
         }
     }
     return programmaticRecombination(existingOverlapText, newFragment);
@@ -411,6 +442,7 @@ module.exports = {
     isAITranscriptRecombinationError,
     RECOMBINATION_MODEL,
     MAX_RETRY_ATTEMPTS,
+    RECOMBINATION_ATTEMPT_TIMEOUT_MS,
     SYSTEM_PROMPT,
     makeUserPrompt,
     makeWordSet,
