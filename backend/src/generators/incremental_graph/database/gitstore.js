@@ -263,8 +263,11 @@ async function runMigrationInTransaction(
                 path.join(workTree, DATABASE_SUBPATH, '_meta'),
                 '_meta'
             );
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Rendered pre-migration database snapshot, committing to git");
             await store.commit(preMessage);
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Pre-migration snapshot committed to git, running migration callback");
             const result = await callback();
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Migration callback complete, rendering post-migration database snapshot");
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
@@ -279,7 +282,7 @@ async function runMigrationInTransaction(
             );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Rendered post-migration database snapshot, committing to git");
             await store.commit(postMessage);
-            capabilities.logger.logDebug({ preMessage, postMessage }, "Migration transaction complete, finishing transaction");
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Post-migration snapshot committed to git, finishing migration transaction");
             return result;
         },
         undefined,
