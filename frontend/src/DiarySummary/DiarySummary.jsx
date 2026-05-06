@@ -8,7 +8,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react";
-import { marked } from "marked";
+import MarkdownIt from "markdown-it";
 import "./markdown.css";
 import { fetchDiarySummary, runDiarySummary } from "./api.js";
 import { DiarySummaryEntryList } from "./DiarySummaryEntryList.jsx";
@@ -19,6 +19,12 @@ import { useToast } from "../toast.jsx";
  * @typedef {import('./api.js').DiarySummaryRunEntry} DiarySummaryRunEntry
  */
 
+const markdownIt = new MarkdownIt({
+    html: false,
+    linkify: true,
+    typographer: true,
+});
+
 /**
  * @returns {DiarySummaryData | null}
  */
@@ -27,12 +33,12 @@ function getInitialSummary() {
 }
 
 /**
- * Renders the summary markdown using the marked library.
+ * Renders the summary markdown.
  * @param {{ markdown: string }} props
  * @returns {React.JSX.Element}
  */
 function MarkdownText({ markdown }) {
-    const html = marked.parse(markdown, { gfm: true });
+    const html = markdownIt.render(markdown);
     return (
         <Box
             className="markdown-body"
