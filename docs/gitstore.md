@@ -93,8 +93,8 @@ await checkpointSession(capabilities, workingPath, initial_state, async ({ workD
 
 **Before invoking the callback**, `checkpointSession` always performs these steps automatically:
 
-1. **Reset and clean** (when the repository has at least one commit): aborts any in-progress `merge`/`rebase`/`cherry-pick`/`revert`, then runs `git reset --hard HEAD` and `git clean -fd`. This **discards all uncommitted changes and untracked files** in the work tree — the working copy is deterministically clean when the callback is entered.
-2. **Ensure hostname branch**: checks out the `<hostname>-main` branch. For an unborn repository (no commits yet), `HEAD` is pointed at the hostname branch via `git symbolic-ref` so the first commit lands on the correct branch.
+1. **Reset and clean**: aborts any in-progress `merge`/`rebase`/`cherry-pick`/`revert`, then makes the repository clean. On a repository that already has commits, this includes `git reset --hard HEAD` and `git clean -fd`. On an unborn repository (no commits yet), gitstore still runs this cleanup path and may first create an `"Initial empty commit"` so the work tree can be reset into a deterministic clean state. This **discards all uncommitted changes and untracked files** in the work tree.
+2. **Ensure hostname branch**: checks out the `<hostname>-main` branch with `git checkout -B`, creating or resetting that branch as needed, including after unborn-repository initialization.
 
 Do not call `checkpointSession` if the working copy may contain uncommitted state you want to preserve. Use the lower-level gitstore APIs directly in that case.
 
