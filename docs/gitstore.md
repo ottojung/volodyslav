@@ -302,12 +302,14 @@ stream of near-identical commits with little historical value.  Migration bounda
 represent discrete, application-level schema transitions that are worth preserving
 as durable snapshots.
 
-Because both `checkpointDatabase` and `checkpointMigration` write to a
-local-only (`"empty"`) repository that has no concurrent remote writers, they use
-`checkpointSession` rather than `transaction`.  `checkpointSession` commits
-directly to the persistent working copy's work tree — no temporary clone or
-push step — while still acquiring the per-path mutex to serialise concurrent
-in-process callers.
+`checkpointMigration` always writes to a local-only (`"empty"`) repository, so it
+uses `checkpointSession` rather than `transaction`. `checkpointDatabase` also uses
+`checkpointSession`, but it is not limited to local-only repositories: some call
+sites initialise it from a `RemoteLocation`. In those remote-backed cases, the
+checkpoint still commits directly in the persistent working copy for its target
+branch rather than cloning and pushing via `transaction`; this is acceptable
+because the checkpoint branch is scoped to this writer (for example by hostname),
+while the per-path mutex still serialises concurrent in-process callers.
 
 If the migration callback fails, the pre-migration commit is already visible in
 the checkpoint repository.  This is intentional: it provides a useful diagnostic
