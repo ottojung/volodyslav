@@ -305,3 +305,6 @@ in-process callers.
 If the migration callback fails, the pre-migration commit is already visible in
 the checkpoint repository.  This is intentional: it provides a useful diagnostic
 snapshot of the database state immediately before the failed migration attempt.
+(This differs from the previous transaction-based approach, where atomicity would
+suppress the pre-migration commit on failure — leaving no checkpoint record of
+the attempt at all.)
