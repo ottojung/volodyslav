@@ -62,41 +62,40 @@ const RECOMBINATION_MODEL = "gpt-5.4-mini";
 /** Number of LLM call attempts before falling back to programmatic recombination. */
 const MAX_RETRY_ATTEMPTS = 5;
 
-/**
- * Maximum duration of a single transcription window (ms).
- * Must be kept in sync with MAX_WINDOW_DURATION_MS in backend/src/live_diary/planner.js.
- * Cannot be imported from there: live_diary depends on ai, so ai must not depend on live_diary.
- */
-const WINDOW_MAX_DURATION_MS = 20 * 60_000; // 20 minutes
-
-/** Milliseconds in one minute — used in speech-rate conversions. */
-const MS_PER_MINUTE = 60_000;
-
-/** Conservative estimate of average English speech rate (words per minute). */
-const AVG_SPEECH_RATE_WPM = 150;
-
 /** Estimated LLM output throughput for chat completions (words per second). */
 const LLM_OUTPUT_RATE_WPS = 75;
 
-/** Fixed overhead per API call: network round-trip and queue latency (ms). */
-const LLM_CALL_OVERHEAD_MS = 10_000;
+/**
+ * Fixed overhead per API call (ms): network round-trip, queue wait, model initialization.
+ * Generous to avoid false positives under API load.
+ */
+const LLM_CALL_OVERHEAD_MS = 30_000;
 
 /**
- * Per-attempt timeout for a single OpenAI recombination API call (ms).
- *
- * Derived from the worst-case input size: two overlapping windows, each
- * WINDOW_MAX_DURATION_MS of audio at AVG_SPEECH_RATE_WPM:
- *   max_words   = 2 × (WINDOW_MAX_DURATION_MS / MS_PER_MINUTE) × AVG_SPEECH_RATE_WPM
- *   generate_ms = ⌈max_words / LLM_OUTPUT_RATE_WPS⌉ × 1000
- *
- * With current values: ⌈2 × 20 × 150 / 75⌉ × 1000 + 10000 = 90 000 ms.
- * If WINDOW_MAX_DURATION_MS or the throughput estimates change, the timeout
- * adjusts automatically.
+ * Count words in a text string.
+ * @param {string} text
+ * @returns {number}
  */
-const RECOMBINATION_ATTEMPT_TIMEOUT_MS =
-    Math.ceil(
-        2 * (WINDOW_MAX_DURATION_MS / MS_PER_MINUTE) * AVG_SPEECH_RATE_WPM / LLM_OUTPUT_RATE_WPS
-    ) * 1_000 + LLM_CALL_OVERHEAD_MS;
+function countWords(text) {
+    return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Compute a per-attempt timeout for a single recombination API call (ms).
+ *
+ * The output is validated to be a subset of the combined inputs (no hallucinations),
+ * so the output word count is bounded by the sum of input word counts.  Generation
+ * time is estimated from that upper bound at LLM_OUTPUT_RATE_WPS words per second,
+ * plus a fixed overhead for API latency and queue wait.
+ *
+ * @param {string} existingOverlapText - Existing transcript covering the overlap zone.
+ * @param {string} newFragment - New window transcript text.
+ * @returns {number} Timeout in milliseconds.
+ */
+function computeRecombinationTimeoutMs(existingOverlapText, newFragment) {
+    const wordCount = countWords(existingOverlapText) + countWords(newFragment);
+    return Math.ceil(wordCount / LLM_OUTPUT_RATE_WPS) * 1_000 + LLM_CALL_OVERHEAD_MS;
+}
 
 const SYSTEM_PROMPT = `You are a transcript editor.
 
@@ -355,8 +354,9 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
 /**
  * Recombine a single fragment with retry logic.
  * Tries up to MAX_RETRY_ATTEMPTS times.  Each individual attempt is bounded
- * by RECOMBINATION_ATTEMPT_TIMEOUT_MS — if a single call does not complete in
- * time, the attempt is aborted and the loop retries with a fresh controller.
+ * by a per-call timeout computed from the actual input sizes — if a single
+ * call does not complete in time, the attempt is aborted and the loop retries
+ * with a fresh controller.
  * Falls back to programmaticRecombination if every attempt fails or times out.
  * @param {function(string): OpenAI} makeClient
  * @param {Capabilities} capabilities
@@ -366,10 +366,11 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
  */
 async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment) {
     for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        const timeoutMs = computeRecombinationTimeoutMs(existingOverlapText, newFragment);
         const attemptController = new AbortController();
         const timerId = setTimeout(
             () => attemptController.abort(),
-            RECOMBINATION_ATTEMPT_TIMEOUT_MS
+            timeoutMs
         );
         try {
             return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, attemptController.signal);
@@ -386,14 +387,11 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
  * Recombine two overlapping transcript segments using an LLM with retry logic.
  *
  * Both inputs are transcriptions of two pull-cycle windows that share an
- * overlap region.  The actual window size is governed by MAX_WINDOW_DURATION_MS
- * in live_diary/planner.js; RECOMBINATION_ATTEMPT_TIMEOUT_MS is sized
- * accordingly.
+ * overlap region.  Each attempt is bounded by a per-call timeout derived from
+ * the actual word count of the inputs via computeRecombinationTimeoutMs.
  *
- * Up to MAX_RETRY_ATTEMPTS are made; each attempt is bounded by its own
- * RECOMBINATION_ATTEMPT_TIMEOUT_MS per-call timeout.  If all attempts fail or
- * time out the function falls back to programmaticRecombination and never
- * throws.
+ * Up to MAX_RETRY_ATTEMPTS are made; if all attempts fail or time out the
+ * function falls back to programmaticRecombination and never throws.
  *
  * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
  * @param {Capabilities} capabilities
@@ -429,7 +427,7 @@ module.exports = {
     isAITranscriptRecombinationError,
     RECOMBINATION_MODEL,
     MAX_RETRY_ATTEMPTS,
-    RECOMBINATION_ATTEMPT_TIMEOUT_MS,
+    computeRecombinationTimeoutMs,
     SYSTEM_PROMPT,
     makeUserPrompt,
     makeWordSet,
