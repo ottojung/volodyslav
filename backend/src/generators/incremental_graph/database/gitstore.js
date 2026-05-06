@@ -177,11 +177,13 @@ async function checkpointDatabase(
     }
 
     try {
+        capabilities.logger.logDebug({ message }, "Starting database checkpoint");
         await transaction(
             capabilities,
             CHECKPOINT_WORKING_PATH,
             initialState,
             async (store) => {
+                capabilities.logger.logDebug({ message }, "Rendering database snapshot for checkpoint");
                 const workTree = await store.getWorkTree();
                 const activeReplica = database.currentReplicaName();
                 await renderToFilesystem(
@@ -196,13 +198,17 @@ async function checkpointDatabase(
                     path.join(workTree, DATABASE_SUBPATH, '_meta'),
                     '_meta'
                 );
+                capabilities.logger.logDebug({ message }, "Rendered database snapshot for checkpoint, committing to git");
                 await store.commit(message);
+                capabilities.logger.logDebug({ message }, "Checkpoint committed to git, finishing transaction");
             },
             undefined,
             async () => {
+                capabilities.logger.logDebug({ message }, "Ensuring checkpoint repository is clean");
                 await ensureCheckpointRepoIsClean(capabilities);
             }
         );
+        capabilities.logger.logDebug({ message }, "Finished database checkpoint");
     } finally {
         if (ownedDatabase !== undefined) {
             await ownedDatabase.close();
@@ -237,11 +243,13 @@ async function runMigrationInTransaction(
     postMessage,
     callback
 ) {
-    return await transaction(
+    capabilities.logger.logDebug({ preMessage, postMessage }, "Starting migration transaction");
+    const ret = await transaction(
         capabilities,
         CHECKPOINT_WORKING_PATH,
         "empty",
         async (store) => {
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Rendering pre-migration database snapshot");
             const workTree = await store.getWorkTree();
             await renderToFilesystem(
                 capabilities,
@@ -269,14 +277,19 @@ async function runMigrationInTransaction(
                 path.join(workTree, DATABASE_SUBPATH, '_meta'),
                 '_meta'
             );
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Rendered post-migration database snapshot, committing to git");
             await store.commit(postMessage);
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Migration transaction complete, finishing transaction");
             return result;
         },
         undefined,
         async () => {
+            capabilities.logger.logDebug({}, "Ensuring checkpoint repository is clean");
             await ensureCheckpointRepoIsClean(capabilities);
         }
     );
+    capabilities.logger.logDebug({ preMessage, postMessage }, "Finished migration transaction");
+    return ret;
 }
 
 module.exports = {
