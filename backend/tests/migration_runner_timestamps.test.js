@@ -14,7 +14,7 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database'),
     checkpointMigration: jest.fn(),
 }));
-const { checkpointMigration: mockRunMigrationInTransaction } = require('../src/generators/incremental_graph/database');
+const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared test infrastructure
@@ -95,9 +95,9 @@ async function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    mockRunMigrationInTransaction.mockReset();
-    mockRunMigrationInTransaction.mockImplementation(async (_caps, _db, _pre, _post, callback) => await callback());
-    capabilities.checkpointMigration = mockRunMigrationInTransaction;
+    mockCheckpointMigration.mockReset();
+    mockCheckpointMigration.mockImplementation(async (_caps, _db, _pre, _post, callback) => await callback());
+    capabilities.checkpointMigration = mockCheckpointMigration;
     return capabilities;
 }
 

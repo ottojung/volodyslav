@@ -155,10 +155,10 @@ Two higher-level operations are available:
 - **`checkpointDatabase(capabilities, message, rootDatabase)`** – renders the live
   database into the tracked snapshot directory and commits it (no-op if nothing
   has changed). Used for single rendered snapshots such as sync.
-- **`runMigrationInTransaction(capabilities, rootDatabase, preMessage, postMessage, callback)`** –
-  wraps the whole migration in one gitstore transaction, commits the rendered
+- **`checkpointMigration(capabilities, rootDatabase, preMessage, postMessage, callback)`** –
+  wraps the whole migration in one `checkpointSession`, commits the rendered
   snapshot before the migration body runs, executes the migration, then commits
-  the rendered post-migration snapshot in the same transaction.
+  the rendered post-migration snapshot (no temp clone or push step).
 - **`synchronizeNoLock(capabilities, options)`** – renders the current database,
   synchronises the rendered repository with the remote generators repository,
   and then scans the updated rendered snapshot back into the live database.

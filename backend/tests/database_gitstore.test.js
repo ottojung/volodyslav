@@ -405,7 +405,7 @@ describe("checkpointDatabase", () => {
 });
 
 describe("checkpointMigration", () => {
-    test("records pre-migration and post-migration commits inside one transaction", async () => {
+    test("records pre-migration and post-migration commits in one checkpointSession", async () => {
         const capabilities = getTestCapabilities();
         const key = '!x!!values!{"head":"event","args":["migration"]}';
         const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
