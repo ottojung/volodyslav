@@ -277,7 +277,7 @@ This section traces how the current implementation satisfies each requirement of
 
 1. `checkpointSession` (in `gitstore/checkpoint.js`) acquires the per-path mutex.
 2. If the checkpoint repository already has commits, it calls `resetAndCleanRepository` first (aborting any in-progress merge/rebase/cherry-pick/revert, then `git reset --hard HEAD`, then `git clean -fd`) **before** calling `ensureCurrentBranch`. This ensures `git checkout` cannot fail due to dirty or interrupted state from a previously crashed session.
-3. If the checkpoint repository has no commits yet (unborn branch recovery path), `symbolic-ref HEAD` is set to the hostname branch so the first commit from the callback lands on the correct branch.
+3. If the checkpoint repository has no commits yet (unborn branch recovery path), `git symbolic-ref HEAD refs/heads/<hostname>-main` is called to point HEAD at the full ref path of the hostname branch, so the first commit from the callback lands on the correct branch.
 4. The callback (`checkpointMigration`'s body) runs `ensureCheckpointRepoIsClean`, renders and commits the pre-migration snapshot, executes the migration callback (which writes to LevelDB and commits the replica cutover via `switchToReplica`), then renders and commits the post-migration snapshot.
 
 The LevelDB replica cutover (`switchToReplica`) is the commit-point for section 7.3. It happens inside the migration callback, which is inside the `checkpointSession` mutex but outside any LevelDB transaction (LevelDB writes are sync-safe by design). The git pre/post snapshot commits are follow-up side effects.
