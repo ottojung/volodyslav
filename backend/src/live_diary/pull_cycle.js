@@ -32,7 +32,7 @@ const {
     appendRemovedTailWord,
     deduplicateQuestions,
 } = require("./text_processing");
-const { transcribeBuffer, loadFragmentPcm } = require("./pull_helpers");
+const { transcribeBuffer, loadFragmentPcm, isLiveDiaryTranscriptionTimeoutError } = require("./pull_helpers");
 const { planWindowWithCaps } = require("./pull_window_planning");
 const { computeNewLastRange } = require("./last_transcribed_range");
 
@@ -233,10 +233,17 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs) {
             new AbortController().signal
         );
     } catch (error) {
-        capabilities.logger.logError(
-            { sessionId, error: error instanceof Error ? error.message : String(error) },
-            "Pull cycle: transcription failed"
-        );
+        if (isLiveDiaryTranscriptionTimeoutError(error)) {
+            capabilities.logger.logWarning(
+                { sessionId, timeoutMs: error.timeoutMs },
+                "Pull cycle: transcription timed out"
+            );
+        } else {
+            capabilities.logger.logError(
+                { sessionId, error: error instanceof Error ? error.message : String(error) },
+                "Pull cycle: transcription failed"
+            );
+        }
         await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
         return { status: "degraded_transcription" };
     }

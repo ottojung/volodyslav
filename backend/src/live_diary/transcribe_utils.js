@@ -14,6 +14,11 @@
 const path = require("path");
 const { extensionForMime } = require("./wav_utils");
 
+const TRANSCRIPTION_UPLOAD_BYTES_PER_MS = 1024 * 1024 / 1_000;
+const TRANSCRIPTION_GENERATION_BASE_MS = 30_000;
+const TRANSCRIPTION_MAX_GENERATION_MS = 80_000;
+const TRANSCRIPTION_TIMEOUT_PADDING_MS = 10_000;
+
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -30,6 +35,38 @@ const { extensionForMime } = require("./wav_utils");
  * @property {FileReader} reader
  * @property {FileDeleter} deleter
  */
+
+/**
+ * @param {number} audioBytes
+ * @returns {number}
+ */
+function computeTranscriptionTimeoutMs(audioBytes) {
+    const uploadMs = Math.ceil(audioBytes / TRANSCRIPTION_UPLOAD_BYTES_PER_MS);
+    const generationMs = Math.min(
+        TRANSCRIPTION_MAX_GENERATION_MS,
+        TRANSCRIPTION_GENERATION_BASE_MS + Math.ceil(uploadMs / 2)
+    );
+    return uploadMs + generationMs + TRANSCRIPTION_TIMEOUT_PADDING_MS;
+}
+
+class LiveDiaryTranscriptionTimeoutError extends Error {
+    /**
+     * @param {number} timeoutMs
+     */
+    constructor(timeoutMs) {
+        super(`Live diary transcription timed out after ${timeoutMs}ms`);
+        this.name = "LiveDiaryTranscriptionTimeoutError";
+        this.timeoutMs = timeoutMs;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is LiveDiaryTranscriptionTimeoutError}
+ */
+function isLiveDiaryTranscriptionTimeoutError(object) {
+    return object instanceof LiveDiaryTranscriptionTimeoutError;
+}
 
 /**
  * Write a Buffer to a named temp file, transcribe it, then delete the temp file.
@@ -58,9 +95,23 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities, signal) {
         });
 
         let result;
+        const timeoutMs = computeTranscriptionTimeoutMs(audioBuffer.length);
+        const timeoutError = new LiveDiaryTranscriptionTimeoutError(timeoutMs);
+        /** @type {ReturnType<typeof setTimeout> | undefined} */
+        let timer;
+        const timeoutPromise = new Promise((_resolve, reject) => {
+            timer = setTimeout(() => {
+                reject(timeoutError);
+                fileStream.destroy(timeoutError);
+            }, timeoutMs);
+        });
         try {
-            result = await capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream, signal);
+            result = await Promise.race([
+                capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream, signal),
+                timeoutPromise,
+            ]);
         } finally {
+            if (timer !== undefined) clearTimeout(timer);
             fileStream.destroy();
         }
 
@@ -73,5 +124,7 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities, signal) {
 }
 
 module.exports = {
+    computeTranscriptionTimeoutMs,
+    isLiveDiaryTranscriptionTimeoutError,
     transcribeBuffer,
 };
