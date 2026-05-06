@@ -10,7 +10,7 @@
  */
 
 const { chunksBinarySublevel, chunkKey } = require("../audio_recording_session");
-const { transcribeBuffer } = require("./transcribe_utils");
+const { transcribeBuffer, isLiveDiaryTranscriptionTimeoutError } = require("./transcribe_utils");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
 
@@ -31,4 +31,5 @@ async function loadFragmentPcm(temporary, sessionId, sequence) {
 module.exports = {
     transcribeBuffer,
     loadFragmentPcm,
+    isLiveDiaryTranscriptionTimeoutError,
 };

@@ -151,7 +151,7 @@ describe("_runPullCycle degraded exits", () => {
         await putChunk(caps.temporary, SESSION_ID, 0);
         // Sequence 1 intentionally has index metadata but no stored binary.
 
-        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs, 10_000);
+        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs);
 
         expect(result.status).toBe("degraded_transcription");
         expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(0);
@@ -165,7 +165,7 @@ describe("_runPullCycle degraded exits", () => {
         await putChunk(caps.temporary, SESSION_ID, 0);
         await putChunk(caps.temporary, SESSION_ID, 1);
 
-        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs, 10_000);
+        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs);
 
         expect(result.status).toBe("degraded_transcription");
         expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(0);
@@ -184,7 +184,7 @@ describe("_runPullCycle degraded exits", () => {
         await putChunk(caps.temporary, SESSION_ID, 1);
         caps.aiTranscription.transcribeStreamPreciseDetailed = jest.fn().mockRejectedValue(new Error("transcribe failed"));
 
-        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs, 10_000);
+        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs);
 
         expect(result.status).toBe("degraded_transcription");
         expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(0);
@@ -216,7 +216,7 @@ describe("_runPullCycle degraded exits", () => {
         });
         caps.aiDiaryQuestions.generateQuestions = jest.fn().mockRejectedValue(new Error("qgen failed"));
 
-        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs, 10_000);
+        const result = await _runPullCycle(caps, SESSION_ID, 30_000, nowMs);
 
         expect(result.status).toBe("degraded_question_generation");
         expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(0);
@@ -235,7 +235,7 @@ describe("_runPullCycle window caps", () => {
         await seedSingleLargeFragment(caps, { nowMs });
         await putChunk(caps.temporary, SESSION_ID, 0);
 
-        const result = await _runPullCycle(caps, SESSION_ID, 10 * 60 * 60 * 1000, nowMs, 10_000);
+        const result = await _runPullCycle(caps, SESSION_ID, 10 * 60 * 60 * 1000, nowMs);
 
         expect(result.status).toBe("ok");
         expect(await readTranscribedUntilMs(caps.temporary, SESSION_ID)).toBe(MAX_WINDOW_DURATION_MS);
@@ -252,7 +252,7 @@ describe("_runPullCycle window caps", () => {
         });
         await putChunk(caps.temporary, SESSION_ID, 0);
 
-        const result = await _runPullCycle(caps, SESSION_ID, 10 * 60 * 60 * 1000, nowMs, 10_000);
+        const result = await _runPullCycle(caps, SESSION_ID, 10 * 60 * 60 * 1000, nowMs);
 
         expect(result.status).toBe("ok");
         const watermark = await readTranscribedUntilMs(caps.temporary, SESSION_ID);
