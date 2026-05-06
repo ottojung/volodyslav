@@ -69,6 +69,27 @@ function isLiveDiaryTranscriptionTimeoutError(object) {
 }
 
 /**
+ * @param {AbortSignal} signal
+ * @param {AbortController} timeoutController
+ * @returns {() => void}
+ */
+function connectTimeoutAbort(signal, timeoutController) {
+    const abortDueToSignal = () => {
+        timeoutController.abort(signal.reason);
+    };
+
+    if (signal.aborted) {
+        abortDueToSignal();
+        return () => {};
+    }
+
+    signal.addEventListener("abort", abortDueToSignal, { once: true });
+    return () => {
+        signal.removeEventListener("abort", abortDueToSignal);
+    };
+}
+
+/**
  * Write a Buffer to a named temp file, transcribe it, then delete the temp file.
  * Returns the raw transcript string (trimmed).
  * @param {Buffer} audioBuffer
@@ -97,21 +118,29 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities, signal) {
         let result;
         const timeoutMs = computeTranscriptionTimeoutMs(audioBuffer.length);
         const timeoutError = new LiveDiaryTranscriptionTimeoutError(timeoutMs);
+        const timeoutController = new AbortController();
+        const disconnectAbortForwarding = connectTimeoutAbort(signal, timeoutController);
+
         /** @type {ReturnType<typeof setTimeout> | undefined} */
         let timer;
         const timeoutPromise = new Promise((_resolve, reject) => {
             timer = setTimeout(() => {
+                timeoutController.abort(timeoutError);
                 reject(timeoutError);
                 fileStream.destroy(timeoutError);
             }, timeoutMs);
         });
         try {
             result = await Promise.race([
-                capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream, signal),
+                capabilities.aiTranscription.transcribeStreamPreciseDetailed(
+                    fileStream,
+                    timeoutController.signal
+                ),
                 timeoutPromise,
             ]);
         } finally {
             if (timer !== undefined) clearTimeout(timer);
+            disconnectAbortForwarding();
             fileStream.destroy();
         }
 
