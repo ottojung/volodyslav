@@ -1,7 +1,7 @@
 //
 // Main entry point for gitstore functionality.
-// This module exports the transaction, checkpoint, and checkpointSession
-// functions, as well as workingRepository utilities.
+// This module exports the transaction, checkpoint, checkpointSession,
+// and ensureCurrentBranch functions, as well as workingRepository utilities.
 //
 
 const { transaction } = require("./transaction");

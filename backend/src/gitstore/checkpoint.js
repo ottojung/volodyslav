@@ -99,10 +99,19 @@ async function checkpoint(capabilities, workingPath, initial_state, message) {
  * (e.g. rendering files into the work tree) or issue multiple commits within
  * a single mutex scope.
  *
- * Before invoking the callback, `checkpointSession` ensures the working copy
- * is on the hostname branch (derived from `capabilities.environment`).  This
- * guard is skipped when the repository has no commits yet (unborn branch), so
- * callbacks that create the initial commit are still supported.
+ * **Before invoking the callback**, `checkpointSession` always performs the
+ * following steps:
+ *
+ * 1. **Reset and clean** (when the repository has at least one commit): aborts
+ *    any in-progress `merge`/`rebase`/`cherry-pick`/`revert`, then runs
+ *    `git reset --hard HEAD` and `git clean -fd`.  This discards all
+ *    uncommitted changes and untracked files in the work tree.  Do not call
+ *    `checkpointSession` if the working copy may contain uncommitted state you
+ *    want to preserve — use the lower-level gitstore APIs instead.
+ * 2. **Ensure hostname branch**: checks out the `<hostname>-main` branch
+ *    derived from `capabilities.environment`.  For a repository with no commits
+ *    yet (unborn branch), HEAD is set via `git symbolic-ref` instead, so the
+ *    first commit created by the callback lands on the correct branch.
  *
  * Use this instead of `transaction` when you are the only writer (local-only
  * or remote-backed repository where you control all updates).  There is no

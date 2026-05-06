@@ -91,6 +91,13 @@ await checkpointSession(capabilities, workingPath, initial_state, async ({ workD
 - `workDir` — absolute path to the local working copy's work tree
 - `commit(message)` — stages all changes and commits (no-op when clean)
 
+**Before invoking the callback**, `checkpointSession` always performs these steps automatically:
+
+1. **Reset and clean** (when the repository has at least one commit): aborts any in-progress `merge`/`rebase`/`cherry-pick`/`revert`, then runs `git reset --hard HEAD` and `git clean -fd`. This **discards all uncommitted changes and untracked files** in the work tree — the working copy is deterministically clean when the callback is entered.
+2. **Ensure hostname branch**: checks out the `<hostname>-main` branch. For an unborn repository (no commits yet), `HEAD` is pointed at the hostname branch via `git symbolic-ref` so the first commit lands on the correct branch.
+
+Do not call `checkpointSession` if the working copy may contain uncommitted state you want to preserve. Use the lower-level gitstore APIs directly in that case.
+
 ### When to use a checkpoint vs. a transaction
 
 | Situation | Use |
