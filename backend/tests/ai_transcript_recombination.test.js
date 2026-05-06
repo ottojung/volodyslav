@@ -10,7 +10,7 @@ const { OpenAI } = require("openai");
 const {
     RECOMBINATION_MODEL,
     MAX_RETRY_ATTEMPTS,
-    RECOMBINATION_ATTEMPT_TIMEOUT_MS,
+    computeRecombinationTimeoutMs,
     SYSTEM_PROMPT,
     isAITranscriptRecombinationError,
     make,
@@ -20,7 +20,6 @@ const {
     programmaticRecombination,
     validateCombination,
 } = require("../src/ai/transcript_recombination");
-const { MAX_WINDOW_DURATION_MS } = require("../src/live_diary/planner");
 
 function makeMockCapabilities() {
     return {
@@ -52,24 +51,17 @@ function setupMockClient(responseText) {
     return { mockCreate };
 }
 
-// ─── constants sync ───────────────────────────────────────────────────────────
+// ─── recombination timeout ───────────────────────────────────────────────────
 
-describe("WINDOW_MAX_DURATION_MS synchronization", () => {
-    it("matches MAX_WINDOW_DURATION_MS from live_diary/planner (must be kept in sync)", () => {
-        // RECOMBINATION_ATTEMPT_TIMEOUT_MS is derived from WINDOW_MAX_DURATION_MS
-        // which is a local copy of MAX_WINDOW_DURATION_MS from planner.js.
-        // This test enforces that the two values stay in sync; if planner.js changes
-        // MAX_WINDOW_DURATION_MS, this test will fail as a reminder to update
-        // WINDOW_MAX_DURATION_MS in transcript_recombination.js accordingly.
-        const MS_PER_MINUTE = 60_000;
-        const AVG_SPEECH_RATE_WPM = 150;
-        const LLM_OUTPUT_RATE_WPS = 75;
-        const LLM_CALL_OVERHEAD_MS = 10_000;
-        const expectedTimeout =
-            Math.ceil(
-                2 * (MAX_WINDOW_DURATION_MS / MS_PER_MINUTE) * AVG_SPEECH_RATE_WPM / LLM_OUTPUT_RATE_WPS
-            ) * 1_000 + LLM_CALL_OVERHEAD_MS;
-        expect(RECOMBINATION_ATTEMPT_TIMEOUT_MS).toBe(expectedTimeout);
+describe("computeRecombinationTimeoutMs", () => {
+    it("uses total input words with output-rate and fixed overhead", () => {
+        const timeout = computeRecombinationTimeoutMs("one two three", "four five");
+        const expected = Math.ceil(5 / 75) * 1_000 + 30_000;
+        expect(timeout).toBe(expected);
+    });
+
+    it("returns fixed overhead for empty input", () => {
+        expect(computeRecombinationTimeoutMs("", "")).toBe(30_000);
     });
 });
 
