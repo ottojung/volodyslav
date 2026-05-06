@@ -25,6 +25,7 @@ const { commit } = require("./wrappers");
 const workingRepository = require("./working_repository");
 const { gitStoreMutexKey } = require("./mutex");
 const { ensureCurrentBranch } = require("./branch_setup");
+const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -137,16 +138,29 @@ async function checkpointSession(capabilities, workingPath, initial_state, callb
         // so the work directory is its parent.
         const workDir = path.dirname(gitDir);
 
-        // Ensure we commit on the correct hostname branch.  git checkout cannot
-        // operate on an unborn branch (no commits yet), so we skip the guard in
-        // that case; the callback is expected to create the initial commit
-        // (e.g. via ensureCheckpointRepoIsClean) before calling commit().
         const hasCommits = await capabilities.git
             .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "HEAD")
             .then(() => true)
             .catch(() => false);
+
         if (hasCommits) {
+            // Clean the working copy (abort any in-progress merge/rebase, reset --hard
+            // HEAD, remove untracked files) BEFORE switching branches.  git checkout
+            // refuses to switch when uncommitted or unmerged changes exist, so running
+            // ensureCurrentBranch first would fail on exactly the interrupted states
+            // these paths are meant to recover from.
+            await workingRepository.resetAndCleanRepository(capabilities, workingPath);
             await ensureCurrentBranch(capabilities, workDir);
+        } else {
+            // Unborn branch: git checkout cannot operate without any commits.  Point
+            // HEAD at the hostname branch via symbolic-ref so that the first commit
+            // created by the callback (e.g. via ensureCheckpointRepoIsClean) lands on
+            // the correct branch rather than whatever default git init chose.
+            const branch = defaultBranch(capabilities);
+            await capabilities.git.call(
+                "-C", workDir, "-c", "safe.directory=*",
+                "symbolic-ref", "HEAD", `refs/heads/${branch}`
+            );
         }
 
         return await callback({

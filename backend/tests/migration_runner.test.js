@@ -453,7 +453,7 @@ describe("runMigration", () => {
             expect(postMessage).toContain("2.0.0");
         });
 
-        test("pre-migration commit happens before switchToReplica inside the transaction", async () => {
+        test("pre-migration commit happens before switchToReplica inside the checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
@@ -498,7 +498,7 @@ describe("runMigration", () => {
             expect(switchIdx).toBeGreaterThan(preIdx);
         });
 
-        test("post-migration commit happens after switchToReplica inside the transaction", async () => {
+        test("post-migration commit happens after switchToReplica inside the checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
@@ -644,7 +644,7 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("callback throws: transaction attempts the pre-migration commit step before failing", async () => {
+        test("callback throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -666,7 +666,7 @@ describe("runMigration", () => {
             expect(callOrder[0]).toContain("pre-migration:");
         });
 
-        test("finalize throws: transaction attempts the pre-migration commit step before failing", async () => {
+        test("finalize throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
@@ -1436,7 +1436,7 @@ describe("retry after failure", () => {
 
         const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false };
 
-        // First attempt: one transaction call, but it fails after the pre commit
+        // First attempt: one checkpointMigration call, but it fails after the pre commit
         await expect(
             runMigration(capabilities, rootDatabase, [nodeDef], async () => { throw new Error("fail"); })
         ).rejects.toThrow();
@@ -1444,7 +1444,7 @@ describe("retry after failure", () => {
         expect(capabilities.checkpointMigration).toHaveBeenCalledTimes(1);
         capabilities.checkpointMigration.mockClear();
 
-        // Second (successful) attempt: one fresh transaction call
+        // Second (successful) attempt: one fresh checkpointMigration call
         await runMigration(capabilities, rootDatabase, [nodeDef], async (storage) => {
             await storage.keep(nodeKey);
         });

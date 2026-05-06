@@ -260,3 +260,39 @@ These touchpoints are informative and do not define protocol semantics.
 2. Soft recovery from format mismatch.
 3. General corruption-repair workflow for malformed local/remote data.
 4. Expanding bootstrap fallback beyond the single explicit missing-hostname-branch condition.
+
+---
+
+## 15) Conformance proof: checkpoint implementation vs. this protocol
+
+This section traces how the current implementation satisfies each requirement of this protocol.
+
+### 15.1 Bootstrap → open → validate (phases 1–2, sections 6–7.2)
+
+`lifecycle.js` calls `synchronize.js` for the bootstrap phase when the live DB directory is absent (section 7.1). `root_database.js` enforces format (`xy-v2`) and replica pointer (`x`/`y`) checks on open (section 7.2). Both crash-fast on violations.
+
+### 15.2 Version check and migration (section 7.3)
+
+`migration_runner.js` reads the active replica version. When the version matches, no migration runs. When it differs, `migration_runner.js` calls `checkpointMigration` (in `database/gitstore.js`) which wraps the migration in a `checkpointSession`. Inside the session:
+
+1. `checkpointSession` (in `gitstore/checkpoint.js`) acquires the per-path mutex.
+2. If the checkpoint repository already has commits, it calls `resetAndCleanRepository` first (aborting any in-progress merge/rebase/cherry-pick/revert, then `git reset --hard HEAD`, then `git clean -fd`) **before** calling `ensureCurrentBranch`. This ensures `git checkout` cannot fail due to dirty or interrupted state from a previously crashed session.
+3. If the checkpoint repository has no commits yet (unborn branch recovery path), `symbolic-ref HEAD` is set to the hostname branch so the first commit from the callback lands on the correct branch.
+4. The callback (`checkpointMigration`'s body) runs `ensureCheckpointRepoIsClean`, renders and commits the pre-migration snapshot, executes the migration callback (which writes to LevelDB and commits the replica cutover via `switchToReplica`), then renders and commits the post-migration snapshot.
+
+The LevelDB replica cutover (`switchToReplica`) is the commit-point for section 7.3. It happens inside the migration callback, which is inside the `checkpointSession` mutex but outside any LevelDB transaction (LevelDB writes are sync-safe by design). The git pre/post snapshot commits are follow-up side effects.
+
+### 15.3 Crash/restart safety (section 9)
+
+| Cut-point | Implementation behavior |
+|---|---|
+| Crash after reset-to-hostname, before DB open | Next start sees live DB directory present → proceeds to open/validate/version-check (section 9.1) |
+| Crash after fallback sync, before DB open | Same as above (section 9.2) |
+| Crash during migration checkpoint, before replica cutover | LevelDB replica pointer unchanged; next start detects version mismatch → retries full migration path including fresh `checkpointMigration` call. `resetAndCleanRepository` inside `checkpointSession` cleans any interrupted git state before proceeding (section 9.3) |
+| Crash after replica cutover, before post-migration git commit | New replica is active on next start; version now matches → no migration re-run. Post-migration git commit is a follow-up side effect (section 9.4) |
+| Crash after migration, before interface exposure | Next start re-evaluates; version already current → no migration (section 9.5) |
+
+### 15.4 Hostname branch guarantee
+
+`checkpointSession` calls `ensureCurrentBranch` (after the reset/clean step) to enforce that every commit goes to the `<hostname>-main` branch. For unborn repos, `symbolic-ref` pre-wires HEAD to the correct branch before the first commit is created. This prevents snapshot commits from landing on the wrong branch after manual recovery or detached-HEAD states.
+
