@@ -233,7 +233,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     try {
         newWindowTranscript = await withStepTimeout(
             "transcription",
-            (_signal) => transcribeBuffer(windowWav, "audio/wav", capabilities),
+            (signal) => transcribeBuffer(windowWav, "audio/wav", capabilities, signal),
             stepTimeoutMs
         );
     } catch (error) {

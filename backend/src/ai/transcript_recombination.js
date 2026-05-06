@@ -358,47 +358,25 @@ async function recombineOverlapRaw(makeClient, capabilities, existingOverlapText
  * by RECOMBINATION_ATTEMPT_TIMEOUT_MS — if a single call does not complete in
  * time, the attempt is aborted and the loop retries with a fresh controller.
  * Falls back to programmaticRecombination if every attempt fails or times out.
- *
- * If an outer `signal` is provided and becomes aborted while an attempt is
- * in flight, the active attempt is cancelled immediately (via a forwarded
- * abort listener) and no further attempts are made.
  * @param {function(string): OpenAI} makeClient
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText
  * @param {string} newFragment
- * @param {AbortSignal} [signal] - Optional outer abort signal.
  * @returns {Promise<string>}
  */
-async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment, signal) {
+async function recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newFragment) {
     for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
-        if (signal?.aborted) {
-            break;
-        }
         const attemptController = new AbortController();
         const timerId = setTimeout(
             () => attemptController.abort(),
             RECOMBINATION_ATTEMPT_TIMEOUT_MS
         );
-        // Forward outer abort to the active attempt so in-flight HTTP calls are
-        // cancelled immediately — not just on the next between-attempt check.
-        const forwardAbort = signal
-            ? () => attemptController.abort(signal.reason)
-            : undefined;
-        if (forwardAbort !== undefined) {
-            signal?.addEventListener("abort", forwardAbort, { once: true });
-        }
         try {
             return await recombineOverlapRaw(makeClient, capabilities, existingOverlapText, newFragment, attemptController.signal);
         } catch {
-            if (signal?.aborted) {
-                break;
-            }
             // Timed out or API error — retry with a fresh attempt controller.
         } finally {
             clearTimeout(timerId);
-            if (forwardAbort !== undefined) {
-                signal?.removeEventListener("abort", forwardAbort);
-            }
         }
     }
     return programmaticRecombination(existingOverlapText, newFragment);
@@ -407,29 +385,29 @@ async function recombineFragmentWithRetry(makeClient, capabilities, existingOver
 /**
  * Recombine two overlapping transcript segments using an LLM with retry logic.
  *
- * The expected inputs are exact transcriptions of two 20-second audio windows:
- *   existingOverlapText: transcription of [T-30s, T-10s]
- *   newWindowText:       transcription of [T-20s, T]
- * which share a 10-second overlap in [T-20s, T-10s].
+ * Both inputs are transcriptions of two pull-cycle windows that share an
+ * overlap region.  The actual window size is governed by MAX_WINDOW_DURATION_MS
+ * in live_diary/planner.js; RECOMBINATION_ATTEMPT_TIMEOUT_MS is sized
+ * accordingly.
  *
- * The LLM attempts to merge both inputs into a single clean transcript (with up
- * to MAX_RETRY_ATTEMPTS retries, each bounded by RECOMBINATION_ATTEMPT_TIMEOUT_MS,
- * and a programmatic fallback on exhaustion).
+ * Up to MAX_RETRY_ATTEMPTS are made; each attempt is bounded by its own
+ * RECOMBINATION_ATTEMPT_TIMEOUT_MS per-call timeout.  If all attempts fail or
+ * time out the function falls back to programmaticRecombination and never
+ * throws.
  *
  * @param {function(string): OpenAI} makeClient - Memoized factory for OpenAI client.
  * @param {Capabilities} capabilities
  * @param {string} existingOverlapText - Existing transcript text in the overlap zone.
  * @param {string} newWindowText - New window transcript text.
- * @param {AbortSignal} [signal] - Optional abort signal; retries stop immediately when aborted.
  * @returns {Promise<string>} The recombined transcript text.
  */
-async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText, signal) {
-    return recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newWindowText, signal);
+async function recombineOverlap(makeClient, capabilities, existingOverlapText, newWindowText) {
+    return recombineFragmentWithRetry(makeClient, capabilities, existingOverlapText, newWindowText);
 }
 
 /**
  * @typedef {object} AITranscriptRecombination
- * @property {(existingOverlapText: string, newWindowText: string, signal?: AbortSignal) => Promise<string>} recombineOverlap
+ * @property {(existingOverlapText: string, newWindowText: string) => Promise<string>} recombineOverlap
  */
 
 /**
@@ -441,8 +419,8 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
     const makeClient = memoize(/** @param {string} apiKey */ (apiKey) => new OpenAI({ apiKey }));
     return {
-        recombineOverlap: (existingOverlapText, newWindowText, signal) =>
-            recombineOverlap(makeClient, getCapabilitiesMemo(), existingOverlapText, newWindowText, signal),
+        recombineOverlap: (existingOverlapText, newWindowText) =>
+            recombineOverlap(makeClient, getCapabilitiesMemo(), existingOverlapText, newWindowText),
     };
 }
 

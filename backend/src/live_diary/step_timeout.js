@@ -4,34 +4,38 @@
  * @module live_diary/step_timeout
  */
 
-const {
-    FILE_ACTIVATION_MAX_ATTEMPTS,
-    FILE_ACTIVATION_POLL_DELAY_MS,
-} = require("../ai");
+const { MAX_WINDOW_PCM_BYTES } = require("./pull_window_cap");
 
 /**
- * Estimated time for a single Gemini transcription attempt, excluding the
- * file-activation polling (which is accounted for via the named constants).
- * Covers the file-upload round-trip and the model generation phase.
+ * Conservative Whisper API upload bandwidth (bytes per millisecond); 1 MiB/s.
+ * At this rate the largest possible audio window (~40 MiB PCM → WAV) takes
+ * roughly 40 s to upload.
  */
-const UPLOAD_AND_GENERATION_ESTIMATE_MS = 90_000; // ~90 s
+const WHISPER_UPLOAD_BANDWIDTH_BYTES_PER_MS = (1024 * 1024) / 1_000; // 1 MiB/s
+
+/**
+ * Estimated Whisper generation time for the longest audio window (ms).
+ * Whisper typically processes 20-minute audio in well under a minute;
+ * 80 s provides a comfortable upper bound.
+ */
+const WHISPER_GENERATION_ESTIMATE_MS = 80_000; // 80 s
 
 /**
  * Default per-step timeout for live diary AI pipeline steps.
  *
- * Sized for a **single** attempt of the most time-consuming step — Gemini
- * audio transcription:
- *   • File activation poll  FILE_ACTIVATION_MAX_ATTEMPTS × FILE_ACTIVATION_POLL_DELAY_MS
- *   • Upload + generation   UPLOAD_AND_GENERATION_ESTIMATE_MS
+ * Sized for a **single** attempt of the most time-consuming step — OpenAI
+ * Whisper transcription of the maximum audio window:
+ *   • Upload     MAX_WINDOW_PCM_BYTES / WHISPER_UPLOAD_BANDWIDTH_BYTES_PER_MS  ≈ 40 s
+ *   • Transcribe WHISPER_GENERATION_ESTIMATE_MS                                ≈ 80 s
  *
- * When the referenced constants change, this value adjusts automatically.
- * The retry budget for each step (e.g. RETRY_MAX_ATTEMPTS in
- * transcription_gemini.js) is intentionally excluded: the timeout covers
- * one run, not the whole retry chain.
+ * When MAX_WINDOW_PCM_BYTES changes (e.g. pull_window_cap.js is updated),
+ * the upload term adjusts automatically.  The retry budget for each step is
+ * intentionally excluded: the timeout covers one attempt, not the whole retry
+ * chain.
  */
 const DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS =
-    FILE_ACTIVATION_MAX_ATTEMPTS * FILE_ACTIVATION_POLL_DELAY_MS
-    + UPLOAD_AND_GENERATION_ESTIMATE_MS;
+    Math.ceil(MAX_WINDOW_PCM_BYTES / WHISPER_UPLOAD_BANDWIDTH_BYTES_PER_MS)
+    + WHISPER_GENERATION_ESTIMATE_MS;
 
 class LiveDiaryStepTimeoutError extends Error {
     /**

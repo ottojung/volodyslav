@@ -1002,13 +1002,17 @@ describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
         const ai = make(() => caps);
 
         const fileStream = makeFileStream("/tmp/fragment.webm");
-        const result = await ai.transcribeStreamPreciseDetailed(fileStream);
+        const signal = new AbortController().signal;
+        const result = await ai.transcribeStreamPreciseDetailed(fileStream, signal);
 
-        expect(createTranscription).toHaveBeenCalledWith({
-            file: fileStream,
-            model: PRECISE_TRANSCRIBER_MODEL,
-            response_format: "json",
-        });
+        expect(createTranscription).toHaveBeenCalledWith(
+            {
+                file: fileStream,
+                model: PRECISE_TRANSCRIBER_MODEL,
+                response_format: "json",
+            },
+            { signal }
+        );
         expect(result.provider).toBe("OpenAI");
         expect(result.model).toBe(PRECISE_TRANSCRIBER_MODEL);
         expect(result.structured.transcript).toBe("precise transcript");
@@ -1019,7 +1023,8 @@ describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
         const caps = makeMockCapabilities();
         const ai = make(() => caps);
 
-        await expect(ai.transcribeStreamPrecise(makeFileStream("/tmp/fragment.mp3"))).resolves.toBe(
+        const signal = new AbortController().signal;
+        await expect(ai.transcribeStreamPrecise(makeFileStream("/tmp/fragment.mp3"), signal)).resolves.toBe(
             "precise transcript"
         );
     });
@@ -1029,6 +1034,7 @@ describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
         const caps = makeMockCapabilities();
         const ai = make(() => caps);
 
-        await expectAITranscriptionError(ai.transcribeStreamPreciseDetailed(makeFileStream("/tmp/fragment.mp3")));
+        const signal = new AbortController().signal;
+        await expectAITranscriptionError(ai.transcribeStreamPreciseDetailed(makeFileStream("/tmp/fragment.mp3"), signal));
     });
 });

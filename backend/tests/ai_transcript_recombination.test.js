@@ -308,12 +308,8 @@ describe("makeUserPrompt", () => {
 // ─── make / recombineOverlap ──────────────────────────────────────────────────
 
 describe("recombineOverlap", () => {
-    /** @type {AbortSignal} */
-    let signal;
-
     beforeEach(() => {
         jest.clearAllMocks();
-        signal = new AbortController().signal;
     });
 
     it("calls the model with the correct inputs and returns recombined text", async () => {
@@ -321,7 +317,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("I walked to", "walked to the store", signal);
+        const result = await ai.recombineOverlap("I walked to", "walked to the store");
 
         expect(result).toBe("I walked to the store");
         expect(OpenAI).toHaveBeenCalledWith({ apiKey: "test-api-key" });
@@ -347,7 +343,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("I walked to", "walked to the store", signal);
+        const result = await ai.recombineOverlap("I walked to", "walked to the store");
 
         expect(result).toBe("I walked to the store");
     });
@@ -358,7 +354,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("hello", "hello world", signal);
+        const result = await ai.recombineOverlap("hello", "hello world");
 
         expect(result).toBe("hello world");
     });
@@ -375,7 +371,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("hello", "hello world", signal);
+        const result = await ai.recombineOverlap("hello", "hello world");
 
         expect(result).toBe("hello world");
     });
@@ -389,7 +385,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("I walked to the", "walked to the store", signal);
+        const result = await ai.recombineOverlap("I walked to the", "walked to the store");
         expect(result).toBe("I walked to the store");
     });
 
@@ -401,7 +397,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("existing", "new content", signal);
+        const result = await ai.recombineOverlap("existing", "new content");
 
         expect(mockCreate).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
         expect(result).toBe("existing [10-second overlap] new content");
@@ -420,7 +416,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("existing", "new content", signal);
+        const result = await ai.recombineOverlap("existing", "new content");
 
         expect(mockCreate).toHaveBeenCalledTimes(2);
         expect(result).toBe("existing new content");
@@ -441,7 +437,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("existing", "new content", signal);
+        const result = await ai.recombineOverlap("existing", "new content");
 
         expect(mockCreate).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
         expect(result).toBe("existing new content");
@@ -453,7 +449,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("existing", "new content", signal);
+        const result = await ai.recombineOverlap("existing", "new content");
 
         expect(mockCreate).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
         expect(result).toBe("existing [10-second overlap] new content");
@@ -469,7 +465,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        await ai.recombineOverlap("overlap", newWindowText, signal);
+        await ai.recombineOverlap("overlap", newWindowText);
         expect(mockCreate).toHaveBeenCalled();
     });
 
@@ -485,7 +481,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("existing", newWindowText, signal);
+        const result = await ai.recombineOverlap("existing", newWindowText);
 
         // LLM called once with the full newWindowText (no splitting).
         expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -497,7 +493,7 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("", "hello world", signal);
+        const result = await ai.recombineOverlap("", "hello world");
         expect(result).toBe("hello world");
     });
 
@@ -506,54 +502,8 @@ describe("recombineOverlap", () => {
         const capabilities = makeMockCapabilities();
         const ai = make(() => capabilities);
 
-        const result = await ai.recombineOverlap("existing text", "", signal);
+        const result = await ai.recombineOverlap("existing text", "");
         expect(result).toBe("existing text");
-    });
-
-    it("falls back to programmatic recombination immediately when signal is already aborted", async () => {
-        const controller = new AbortController();
-        controller.abort();
-        const abortedSignal = controller.signal;
-
-        const mockCreate = jest.fn().mockResolvedValue({
-            choices: [{ message: { content: "existing new content" } }],
-        });
-        OpenAI.mockImplementation(() => ({
-            chat: { completions: { create: mockCreate } },
-        }));
-        const capabilities = makeMockCapabilities();
-        const ai = make(() => capabilities);
-
-        const result = await ai.recombineOverlap("existing", "new content", abortedSignal);
-
-        // No API calls should be made when the signal is already aborted.
-        expect(mockCreate).not.toHaveBeenCalled();
-        expect(result).toBe("existing [10-second overlap] new content");
-    });
-
-    it("stops retrying when signal is aborted during a retry and falls back to programmatic", async () => {
-        const controller = new AbortController();
-        let callCount = 0;
-        const mockCreate = jest.fn().mockImplementation(async (_body, _options) => {
-            callCount++;
-            if (callCount === 1) {
-                // Abort the signal after the first call fails.
-                controller.abort();
-                throw new Error("API error");
-            }
-            return { choices: [{ message: { content: "existing new content" } }] };
-        });
-        OpenAI.mockImplementation(() => ({
-            chat: { completions: { create: mockCreate } },
-        }));
-        const capabilities = makeMockCapabilities();
-        const ai = make(() => capabilities);
-
-        const result = await ai.recombineOverlap("existing", "new content", controller.signal);
-
-        // Only one call should be made before the abort stops further retries.
-        expect(mockCreate).toHaveBeenCalledTimes(1);
-        expect(result).toBe("existing [10-second overlap] new content");
     });
 });
 

@@ -37,9 +37,10 @@ const { extensionForMime } = require("./wav_utils");
  * @param {Buffer} audioBuffer
  * @param {string} mimeType
  * @param {TranscribeCapabilities} capabilities
+ * @param {AbortSignal} signal - Abort signal forwarded to the Whisper API call.
  * @returns {Promise<string>}
  */
-async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
+async function transcribeBuffer(audioBuffer, mimeType, capabilities, signal) {
     const ext = extensionForMime(mimeType);
     const tmpDir = await capabilities.creator.createTemporaryDirectory();
 
@@ -58,7 +59,7 @@ async function transcribeBuffer(audioBuffer, mimeType, capabilities) {
 
         let result;
         try {
-            result = await capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream);
+            result = await capabilities.aiTranscription.transcribeStreamPreciseDetailed(fileStream, signal);
         } finally {
             fileStream.destroy();
         }
