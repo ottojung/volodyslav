@@ -54,6 +54,8 @@ async function withStepTimeout(step, operation, timeoutMs) {
         if (timer !== undefined) {
             clearTimeout(timer);
         }
+        // Abort unconditionally so the signal is cancelled when the operation
+        // succeeds normally (no-op if already aborted by the timeout path).
         controller.abort();
     }
 }
