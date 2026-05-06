@@ -436,7 +436,7 @@ describe("runMigrationInTransaction", () => {
         }
     });
 
-    test("does not persist pre-migration commit if the migration callback fails", async () => {
+    test("persists pre-migration commit even if the migration callback fails", async () => {
         const capabilities = getTestCapabilities();
         const key = '!x!!values!{"head":"event","args":["migration-fail"]}';
         const db = await seedDatabase(capabilities, [[key, { version: "before" }]]);
@@ -455,8 +455,15 @@ describe("runMigrationInTransaction", () => {
             ).rejects.toThrow("migration failure");
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(capabilities, gitDir)).toBe(1);
-            expect(allTrackedFiles(capabilities, gitDir)).toEqual([]);
+            // The pre-migration commit IS persisted even though the callback failed.
+            // This is intentional: it provides a useful diagnostic snapshot of the
+            // database state immediately before the failed migration attempt.
+            // +1 for the "Initial empty commit" created by getRepository on first use
+            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(latestCommitMessage(gitDir)).toBe("pre-migration: fail");
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
+            ).toBe(JSON.stringify({ version: "before" }, null, 2));
         } finally {
             await db.close();
         }

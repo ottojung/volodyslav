@@ -11,23 +11,23 @@
  *       rendered/                   ← rendered filesystem snapshot tracked by git
  *
  * Callers create snapshots by rendering the live database into the tracked
- * snapshot directory inside a gitstore transaction. If nothing has changed
+ * snapshot directory inside a checkpointSession. If nothing has changed
  * since the last commit, the call is a no-op.
  *
  * ## Checkpoint policy
  *
- * Migration snapshots are taken only at migration boundaries. `runMigration`
- * wraps the whole migration in a single gitstore transaction and records two
- * commits in that transaction: one before the migration logic runs and one
- * after it completes successfully. Normal incremental-graph writes (i.e.
- * `invalidate` + `pull` cycles) do NOT produce checkpoints directly.
- * Migration boundaries, by contrast, represent discrete, application-level
- * schema transitions that are worth preserving as durable rendered snapshots.
+ * Migration snapshots are taken only at migration boundaries. `runMigrationInTransaction`
+ * wraps each migration in a single checkpointSession and records two commits:
+ * one before the migration logic runs and one after it completes successfully.
+ * Normal incremental-graph writes (i.e. `invalidate` + `pull` cycles) do NOT
+ * produce checkpoints directly. Migration boundaries, by contrast, represent
+ * discrete, application-level schema transitions that are worth preserving as
+ * durable rendered snapshots.
  */
 
 const path = require('path');
 const gitstore = require('../../../gitstore');
-const { transaction } = gitstore;
+const { checkpointSession } = gitstore;
 const { resetAndCleanRepository } = gitstore.workingRepository;
 const { renderToFilesystem } = require('./render');
 
@@ -118,8 +118,8 @@ function pathToLiveDatabase(capabilities) {
  * leaving behind MERGE_HEAD, staged files, untracked artifacts, or even an
  * unborn branch (git init completed but first commit never made).
  *
- * This function is called before every `checkpointDatabase` and
- * `runMigrationInTransaction` to ensure that transactions start from a clean,
+ * This function is called at the start of every `checkpointDatabase` and
+ * `runMigrationInTransaction` session to ensure rendering starts from a clean,
  * deterministic baseline.
  *
  * @param {CheckpointCapabilities} capabilities
@@ -178,34 +178,30 @@ async function checkpointDatabase(
 
     try {
         capabilities.logger.logDebug({ message }, "Starting database checkpoint");
-        await transaction(
+        await checkpointSession(
             capabilities,
             CHECKPOINT_WORKING_PATH,
             initialState,
-            async (store) => {
+            async ({ workDir, commit }) => {
+                capabilities.logger.logDebug({ message }, "Ensuring checkpoint repository is clean");
+                await ensureCheckpointRepoIsClean(capabilities);
                 capabilities.logger.logDebug({ message }, "Rendering database snapshot for checkpoint");
-                const workTree = await store.getWorkTree();
                 const activeReplica = database.currentReplicaName();
                 await renderToFilesystem(
                     capabilities,
                     database,
-                    path.join(workTree, DATABASE_SUBPATH, 'r'),
+                    path.join(workDir, DATABASE_SUBPATH, 'r'),
                     activeReplica
                 );
                 await renderToFilesystem(
                     capabilities,
                     database,
-                    path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                    path.join(workDir, DATABASE_SUBPATH, '_meta'),
                     '_meta'
                 );
-                capabilities.logger.logDebug({ message }, "Rendered database snapshot for checkpoint, committing to git");
-                await store.commit(message);
-                capabilities.logger.logDebug({ message }, "Checkpoint committed to git, finishing transaction");
-            },
-            undefined,
-            async () => {
-                capabilities.logger.logDebug({ message }, "Ensuring checkpoint repository is clean");
-                await ensureCheckpointRepoIsClean(capabilities);
+                capabilities.logger.logDebug({ message }, "Rendered database snapshot for checkpoint, committing");
+                await commit(message);
+                capabilities.logger.logDebug({ message }, "Checkpoint committed");
             }
         );
         capabilities.logger.logDebug({ message }, "Finished database checkpoint");
@@ -217,12 +213,17 @@ async function checkpointDatabase(
 }
 
 /**
- * Run a migration inside a single gitstore transaction while recording two
- * rendered snapshots of the live database: one before the migration callback
- * runs and one after it completes successfully.
+ * Checkpoint the database before and after running a migration callback.
  *
- * Both commits happen in the same transaction worktree, so any failure aborts
- * the overall transaction without pushing a partially checkpointed history.
+ * Records two commits in a single `checkpointSession` — one before the
+ * migration callback runs and one after it completes successfully.  Both
+ * commits write directly to the persistent working copy (no temp clone or
+ * push step), so there is no clone/push overhead.
+ *
+ * Because the pre-migration commit is made before the callback runs, it
+ * remains visible in the checkpoint repository even if the callback fails.
+ * This is intentional: the pre-migration snapshot provides a useful
+ * diagnostic record of the database state before the failed migration.
  *
  * The pre-migration snapshot renders the active replica (before the switch).
  * The post-migration snapshot renders the newly active replica (after the switch).
@@ -243,55 +244,51 @@ async function runMigrationInTransaction(
     postMessage,
     callback
 ) {
-    capabilities.logger.logDebug({ preMessage, postMessage }, "Starting migration transaction");
-    const ret = await transaction(
+    capabilities.logger.logDebug({ preMessage, postMessage }, "Starting migration checkpoint");
+    const ret = await checkpointSession(
         capabilities,
         CHECKPOINT_WORKING_PATH,
         "empty",
-        async (store) => {
+        async ({ workDir, commit }) => {
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Ensuring checkpoint repository is clean");
+            await ensureCheckpointRepoIsClean(capabilities);
             capabilities.logger.logDebug({ preMessage, postMessage }, "Rendering pre-migration database snapshot");
-            const workTree = await store.getWorkTree();
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
-                path.join(workTree, DATABASE_SUBPATH, 'r'),
+                path.join(workDir, DATABASE_SUBPATH, 'r'),
                 rootDatabase.currentReplicaName()
             );
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
-                path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                path.join(workDir, DATABASE_SUBPATH, '_meta'),
                 '_meta'
             );
-            capabilities.logger.logDebug({ preMessage, postMessage }, "Rendered pre-migration database snapshot, committing to git");
-            await store.commit(preMessage);
-            capabilities.logger.logDebug({ preMessage, postMessage }, "Pre-migration snapshot committed to git, running migration callback");
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Committing pre-migration snapshot");
+            await commit(preMessage);
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Pre-migration snapshot committed, running migration callback");
             const result = await callback();
             capabilities.logger.logDebug({ preMessage, postMessage }, "Migration callback complete, rendering post-migration database snapshot");
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
-                path.join(workTree, DATABASE_SUBPATH, 'r'),
+                path.join(workDir, DATABASE_SUBPATH, 'r'),
                 rootDatabase.currentReplicaName()
             );
             await renderToFilesystem(
                 capabilities,
                 rootDatabase,
-                path.join(workTree, DATABASE_SUBPATH, '_meta'),
+                path.join(workDir, DATABASE_SUBPATH, '_meta'),
                 '_meta'
             );
-            capabilities.logger.logDebug({ preMessage, postMessage }, "Rendered post-migration database snapshot, committing to git");
-            await store.commit(postMessage);
-            capabilities.logger.logDebug({ preMessage, postMessage }, "Post-migration snapshot committed to git, finishing migration transaction");
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Committing post-migration snapshot");
+            await commit(postMessage);
+            capabilities.logger.logDebug({ preMessage, postMessage }, "Post-migration snapshot committed");
             return result;
-        },
-        undefined,
-        async () => {
-            capabilities.logger.logDebug({}, "Ensuring checkpoint repository is clean");
-            await ensureCheckpointRepoIsClean(capabilities);
         }
     );
-    capabilities.logger.logDebug({ preMessage, postMessage }, "Finished migration transaction");
+    capabilities.logger.logDebug({ preMessage, postMessage }, "Finished migration checkpoint");
     return ret;
 }
 

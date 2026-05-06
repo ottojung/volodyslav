@@ -89,6 +89,51 @@ async function checkpoint(capabilities, workingPath, initial_state, message) {
     });
 }
 
+/**
+ * Acquire the checkpoint mutex and provide direct access to the working copy.
+ *
+ * Like `checkpoint`, but hands the caller a `workDir` path and a bound
+ * `commit(message)` helper so that it can perform custom pre-commit work
+ * (e.g. rendering files into the work tree) or issue multiple commits within
+ * a single mutex scope.
+ *
+ * Use this instead of `transaction` when the repository is local-only
+ * (`"empty"` initial state) and you are the only writer.  There is no
+ * clone/push overhead and no retry logic.
+ *
+ * @template T
+ * @param {Capabilities} capabilities
+ * @param {string} workingPath - Logical name of the local repository
+ *   (relative to `environment.workingDirectory()`).
+ * @param {RemoteLocation | "empty"} initial_state - How to create the
+ *   repository the first time it is accessed.
+ * @param {(session: { workDir: string, commit: (message: string) => Promise<void> }) => Promise<T>} callback
+ *   Called while holding the mutex. Receives the work-tree directory and a
+ *   `commit(message)` helper pre-bound to the correct `gitDir`/`workDir`.
+ * @returns {Promise<T>}
+ * @throws {import('./working_repository').WorkingRepositoryError} When the
+ *   repository cannot be initialised.
+ */
+async function checkpointSession(capabilities, workingPath, initial_state, callback) {
+    return await capabilities.sleeper.withMutex(gitStoreMutexKey(workingPath), async () => {
+        const gitDir = await workingRepository.getRepository(
+            capabilities,
+            workingPath,
+            initial_state
+        );
+
+        // getRepository returns <workDir>/<workingPath>/.git
+        // so the work directory is its parent.
+        const workDir = path.dirname(gitDir);
+
+        return await callback({
+            workDir,
+            commit: (message) => commit(capabilities, gitDir, workDir, message),
+        });
+    });
+}
+
 module.exports = {
     checkpoint,
+    checkpointSession,
 };
