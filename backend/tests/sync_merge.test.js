@@ -9,7 +9,7 @@
  *     taken but freshness overridden to 'potentially-outdated'
  *   - missing timestamps in H: take emits del ops (no stale T timestamps survive)
  *   - version mismatch: HostVersionMismatchError thrown
- *   - replica pointer switches on success
+ *   - replica pointer switches only when merge introduces changes
  *   - invalidate: mixed-ancestry conflict marks freshness potentially-outdated
  */
 
@@ -117,7 +117,7 @@ describe('mergeHostIntoReplica', () => {
             await mergeHostIntoReplica(logger, db, hostname);
 
             const newActive = db.currentReplicaName();
-            expect(newActive).toBe('y');
+            expect(newActive).toBe('x');
 
             const T = db.schemaStorageForReplica(newActive);
             const merged = await T.values.get(nodeA);
@@ -268,7 +268,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('replica pointer switches after successful merge', async () => {
+    test('replica pointer does not switch after no-op merge', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -285,7 +285,7 @@ describe('mergeHostIntoReplica', () => {
             await mergeHostIntoReplica(logger, db, hostname);
 
             const after = db.currentReplicaName();
-            expect(after).toBe('y');
+            expect(after).toBe('x');
         } finally {
             if (db) await db.close();
         }
@@ -435,10 +435,10 @@ describe('mergeHostIntoReplica', () => {
             await db.setMetaVersion(appVersionStr);
             await db.setHostnameMeta(hostname1, 'version', appVersionStr);
 
-            // Merge first host (empty local replica → ops is empty).
+            // Merge first host (empty local replica → no graph changes).
             await mergeHostIntoReplica(logger, db, hostname1);
-            // Replica pointer now points to 'y'.
-            expect(db.currentReplicaName()).toBe('y');
+            // No-op merge keeps the current replica pointer.
+            expect(db.currentReplicaName()).toBe('x');
 
             // Second host: same version, with one node.
             const hostname2 = 'peer2';
