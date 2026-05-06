@@ -24,7 +24,8 @@
  *      freshness overridden to `potentially-outdated`.
  *   7. Applies all decisions to T in one atomic batch, rebuilding the revdeps
  *      index from scratch.
- *   8. Switches the active replica pointer to T.
+ *   8. Switches the active replica pointer to T only when the merge produced
+ *      graph changes; for pure no-op merges, keep the current replica.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
@@ -575,21 +576,24 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         pendingOps = [];
     }
 
-    // Gently update revdeps using the merged inputs map.  Only changed entries
-    // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
-    // directly, ensuring nodes that were initially 'take' (H.inputs) but
-    // taint-propagated to 'invalidate' still use H.inputs for revdeps.
-    await unifyRevdeps(T, mergedInputsMap);
-
-    // ── Step 8: Switch active replica pointer ────────────────────────────────
-    await rootDatabase.switchToReplica(toReplica);
-
     const kept = [...decisions.values()].filter(d => d === 'keep').length;
     const taken = [...decisions.values()].filter(d => d === 'take').length;
     const invalidated = [...decisions.values()].filter(d => d === 'invalidate').length;
+    const hasChanges = taken > 0 || invalidated > 0;
+
+    if (hasChanges) {
+        // Gently update revdeps using the merged inputs map.  Only changed entries
+        // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
+        // directly, ensuring nodes that were initially 'take' (H.inputs) but
+        // taint-propagated to 'invalidate' still use H.inputs for revdeps.
+        await unifyRevdeps(T, mergedInputsMap);
+
+        // ── Step 8: Switch active replica pointer ────────────────────────────
+        await rootDatabase.switchToReplica(toReplica);
+    }
 
     logger.logInfo(
-        { hostname, fromReplica, toReplica, kept, taken, invalidated },
+        { hostname, fromReplica, toReplica, kept, taken, invalidated, switchedReplica: hasChanges },
         'Graph merge completed for host'
     );
 }

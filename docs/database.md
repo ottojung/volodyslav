@@ -162,5 +162,8 @@ Two higher-level operations are available:
 - **`synchronizeNoLock(capabilities, options)`** – renders the current database,
   synchronises the rendered repository with the remote generators repository,
   and then scans the updated rendered snapshot back into the live database.
+  During per-host graph merge, this sync path switches `_meta/current_replica`
+  only if the merge introduced graph changes (`take`/`invalidate` decisions).
+  Pure no-op merges keep the active replica pointer unchanged.
 
 See [`docs/gitstore.md`](./gitstore.md) for the gitstore primitives that back these operations.

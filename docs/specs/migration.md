@@ -2,6 +2,10 @@
 
 This document describes the **migration system** for upgrading incremental-graph database state between application versions.
 
+> Note: this migration flow always performs a replica cutover on success. Even
+> when node values appear unchanged, migrations still bump `meta/version`, so
+> there is no no-op replica-switch optimization in the migration path.
+
 ## Overview
 
 When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema.  The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
