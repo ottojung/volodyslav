@@ -183,8 +183,6 @@ async function checkpointDatabase(
             CHECKPOINT_WORKING_PATH,
             initialState,
             async ({ workDir, commit }) => {
-                capabilities.logger.logDebug({ message }, "Ensuring checkpoint repository is clean");
-                await ensureCheckpointRepoIsClean(capabilities);
                 capabilities.logger.logDebug({ message }, "Rendering database snapshot for checkpoint");
                 const activeReplica = database.currentReplicaName();
                 await renderToFilesystem(
