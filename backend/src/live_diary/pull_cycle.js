@@ -28,10 +28,6 @@ const { buildWav } = require("./wav_utils");
 const { assemblePcm } = require("./assembler");
 const { scanGaps } = require("./gap_tracker");
 const {
-    isLiveDiaryStepTimeoutError,
-    withStepTimeout,
-} = require("./step_timeout");
-const {
     prepareTranscriptForRecombination,
     appendRemovedTailWord,
     deduplicateQuestions,
@@ -84,10 +80,9 @@ const { computeNewLastRange } = require("./last_transcribed_range");
  * @param {string} sessionId
  * @param {number} deadlineMs
  * @param {number} nowMs
- * @param {number} stepTimeoutMs
- * @returns {Promise<PullResult>}
+  * @returns {Promise<PullResult>}
  */
-async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTimeoutMs) {
+async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs) {
     const { temporary } = capabilities;
 
     // 2. Read watermark and fragment index.
@@ -231,23 +226,17 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     // 7. Transcribe.
     let newWindowTranscript;
     try {
-        newWindowTranscript = await withStepTimeout(
-            "transcription",
-            (signal) => transcribeBuffer(windowWav, "audio/wav", capabilities, signal),
-            stepTimeoutMs
+        newWindowTranscript = await transcribeBuffer(
+            windowWav,
+            "audio/wav",
+            capabilities,
+            new AbortController().signal
         );
     } catch (error) {
-        if (isLiveDiaryStepTimeoutError(error)) {
-            capabilities.logger.logWarning(
-                { sessionId, timeoutMs: error.timeoutMs, step: error.step },
-                "Pull cycle: transcription timed out"
-            );
-        } else {
-            capabilities.logger.logError(
-                { sessionId, error: error instanceof Error ? error.message : String(error) },
-                "Pull cycle: transcription failed"
-            );
-        }
+        capabilities.logger.logError(
+            { sessionId, error: error instanceof Error ? error.message : String(error) },
+            "Pull cycle: transcription failed"
+        );
         await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
         return { status: "degraded_transcription" };
     }
@@ -291,7 +280,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
         const prepared = prepareTranscriptForRecombination(newWindowTranscript);
         // recombineOverlap never throws — each attempt is bounded by its own
         // internal per-call timeout, and all failures fall back to programmatic
-        // recombination.  No outer withStepTimeout is needed here.
+        // recombination.  No outer timeout wrapper is needed here.
         merged = await capabilities.aiTranscriptRecombination.recombineOverlap(
             lastWindowTranscript,
             prepared.textForRecombination
@@ -352,30 +341,19 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTim
     const askedQuestions = await readAskedQuestions(temporary, sessionId);
     let allQuestions;
     try {
-        allQuestions = await withStepTimeout(
-            "question_generation",
-            (_signal) => capabilities.aiDiaryQuestions.generateQuestions(
-                updatedRunningTranscript,
-                askedQuestions,
-                maxQuestions
-            ),
-            stepTimeoutMs
+        allQuestions = await capabilities.aiDiaryQuestions.generateQuestions(
+            updatedRunningTranscript,
+            askedQuestions,
+            maxQuestions
         );
     } catch (error) {
         // Do NOT advance the watermark on question generation failure so the
         // next pull cycle can retry transcription + question generation for
         // the same audio range.
-        if (isLiveDiaryStepTimeoutError(error)) {
-            capabilities.logger.logWarning(
-                { sessionId, timeoutMs: error.timeoutMs, step: error.step },
-                "Pull cycle: question generation timed out"
-            );
-        } else {
-            capabilities.logger.logError(
-                { sessionId, error: error instanceof Error ? error.message : String(error) },
-                "Pull cycle: question generation failed"
-            );
-        }
+        capabilities.logger.logError(
+            { sessionId, error: error instanceof Error ? error.message : String(error) },
+            "Pull cycle: question generation failed"
+        );
         await writeKnownGaps(temporary, sessionId, gapScan.updatedGaps);
         return { status: "degraded_question_generation", degradedGap: gapScan.hasDegradedGap };
     }

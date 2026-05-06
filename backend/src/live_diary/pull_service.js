@@ -15,9 +15,6 @@
  * @module live_diary/pull_service
  */
 
-const {
-    DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS,
-} = require("./step_timeout");
 const { _runPullCycle } = require("./pull_cycle");
 
 /** @typedef {import('../temporary').Temporary} Temporary */
@@ -71,17 +68,15 @@ const { _runPullCycle } = require("./pull_cycle");
  * @param {string} sessionId
  * @param {number} deadlineMs - Upper bound of the data range to process.
  *   Use `Number.MAX_SAFE_INTEGER` to process all uploaded fragments.
- * @param {number} [stepTimeoutMs]
  * @returns {Promise<PullResult>}
  */
 async function pullLiveDiaryProcessing(
     capabilities,
     sessionId,
-    deadlineMs,
-    stepTimeoutMs = DEFAULT_LIVE_DIARY_STEP_TIMEOUT_MS
+    deadlineMs
 ) {
     const nowMs = capabilities.datetime.now().toMillis();
-    return _runPullCycle(capabilities, sessionId, deadlineMs, nowMs, stepTimeoutMs);
+    return _runPullCycle(capabilities, sessionId, deadlineMs, nowMs);
 }
 
 module.exports = {
