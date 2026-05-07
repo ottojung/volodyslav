@@ -12,6 +12,8 @@ const {
     CURRENT_SESSION_KEY,
     indexSublevel,
     sessionSublevel,
+    chunksBinarySublevel,
+    chunkKey,
 } = require("../audio_recording_session");
 const { stringToTempKey } = require("../temporary");
 
@@ -256,6 +258,35 @@ async function listFragmentIndex(temporary, sessionId) {
     return fragments;
 }
 
+/**
+ * Prune old fragment-index metadata and corresponding binary PCM chunks that are
+ * no longer needed for future overlap windows.
+ *
+ * Fragments ending at or before `safeBeforeMs` are deleted.
+ *
+ * @param {Temporary} temporary
+ * @param {string} sessionId
+ * @param {number} safeBeforeMs
+ * @returns {Promise<number>} Number of pruned fragments.
+ */
+async function pruneFragmentsBeforeMs(temporary, sessionId, safeBeforeMs) {
+    const keys = await fragmentIndexSublevel(temporary, sessionId).listKeys();
+    let pruned = 0;
+    for (const key of keys) {
+        const entry = await fragmentIndexSublevel(temporary, sessionId).get(key);
+        if (entry === undefined || entry.type !== "live_diary_fragment_index") {
+            continue;
+        }
+        if (entry.endMs > safeBeforeMs) {
+            continue;
+        }
+        await fragmentIndexSublevel(temporary, sessionId).del(key);
+        await chunksBinarySublevel(temporary, sessionId).del(chunkKey(entry.sequence));
+        pruned += 1;
+    }
+    return pruned;
+}
+
 // ---------------------------------------------------------------------------
 // Watermark
 // ---------------------------------------------------------------------------
@@ -451,6 +482,7 @@ module.exports = {
     writeFragmentIndex,
     readFragmentIndex,
     listFragmentIndex,
+    pruneFragmentsBeforeMs,
     readTranscribedUntilMs,
     writeTranscribedUntilMs,
     readLastTranscribedRange,

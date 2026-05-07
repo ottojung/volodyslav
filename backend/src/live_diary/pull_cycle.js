@@ -23,6 +23,7 @@ const {
     readLastTranscribedRange,
     readKnownGaps,
     writeKnownGaps,
+    pruneFragmentsBeforeMs,
 } = require("./session_state");
 const { buildWav } = require("./wav_utils");
 const { assemblePcm } = require("./assembler");
@@ -270,6 +271,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs) {
             wordsSinceLastQuestion: parseInt(existingWordCount, 10) || 0,
             questionCommit: null,
         });
+        await pruneProcessedFragments(capabilities, sessionId, committedThroughMs);
         capabilities.logger.logDebug(
             { sessionId },
             "Pull cycle: silent window — watermark advanced without transcript update"
@@ -326,6 +328,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs) {
 
     if (cumulativeWordCount < 10) {
         await commitPullState(temporary, sessionId, baseBundle);
+        await pruneProcessedFragments(capabilities, sessionId, committedThroughMs);
         capabilities.logger.logDebug(
             { sessionId, cumulativeWordCount },
             "Pull cycle: word count below threshold; skipping question generation"
@@ -336,6 +339,7 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs) {
     const existingPending = await readPendingQuestions(temporary, sessionId);
     if (existingPending.length > 0) {
         await commitPullState(temporary, sessionId, baseBundle);
+        await pruneProcessedFragments(capabilities, sessionId, committedThroughMs);
         capabilities.logger.logDebug(
             { sessionId, pendingCount: existingPending.length },
             "Pull cycle: skipping question generation — previous batch not yet fetched"
@@ -377,8 +381,33 @@ async function _runPullCycle(capabilities, sessionId, deadlineMs, nowMs) {
         ...baseBundle,
         questionCommit: { askedQuestions, newQuestions, cumulativeWordCount, existingPending },
     });
+    await pruneProcessedFragments(capabilities, sessionId, committedThroughMs);
 
     return { status: "ok", degradedGap: gapScan.hasDegradedGap };
+}
+
+/**
+ * Prune fragment metadata and binary PCM that are safely behind the committed watermark.
+ * Keeps a bounded retention buffer so overlap windows and delayed retries stay reliable.
+ *
+ * @param {Capabilities} capabilities
+ * @param {string} sessionId
+ * @param {number} committedThroughMs
+ * @returns {Promise<void>}
+ */
+async function pruneProcessedFragments(capabilities, sessionId, committedThroughMs) {
+    const RETAIN_BEHIND_WATERMARK_MS = 120_000;
+    const safeBeforeMs = committedThroughMs - RETAIN_BEHIND_WATERMARK_MS;
+    if (safeBeforeMs <= 0) {
+        return;
+    }
+    const pruned = await pruneFragmentsBeforeMs(capabilities.temporary, sessionId, safeBeforeMs);
+    if (pruned > 0) {
+        capabilities.logger.logDebug(
+            { sessionId, pruned, safeBeforeMs },
+            "Pull cycle: pruned processed live-diary fragments"
+        );
+    }
 }
 
 module.exports = {
