@@ -22,7 +22,7 @@ import RecorderStatusBadge from "./RecorderStatusBadge.jsx";
 import LiveQuestionsPanel from "./LiveQuestionsPanel.jsx";
 import { useDiaryLiveQuestioningController } from "./useDiaryLiveQuestioningController.js";
 import { submitDiaryAudio } from "./diary_audio_api.js";
-import { initializeLiveQuestions } from "./session_api.js";
+import { discardSession, initializeLiveQuestions } from "./session_api.js";
 
 const pulseRing = keyframes`
     0%   { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.5); }
@@ -128,6 +128,11 @@ export default function AudioDiary() {
 
             if (!isMountedRef.current) {
                 return;
+            }
+
+            const completedSessionId = sessionIdRef.current;
+            if (completedSessionId) {
+                void discardSession(completedSessionId).catch(() => {});
             }
 
             if (result.entry && result.entry.id) {
