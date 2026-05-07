@@ -18,11 +18,11 @@ const {
     AudioSessionConflictError,
     AudioSessionFinalizeError,
 } = require("./errors");
+const { buildWav } = require("../build_wav");
 const {
     isValidSessionId,
     validateUploadChunkParams,
 } = require("./helpers");
-const { buildWav } = require("../build_wav");
 const {
     CURRENT_SESSION_KEY,
     indexSublevel,
@@ -339,30 +339,16 @@ async function fetchFinalAudio(capabilities, sessionId) {
         };
     }
 
-    // Lazy WAV assembly: read all PCM chunks, concatenate and wrap in a WAV container.
+    // Lazy WAV assembly from session chunk storage.
     const sessionChunks = chunksBinarySublevel(temporary, sessionId);
-    const chunkKeys = await sessionChunks.listKeys();
-    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
 
-    /** @type {Buffer[]} */
-    const pcmBuffers = [];
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined) {
-            pcmBuffers.push(entry);
-        }
-    }
-
-    // Concatenate all raw PCM fragments in sequence order and wrap in a single WAV file.
-    // PCM sample-level concatenation is always safe: no container format concerns.
-    const concatenatedPcm = Buffer.concat(pcmBuffers);
-
-    // Use PCM format stored in session metadata.  If no chunks were uploaded yet
+    // Use PCM format stored in session metadata. If no chunks were uploaded yet
     // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
     const sampleRateHz = meta.sampleRateHz || 16000;
     const channels = meta.channels || 1;
     const bitDepth = meta.bitDepth || 16;
-    const finalBuffer = buildWav(concatenatedPcm, sampleRateHz, channels, bitDepth);
+
+    const finalBuffer = await buildWav(sessionChunks, sampleRateHz, channels, bitDepth);
 
     // Cache the assembled WAV so subsequent calls can skip assembly.
     try {
