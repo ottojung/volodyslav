@@ -18,6 +18,7 @@ const {
     AudioSessionConflictError,
     AudioSessionFinalizeError,
 } = require("./errors");
+const { buildWav } = require("../build_wav");
 const {
     isValidSessionId,
     validateUploadChunkParams,
@@ -338,19 +339,8 @@ async function fetchFinalAudio(capabilities, sessionId) {
         };
     }
 
-    // Lazy WAV assembly: read all PCM chunks, concatenate and wrap in a WAV container.
+    // Lazy WAV assembly from session chunk storage.
     const sessionChunks = chunksBinarySublevel(temporary, sessionId);
-    const chunkKeys = await sessionChunks.listKeys();
-    chunkKeys.sort((a, b) => String(a).localeCompare(String(b)));
-
-    // Compute total PCM bytes first so we can allocate final WAV once.
-    let totalPcmBytes = 0;
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined) {
-            totalPcmBytes += entry.length;
-        }
-    }
 
     // Use PCM format stored in session metadata. If no chunks were uploaded yet
     // (fragmentCount === 0), fall back to a silent 16kHz mono 16-bit WAV.
@@ -358,32 +348,7 @@ async function fetchFinalAudio(capabilities, sessionId) {
     const channels = meta.channels || 1;
     const bitDepth = meta.bitDepth || 16;
 
-    // Build WAV in a single contiguous allocation to avoid large intermediate
-    // Buffer.concat() copies for long recordings.
-    const finalBuffer = Buffer.allocUnsafe(44 + totalPcmBytes);
-    finalBuffer.write("RIFF", 0);
-    finalBuffer.writeUInt32LE(36 + totalPcmBytes, 4);
-    finalBuffer.write("WAVE", 8);
-    finalBuffer.write("fmt ", 12);
-    finalBuffer.writeUInt32LE(16, 16);
-    finalBuffer.writeUInt16LE(1, 20);
-    finalBuffer.writeUInt16LE(channels, 22);
-    finalBuffer.writeUInt32LE(sampleRateHz, 24);
-    const byteRate = sampleRateHz * channels * (bitDepth / 8);
-    finalBuffer.writeUInt32LE(byteRate, 28);
-    finalBuffer.writeUInt16LE(channels * (bitDepth / 8), 32);
-    finalBuffer.writeUInt16LE(bitDepth, 34);
-    finalBuffer.write("data", 36);
-    finalBuffer.writeUInt32LE(totalPcmBytes, 40);
-
-    let offset = 44;
-    for (const key of chunkKeys) {
-        const entry = await sessionChunks.get(key);
-        if (entry !== undefined) {
-            entry.copy(finalBuffer, offset);
-            offset += entry.length;
-        }
-    }
+    const finalBuffer = await buildWav(sessionChunks, sampleRateHz, channels, bitDepth);
 
     // Cache the assembled WAV so subsequent calls can skip assembly.
     try {

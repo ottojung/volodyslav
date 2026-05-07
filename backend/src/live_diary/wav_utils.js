@@ -10,7 +10,7 @@
  */
 
 const { WaveFile } = require("wavefile");
-const { buildWav } = require("../build_wav");
+const { buildWavFromPcm } = require("../build_wav");
 
 /**
  * @typedef {object} WavInfo
@@ -96,5 +96,5 @@ function normalizeMimeType(mimeType) {
     return (mimeType.split(";")[0] || "").trim().toLowerCase();
 }
 
-module.exports = { parseWav, buildWav, extensionForMime, normalizeMimeType };
+module.exports = { parseWav, buildWav: buildWavFromPcm, extensionForMime, normalizeMimeType };
 
