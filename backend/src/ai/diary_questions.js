@@ -217,15 +217,14 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
 
     const timeoutMs = computeQuestionsTimeoutMs(transcriptSoFar, clampedMax);
     const controller = new AbortController();
-    const timerId = setTimeout(() => controller.abort(), timeoutMs);
-
-    const apiKey = capabilities.environment.openaiAPIKey();
-    const client = makeClient(apiKey);
-
     const messages = makeQuestionsMessages(transcriptSoFar, askedQuestions, clampedMax);
 
     let rawText;
+    let timerId;
     try {
+        timerId = setTimeout(() => controller.abort(), timeoutMs);
+        const apiKey = capabilities.environment.openaiAPIKey();
+        const client = makeClient(apiKey);
         const response = await client.chat.completions.create({
             model: DIARY_QUESTIONS_MODEL,
             messages,
@@ -244,7 +243,9 @@ async function generateQuestions(makeClient, capabilities, transcriptSoFar, aske
             error
         );
     } finally {
-        clearTimeout(timerId);
+        if (timerId !== undefined) {
+            clearTimeout(timerId);
+        }
     }
 
     if (!rawText) {
