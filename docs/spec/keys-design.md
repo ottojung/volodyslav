@@ -114,10 +114,12 @@ This applies to:
 The database contains an explicit bijection between the semantic identity and the
 persisted identity:
 
-- `node_key_to_id[nodeKey] -> id`
-- `node_id_to_key[id] -> nodeKey`
+- `nodeKeyToId(nodeKey) -> id`
+- `nodeIdToKey(id) -> nodeKey`
 
-`NodeKeyString` may remain persisted only in these lookup sublevels.
+These functions operate on the `/meta/identifiers_keys_map` database value.
+
+`NodeKeyString` may remain persisted only in this lookup table at `/meta/identifiers_keys_map`.
 
 ## Allocation and stability
 
@@ -134,8 +136,8 @@ identifier.
 Delete removes:
 
 - all graph-state records keyed by `id`
-- `node_key_to_id[nodeKey]`
-- `node_id_to_key[id]`
+- `nodeKeyToId(nodeKey)`
+- `nodeIdToKey(id)`
 
 Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
 fresh identifiers for `create`.
@@ -150,7 +152,7 @@ sorting operates on `NodeIdentifier` values directly.
 
 ## Bijection cache
 
-The full contents of both lookup sublevels (`node_key_to_id` and `node_id_to_key`)
+The full contents of the lookup table (`/meta/identifiers_keys_map`)
 are loaded into RAM and kept synchronized as an in-memory cache. All lookups between
 `NodeKey` and `NodeIdentifier` go through this cache, not through direct database
 reads at call time.
@@ -177,15 +179,14 @@ and analogously for the other graph-state sublevels:
 
 Lookup metadata remains explicit and separate:
 
-- `rendered/r/node_key_to_id/{node-key-encoding}`
-- `rendered/r/node_id_to_key/nodeid1`
+- `/meta/identifiers_keys_map`
 
 The snapshot format therefore exposes graph-state records directly by identifier and
-uses lookup tables for semantic readability.
+uses the lookup table for semantic readability.
 
 ## No key↔path conversion
 
-Outside the explicit lookup-metadata namespace, there must not be any code whose job
+Outside the explicit lookup-metadata table, there must not be any code whose job
 is to convert concrete node keys to filesystem paths or to reconstruct concrete node
 keys from filesystem paths.
 
@@ -197,12 +198,11 @@ This prohibition applies to graph-state addressing and covers both:
   concrete `NodeKey` from graph-state path segments or encodes one into graph-state
   path segments
 
-The following lookup-metadata paths are explicitly exempt from this prohibition:
+The following lookup-metadata path is explicitly exempt from this prohibition:
 
-- `rendered/r/node_key_to_id/{node-key-encoding}`
-- `rendered/r/node_id_to_key/nodeid1`
+- `/meta/identifiers_keys_map`
 
-Those paths may encode or decode `NodeKey` values for the sole purpose of reading and
+This path may encode or decode `NodeKey` values for the sole purpose of reading and
 writing the lookup tables. They must not be treated as a general filesystem addressing
 scheme for graph-state records.
 
@@ -217,8 +217,8 @@ Accordingly:
 
 For every materialized node identifier `id`:
 
-1. `node_id_to_key[id] = key`
-2. `node_key_to_id[key] = id`
+1. `nodeIdToKey(id) = key`
+2. `nodeKeyToId(key) = id`
 3. all graph-state records for that node are keyed by `id`
 4. every entry inside `inputs[id].inputs` is a valid `NodeIdentifier`
 5. every entry inside `revdeps[id]` is a valid `NodeIdentifier`
@@ -229,8 +229,8 @@ No persisted graph edge may point directly to a `NodeKeyString`.
 
 The following states are invalid:
 
-- `node_key_to_id[key]` exists but `node_id_to_key[id]` is missing
-- `node_id_to_key[id]` exists but `node_key_to_id[key]` is missing
+- `nodeKeyToId(key)` exists but `nodeIdToKey(id)` is missing
+- `nodeIdToKey(id)` exists but `nodeKeyToId(key)` is missing
 - lookup entries disagree about each other
-- a graph-state record exists for an id with no `node_id_to_key` entry
+- a graph-state record exists for an id with no `nodeIdToKey(id)` entry
 - `inputs` or `revdeps` mention an unknown id
