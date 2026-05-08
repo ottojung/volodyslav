@@ -20,6 +20,7 @@ Extend the root database so graph state is identifier-addressed and the semantic
 
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
 - [ ] Add lookup table at `/_meta/identifiers_keys_map` (stores an object of type `Array<[NodeIdentifier, NodeKey]>`)
+  - Make sure that the lookup table is atomically updated when replica switch is happening, so that the mapping always describes the state of `/_meta/current_replica`.
 - [ ] Add helper methods `nodeKeyToId` and `nodeIdToKey` to `root_database.js`
 - [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
 - [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads.
