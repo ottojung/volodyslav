@@ -2,9 +2,6 @@
 
 ## Purpose
 
-This document is the **intended target design specification** for IncrementalGraph
-node addressing. It describes the model as it is meant to be.
-
 This document defines the node-addressing model for IncrementalGraph storage,
 filesystem snapshots, and the HTTP inspection API.
 
@@ -13,6 +10,9 @@ This model separates three concerns:
 - `NodeKey` is the semantic identity of a concrete node instance
 - `NodeIdentifier` is the persisted storage identity of a materialized node
 - filesystem snapshots and the HTTP inspection API operate directly on stored identifiers
+
+This document is the **intended target design specification** for IncrementalGraph
+node addressing. It describes the model as it is meant to be.
 
 ## Terms
 
