@@ -86,6 +86,10 @@ lookup tables carrying the `NodeKey ↔ NodeIdentifier` relationship.
 - [ ] Remove the concrete-node path encoding/decoding model entirely
 - [ ] Delete any code whose job is converting concrete node keys to filesystem paths or back
 - [ ] Simplify `database/encoding.js`, render helpers, scan helpers, and unification helpers around the direct identifier-path snapshot format
+  - [ ] In `database/encoding.js`, remove the NodeKey JSON path contract for data sublevels: `keyToRelativePath()` and `relativePathToKey()` must treat `values|freshness|inputs|revdeps|counters|timestamps` keys as single identifier segments (`.../<id>`), not `head/arg...` expansions.
+  - [ ] Remove `serializeNodeKey` / `deserializeNodeKey` usage from graph-state path encoding/decoding; after this change those conversions are only allowed for reading/writing `/${current_replica}/global/identifiers_keys_map`, not for graph-state files.
+  - [ ] Update `backend/tests/database_render.test.js` cases that currently enforce “expected NodeKey JSON” for data sublevels; those assertions become wrong once keys are opaque identifiers and will otherwise force accidental reintroduction of NodeKey-based path decoding.
+  - [ ] Add a render/scan regression test that seeds raw keys like `!x!!values!nodeid1` + `!x!!inputs!nodeid1`, verifies rendered files are `rendered/x/values/nodeid1` / `rendered/x/inputs/nodeid1`, and round-trips back without any `head`/`args` directories.
 
 This requires careful audit to avoid leaving hidden key-path transforms.
 
