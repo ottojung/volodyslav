@@ -127,9 +127,9 @@ persisted identity:
 - `nodeKeyToId(nodeKey) -> id`
 - `nodeIdToKey(id) -> nodeKey`
 
-These functions operate on the `/meta/identifiers_keys_map` database value.
+These functions operate on the `/_meta/identifiers_keys_map` database value.
 
-`NodeKeyString` may remain persisted only in this lookup table at `/meta/identifiers_keys_map`.
+`NodeKeyString` may remain persisted only in this lookup table at `/_meta/identifiers_keys_map`.
 
 ## Allocation and stability
 
@@ -162,7 +162,7 @@ sorting operates on `NodeIdentifier` values directly.
 
 ## Bijection cache
 
-The full contents of the lookup table (`/meta/identifiers_keys_map`)
+The full contents of the lookup table (`/_meta/identifiers_keys_map`)
 are loaded into RAM and kept synchronized as an in-memory cache. All lookups between
 `NodeKey` and `NodeIdentifier` go through this cache, not through direct database
 reads at call time.
@@ -189,7 +189,7 @@ and analogously for the other graph-state sublevels:
 
 Lookup metadata remains explicit and separate:
 
-- `/meta/identifiers_keys_map`
+- `/_meta/identifiers_keys_map`
 
 The snapshot format therefore exposes graph-state records directly by identifier and
 uses the lookup table for semantic readability.
@@ -210,7 +210,7 @@ This prohibition applies to graph-state addressing and covers both:
 
 The following lookup-metadata path is explicitly exempt from this prohibition:
 
-- `/meta/identifiers_keys_map`
+- `/_meta/identifiers_keys_map`
 
 This path may encode or decode `NodeKey` values for the sole purpose of reading and
 writing the lookup tables. They must not be treated as a general filesystem addressing
