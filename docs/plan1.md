@@ -24,6 +24,8 @@ Extend the root database so graph state is identifier-addressed and the semantic
 - [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
 - [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads.
 - [ ] The cache should be stored in a two-way hashmap structure for efficient lookups in both directions, and should be the authoritative source for the bijection while the database is open.
+- [ ] Expand batch builder type to include `metaIdentifiers` operations so identifier allocation/removal can commit in the same physical batch as graph-state updates.
+  - [ ] Add integration tests for failure injection: if a batch write fails, neither state sublevels nor lookup metadata should advance.
 
 ## 3. Storage boundary and lifecycle behavior
 
