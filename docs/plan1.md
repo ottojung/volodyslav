@@ -9,7 +9,7 @@ storage to `NodeIdentifier`-based storage in IncrementalGraph.
 Introduce a nominal `NodeIdentifier` type that defines the persisted identifier format
 in one place and enforces it consistently.
 
-- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`, except that it must use `varibleName` function for generating random identifiers.
+- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`, except that it must use `variableName` function for generating random identifiers.
 - [ ] Define construction and parsing around the exact full-string validity rule from the design: `/^[a-z_][a-z0-9_]*$/`
 - [ ] Reject invalid identifiers during construction, parsing, and before persistence, including explicit rejection of any string that does not match the entire validity rule
 
