@@ -66,6 +66,7 @@ identifier-addressed storage model directly.
 
 - [ ] Change the HTTP inspection API so concrete-node operations address nodes by `NodeIdentifier`, not by `head/args`
 - [ ] Update the HTTP graph API spec, route shapes, handlers, and tests to the identifier-based concrete-node model
+  - [ ] Replace concrete-node `head/args` routes (`/graph/nodes/:head`, `/graph/nodes/:head/*` and the matching POST/DELETE handlers) with identifier-addressed concrete-node routes so handlers no longer parse concrete args from URL path segments. Keep `/graph/schemas` endpoints head-based.
 - [ ] Keep the schema-oriented HTTP endpoints aligned with the public graph model where they are still head-based rather than concrete-node based
 
 ## 6. Filesystem snapshot simplification
