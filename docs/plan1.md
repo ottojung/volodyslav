@@ -24,7 +24,7 @@ Extend the root database so graph state is identifier-addressed and the semantic
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
 - [ ] Add lookup sublevels `node_key_to_id` and `node_id_to_key` to `root_database.js`
 - [ ] Ensure the lookup sublevels represent a bijection and are written atomically with graph-state lifecycle changes
-- [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads
+- [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
 
 ## 3. Storage boundary and lifecycle behavior
 
