@@ -77,9 +77,6 @@ No other characters are permitted in a `NodeIdentifier`. In particular, a
 `NodeIdentifier` MUST NOT contain `/`, `\`, `.`, whitespace, control characters, `!`,
 or any other punctuation.
 
-A `NodeIdentifier` MUST NOT contain the substring `"!!"`. That substring is reserved
-for sublevel delimiters in raw LevelDB keys and must appear only there.
-
 These requirements are part of the `NodeIdentifier` value definition itself. So any
 implementation that constructs, parses, or accepts a `NodeIdentifier` must enforce
 them, not just the documentation.
