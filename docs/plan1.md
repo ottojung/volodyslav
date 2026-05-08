@@ -45,10 +45,13 @@ state and graph-to-graph references to `NodeIdentifier`.
 Preserve the current migration callback surface while making the persisted data
 identifier-addressed and keeping identifier stability where required by the design.
 
-- [ ] Update migration code so migration callbacks remain `NodeKey`-based while stored results become identifier-based
+- [ ] Update migration code so migration callbacks become `NodeIdentifier`-based
 - [ ] Preserve node identifiers across `keep`, `override`, and `invalidate` migration decisions
 - [ ] Allocate fresh identifiers for migration `create`
 - [ ] Remove both lookup entries and all identifier-keyed state for migration `delete`
+
+Then, write a single migration that will migrate the database from `NodeKey`-based storage to `NodeIdentifier`-based one.
+This requires stepping of the existing migration API, just for this one migration.
 
 ## 5. HTTP inspection API
 
