@@ -22,8 +22,9 @@ Extend the root database so graph state is identifier-addressed and the semantic
 `NodeKey` remains recoverable through explicit lookup tables.
 
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
-- [ ] Add lookup sublevels `node_key_to_id` and `node_id_to_key` to `root_database.js`
-- [ ] Ensure the lookup sublevels represent a bijection and are written atomically with graph-state lifecycle changes
+- [ ] Add lookup table at `/meta/identifiers_keys_map`.
+- [ ] Add helper methods `nodeKeyToId` and `nodeIdToKey` to `root_database.js`
+- [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes
 - [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
 
 ## 3. Storage boundary and lifecycle behavior
@@ -68,7 +69,7 @@ Simplify snapshot rendering and scanning around direct identifier paths, with re
 lookup tables carrying the `NodeKey ↔ NodeIdentifier` relationship.
 
 - [ ] Change render/scan so graph-state paths are direct identifier paths like `rendered/r/values/nodeid1`
-- [ ] Keep lookup metadata readable and separate in the snapshot format
+- [ ] Keep lookup metadata readable and separate in the snapshot format (at `/meta/identifiers_keys_map`)
 - [ ] Remove the concrete-node path encoding/decoding model entirely
 - [ ] Delete any code whose job is converting concrete node keys to filesystem paths or back
 - [ ] Simplify `database/encoding.js`, render helpers, scan helpers, and unification helpers around the direct identifier-path snapshot format
