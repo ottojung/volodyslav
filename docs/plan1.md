@@ -8,12 +8,9 @@ This plan describes the concrete implementation work needed to realize the desig
 Introduce a nominal `NodeIdentifier` type that defines the persisted identifier format
 in one place and enforces it consistently.
 
-- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`
+- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`, except that it must use `varibleName` function for generating random identifiers.
 - [ ] Define construction and parsing around the exact full-string validity rule from the design: `/^[a-z_][a-z0-9_]*$/`
 - [ ] Reject invalid identifiers during construction, parsing, and before persistence, including explicit rejection of any string that does not match the entire validity rule
-- [ ] Add `backend/src/random/variable_name.js` that generates identifiers matching `/^[a-z_][a-z0-9_]*$/` using the repository's capabilities-driven seed pattern
-- [ ] Export `variableName` from `backend/src/random/index.js`
-- [ ] Migrate every existing caller of `random.string` (`backend/src/event/id.js`, `backend/src/runtime_identifier.js`) to use `random.variableName` instead
 
 ## 2. Database shape and lookup metadata
 
@@ -21,10 +18,10 @@ Extend the root database so graph state is identifier-addressed and the semantic
 `NodeKey` remains recoverable through explicit lookup tables.
 
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
-- [ ] Add lookup table at `/meta/identifiers_keys_map`.
+- [ ] Add lookup table at `/meta/identifiers_keys_map` (stores an object of type `Array<[NodeIdentifier, NodeKey]>`)
 - [ ] Add helper methods `nodeKeyToId` and `nodeIdToKey` to `root_database.js`
-- [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes
-- [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
+- [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
+- [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads.
 
 ## 3. Storage boundary and lifecycle behavior
 
