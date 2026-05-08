@@ -19,7 +19,7 @@ Extend the root database so graph state is identifier-addressed and the semantic
 `NodeKey` remains recoverable through explicit lookup tables.
 
 - [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
-- [ ] Add lookup table at `/_meta/identifiers_keys_map` (stores an object of type `Array<[NodeIdentifier, NodeKey]>`)
+- [ ] Add lookup table at `/${current_replica}/global/identifiers_keys_map` (stores an object of type `Array<[NodeIdentifier, NodeKey]>`)
   - Make sure that the lookup table is atomically updated when replica switch is happening, so that the mapping always describes the state of `/_meta/current_replica`.
 - [ ] Add helper methods `nodeKeyToId` and `nodeIdToKey` to `root_database.js`
 - [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
@@ -76,7 +76,7 @@ Simplify snapshot rendering and scanning around direct identifier paths, with re
 lookup tables carrying the `NodeKey ↔ NodeIdentifier` relationship.
 
 - [ ] Change render/scan so graph-state paths are direct identifier paths like `rendered/r/values/nodeid1`
-- [ ] Keep lookup metadata readable and separate in the snapshot format (at `/_meta/identifiers_keys_map`)
+- [ ] Keep lookup metadata readable and separate in the snapshot format (at `/${current_replica}/global/identifiers_keys_map`)
 - [ ] Remove the concrete-node path encoding/decoding model entirely
 - [ ] Delete any code whose job is converting concrete node keys to filesystem paths or back
 - [ ] Simplify `database/encoding.js`, render helpers, scan helpers, and unification helpers around the direct identifier-path snapshot format
