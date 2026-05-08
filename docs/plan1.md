@@ -36,6 +36,7 @@ state and graph-to-graph references to `NodeIdentifier`.
 - [ ] Add atomic helper(s) to resolve or allocate an identifier for a `NodeKeyString`
 - [ ] Keep `IncrementalGraph` and `Interface` APIs unchanged by translating `NodeKey` ↔ `NodeIdentifier` at the storage boundary; `NodeKey` must not appear in any internal storage logic beyond this translation step
 - [ ] Update `inputs` and `revdeps` persistence so all stored references are `NodeIdentifier[]`
+  - [ ] When rewriting `inputs`, preserve original input order so `inputs[i]` still corresponds to `inputCounters[i]`; only translate each element from `NodeKeyString` to `NodeIdentifier` without reordering.
 - [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
   - Replace comparator plumbing with `compareNodeIdentifier(a, b)` implemented as string lexical compare on validated ID strings.
   - Update all revdeps materialization points (`graph_storage`, `migration_runner`, topo/unification where relevant) to enforce this order.
