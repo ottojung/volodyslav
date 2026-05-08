@@ -48,8 +48,7 @@ state and graph-to-graph references to `NodeIdentifier`.
 
 ## 4. Migration behavior
 
-Preserve the current migration callback surface while making the persisted data
-identifier-addressed and keeping identifier stability where required by the design.
+Replace (not preserve) the current `NodeKey`-addressed migration callback surface with a fully `NodeIdentifier`-addressed one, while keeping identifier stability where required by the design.
 
 - [ ] Update migration code so **all migration callbacks and migration-internal graph references** are `NodeIdentifier`-based (no `NodeKey`-addressed migration inputs/outputs anywhere)
   - [ ] Keep migration decisions (`keep`/`delete`/`override`/`invalidate`/`create`) `NodeIdentifier`-addressed, but add an explicit lookup helper for callbacks that need schema/head-based selection (current `migration.js` does `deserializeNodeKey(nodeKey).head` in `keepNodeType`/`deleteNodeType`). Without this helper, porting the existing migration callback will either break head-based filtering or incorrectly reintroduce `NodeKey`-addressed decision APIs.
