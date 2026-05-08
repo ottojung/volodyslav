@@ -1,7 +1,8 @@
 # Plan: implement internal node identifiers for IncrementalGraph
 
 This plan describes the concrete implementation work needed to realize the design in
-`docs/spec/keys-design.md`.
+`docs/spec/keys-design.md`, and the more general transition from `NodeKey`-based
+storage to `NodeIdentifier`-based storage in IncrementalGraph.
 
 ## 1. Identifier type and validity
 
