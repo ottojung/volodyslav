@@ -43,6 +43,7 @@ state and graph-to-graph references to `NodeIdentifier`.
 - [ ] Update `listMaterializedNodes()` and inspection helpers to map stored ids back to public node keys
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
+- [ ] Old APIs must no longer be supported, and all their legacy burden (eg key-path transforms, key-based storage, key-based rendering) must be removed. The only place `NodeKey` should be used is in the public graph API and the bijection lookup table. Do not preserve any backwards compatibility at all, anywhere.
 
 ## 4. Migration behavior
 
