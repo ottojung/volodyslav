@@ -73,6 +73,8 @@ lookup tables carrying the `NodeKey ↔ NodeIdentifier` relationship.
 - [ ] Delete any code whose job is converting concrete node keys to filesystem paths or back
 - [ ] Simplify `database/encoding.js`, render helpers, scan helpers, and unification helpers around the direct identifier-path snapshot format
 
+This requires careful audit to avoid leaving hidden key-path transforms.
+
 ## 7. Tests and documentation
 
 Update the documentation and focused tests so the new identifier-addressed model is
