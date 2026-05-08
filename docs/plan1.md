@@ -39,7 +39,7 @@ state and graph-to-graph references to `NodeIdentifier`.
   - [ ] When rewriting `inputs`, preserve original input order so `inputs[i]` still corresponds to `inputCounters[i]`; only translate each element from `NodeKeyString` to `NodeIdentifier` without reordering.
 - [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
   - Replace comparator plumbing with `compareNodeIdentifier(a, b)` implemented as string lexical compare on validated ID strings.
-  - Update all revdeps materialization points (`graph_storage`, `migration_runner`, topo/unification where relevant) to enforce this order.
+  - Update all revdeps materialization points (`graph_storage`, `migration_runner`, `database/sync_merge.js`, topo/unification where relevant) to enforce this order.
   - Add invariant tests: inserting dependencies in random order yields persisted revdeps sorted by identifier lexical order.
 - [ ] Update `listMaterializedNodes()` and inspection helpers to map stored ids back to public node keys
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
