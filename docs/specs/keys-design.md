@@ -128,6 +128,7 @@ persisted identity:
 - `nodeIdToKey(id) -> nodeKey`
 
 These functions operate on the `/${current_replica}/global/identifiers_keys_map` database value.
+Here `${current_replica}` is the replica name of the current database instance, for example `x` or `y`.
 
 `NodeKeyString` may remain persisted only in this lookup table at `/${current_replica}/global/identifiers_keys_map`.
 
