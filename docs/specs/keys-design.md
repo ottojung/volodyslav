@@ -46,6 +46,17 @@ internal logic. Inside the storage layer, all node addressing, sorting, and
 edge-following uses `NodeIdentifier` only. `NodeKey` values appear only as arguments
 or return values of user-facing API calls and in the bijection lookup tables.
 
+
+### Migration API boundary
+
+Migration code is internal storage logic, so migrations are fully `NodeIdentifier`-addressed.
+
+- Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
+- Migration-produced `inputs`/`revdeps` must contain only `NodeIdentifier` values.
+- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for external API translation.
+
+There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
+
 ### HTTP inspection API
 
 The HTTP inspection API is not a user-facing API. It is an internal development and
@@ -95,7 +106,7 @@ This applies to:
 - keys in all graph-state sublevels
 - values inside `inputs`
 - values inside `revdeps`
-- migration-produced state
+- all migration callback payloads and migration-produced state
 - filesystem-rendered snapshots
 - HTTP API addressing of concrete nodes
 
