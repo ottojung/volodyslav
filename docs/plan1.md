@@ -27,6 +27,11 @@ Extend the root database so graph state is identifier-addressed and the semantic
 - [ ] The cache should be stored in a two-way hashmap structure for efficient lookups in both directions, and should be the authoritative source for the bijection while the database is open.
 - [ ] Expand batch builder type to include `metaIdentifiers` operations so identifier allocation/removal can commit in the same physical batch as graph-state updates.
   - [ ] Add integration tests for failure injection: if a batch write fails, neither state sublevels nor lookup metadata should advance.
+- [ ] Update every schema-storage adapter to carry the identifiers map as first-class replica data, not as an out-of-band special case.
+  - [ ] Extend `database/root_database.js` `SchemaStorage` and `buildSchemaStorage()` with a typed store for `identifiers_keys_map`, and ensure it is present for both active and inactive replicas.
+  - [ ] Mirror the same typed store in `database/hostname_storage.js`; migration/sync code uses hostname-backed storages and will silently drop lookup metadata unless this path is updated too.
+  - [ ] Update `database/unification/db_to_db.js` so `identifiers_keys_map` participates in copy/unify operations; otherwise sync can copy `inputs`/`revdeps` that reference ids absent from the destination lookup table.
+  - [ ] Add focused tests that perform sync/unification between replicas and assert both directions of the bijection survive, not just graph-state sublevels.
 
 ## 3. Storage boundary and lifecycle behavior
 
