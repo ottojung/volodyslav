@@ -37,6 +37,9 @@ state and graph-to-graph references to `NodeIdentifier`.
 - [ ] Keep `IncrementalGraph` and `Interface` APIs unchanged by translating `NodeKey` ↔ `NodeIdentifier` at the storage boundary; `NodeKey` must not appear in any internal storage logic beyond this translation step
 - [ ] Update `inputs` and `revdeps` persistence so all stored references are `NodeIdentifier[]`
 - [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
+  - Replace comparator plumbing with `compareNodeIdentifier(a, b)` implemented as string lexical compare on validated ID strings.
+  - Update all revdeps materialization points (`graph_storage`, `migration_runner`, topo/unification where relevant) to enforce this order.
+  - Add invariant tests: inserting dependencies in random order yields persisted revdeps sorted by identifier lexical order.
 - [ ] Update `listMaterializedNodes()` and inspection helpers to map stored ids back to public node keys
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
