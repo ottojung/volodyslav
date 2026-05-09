@@ -47,8 +47,9 @@ const {
  */
 
 /**
- * Sublevel for storing plain-string replica-level state (e.g., version).
- * Uses NodeKeyString keys to match the generic typed-database interface.
+ * Sublevel for storing replica-level global state (e.g., version).
+ * Uses NodeKeyString as the key type to satisfy the generic typed-database
+ * interface; in practice only the 'version' key is stored here.
  * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, NodeKeyString, Version>} GlobalSublevelType
  */
 
