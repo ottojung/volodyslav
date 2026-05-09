@@ -84,6 +84,7 @@ function makeFakeSchemaStorage() {
     const data = {
         values: new Map(),
         freshness: new Map(),
+        global: new Map(),
         inputs: new Map(),
         revdeps: new Map(),
         counters: new Map(),
@@ -123,6 +124,7 @@ function makeFakeSchemaStorage() {
     const storage = {
         values: makeSubDb('values'),
         freshness: makeSubDb('freshness'),
+        global: makeSubDb('global'),
         inputs: makeSubDb('inputs'),
         revdeps: makeSubDb('revdeps'),
         counters: makeSubDb('counters'),
@@ -197,11 +199,12 @@ describe('makeDbToDbAdapter', () => {
         expect(dstData.freshness.has('stale')).toBe(false);
     });
 
-    test('covers all data sublevels: values, freshness, inputs, revdeps, counters, timestamps', async () => {
+    test('covers all data sublevels: values, freshness, global, inputs, revdeps, counters, timestamps', async () => {
         const { storage: src } = makeFakeSchemaStorage();
         const k = 'node-key';
         await src.values.put(k, 'val');
         await src.freshness.put(k, 'fresh');
+        await src.global.put('version', '1.0.0');
         await src.inputs.put(k, { inputs: [], inputCounters: [] });
         await src.revdeps.put(k, ['dep1']);
         await src.counters.put(k, 1);
@@ -211,9 +214,10 @@ describe('makeDbToDbAdapter', () => {
 
         const stats = await unifyStores(makeDbToDbAdapter(src, dst));
 
-        expect(stats.putCount).toBe(6);
+        expect(stats.putCount).toBe(7);
         expect(dstData.values.get(k)).toBe('val');
         expect(dstData.freshness.get(k)).toBe('fresh');
+        expect(dstData.global.get('version')).toBe('1.0.0');
         expect(dstData.inputs.get(k)).toEqual({ inputs: [], inputCounters: [] });
         expect(dstData.revdeps.get(k)).toEqual(['dep1']);
         expect(dstData.counters.get(k)).toBe(1);

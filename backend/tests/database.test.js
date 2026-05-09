@@ -125,7 +125,7 @@ describe('generators/database', () => {
                 const db = await getRootDatabase(capabilities);
                 try {
                     // A fresh database has no stored version.
-                    const version = await db.getMetaVersion();
+                    const version = await db.getGlobalVersion();
                     expect(version).toBeUndefined();
                 } finally {
                     await db.close();
@@ -398,12 +398,12 @@ describe('generators/database', () => {
             }
         });
 
-        test('getMetaVersion returns undefined on a fresh database', async () => {
+        test('getGlobalVersion returns undefined on a fresh database', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const version = await db.getMetaVersion();
+                const version = await db.getGlobalVersion();
                 expect(version).toBeUndefined();
                 
                 await db.close();
@@ -596,7 +596,7 @@ describe('generators/database', () => {
                 ]);
 
                 // Verify global/version was initialised in y.
-                const xMetaVersion = await db.getMetaVersion();
+                const xMetaVersion = await db.getGlobalVersion();
                 expect(xMetaVersion).toBeUndefined(); // x has no version yet
 
                 // Now clear y — the schema storage for y is rebuilt with a fresh closure.

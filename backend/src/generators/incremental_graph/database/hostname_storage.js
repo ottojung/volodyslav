@@ -100,6 +100,8 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<Version>} */
+    const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
@@ -116,6 +118,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
         revdeps: makeTypedDatabase(revdepsSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
+        global: makeTypedDatabase(globalSublevel),
     };
 }
 
@@ -165,7 +168,7 @@ function hostnameRawKey(hostname, sublevelName, subkey) {
 }
 
 /**
- * Reads the app version stored in a hostname's staging meta sublevel.
+ * Reads the app version stored in a hostname's staging global sublevel.
  * Returns `undefined` when the hostname storage contains no version entry.
  *
  * @param {RootLevelType} db - The root LevelDB instance.
@@ -173,9 +176,9 @@ function hostnameRawKey(hostname, sublevelName, subkey) {
  * @returns {Promise<Version | undefined>}
  * @throws {InvalidHostnameError} If the hostname is invalid.
  */
-async function getHostnameMetaVersion(db, hostname) {
+async function getHostnameGlobalVersion(db, hostname) {
     validateHostname(hostname);
-    const rawKey = hostnameRawKey(hostname, 'meta', 'version');
+    const rawKey = hostnameRawKey(hostname, 'global', 'version');
     const raw = await db.get(rawKey);
     if (raw === undefined) {
         return undefined;
@@ -187,18 +190,18 @@ async function getHostnameMetaVersion(db, hostname) {
 }
 
 /**
- * Write a meta key/value pair into a hostname's staging meta sublevel.
+ * Write a key/value pair into a hostname's staging global sublevel.
  *
  * @param {RootLevelType} db - The root LevelDB instance.
  * @param {string} hostname
- * @param {string} key - The meta key to write (e.g. 'version').
+ * @param {string} key - The key to write (e.g. 'version').
  * @param {*} value - The value to store.
  * @returns {Promise<void>}
  * @throws {InvalidHostnameError} If the hostname is invalid.
  */
-async function setHostnameMeta(db, hostname, key, value) {
+async function setHostnameGlobal(db, hostname, key, value) {
     validateHostname(hostname);
-    const rawKey = hostnameRawKey(hostname, 'meta', key);
+    const rawKey = hostnameRawKey(hostname, 'global', key);
     await db.put(rawKey, value);
 }
 
@@ -237,8 +240,8 @@ module.exports = {
     buildBareSchemaStorage,
     hostnameSchemaStorage,
     clearHostnameStorage,
-    getHostnameMetaVersion,
-    setHostnameMeta,
+    getHostnameGlobalVersion,
+    setHostnameGlobal,
     rawPutAllToHostname,
     InvalidHostnameError,
     isInvalidHostnameError,

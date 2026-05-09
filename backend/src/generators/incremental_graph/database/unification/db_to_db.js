@@ -2,12 +2,9 @@
  * DB-to-DB unification adapter.
  *
  * Unifies one SchemaStorage into another by iterating all data sublevels
- * (values, freshness, inputs, revdeps, counters, timestamps) as a unified
+ * (values, freshness, global, inputs, revdeps, counters, timestamps) as a unified
  * key space.  Only puts keys whose serialised value differs; deletes keys
  * absent from the source.
- *
- * The global/version sublevel is deliberately excluded — callers must manage
- * the version field separately (e.g. via setMetaVersionForReplica).
  *
  * Key format: "{sublevel}\x00{nodeKey}" where \x00 is used as an unambiguous
  * separator that cannot appear in either sublevel names or NodeKey JSON strings.
@@ -55,6 +52,7 @@ const { stringToNodeKeyString } = require('../types');
  * @typedef {object} ReadableSchemaStorage
  * @property {ReadableSublevel} values
  * @property {ReadableSublevel} freshness
+ * @property {ReadableSublevel} global
  * @property {ReadableSublevel} inputs
  * @property {ReadableSublevel} revdeps
  * @property {ReadableSublevel} counters
@@ -65,20 +63,20 @@ const { stringToNodeKeyString } = require('../types');
  * Union of all concrete typed sublevels in a SchemaStorage.
  * Used for the target side only (where put/del ops must be typed).
  *
- * @typedef {import('../root_database').ValuesDatabase | import('../root_database').FreshnessDatabase | import('../root_database').InputsDatabase | import('../root_database').RevdepsDatabase | import('../root_database').CountersDatabase | import('../root_database').TimestampsDatabase} AnySubDb
+ * @typedef {import('../root_database').ValuesDatabase | import('../root_database').FreshnessDatabase | import('../root_database').GlobalVersionDatabase | import('../root_database').InputsDatabase | import('../root_database').RevdepsDatabase | import('../root_database').CountersDatabase | import('../root_database').TimestampsDatabase} AnySubDb
  */
 
 /**
  * The data sublevel names covered by this adapter, in alphabetical order.
  * Alphabetical order ensures that composite keys "{sublevel}\x00{nodeKey}" are
- * globally sorted (because 'c' < 'f' < 'i' < 'r' < 't' < 'v'), which is
+ * globally sorted (because 'c' < 'f' < 'g' < 'i' < 'r' < 't' < 'v'), which is
  * required for the merge-join in core.js to produce correct results.
- * The global/version sublevel is intentionally excluded.
  * @type {readonly string[]}
  */
 const DATA_SUBLEVELS = Object.freeze([
     'counters',
     'freshness',
+    'global',
     'inputs',
     'revdeps',
     'timestamps',
@@ -128,6 +126,7 @@ function getSourceSubDb(source, sublevel) {
     switch (sublevel) {
         case 'values': return source.values;
         case 'freshness': return source.freshness;
+        case 'global': return source.global;
         case 'inputs': return source.inputs;
         case 'revdeps': return source.revdeps;
         case 'counters': return source.counters;
@@ -152,6 +151,7 @@ function getTargetSubDb(storage, sublevel) {
     switch (sublevel) {
         case 'values': return storage.values;
         case 'freshness': return storage.freshness;
+        case 'global': return storage.global;
         case 'inputs': return storage.inputs;
         case 'revdeps': return storage.revdeps;
         case 'counters': return storage.counters;
@@ -274,13 +274,15 @@ function makeDbToDbAdapter(source, target, options = {}) {
  * checking in batch() — it is intended purely as a temporary capture store for
  * tests or intermediate computation, not as a durable replica.
  *
- * @returns {{ values: object, freshness: object, inputs: object, revdeps: object, counters: object, timestamps: object, batch: function, _stores: object }}
+ * @returns {{ values: object, freshness: object, global: object, inputs: object, revdeps: object, counters: object, timestamps: object, batch: function, _stores: object }}
  */
 function makeInMemorySchemaStorage() {
     /** @type {Map<string, unknown>} */
     const valuesStore = new Map();
     /** @type {Map<string, unknown>} */
     const freshnessStore = new Map();
+    /** @type {Map<string, unknown>} */
+    const globalStore = new Map();
     /** @type {Map<string, unknown>} */
     const inputsStore = new Map();
     /** @type {Map<string, unknown>} */
@@ -350,6 +352,7 @@ function makeInMemorySchemaStorage() {
         switch (tag) {
             case 'values': return valuesStore;
             case 'freshness': return freshnessStore;
+            case 'global': return globalStore;
             case 'inputs': return inputsStore;
             case 'revdeps': return revdepsStore;
             case 'counters': return countersStore;
@@ -378,6 +381,7 @@ function makeInMemorySchemaStorage() {
     return {
         values: makeSubstorage(valuesStore, 'values'),
         freshness: makeSubstorage(freshnessStore, 'freshness'),
+        global: makeSubstorage(globalStore, 'global'),
         inputs: makeSubstorage(inputsStore, 'inputs'),
         revdeps: makeSubstorage(revdepsStore, 'revdeps'),
         counters: makeSubstorage(countersStore, 'counters'),
@@ -386,6 +390,7 @@ function makeInMemorySchemaStorage() {
         _stores: {
             values: valuesStore,
             freshness: freshnessStore,
+            global: globalStore,
             inputs: inputsStore,
             revdeps: revdepsStore,
             counters: countersStore,

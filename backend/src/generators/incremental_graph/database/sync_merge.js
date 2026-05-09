@@ -146,10 +146,8 @@ function compareIsoTimestamps(a, b) {
  * are deleted from the target.  This replaces the previous clear-then-copy
  * approach, minimising unnecessary writes.
  *
- * After unification, copies the version from `from` into `to`'s global
- * sublevel.  Version is replica-local state: copying it here ensures the
- * target is consistent before any subsequent batch() calls (which check
- * global/version on first invocation).
+ * The `global/version` sublevel is included in the unification, so the
+ * target's version is updated atomically with the rest of the replica data.
  *
  * @param {RootDatabase} rootDatabase
  * @param {ReplicaName} from
@@ -163,15 +161,6 @@ async function copyReplicaGently(rootDatabase, from, to) {
     // Exclude revdeps: they will be recomputed from mergedInputsMap by
     // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
-
-    // Copy the version from the source replica into the target.  Version is
-    // replica-local state that switches naturally with the replica pointer.
-    // Writing it after the data copy (rather than before) keeps the sequencing
-    // consistent with "replica contains all its own state".
-    const fromVersion = await rootDatabase.getMetaVersionForReplica(from);
-    if (fromVersion !== undefined) {
-        await rootDatabase.setMetaVersionForReplica(to, fromVersion);
-    }
 
     // One final fsync: all unification writes use sync:false for performance;
     // _rawSync() issues an empty batch with sync:true to durably flush the
@@ -334,9 +323,9 @@ async function unifyRevdeps(T, mergedInputsMap) {
  */
 async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // ── Step 0: Version check ────────────────────────────────────────────────
-    const localVersionRaw = await rootDatabase.getMetaVersion();
+    const localVersionRaw = await rootDatabase.getGlobalVersion();
     const localVersion = localVersionRaw !== undefined ? versionToString(localVersionRaw) : undefined;
-    const remoteVersionRaw = await rootDatabase.getHostnameMetaVersion(hostname);
+    const remoteVersionRaw = await rootDatabase.getHostnameGlobalVersion(hostname);
     const remoteVersion = remoteVersionRaw !== undefined ? versionToString(remoteVersionRaw) : undefined;
 
     if (localVersion !== remoteVersion) {
