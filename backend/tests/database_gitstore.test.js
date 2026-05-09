@@ -162,7 +162,7 @@ describe("checkpointDatabase", () => {
 
     test("creates a commit when called for the first time", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [['!x!!values!{"head":"event","args":["init"]}', { ok: true }]]);
         try {
             await checkpointDatabase(capabilities, "initial checkpoint", db);
 
@@ -176,7 +176,7 @@ describe("checkpointDatabase", () => {
 
     test("commit message matches the provided message", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [['!x!!values!{"head":"event","args":["init"]}', { ok: true }]]);
         try {
             await checkpointDatabase(capabilities, "my checkpoint message", db);
 
@@ -252,12 +252,9 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "empty repo checkpoint", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(capabilities, gitDir)).toBe(2);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
-            expect(allTrackedFiles(capabilities, gitDir)).toEqual([
-                `${DATABASE_SUBPATH}/_meta/current_replica`,
-                `${DATABASE_SUBPATH}/_meta/format`,
-            ]);
+            expect(commitCount(capabilities, gitDir)).toBe(1);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([]);
+            expect(allTrackedFiles(capabilities, gitDir)).toEqual([]);
         } finally {
             await db.close();
         }
@@ -293,7 +290,6 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/_meta/format`);
             expect(tracked).toContain(
                 `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["one"]}')}`
             );

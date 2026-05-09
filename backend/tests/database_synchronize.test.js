@@ -621,18 +621,6 @@ describe("synchronizeNoLock", () => {
                     !isInvalidSnapshotFormatError(error) &&
                     !isInvalidSnapshotReplicaError(error),
             },
-            {
-                name: "invalid JSON payload in rendered _meta subtree after metadata checks",
-                files: [
-                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
-                    { path: "_meta/another_key", content: "not-json" },
-                ],
-                expectedErrorGuard: (error) =>
-                    error instanceof Error &&
-                    !isInvalidSnapshotFormatError(error) &&
-                    !isInvalidSnapshotReplicaError(error),
-            },
         ];
 
         test.each(scenarios)(
