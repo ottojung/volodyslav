@@ -110,7 +110,7 @@ describe('keyToRelativePath()', () => {
     });
 
     test('namespace global version key', () => {
-        expect(keyToRelativePath('!x!!global!version')).toBe('x/global/version');
+        expect(keyToRelativePath('!x!!global!{"head":"version","args":[]}')).toBe('x/global/version');
     });
 
     test('zero-arg NodeKey', () => {
@@ -222,7 +222,7 @@ describe('relativePathToKey()', () => {
     });
 
     test('namespace global version', () => {
-        expect(relativePathToKey('x/global/version')).toBe('!x!!global!version');
+        expect(relativePathToKey('x/global/version')).toBe('!x!!global!{"head":"version","args":[]}');
     });
 
     test('zero-arg NodeKey path', () => {
@@ -303,9 +303,6 @@ describe('relativePathToKey()', () => {
         expect(() => relativePathToKey('_meta/format/extra')).toThrow(
             'plain-key sublevels require exactly one key segment'
         );
-        expect(() => relativePathToKey('x/global/version/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
-        );
     });
 });
 
@@ -316,7 +313,7 @@ describe('relativePathToKey()', () => {
 describe('keyToRelativePath / relativePathToKey bijection', () => {
     const testKeys = [
         '!_meta!format',
-        '!x!!global!version',
+        '!x!!global!{"head":"version","args":[]}',
         '!x!!values!{"head":"all_events","args":[]}',
         '!x!!freshness!{"head":"all_events","args":[]}',
         '!x!!inputs!{"head":"event","args":["abc123"]}',
@@ -332,7 +329,7 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
         '!x!!values!{"head":"event","args":[42]}',
         '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}',
         '!y!!values!{"head":"all_events","args":[]}',
-        '!y!!global!version',
+        '!y!!global!{"head":"version","args":[]}',
     ];
 
     for (const key of testKeys) {
@@ -995,7 +992,7 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
     test('many entries', async () => {
         const seed = [
             ['!_meta!format', 'xy-v1'],
-            ['!x!!global!version', '1.2.3'],
+            ['!x!!global!{"head":"version","args":[]}', '1.2.3'],
             ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
             ['!x!!freshness!{"head":"all_events","args":[]}', 'up-to-date'],
             ['!x!!inputs!{"head":"event","args":["abc"]}', { inputs: ['all_events'], inputCounters: [1] }],

@@ -254,10 +254,7 @@ function keyToRelativePath(rawKey) {
 
     const nodeKey = (() => {
         try {
-            if (lastSublevel === 'global' && keyContent === 'version') {
-                return deserializeNodeKey(stringToNodeKeyString('{"head":"version","args":[]}'));
-            }
-            return deserializeNodeKey(stringToNodeKeyString(keyContent));
+                        return deserializeNodeKey(stringToNodeKeyString(keyContent));
         } catch (_err) {
             throw new Error(
                 `Invalid database key: expected NodeKey JSON for sublevel '${lastSublevel}', got '${keyContent}'`

@@ -275,7 +275,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         global: {
             async *keys() {
-                yield stringToNodeKeyString('version');
+                yield stringToNodeKeyString('{"head":"version","args":[]}');
             },
             async get(/** @type {NodeKeyString} */ _key) {
                 return newVersion;

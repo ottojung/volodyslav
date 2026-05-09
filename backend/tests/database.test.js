@@ -44,7 +44,7 @@ function cleanup(tmpDir) {
     }
 }
 
-const Y_GLOBAL_VERSION_RAW_KEY = '!y!!global!version';
+const Y_GLOBAL_VERSION_RAW_KEY = '!y!!global!{"head":"version","args":[]}';
 
 
 describe('generators/database', () => {

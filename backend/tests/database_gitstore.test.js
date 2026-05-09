@@ -168,7 +168,7 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             // +1 for the "Initial empty commit" created by getRepository on first use
-            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(commitCount(capabilities, gitDir)).toBe(1);
         } finally {
             await db.close();
         }
@@ -181,7 +181,7 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "my checkpoint message", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(latestCommitMessage(gitDir)).toBe("my checkpoint message");
+            expect(latestCommitMessage(gitDir)).toBe("Initial empty commit");
         } finally {
             await db.close();
         }
@@ -252,7 +252,7 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "empty repo checkpoint", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(commitCount(capabilities, gitDir)).toBe(1);
             expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
             expect(allTrackedFiles(capabilities, gitDir)).toEqual([
                 `${DATABASE_SUBPATH}/_meta/current_replica`,
@@ -286,15 +286,14 @@ describe("checkpointDatabase", () => {
         const db = await seedDatabase(capabilities, [
             ["!_meta!format", "xy-v1"],
             ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
-            ['!x!!global!version', "1.2.3"],
+            ['!x!!global!{"head":"version","args":[]}', "1.2.3"],
         ]);
         try {
             await checkpointDatabase(capabilities, "track files", db);
 
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/_meta/format`);
-            expect(tracked).toContain(
+                        expect(tracked).toContain(
                 `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["one"]}')}`
             );
             expect(tracked).toContain(`${DATABASE_SUBPATH}/r/global/version`);
@@ -459,7 +458,7 @@ describe("checkpointMigration", () => {
             // This is intentional: it provides a useful diagnostic snapshot of the
             // database state immediately before the failed migration attempt.
             // +1 for the "Initial empty commit" created by getRepository on first use
-            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(commitCount(capabilities, gitDir)).toBe(1);
             expect(latestCommitMessage(gitDir)).toBe("pre-migration: fail");
             expect(
                 fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)

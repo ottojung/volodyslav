@@ -193,10 +193,10 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
             return;
         }
         if (!touchedSchema) {
-            const existing = await globalSublevel.get(stringToNodeKeyString('version'));
+            const existing = await globalSublevel.get(stringToNodeKeyString('{"head":"version","args":[]}'));
             if (existing === undefined) {
                 // New or freshly-cleared namespace: write version to global to initialise.
-                await globalSublevel.put(stringToNodeKeyString('version'), version);
+                await globalSublevel.put(stringToNodeKeyString('{"head":"version","args":[]}'), version);
             } else if (existing !== version) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
@@ -404,7 +404,7 @@ class RootDatabaseClass {
         } else {
             return assertNeverReplicaName(current);
         }
-        return await globalSublevel.get(stringToNodeKeyString('version'));
+        return await globalSublevel.get(stringToNodeKeyString('{"head":"version","args":[]}'));
     }
 
     /**
@@ -422,7 +422,7 @@ class RootDatabaseClass {
         } else {
             return assertNeverReplicaName(current);
         }
-        await globalSublevel.put(stringToNodeKeyString('version'), version);
+        await globalSublevel.put(stringToNodeKeyString('{"head":"version","args":[]}'), version);
     }
 
     /**

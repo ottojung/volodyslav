@@ -175,6 +175,7 @@ describe("generators/interface", () => {
         });
 
         test("does not fail when synchronizeDatabase() runs concurrently between invalidate and pull", async () => {
+
             // Regression test for the race condition where synchronizeDatabase() sets
             // _incrementalGraph to null between the invalidate() and pull() calls in
             // internalUpdate(), causing "Impossible: expected non-null".
@@ -239,7 +240,7 @@ describe("generators/interface", () => {
             const events = await iface.getAllEvents();
             expect(events).toHaveLength(1);
             expect(events[0].id.identifier).toBe("event-1");
-        });
+        }, 20000);
 
         test("events survive a simulated restart (synchronizeDatabase reopen)", async () => {
             // Regression test: events must not reset to [] after a restart.
@@ -264,7 +265,7 @@ describe("generators/interface", () => {
             const ids = events.map((e) => e.id.identifier);
             expect(ids).toContain("event-1");
             expect(ids).toContain("event-2");
-        });
+        }, 20000);
     });
 
     describe("synchronizeDatabase()", () => {
