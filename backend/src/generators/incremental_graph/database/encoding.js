@@ -23,7 +23,7 @@
  *        {"head":"event","args":["abc"]}
  *      Encoded as: namespace/sublevel/event/abc
  *
- *   2. Plain string keys (meta sublevels: _meta, meta):
+ *   2. Plain string keys (_meta sublevel only):
  *        format, version
  *      Encoded as: namespace/sublevel/format
  *
@@ -56,7 +56,7 @@ const { serializeNodeKey, deserializeNodeKey, nodeNameToString, stringToNodeName
  * Sublevel names that store plain string keys rather than NodeKey JSON keys.
  * @type {Set<string>}
  */
-const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'global']);
+const PLAIN_KEY_SUBLEVELS = new Set(['_meta']);
 
 /**
  * Prefix used to distinguish non-string arguments from plain strings.
@@ -236,7 +236,7 @@ function decodeArg(segment) {
  * human-readable path segments using serializeNodeKey/deserializeNodeKey:
  *   namespace/sublevel/head/arg1/arg2/...
  *
- * For plain string keys stored in meta sublevels (_meta, meta), the key
+ * For plain string keys stored in the _meta sublevel, the key
  * is used as a single percent-encoded segment:
  *   namespace/sublevel/key
  *
@@ -254,6 +254,9 @@ function keyToRelativePath(rawKey) {
 
     const nodeKey = (() => {
         try {
+            if (lastSublevel === 'global' && keyContent === 'version') {
+                return deserializeNodeKey(stringToNodeKeyString('{"head":"version","args":[]}'));
+            }
             return deserializeNodeKey(stringToNodeKeyString(keyContent));
         } catch (_err) {
             throw new Error(
