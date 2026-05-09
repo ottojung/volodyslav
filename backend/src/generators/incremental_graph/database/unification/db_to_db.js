@@ -6,7 +6,7 @@
  * key space.  Only puts keys whose serialised value differs; deletes keys
  * absent from the source.
  *
- * The meta/version sublevel is deliberately excluded — callers must manage
+ * The global/version sublevel is deliberately excluded — callers must manage
  * the version field separately (e.g. via setMetaVersionForReplica).
  *
  * Key format: "{sublevel}\x00{nodeKey}" where \x00 is used as an unambiguous
@@ -73,7 +73,7 @@ const { stringToNodeKeyString } = require('../types');
  * Alphabetical order ensures that composite keys "{sublevel}\x00{nodeKey}" are
  * globally sorted (because 'c' < 'f' < 'i' < 'r' < 't' < 'v'), which is
  * required for the merge-join in core.js to produce correct results.
- * The meta/version sublevel is intentionally excluded.
+ * The global/version sublevel is intentionally excluded.
  * @type {readonly string[]}
  */
 const DATA_SUBLEVELS = Object.freeze([

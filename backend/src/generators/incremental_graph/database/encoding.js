@@ -56,7 +56,7 @@ const { serializeNodeKey, deserializeNodeKey, nodeNameToString, stringToNodeName
  * Sublevel names that store plain string keys rather than NodeKey JSON keys.
  * @type {Set<string>}
  */
-const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'meta']);
+const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'global']);
 
 /**
  * Prefix used to distinguish non-string arguments from plain strings.

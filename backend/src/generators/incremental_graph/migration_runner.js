@@ -2,7 +2,7 @@
  * Migration runner for incremental-graph database version upgrades.
  *
  * Provides runMigration() which:
- * 1. Reads x/meta.version to decide whether migration is needed.
+ * 1. Reads x/global/version to decide whether migration is needed.
  * 2. Clears the staging namespace ("y") and runs the migration callback.
  * 3. Applies migration decisions to "y".
  * 4. Atomically swaps "y" into "x" (delete x/*, copy y/* → x/*, delete y/*, write version).
@@ -364,17 +364,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
 
-            // The inactive replica may still carry the old application version
-            // in its meta sublevel.  Set the new version now — before calling
-            // unifyStores — so that SchemaStorage.batch() does not reject writes
-            // with SchemaBatchVersionError on the first flushed chunk.
-            //
-            // It is safe to write to the inactive replica before cutover:
-            // the replica's intermediate state is irrelevant until
-            // switchToReplica() succeeds.  A crash here leaves the active
-            // replica untouched.
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
-            await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
 
             // Build the desired revdeps map.  Reads inputs from prevStorage once
             // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
@@ -388,6 +378,14 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Gently unify the desired state into the target replica.
             // Only changed keys are written; stale keys are deleted first.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+
+            // Write the new version into the target replica's global sublevel.
+            // Version is replica-local state; writing it after the data migration
+            // ensures the target holds the new version before the pointer switches.
+            // A crash between this write and switchToReplica leaves the active
+            // replica untouched.
+            await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
+
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.

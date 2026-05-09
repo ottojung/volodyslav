@@ -44,7 +44,7 @@ function cleanup(tmpDir) {
     }
 }
 
-const Y_META_VERSION_RAW_KEY = '!y!!meta!version';
+const Y_GLOBAL_VERSION_RAW_KEY = '!y!!global!version';
 
 
 describe('generators/database', () => {
@@ -583,19 +583,19 @@ describe('generators/database', () => {
         });
     });
 
-    describe('clearReplicaStorage resets meta/version init', () => {
-        test('batch() re-initialises meta/version in target replica after clearReplicaStorage', async () => {
+    describe('clearReplicaStorage resets global/version init', () => {
+        test('batch() re-initialises global/version in target replica after clearReplicaStorage', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
 
-                // Write a value into the y replica (sets meta/version on first batch).
+                // Write a value into the y replica (sets global/version on first batch).
                 let yStorage = db.schemaStorageForReplica('y');
                 await yStorage.batch([
                     yStorage.freshness.putOp('nodeA', 'up-to-date'),
                 ]);
 
-                // Verify meta/version was initialised in y.
+                // Verify global/version was initialised in y.
                 const xMetaVersion = await db.getMetaVersion();
                 expect(xMetaVersion).toBeUndefined(); // x has no version yet
 
@@ -605,7 +605,7 @@ describe('generators/database', () => {
                 // Re-fetch the storage reference after the clear (the old reference is stale).
                 yStorage = db.schemaStorageForReplica('y');
 
-                // A fresh batch to y must succeed (re-initialises meta/version).
+                // A fresh batch to y must succeed (re-initialises global/version).
                 await yStorage.batch([
                     yStorage.freshness.putOp('nodeB', 'potentially-outdated'),
                 ]);
@@ -631,7 +631,7 @@ describe('generators/database', () => {
             try {
                 const db = await getRootDatabase(capabilities);
                 const yStorage = db.schemaStorageForReplica('y');
-                await db._rawPut(Y_META_VERSION_RAW_KEY, `${versionToString(db.version)}-mismatch`);
+                await db._rawPut(Y_GLOBAL_VERSION_RAW_KEY, `${versionToString(db.version)}-mismatch`);
 
                 /** @type {unknown} */
                 let thrownError;

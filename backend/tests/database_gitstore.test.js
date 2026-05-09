@@ -286,7 +286,7 @@ describe("checkpointDatabase", () => {
         const db = await seedDatabase(capabilities, [
             ["!_meta!format", "xy-v1"],
             ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
-            ['!x!!meta!version', "1.2.3"],
+            ['!x!!global!version', "1.2.3"],
         ]);
         try {
             await checkpointDatabase(capabilities, "track files", db);
@@ -297,7 +297,7 @@ describe("checkpointDatabase", () => {
             expect(tracked).toContain(
                 `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["one"]}')}`
             );
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/r/meta/version`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/r/global/version`);
         } finally {
             await db.close();
         }

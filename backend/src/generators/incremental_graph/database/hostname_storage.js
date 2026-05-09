@@ -81,7 +81,7 @@ function validateHostname(hostname) {
  * replica and should not be constrained by the local application version.
  *
  * The returned storage's `batch` function simply writes operations without any
- * meta/version check.  Individual sub-database `put`/`del` calls are also
+ * global/version check.  Individual sub-database `put`/`del` calls are also
  * unconstrained.
  *
  * @param {SchemaSublevelType} namespaceSublevel - The namespace's top-level sublevel.

@@ -47,9 +47,9 @@ const {
  */
 
 /**
- * Sublevel for storing plain-string namespace metadata (e.g., version).
- * Uses string keys rather than NodeKeyString to clearly distinguish meta keys from node keys.
- * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} MetaSublevelType
+ * Sublevel for storing plain-string replica-level state (e.g., version).
+ * Uses string keys rather than NodeKeyString to clearly distinguish global keys from node keys.
+ * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} GlobalSublevelType
  */
 
 /**
@@ -147,7 +147,7 @@ function assertNeverReplicaName(name) {
 
 /**
  * Build a SchemaStorage for one replica namespace.
- * The returned storage's `batch` function verifies the replica's meta/version on
+ * The returned storage's `batch` function verifies the replica's global/version on
  * the first write (initialising it when absent, or throwing on mismatch), then
  * caches the result so subsequent batches pay no I/O overhead for the check.
  *
@@ -155,11 +155,11 @@ function assertNeverReplicaName(name) {
  * built by the owner so the version-initialisation cache is reset.
  *
  * @param {SchemaSublevelType} namespaceSublevel - The replica's top-level sublevel.
- * @param {MetaSublevelType} metaSublevel - The replica's meta sublevel (`<ns>/meta`).
+ * @param {GlobalSublevelType} globalSublevel - The replica's global sublevel (`<ns>/global`).
  * @param {Version} version - The current application version.
  * @returns {SchemaStorage}
  */
-function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
+function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<ComputedValue>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness>} */
@@ -173,7 +173,7 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
-    // True once this closure's first batch() verifies/writes meta/version.
+    // True once this closure's first batch() verifies/writes global/version.
     // Prevents redundant DB reads on subsequent batch calls.
     // Reset to false by rebuilding this SchemaStorage inside clearReplicaStorage().
     let touchedSchema = false;
@@ -184,10 +184,10 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
             return;
         }
         if (!touchedSchema) {
-            const existing = await metaSublevel.get('version');
+            const existing = await globalSublevel.get('version');
             if (existing === undefined) {
-                // New or freshly-cleared namespace: write version to meta to initialise.
-                await metaSublevel.put('version', version);
+                // New or freshly-cleared namespace: write version to global to initialise.
+                await globalSublevel.put('version', version);
             } else if (existing !== version) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
@@ -237,17 +237,17 @@ class RootDatabaseClass {
     _rootMetaSublevel;
 
     /**
-     * Meta sublevels for each replica (used by getMetaVersion / setMetaVersion).
+     * Global sublevels for each replica (used by getMetaVersion / setMetaVersion).
      * @private
-     * @type {MetaSublevelType}
+     * @type {GlobalSublevelType}
      */
-    _xMetaSublevel;
+    _xGlobalSublevel;
 
     /**
      * @private
-     * @type {MetaSublevelType}
+     * @type {GlobalSublevelType}
      */
-    _yMetaSublevel;
+    _yGlobalSublevel;
 
     /**
      * Top-level namespace sublevels for each replica (used by clearReplicaStorage).
@@ -292,10 +292,10 @@ class RootDatabaseClass {
         // Build per-replica sublevels and schema storages.
         this._xNamespaceSublevel = db.sublevel('x', { valueEncoding: 'json' });
         this._yNamespaceSublevel = db.sublevel('y', { valueEncoding: 'json' });
-        this._xMetaSublevel = this._xNamespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
-        this._yMetaSublevel = this._yNamespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
-        this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xMetaSublevel, version);
-        this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yMetaSublevel, version);
+        this._xGlobalSublevel = this._xNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
+        this._yGlobalSublevel = this._yNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
+        this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, version);
+        this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, version);
     }
 
     /**
@@ -380,78 +380,78 @@ class RootDatabaseClass {
     }
 
     /**
-     * Get the app version string stored in the currently active replica's meta sublevel.
+     * Get the app version string stored in the currently active replica's global sublevel.
      * Returns undefined if no version has been recorded yet (fresh database).
      * @returns {Promise<Version | undefined>}
      */
     async getMetaVersion() {
         const current = this._cachedValueOfCurrentReplica;
-        let metaSublevel;
+        let globalSublevel;
         if (current === 'x') {
-            metaSublevel = this._xMetaSublevel;
+            globalSublevel = this._xGlobalSublevel;
         } else if (current === 'y') {
-            metaSublevel = this._yMetaSublevel;
+            globalSublevel = this._yGlobalSublevel;
         } else {
             return assertNeverReplicaName(current);
         }
-        return await metaSublevel.get('version');
+        return await globalSublevel.get('version');
     }
 
     /**
-     * Write the app version string into the currently active replica's meta sublevel.
+     * Write the app version string into the currently active replica's global sublevel.
      * @param {Version} version
      * @returns {Promise<void>}
      */
     async setMetaVersion(version) {
         const current = this._cachedValueOfCurrentReplica;
-        let metaSublevel;
+        let globalSublevel;
         if (current === 'x') {
-            metaSublevel = this._xMetaSublevel;
+            globalSublevel = this._xGlobalSublevel;
         } else if (current === 'y') {
-            metaSublevel = this._yMetaSublevel;
+            globalSublevel = this._yGlobalSublevel;
         } else {
             return assertNeverReplicaName(current);
         }
-        await metaSublevel.put('version', version);
+        await globalSublevel.put('version', version);
     }
 
     /**
-     * Read the app version string from a specific replica's meta sublevel.
+     * Read the app version string from a specific replica's global sublevel.
      * Returns `undefined` when no version has been written yet.
      * Throws `InvalidReplicaPointerError` for unrecognised names.
      * @param {ReplicaName} name
      * @returns {Promise<Version | undefined>}
      */
     async getMetaVersionForReplica(name) {
-        let metaSublevel;
+        let globalSublevel;
         if (name === 'x') {
-            metaSublevel = this._xMetaSublevel;
+            globalSublevel = this._xGlobalSublevel;
         } else if (name === 'y') {
-            metaSublevel = this._yMetaSublevel;
+            globalSublevel = this._yGlobalSublevel;
         } else {
             return assertNeverReplicaName(name);
         }
-        return await metaSublevel.get('version');
+        return await globalSublevel.get('version');
     }
 
     /**
-     * Write the app version string into a specific replica's meta sublevel.
-     * Used by migration to set the target replica's version before switching the pointer.
+     * Write the app version string into a specific replica's global sublevel.
+     * Used by migration and sync to set the target replica's version.
      * Throws `InvalidReplicaPointerError` for unrecognised names.
      * @param {ReplicaName} name
      * @param {Version} version
      * @returns {Promise<void>}
      */
     async setMetaVersionForReplica(name, version) {
-        let metaSublevel;
+        let globalSublevel;
         if (name === 'x') {
-            metaSublevel = this._xMetaSublevel;
+            globalSublevel = this._xGlobalSublevel;
         } else if (name === 'y') {
-            metaSublevel = this._yMetaSublevel;
+            globalSublevel = this._yGlobalSublevel;
         } else {
             return assertNeverReplicaName(name);
         }
-        await metaSublevel.put('version', version);
+        await globalSublevel.put('version', version);
     }
 
     /**
@@ -468,11 +468,11 @@ class RootDatabaseClass {
         if (name === 'x') {
             await this._xNamespaceSublevel.clear();
             // Rebuild to reset the version-initialisation cache in the new closure.
-            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xMetaSublevel, this.version);
+            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, this.version);
         } else if (name === 'y') {
             await this._yNamespaceSublevel.clear();
             // Rebuild to reset the version-initialisation cache in the new closure.
-            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yMetaSublevel, this.version);
+            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, this.version);
         } else {
             return assertNeverReplicaName(name);
         }

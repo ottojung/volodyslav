@@ -167,7 +167,7 @@ describe("synchronizeNoLock", () => {
         await seedRemoteRepository(capabilities, [
             ["!_meta!format", "xy-v2"],
             [remoteKey, { source: "remote" }],
-            ["!x!!meta!version", "remote-version"],
+            ["!x!!global!version", "remote-version"],
         ]);
 
         const db = await getRootDatabase(capabilities);
@@ -183,7 +183,7 @@ describe("synchronizeNoLock", () => {
         try {
             const entries = await collectRawEntries(reopened);
             expect(entries.get(remoteKey)).toEqual({ source: "remote" });
-            expect(entries.get("!x!!meta!version")).toBe("remote-version");
+            expect(entries.get("!x!!global!version")).toBe("remote-version");
             expect(entries.has('!x!!values!{"head":"event","args":["local-only"]}')).toBe(false);
         } finally {
             await reopened.close();
@@ -285,7 +285,7 @@ describe("synchronizeNoLock", () => {
                 hostname: "zed",
                 entries: [
                     ["!_meta!format", "xy-v2"],
-                    ['!x!!meta!version', "incompatible-version"],
+                    ['!x!!global!version', "incompatible-version"],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
                     ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
                 ],

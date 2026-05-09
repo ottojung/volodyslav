@@ -11,7 +11,7 @@
  * and deletes.
  *
  * Key space: relative file paths within the output directory
- * (e.g. "values/all_events", "meta/version").
+ * (e.g. "values/all_events", "global/version").
  * - listSourceKeys iterates the database sublevel and maps each raw LevelDB key
  *   to its relative file path via keyToRelativePath().
  * - listTargetKeys walks the output directory and yields existing file paths.

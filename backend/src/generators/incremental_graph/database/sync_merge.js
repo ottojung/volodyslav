@@ -62,7 +62,7 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
  */
 
 /**
- * Thrown when the remote hostname's stored `meta/version` does not match the
+ * Thrown when the remote hostname's stored `global/version` does not match the
  * local application version.  This means the two databases are at different
  * schema versions and cannot be safely merged.  Sync continues with the
  * remaining hostnames; only this host's merge is skipped.
@@ -146,9 +146,10 @@ function compareIsoTimestamps(a, b) {
  * are deleted from the target.  This replaces the previous clear-then-copy
  * approach, minimising unnecessary writes.
  *
- * After unification, ensures `to`'s meta/version is always set to the
- * current application version — even when both replicas were already
- * identical and no data was written.
+ * After unification, copies the version from `from` into `to`'s global
+ * sublevel.  Version is replica-local state: copying it here ensures the
+ * target is consistent before any subsequent batch() calls (which check
+ * global/version on first invocation).
  *
  * @param {RootDatabase} rootDatabase
  * @param {ReplicaName} from
@@ -159,19 +160,19 @@ async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
 
-    // Set the target replica version BEFORE calling unifyStores.
-    // SchemaStorage.batch() enforces meta/version on the first write and throws
-    // SchemaBatchVersionError on mismatch.  After a successful migration the
-    // inactive replica may still carry the previous app version, so any sync
-    // that writes at least one key would fail during unification without this.
-    //
-    // It is safe to write to the inactive replica before cutover: its
-    // intermediate state is irrelevant until switchToReplica() succeeds.
-    await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
-
     // Exclude revdeps: they will be recomputed from mergedInputsMap by
     // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
+
+    // Copy the version from the source replica into the target.  Version is
+    // replica-local state that switches naturally with the replica pointer.
+    // Writing it after the data copy (rather than before) keeps the sequencing
+    // consistent with "replica contains all its own state".
+    const fromVersion = await rootDatabase.getMetaVersionForReplica(from);
+    if (fromVersion !== undefined) {
+        await rootDatabase.setMetaVersionForReplica(to, fromVersion);
+    }
+
     // One final fsync: all unification writes use sync:false for performance;
     // _rawSync() issues an empty batch with sync:true to durably flush the
     // WAL/database state without mutating any keys.
