@@ -142,7 +142,6 @@ async function validateResetSnapshotMetadata(capabilities, snapshotMetaDir) {
  */
 async function importResetSnapshotIntoDatabase(capabilities, database, workTree, snapshotReplica) {
     const snapshotRoot = path.join(workTree, DATABASE_SUBPATH);
-    const snapshotMetaDir = path.join(snapshotRoot, '_meta');
     const rDir = path.join(snapshotRoot, 'r');
 
     if (await capabilities.checker.directoryExists(rDir)) {
@@ -156,12 +155,6 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         await database._rawDeleteSublevel(snapshotReplica);
     }
 
-    await scanFromFilesystem(
-        capabilities,
-        database,
-        snapshotMetaDir,
-        '_meta'
-    );
 }
 
 /**
