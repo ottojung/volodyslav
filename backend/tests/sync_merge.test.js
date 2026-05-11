@@ -75,9 +75,9 @@ describe('mergeHostIntoReplica', () => {
         try {
             db = await getRootDatabase(capabilities);
             const logger = makeLogger();
-            await db.setMetaVersion(db.version);
+            await db.setGlobalVersion(db.version);
             // Set remote version to something incompatible.
-            await db.setHostnameMeta('remote-host', 'version', 'incompatible-version');
+            await db.setHostnameGlobal('remote-host', 'version', 'incompatible-version');
 
             await expect(
                 mergeHostIntoReplica(logger, db, 'remote-host')
@@ -101,8 +101,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const nodeA = nk('a');
             const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
@@ -135,8 +135,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const nodeA = nk('a');
             const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
@@ -169,8 +169,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const nodeA = nk('a-only-in-h');
             const remoteValue = { value: { id: 'h-only', type: 'test', description: 'h only' }, isDirty: false };
@@ -203,8 +203,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const nodeP = nk('p');  // shared node; T is newer (force-keep)
             const nodeC = nk('c');  // H-only node that depends on P
@@ -246,8 +246,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             // Write an H-only node without a timestamps record.
             const hOnlyNode = nk('h-only-no-ts');
@@ -276,8 +276,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const before = db.currentReplicaName();
             expect(before).toBe('x');
@@ -305,8 +305,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const nodeA = nk('a');
             const nodeB = nk('b');
@@ -370,8 +370,8 @@ describe('mergeHostIntoReplica', () => {
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const nodeA = nk('a');
             const nodeB = nk('b');
@@ -393,7 +393,7 @@ describe('mergeHostIntoReplica', () => {
             // (simulates a re-sync against the same remote snapshot).
             // Re-write H since clearHostnameStorage may have been called by caller
             // in production; in this test we write it directly.
-            await db.setHostnameMeta(hostname, 'version', appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
             const H2 = db.hostnameSchemaStorage(hostname);
             await writeNode(H2, nodeA, TS1, [], undefined);
             await writeNode(H2, nodeB, TS2, [nodeA], remoteValueB);
@@ -420,7 +420,7 @@ describe('mergeHostIntoReplica', () => {
     test('preserves replica version when source replica is empty', async () => {
         // When the local replica has no data (ops is empty),
         // dst.batch([]) performs no writes. Without the explicit
-        // setMetaVersionForReplica call, the switched-to replica would
+        // copyReplicaGently now copies global/version via unifyStores. Without it, the switched-to replica would
         // have no version and the next host merge would fail with
         // HostVersionMismatchError(local=(none), remote=<version>).
         const capabilities = getTestCapabilities();
@@ -432,8 +432,8 @@ describe('mergeHostIntoReplica', () => {
             // First host: set version on local replica but add no nodes.
             const hostname1 = 'peer1';
             const appVersionStr = db.version;
-            await db.setMetaVersion(appVersionStr);
-            await db.setHostnameMeta(hostname1, 'version', appVersionStr);
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname1, 'version', appVersionStr);
 
             // Merge first host (empty local replica → no graph changes).
             await mergeHostIntoReplica(logger, db, hostname1);
@@ -442,7 +442,7 @@ describe('mergeHostIntoReplica', () => {
 
             // Second host: same version, with one node.
             const hostname2 = 'peer2';
-            await db.setHostnameMeta(hostname2, 'version', appVersionStr);
+            await db.setHostnameGlobal(hostname2, 'version', appVersionStr);
             const nodeA = nk('a');
             const remoteValue = { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false };
             const H2 = db.hostnameSchemaStorage(hostname2);

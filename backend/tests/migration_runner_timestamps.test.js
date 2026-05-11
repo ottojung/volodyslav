@@ -49,17 +49,19 @@ function makeInMemoryDb(table) {
 function makeSchemaStorage() {
     const values = makeInMemoryDb("values");
     const freshness = makeInMemoryDb("freshness");
+    const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
     const revdeps = makeInMemoryDb("revdeps");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
     return {
-        values, freshness, inputs, revdeps, counters, timestamps,
+        values, freshness, global, inputs, revdeps, counters, timestamps,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
                 freshness.apply(op);
+                global.apply(op);
                 inputs.apply(op);
                 revdeps.apply(op);
                 counters.apply(op);
@@ -72,15 +74,14 @@ function makeSchemaStorage() {
 function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
-        async getMetaVersion() { return prevVersion; },
+        async getGlobalVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
         currentReplicaName() { return 'x'; },
         otherReplicaName() { return 'y'; },
         schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
         async clearReplicaStorage(_name) {},
-        async setMetaVersionForReplica(_name, _v) {},
         async switchToReplica(_name) {},
-        async setMetaVersion(_v) {},
+        async setGlobalVersion(_v) {},
         async _rawSync() {},
     };
     return { rootDatabase };

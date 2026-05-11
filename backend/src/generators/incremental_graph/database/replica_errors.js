@@ -53,7 +53,7 @@ function isSwitchReplicaError(object) {
 }
 
 /**
- * Thrown by `buildSchemaStorage().batch()` when the existing meta/version in
+ * Thrown by `buildSchemaStorage().batch()` when the existing global/version in
  * the replica does not match the expected application version.
  * This indicates a logic error in migration ordering or staging-namespace usage.
  */

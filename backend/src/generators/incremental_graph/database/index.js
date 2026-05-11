@@ -4,7 +4,7 @@
  */
 
 const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, versionToString, stringToVersion } = require('./types');
-const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError, FORMAT_MARKER } = require('./root_database');
+const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const {
     checkpointDatabase,
@@ -15,10 +15,6 @@ const {
 } = require('./gitstore');
 const {
     synchronizeNoLock,
-    InvalidSnapshotFormatError,
-    isInvalidSnapshotFormatError,
-    InvalidSnapshotReplicaError,
-    isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
 } = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
@@ -48,8 +44,7 @@ const {
 module.exports = {
     getRootDatabase,
     makeRootDatabase,
-    FORMAT_MARKER,
-    isRootDatabase,
+        isRootDatabase,
     isDatabaseInitializationError,
     isInvalidReplicaPointerError,
     isSwitchReplicaError,
@@ -70,10 +65,6 @@ module.exports = {
     versionToString,
     stringToVersion,
     synchronizeNoLock,
-    InvalidSnapshotFormatError,
-    isInvalidSnapshotFormatError,
-    InvalidSnapshotReplicaError,
-    isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
     renderToFilesystem,
     scanFromFilesystem,

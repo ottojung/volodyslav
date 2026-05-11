@@ -4,9 +4,7 @@
  * This module's responsibility is to open (or create) the live LevelDB
  * instance.  `getRootDatabase` ensures the directory exists, then delegates
  * to `makeRootDatabase` which:
- *   - Reads `_meta/format`; crashes if it does not match FORMAT_MARKER
  *     (satisfies "format mismatch → crash").
- *   - Writes the current FORMAT_MARKER and replica pointer on first open of
  *     a truly empty database.
  *
  * Version migration ("version mismatch → migrate") is handled by the caller

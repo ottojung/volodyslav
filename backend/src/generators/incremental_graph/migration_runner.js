@@ -2,10 +2,11 @@
  * Migration runner for incremental-graph database version upgrades.
  *
  * Provides runMigration() which:
- * 1. Reads x/meta.version to decide whether migration is needed.
- * 2. Clears the staging namespace ("y") and runs the migration callback.
- * 3. Applies migration decisions to "y".
- * 4. Atomically swaps "y" into "x" (delete x/*, copy y/* → x/*, delete y/*, write version).
+ * 1. Reads x/global/version to decide whether migration is needed.
+ * 2. Runs the migration callback against the current (x) replica.
+ * 3. Gently unifies the desired new state into the inactive (y) replica,
+ *    including the new version in y/global/version via the lazy source.
+ * 4. Atomically switches the replica pointer from x to y.
  */
 
 const { compileNodeDef } = require("./compiled_node");
@@ -140,9 +141,10 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * @param {SchemaStorage} prevStorage
  * @param {Map<NodeKeyString, Decision>} decisions
  * @param {Map<NodeKeyString, NodeKeyString[]>} desiredRevdeps
+ * @param {import('./database/types').Version} newVersion
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion) {
     // Sort decision keys once so every sublevel's keys() yields in the same
     // order as LevelDB.  Keys are latin1 strings (no "!!" substring), so JS
     // default string sort matches LevelDB byte order.
@@ -271,6 +273,14 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps) {
                 return await prevStorage.timestamps.get(key);
             },
         },
+        global: {
+            async *keys() {
+                yield stringToNodeKeyString('version');
+            },
+            async get(/** @type {NodeKeyString} */ _key) {
+                return newVersion;
+            },
+        },
     };
 }
 
@@ -315,10 +325,10 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
 async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
     /** @type {Version | undefined} */
-    const prevVersion = await rootDatabase.getMetaVersion();
+    const prevVersion = await rootDatabase.getGlobalVersion();
     if (prevVersion === undefined) {
         // No previous version recorded; fresh database: record current version, nothing to migrate.
-        await rootDatabase.setMetaVersion(rootDatabase.version);
+        await rootDatabase.setGlobalVersion(rootDatabase.version);
         return;
     }
 
@@ -364,17 +374,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
 
-            // The inactive replica may still carry the old application version
-            // in its meta sublevel.  Set the new version now — before calling
-            // unifyStores — so that SchemaStorage.batch() does not reject writes
-            // with SchemaBatchVersionError on the first flushed chunk.
-            //
-            // It is safe to write to the inactive replica before cutover:
-            // the replica's intermediate state is irrelevant until
-            // switchToReplica() succeeds.  A crash here leaves the active
-            // replica untouched.
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
-            await rootDatabase.setMetaVersionForReplica(toReplica, rootDatabase.version);
 
             // Build the desired revdeps map.  Reads inputs from prevStorage once
             // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
@@ -383,11 +383,14 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Create a lazy source that computes desired values on demand.
             // Combined with makeDbToDbAdapter + unifyStores this keeps peak
             // memory at O(|max value| + |keys|), matching the sync path.
-            const lazySource = makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps);
+            const lazySource = makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, currentVersion);
 
             // Gently unify the desired state into the target replica.
             // Only changed keys are written; stale keys are deleted first.
+            // The new version is included in the lazy source's global sublevel,
+            // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.

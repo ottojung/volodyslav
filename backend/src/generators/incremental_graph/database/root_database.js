@@ -11,8 +11,8 @@ const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
-    getHostnameMetaVersion: getHostnameMetaVersionHelper,
-    setHostnameMeta: setHostnameMetaHelper,
+    getHostnameGlobalVersion: getHostnameGlobalVersionHelper,
+    setHostnameGlobal: setHostnameGlobalHelper,
     rawPutAllToHostname: rawPutAllToHostnameHelper,
 } = require('./hostname_storage');
 const {
@@ -47,16 +47,14 @@ const {
  */
 
 /**
- * Sublevel for storing plain-string namespace metadata (e.g., version).
- * Uses string keys rather than NodeKeyString to clearly distinguish meta keys from node keys.
- * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version', Version>} MetaSublevelType
+ * Sublevel for storing replica-level global state (e.g., version).
+ * Uses NodeKeyString as the key type to satisfy the generic typed-database
+ * interface; in practice only the 'version' key is stored here.
+ * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, NodeKeyString, Version>} GlobalSublevelType
  */
 
 /**
- * The format marker value that identifies a database using the x/y namespace layout.
  */
-const FORMAT_MARKER = 'xy-v2';
-
 /**
  * The valid replica names.
  * @typedef {'x' | 'y'} ReplicaName
@@ -128,6 +126,13 @@ function assertNeverReplicaName(name) {
  */
 
 /**
+ * Database for storing replica-level global state (e.g., version).
+ * Key: plain string (e.g., 'version')
+ * Value: version string
+ * @typedef {GenericDatabase<Version>} GlobalVersionDatabase
+ */
+
+/**
  * Storage container for a single incremental graph namespace.
  * All data (values, freshness, indices) is isolated per namespace.
  * @typedef {object} SchemaStorage
@@ -137,6 +142,7 @@ function assertNeverReplicaName(name) {
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
+ * @property {GlobalVersionDatabase} global - Replica-level global state (version)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
@@ -147,7 +153,7 @@ function assertNeverReplicaName(name) {
 
 /**
  * Build a SchemaStorage for one replica namespace.
- * The returned storage's `batch` function verifies the replica's meta/version on
+ * The returned storage's `batch` function verifies the replica's global/version on
  * the first write (initialising it when absent, or throwing on mismatch), then
  * caches the result so subsequent batches pay no I/O overhead for the check.
  *
@@ -155,11 +161,11 @@ function assertNeverReplicaName(name) {
  * built by the owner so the version-initialisation cache is reset.
  *
  * @param {SchemaSublevelType} namespaceSublevel - The replica's top-level sublevel.
- * @param {MetaSublevelType} metaSublevel - The replica's meta sublevel (`<ns>/meta`).
+ * @param {GlobalSublevelType} globalSublevel - The replica's global sublevel (`<ns>/global`).
  * @param {Version} version - The current application version.
  * @returns {SchemaStorage}
  */
-function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
+function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<ComputedValue>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness>} */
@@ -173,7 +179,7 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
-    // True once this closure's first batch() verifies/writes meta/version.
+    // True once this closure's first batch() verifies/writes global/version.
     // Prevents redundant DB reads on subsequent batch calls.
     // Reset to false by rebuilding this SchemaStorage inside clearReplicaStorage().
     let touchedSchema = false;
@@ -184,10 +190,10 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
             return;
         }
         if (!touchedSchema) {
-            const existing = await metaSublevel.get('version');
+            const existing = await globalSublevel.get(stringToNodeKeyString('version'));
             if (existing === undefined) {
-                // New or freshly-cleared namespace: write version to meta to initialise.
-                await metaSublevel.put('version', version);
+                // New or freshly-cleared namespace: write version to global to initialise.
+                await globalSublevel.put(stringToNodeKeyString('version'), version);
             } else if (existing !== version) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
@@ -205,6 +211,7 @@ function buildSchemaStorage(namespaceSublevel, metaSublevel, version) {
         revdeps: makeTypedDatabase(revdepsSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
+        global: makeTypedDatabase(globalSublevel),
     };
 }
 
@@ -237,17 +244,17 @@ class RootDatabaseClass {
     _rootMetaSublevel;
 
     /**
-     * Meta sublevels for each replica (used by getMetaVersion / setMetaVersion).
+     * Global sublevels for each replica (used by getGlobalVersion / setGlobalVersion).
      * @private
-     * @type {MetaSublevelType}
+     * @type {GlobalSublevelType}
      */
-    _xMetaSublevel;
+    _xGlobalSublevel;
 
     /**
      * @private
-     * @type {MetaSublevelType}
+     * @type {GlobalSublevelType}
      */
-    _yMetaSublevel;
+    _yGlobalSublevel;
 
     /**
      * Top-level namespace sublevels for each replica (used by clearReplicaStorage).
@@ -292,10 +299,10 @@ class RootDatabaseClass {
         // Build per-replica sublevels and schema storages.
         this._xNamespaceSublevel = db.sublevel('x', { valueEncoding: 'json' });
         this._yNamespaceSublevel = db.sublevel('y', { valueEncoding: 'json' });
-        this._xMetaSublevel = this._xNamespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
-        this._yMetaSublevel = this._yNamespaceSublevel.sublevel('meta', { valueEncoding: 'json' });
-        this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xMetaSublevel, version);
-        this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yMetaSublevel, version);
+        this._xGlobalSublevel = this._xNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
+        this._yGlobalSublevel = this._yNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
+        this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, version);
+        this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, version);
     }
 
     /**
@@ -380,78 +387,39 @@ class RootDatabaseClass {
     }
 
     /**
-     * Get the app version string stored in the currently active replica's meta sublevel.
+     * Get the app version string stored in the currently active replica's global sublevel.
      * Returns undefined if no version has been recorded yet (fresh database).
      * @returns {Promise<Version | undefined>}
      */
-    async getMetaVersion() {
+    async getGlobalVersion() {
         const current = this._cachedValueOfCurrentReplica;
-        let metaSublevel;
+        let globalSublevel;
         if (current === 'x') {
-            metaSublevel = this._xMetaSublevel;
+            globalSublevel = this._xGlobalSublevel;
         } else if (current === 'y') {
-            metaSublevel = this._yMetaSublevel;
+            globalSublevel = this._yGlobalSublevel;
         } else {
             return assertNeverReplicaName(current);
         }
-        return await metaSublevel.get('version');
+        return await globalSublevel.get(stringToNodeKeyString('version'));
     }
 
     /**
-     * Write the app version string into the currently active replica's meta sublevel.
+     * Write the app version string into the currently active replica's global sublevel.
      * @param {Version} version
      * @returns {Promise<void>}
      */
-    async setMetaVersion(version) {
+    async setGlobalVersion(version) {
         const current = this._cachedValueOfCurrentReplica;
-        let metaSublevel;
+        let globalSublevel;
         if (current === 'x') {
-            metaSublevel = this._xMetaSublevel;
+            globalSublevel = this._xGlobalSublevel;
         } else if (current === 'y') {
-            metaSublevel = this._yMetaSublevel;
+            globalSublevel = this._yGlobalSublevel;
         } else {
             return assertNeverReplicaName(current);
         }
-        await metaSublevel.put('version', version);
-    }
-
-    /**
-     * Read the app version string from a specific replica's meta sublevel.
-     * Returns `undefined` when no version has been written yet.
-     * Throws `InvalidReplicaPointerError` for unrecognised names.
-     * @param {ReplicaName} name
-     * @returns {Promise<Version | undefined>}
-     */
-    async getMetaVersionForReplica(name) {
-        let metaSublevel;
-        if (name === 'x') {
-            metaSublevel = this._xMetaSublevel;
-        } else if (name === 'y') {
-            metaSublevel = this._yMetaSublevel;
-        } else {
-            return assertNeverReplicaName(name);
-        }
-        return await metaSublevel.get('version');
-    }
-
-    /**
-     * Write the app version string into a specific replica's meta sublevel.
-     * Used by migration to set the target replica's version before switching the pointer.
-     * Throws `InvalidReplicaPointerError` for unrecognised names.
-     * @param {ReplicaName} name
-     * @param {Version} version
-     * @returns {Promise<void>}
-     */
-    async setMetaVersionForReplica(name, version) {
-        let metaSublevel;
-        if (name === 'x') {
-            metaSublevel = this._xMetaSublevel;
-        } else if (name === 'y') {
-            metaSublevel = this._yMetaSublevel;
-        } else {
-            return assertNeverReplicaName(name);
-        }
-        await metaSublevel.put('version', version);
+        await globalSublevel.put(stringToNodeKeyString('version'), version);
     }
 
     /**
@@ -468,11 +436,11 @@ class RootDatabaseClass {
         if (name === 'x') {
             await this._xNamespaceSublevel.clear();
             // Rebuild to reset the version-initialisation cache in the new closure.
-            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xMetaSublevel, this.version);
+            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, this.version);
         } else if (name === 'y') {
             await this._yNamespaceSublevel.clear();
             // Rebuild to reset the version-initialisation cache in the new closure.
-            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yMetaSublevel, this.version);
+            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, this.version);
         } else {
             return assertNeverReplicaName(name);
         }
@@ -501,24 +469,24 @@ class RootDatabaseClass {
     }
 
     /**
-     * Reads the app version stored in a hostname's staging meta sublevel.
+     * Reads the app version stored in a hostname's staging global sublevel.
      * Returns `undefined` when the hostname storage contains no version entry.
      * @param {string} hostname
      * @returns {Promise<Version | undefined>}
      */
-    async getHostnameMetaVersion(hostname) {
-        return getHostnameMetaVersionHelper(this.db, hostname);
+    async getHostnameGlobalVersion(hostname) {
+        return getHostnameGlobalVersionHelper(this.db, hostname);
     }
 
     /**
-     * Write a meta key/value pair into a hostname's staging meta sublevel.
+     * Write a key/value pair into a hostname's staging global sublevel.
      * @param {string} hostname
-     * @param {string} key - The meta key to write (e.g. 'version').
+     * @param {string} key - The key to write (e.g. 'version').
      * @param {*} value - The value to store.
      * @returns {Promise<void>}
      */
-    async setHostnameMeta(hostname, key, value) {
-        return setHostnameMetaHelper(this.db, hostname, key, value);
+    async setHostnameGlobal(hostname, key, value) {
+        return setHostnameGlobalHelper(this.db, hostname, key, value);
     }
 
     /**
@@ -533,28 +501,13 @@ class RootDatabaseClass {
     }
 
     /**
-     * This is equivalent to iterating every key with the `!<sublevelName>!` prefix
-     * and deleting them, but delegates to abstract-level's `sublevel.clear()` so
-     * the operation is handled in a single efficient range-delete rather than a
-     * chunked batch.
-     *
-     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
-     * @returns {Promise<void>}
-     */
-    async _rawDeleteSublevel(sublevelName) {
-        /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        await sublevel.clear();
-    }
-
-    /**
      * Iterates over all raw key/value pairs belonging to one top-level LevelDB
      * sublevel.  Unlike `_rawEntries()`, this method only reads the requested
      * sublevel (via abstract-level's built-in range scoping) instead of scanning
      * the entire database and filtering by prefix.
      *
      * Each yielded key is the full root-level key (e.g. `!x!!values!...` or
-     * `!_meta!format`) reconstructed by prepending `!<sublevelName>!` to the
+     * `!_meta!current_replica`) reconstructed by prepending `!<sublevelName>!` to the
      * key returned by the sublevel iterator.
      *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
@@ -765,15 +718,13 @@ class RootDatabaseClass {
 /**
  * Factory function to create a RootDatabase instance.
  *
- * On first open (no format marker present), writes the format marker and
- * initialises `_meta/current_replica` to `"x"` for a fresh database.
+ * On first open, initialises `_meta/current_replica` to `"x"` for a fresh database.
  *
  * For an existing database without a `current_replica` pointer (legacy or
  * partially-initialised), defaults to `"x"` and writes the pointer so future
  * opens are consistent.
  *
- * Throws if the format marker does not match (incompatible layout) or if the
- * stored `current_replica` value is not `"x"` or `"y"`.
+ * Throws if the stored `current_replica` value is not `"x"` or `"y"`.
  *
  * @param {RootDatabaseCapabilities} capabilities - The capabilities required to create the database
  * @param {string} databasePath - Path to the database directory
@@ -801,25 +752,11 @@ async function makeRootDatabase(capabilities, databasePath) {
         }
     }
 
-    // Check the root-level format marker to ensure we are using the x/y namespace layout.
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
-    const formatMarker = await rootMetaSublevel.get('format');
-    if (formatMarker === undefined) {
-        // Fresh database: write the format marker and the initial replica pointer.
-        await rootMetaSublevel.put('format', FORMAT_MARKER);
-        await rootMetaSublevel.put('current_replica', 'x');
-        return new RootDatabaseClass(db, version, 'x');
-    } else if (formatMarker !== FORMAT_MARKER) {
-        // Existing database with an incompatible format — refuse to open.
-        await db.close();
-        throw new Error(`Database format marker mismatch: expected "${FORMAT_MARKER}", found "${formatMarker}". This may indicate an old database layout or a corrupted database. Please ensure the database is correct or delete it to start fresh.`);
-    }
-
-    // Read the current replica pointer.
     const storedReplica = await rootMetaSublevel.get('current_replica');
     if (storedReplica === undefined) {
-        await db.close();
-        throw new InvalidReplicaPointerError("none");
+        await rootMetaSublevel.put('current_replica', 'x');
+        return new RootDatabaseClass(db, version, 'x');
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
         await db.close();
@@ -841,7 +778,6 @@ function isRootDatabase(object) {
 /** @typedef {RootDatabaseClass} RootDatabase */
 
 module.exports = {
-    FORMAT_MARKER,
     makeRootDatabase,
     isRootDatabase,
     isInvalidReplicaPointerError,

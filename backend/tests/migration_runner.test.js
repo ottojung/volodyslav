@@ -42,6 +42,7 @@ function makeInMemoryDb(table) {
 function makeSchemaStorage() {
     const values = makeInMemoryDb("values");
     const freshness = makeInMemoryDb("freshness");
+    const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
     const revdeps = makeInMemoryDb("revdeps");
     const counters = makeInMemoryDb("counters");
@@ -50,6 +51,7 @@ function makeSchemaStorage() {
     return {
         values,
         freshness,
+        global,
         inputs,
         revdeps,
         counters,
@@ -58,6 +60,7 @@ function makeSchemaStorage() {
             for (const operation of operations) {
                 values.apply(operation);
                 freshness.apply(operation);
+                global.apply(operation);
                 inputs.apply(operation);
                 revdeps.apply(operation);
                 counters.apply(operation);
@@ -70,7 +73,7 @@ function makeSchemaStorage() {
 /**
  * Build a standard in-memory rootDatabase mock.
  * @param {object} opts
- * @param {string|undefined} opts.prevVersion - what getMetaVersion returns
+ * @param {string|undefined} opts.prevVersion - what getGlobalVersion returns
  * @param {string} opts.currentVersion - version field on rootDatabase
  * @param {object} opts.xStorage - the x-namespace SchemaStorage
  * @param {object} opts.yStorage - the y-namespace SchemaStorage
@@ -80,12 +83,11 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
     let switchToReplicaCalled = false;
     let switchToReplicaCalledWith = undefined;
     let clearReplicaStorageCalledWith = undefined;
-    let setMetaVersionForReplicaCalledWith = undefined;
-    let setMetaVersionCalledWith = undefined;
+    let setGlobalVersionCalledWith = undefined;
 
     const rootDatabase = {
         version: currentVersion,
-        async getMetaVersion() { return prevVersion; },
+        async getGlobalVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
         currentReplicaName() { return 'x'; },
         otherReplicaName() { return 'y'; },
@@ -99,15 +101,12 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
             throw new Error(`Unexpected replica name: ${name}`);
         },
         async clearReplicaStorage(name) { clearReplicaStorageCalledWith = name; },
-        async setMetaVersionForReplica(name, v) {
-            setMetaVersionForReplicaCalledWith = { name, v };
-        },
         async switchToReplica(name) {
             switchToReplicaCalled = true;
             switchToReplicaCalledWith = name;
         },
-        async setMetaVersion(v) {
-            setMetaVersionCalledWith = v;
+        async setGlobalVersion(v) {
+            setGlobalVersionCalledWith = v;
         },
         async _rawSync() {},
     };
@@ -117,8 +116,7 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         get switchToReplicaCalled() { return switchToReplicaCalled; },
         get switchToReplicaCalledWith() { return switchToReplicaCalledWith; },
         get clearReplicaStorageCalledWith() { return clearReplicaStorageCalledWith; },
-        get setMetaVersionForReplicaCalledWith() { return setMetaVersionForReplicaCalledWith; },
-        get setMetaVersionCalledWith() { return setMetaVersionCalledWith; },
+        get setGlobalVersionCalledWith() { return setGlobalVersionCalledWith; },
     };
 }
 
@@ -208,7 +206,7 @@ describe("runMigration", () => {
         await expect(currentStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
     });
 
-    describe("fresh database (getMetaVersion returns undefined)", () => {
+    describe("fresh database (getGlobalVersion returns undefined)", () => {
         test("skips migration and does not switch to replica", async () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
@@ -228,7 +226,7 @@ describe("runMigration", () => {
             expect(mock.switchToReplicaCalled).toBe(false);
         });
 
-        test("records current version via setMetaVersion so future upgrades are detected", async () => {
+        test("records current version via setGlobalVersion so future upgrades are detected", async () => {
               const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -241,7 +239,7 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
 
-            expect(mock.setMetaVersionCalledWith).toBe("1.0.0");
+            expect(mock.setGlobalVersionCalledWith).toBe("1.0.0");
         });
 
         test("does not call checkpointMigration", async () => {
@@ -329,7 +327,7 @@ describe("runMigration", () => {
             expect(migratedInputs).toBeDefined();
         });
 
-        test("writes version to y before calling switchToReplica", async () => {
+        test("writes version to y/global/version before calling switchToReplica", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -338,22 +336,27 @@ describe("runMigration", () => {
             const callOrder = [];
             let switchToReplicaCalled = false;
             const yStorage = makeSchemaStorage();
+
+            // Intercept yStorage.global.rawPut to record when version is written.
+            const originalRawPut = yStorage.global.rawPut.bind(yStorage.global);
+            yStorage.global.rawPut = async (key, value) => {
+                callOrder.push({ action: "globalRawPut", key: String(key), value });
+                return originalRawPut(key, value);
+            };
+
             const rootDatabase = {
                 version: "2.0.0",
-                async getMetaVersion() { return "1.0.0"; },
+                async getGlobalVersion() { return "1.0.0"; },
                 getSchemaStorage() { return xStorage; },
                 currentReplicaName() { return 'x'; },
                 otherReplicaName() { return 'y'; },
                 schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
                 async clearReplicaStorage(_name) {},
-                async setMetaVersionForReplica(name, v) {
-                    callOrder.push({ action: "setMetaVersionForReplica", name, arg: v });
-                },
                 async switchToReplica(name) {
                     callOrder.push({ action: "switchToReplica", name });
                     switchToReplicaCalled = true;
                 },
-                async setMetaVersion(_v) {},
+                async setGlobalVersion(_v) {},
                 async _rawSync() {},
             };
 
@@ -370,8 +373,15 @@ describe("runMigration", () => {
             });
 
             expect(switchToReplicaCalled).toBe(true);
-            expect(callOrder[0]).toEqual({ action: "setMetaVersionForReplica", name: "y", arg: "2.0.0" });
-            expect(callOrder[1]).toEqual({ action: "switchToReplica", name: "y" });
+            // Version must be written to y before switchToReplica is called.
+            const versionWriteIdx = callOrder.findIndex(
+                (e) => e.action === "globalRawPut" && e.key === "version" && e.value === "2.0.0"
+            );
+            const switchIdx = callOrder.findIndex((e) => e.action === "switchToReplica");
+            expect(versionWriteIdx).toBeGreaterThanOrEqual(0);
+            expect(switchIdx).toBeGreaterThan(versionWriteIdx);
+            // Also verify the value is readable from yStorage after migration.
+            await expect(yStorage.global.get("version")).resolves.toBe("2.0.0");
         });
 
         test("calls switchToReplica with 'y' on successful migration", async () => {
@@ -469,15 +479,14 @@ describe("runMigration", () => {
             const yStorage = makeSchemaStorage();
             const rootDatabase = {
                 version: "2.0.0",
-                async getMetaVersion() { return "1.0.0"; },
+                async getGlobalVersion() { return "1.0.0"; },
                 getSchemaStorage() { return xStorage; },
                 currentReplicaName() { return 'x'; },
                 otherReplicaName() { return 'y'; },
                 schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
                 async clearReplicaStorage(_name) {},
-                async setMetaVersionForReplica(_name, _v) {},
                 async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
-                async setMetaVersion(_v) {},
+                async setGlobalVersion(_v) {},
                 async _rawSync() {},
             };
             const nodeDefs = [{
@@ -514,15 +523,14 @@ describe("runMigration", () => {
             const yStorage = makeSchemaStorage();
             const rootDatabase = {
                 version: "2.0.0",
-                async getMetaVersion() { return "1.0.0"; },
+                async getGlobalVersion() { return "1.0.0"; },
                 getSchemaStorage() { return xStorage; },
                 currentReplicaName() { return 'x'; },
                 otherReplicaName() { return 'y'; },
                 schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
                 async clearReplicaStorage(_name) {},
-                async setMetaVersionForReplica(_name, _v) {},
                 async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
-                async setMetaVersion(_v) {},
+                async setGlobalVersion(_v) {},
                 async _rawSync() {},
             };
             const nodeDefs = [{
@@ -915,7 +923,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // Build a yStorage whose rawPut throws on all sublevels
         const yStorage = makeSchemaStorage();
         const writeError = new Error("write failure");
-        for (const name of ['values', 'freshness', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
             yStorage[name].rawPut = async () => { throw writeError; };
             yStorage[name].rawDel = async () => { throw writeError; };
         }
@@ -931,33 +939,30 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("setMetaVersionForReplica throws: x-namespace data unchanged, switchToReplica not called", async () => {
+    test("global.rawPut throws during version write: x-namespace data unchanged, switchToReplica not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 7 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        const metaError = new Error("setMetaVersionForReplica failure");
+        const globalWriteError = new Error("global rawPut failure");
         const yStorage = makeSchemaStorage();
-        const rootDatabase = {
-            version: "2",
-            async getMetaVersion() { return "1"; },
-            getSchemaStorage() { return xStorage; },
-            currentReplicaName() { return 'x'; },
-            otherReplicaName() { return 'y'; },
-            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
-            async clearReplicaStorage(_name) {},
-            async setMetaVersionForReplica() { throw metaError; },
-            async switchToReplica() {},
-            async setMetaVersion(_v) {},
-            async _rawSync() {},
-        };
+        // Make yStorage.global.rawPut throw so the version write during unification fails.
+        yStorage.global.rawPut = async () => { throw globalWriteError; };
+        yStorage.global.rawDel = async () => { throw globalWriteError; };
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1",
+            currentVersion: "2",
+            xStorage,
+            yStorage,
+        });
 
         await expect(
             runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { await storage.keep(nodeKey); })
-        ).rejects.toBe(metaError);
+        ).rejects.toMatchObject({ cause: globalWriteError });
 
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
@@ -974,15 +979,14 @@ describe("x-namespace state preserved on migration failure", () => {
         // Override switchToReplica to throw without touching xStorage
         const rootDatabase = {
             version: "2",
-            async getMetaVersion() { return "1"; },
+            async getGlobalVersion() { return "1"; },
             getSchemaStorage() { return xStorage; },
             currentReplicaName() { return 'x'; },
             otherReplicaName() { return 'y'; },
             schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
             async clearReplicaStorage(_name) {},
-            async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() { throw swapError; },
-            async setMetaVersion() {},
+            async setGlobalVersion() {},
             async _rawSync() {},
         };
 
@@ -1066,11 +1070,11 @@ describe("x-namespace state preserved on migration failure", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// x.setMetaVersion must never be called from the migration path (only on fresh DB)
+// x.setGlobalVersion must never be called from the migration path (only on fresh DB)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("x.setMetaVersion not called on migration failure", () => {
-    test("callback throws: x.setMetaVersion never called", async () => {
+describe("x.setGlobalVersion not called on migration failure", () => {
+    test("callback throws: x.setGlobalVersion never called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -1084,10 +1088,10 @@ describe("x.setMetaVersion not called on migration failure", () => {
                 async () => { throw new Error("oops"); })
         ).rejects.toThrow();
 
-        expect(mock.setMetaVersionCalledWith).toBeUndefined();
+        expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
 
-    test("UndecidedNodesError: x.setMetaVersion never called", async () => {
+    test("UndecidedNodesError: x.setGlobalVersion never called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -1103,10 +1107,10 @@ describe("x.setMetaVersion not called on migration failure", () => {
         } catch (e) { caughtUndecided3 = e; }
         expect(isUndecidedNodes(caughtUndecided3)).toBe(true);
 
-        expect(mock.setMetaVersionCalledWith).toBeUndefined();
+        expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
 
-    test("PartialDeleteFanInError: x.setMetaVersion never called", async () => {
+    test("PartialDeleteFanInError: x.setGlobalVersion never called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1122,7 +1126,7 @@ describe("x.setMetaVersion not called on migration failure", () => {
             })
         ).rejects.toThrow();
 
-        expect(mock.setMetaVersionCalledWith).toBeUndefined();
+        expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
 });
 
@@ -1246,26 +1250,25 @@ describe("error identity: exact thrown object propagates", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Infrastructure failures (getMetaVersion, clearStorage, checkpointMigration)
+// Infrastructure failures (getGlobalVersion, clearStorage, checkpointMigration)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("infrastructure failures", () => {
-    test("getMetaVersion throws: error propagates before any migration work starts", async () => {
+    test("getGlobalVersion throws: error propagates before any migration work starts", async () => {
         const capabilities = await getTestCapabilities();
-        const metaError = new Error("getMetaVersion failure");
+        const metaError = new Error("getGlobalVersion failure");
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
         const rootDatabase = {
             version: "2",
-            async getMetaVersion() { throw metaError; },
+            async getGlobalVersion() { throw metaError; },
             getSchemaStorage() { return xStorage; },
             currentReplicaName() { return 'x'; },
             otherReplicaName() { return 'y'; },
             schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
             async clearReplicaStorage(_name) {},
-            async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() {},
-            async setMetaVersion() {},
+            async setGlobalVersion() {},
             async _rawSync() {},
         };
 
@@ -1288,20 +1291,19 @@ describe("infrastructure failures", () => {
 
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
-        for (const name of ['values', 'freshness', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
             yStorage[name].rawPut = async () => { throw unificationError; };
             yStorage[name].rawDel = async () => { throw unificationError; };
         }
         const rootDatabase = {
             version: "2",
-            async getMetaVersion() { return "1"; },
+            async getGlobalVersion() { return "1"; },
             getSchemaStorage() { return xStorage; },
             currentReplicaName() { return 'x'; },
             otherReplicaName() { return 'y'; },
             schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
-            async setMetaVersionForReplica(_name, _v) {},
             async switchToReplica() {},
-            async setMetaVersion() {},
+            async setGlobalVersion() {},
             async _rawSync() {},
         };
 

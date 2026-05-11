@@ -62,7 +62,7 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
  */
 
 /**
- * Thrown when the remote hostname's stored `meta/version` does not match the
+ * Thrown when the remote hostname's stored `global/version` does not match the
  * local application version.  This means the two databases are at different
  * schema versions and cannot be safely merged.  Sync continues with the
  * remaining hostnames; only this host's merge is skipped.
@@ -146,9 +146,8 @@ function compareIsoTimestamps(a, b) {
  * are deleted from the target.  This replaces the previous clear-then-copy
  * approach, minimising unnecessary writes.
  *
- * After unification, ensures `to`'s meta/version is always set to the
- * current application version — even when both replicas were already
- * identical and no data was written.
+ * The `global/version` sublevel is included in the unification, so the
+ * target's version is updated atomically with the rest of the replica data.
  *
  * @param {RootDatabase} rootDatabase
  * @param {ReplicaName} from
@@ -159,19 +158,10 @@ async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
 
-    // Set the target replica version BEFORE calling unifyStores.
-    // SchemaStorage.batch() enforces meta/version on the first write and throws
-    // SchemaBatchVersionError on mismatch.  After a successful migration the
-    // inactive replica may still carry the previous app version, so any sync
-    // that writes at least one key would fail during unification without this.
-    //
-    // It is safe to write to the inactive replica before cutover: its
-    // intermediate state is irrelevant until switchToReplica() succeeds.
-    await rootDatabase.setMetaVersionForReplica(to, rootDatabase.version);
-
     // Exclude revdeps: they will be recomputed from mergedInputsMap by
     // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
+
     // One final fsync: all unification writes use sync:false for performance;
     // _rawSync() issues an empty batch with sync:true to durably flush the
     // WAL/database state without mutating any keys.
@@ -333,9 +323,9 @@ async function unifyRevdeps(T, mergedInputsMap) {
  */
 async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // ── Step 0: Version check ────────────────────────────────────────────────
-    const localVersionRaw = await rootDatabase.getMetaVersion();
+    const localVersionRaw = await rootDatabase.getGlobalVersion();
     const localVersion = localVersionRaw !== undefined ? versionToString(localVersionRaw) : undefined;
-    const remoteVersionRaw = await rootDatabase.getHostnameMetaVersion(hostname);
+    const remoteVersionRaw = await rootDatabase.getHostnameGlobalVersion(hostname);
     const remoteVersion = remoteVersionRaw !== undefined ? versionToString(remoteVersionRaw) : undefined;
 
     if (localVersion !== remoteVersion) {

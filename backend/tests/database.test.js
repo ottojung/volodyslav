@@ -44,7 +44,7 @@ function cleanup(tmpDir) {
     }
 }
 
-const Y_META_VERSION_RAW_KEY = '!y!!meta!version';
+const Y_GLOBAL_VERSION_RAW_KEY = '!y!!global!version';
 
 
 describe('generators/database', () => {
@@ -125,7 +125,7 @@ describe('generators/database', () => {
                 const db = await getRootDatabase(capabilities);
                 try {
                     // A fresh database has no stored version.
-                    const version = await db.getMetaVersion();
+                    const version = await db.getGlobalVersion();
                     expect(version).toBeUndefined();
                 } finally {
                     await db.close();
@@ -398,12 +398,12 @@ describe('generators/database', () => {
             }
         });
 
-        test('getMetaVersion returns undefined on a fresh database', async () => {
+        test('getGlobalVersion returns undefined on a fresh database', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 
-                const version = await db.getMetaVersion();
+                const version = await db.getGlobalVersion();
                 expect(version).toBeUndefined();
                 
                 await db.close();
@@ -433,33 +433,7 @@ describe('generators/database', () => {
         });
     });
 
-    describe('Format marker', () => {
-        test('throws DatabaseInitializationError when format marker has wrong value', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                // Write a wrong format marker directly into the DB to simulate an old/incompatible layout.
-                const rawDb = capabilities.levelDatabase.initialize(
-                    require('path').join(
-                        capabilities.environment.workingDirectory(),
-                        LIVE_DATABASE_WORKING_PATH
-                    )
-                );
-                await rawDb.open();
-                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'old-incompatible-format');
-                await rawDb.close();
-
-                // Open via getRootDatabase — should detect wrong marker and throw.
-                const error = await getRootDatabase(capabilities).catch(e => e);
-                expect(isDatabaseInitializationError(error)).toBe(true);
-                expect(error.message).toMatch(/format marker mismatch/);
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-    });
-
-    describe('Type guards', () => {
+        describe('Type guards', () => {
         test('isRootDatabase correctly identifies database instances', async () => {
             const capabilities = getTestCapabilities();
             try {
@@ -506,23 +480,20 @@ describe('generators/database', () => {
             }
         });
 
-        test('database missing current_replica throws InvalidReplicaPointerError on open', async () => {
+        test('database missing current_replica defaults to x on open', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // Write format marker without current_replica.
+                // Deliberately omit current_replica.
                 const rawDb = capabilities.levelDatabase.initialize(
                     path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
                 );
                 await rawDb.open();
-                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v2');
                 // Deliberately omit `current_replica`.
                 await rawDb.close();
 
-                // getRootDatabase wraps errors in DatabaseInitializationError.
-                const error = await getRootDatabase(capabilities).catch(e => e);
-                expect(isDatabaseInitializationError(error)).toBe(true);
-                expect(isInvalidReplicaPointerError(error.cause)).toBe(true);
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -537,8 +508,7 @@ describe('generators/database', () => {
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v2');
-                await meta.put('current_replica', 'z');
+                                await meta.put('current_replica', 'z');
                 await rawDb.close();
 
                 // getRootDatabase wraps errors in DatabaseInitializationError.
@@ -583,20 +553,20 @@ describe('generators/database', () => {
         });
     });
 
-    describe('clearReplicaStorage resets meta/version init', () => {
-        test('batch() re-initialises meta/version in target replica after clearReplicaStorage', async () => {
+    describe('clearReplicaStorage resets global/version init', () => {
+        test('batch() re-initialises global/version in target replica after clearReplicaStorage', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
 
-                // Write a value into the y replica (sets meta/version on first batch).
+                // Write a value into the y replica (sets global/version on first batch).
                 let yStorage = db.schemaStorageForReplica('y');
                 await yStorage.batch([
                     yStorage.freshness.putOp('nodeA', 'up-to-date'),
                 ]);
 
-                // Verify meta/version was initialised in y.
-                const xMetaVersion = await db.getMetaVersion();
+                // Verify global/version was initialised in y.
+                const xMetaVersion = await db.getGlobalVersion();
                 expect(xMetaVersion).toBeUndefined(); // x has no version yet
 
                 // Now clear y — the schema storage for y is rebuilt with a fresh closure.
@@ -605,7 +575,7 @@ describe('generators/database', () => {
                 // Re-fetch the storage reference after the clear (the old reference is stale).
                 yStorage = db.schemaStorageForReplica('y');
 
-                // A fresh batch to y must succeed (re-initialises meta/version).
+                // A fresh batch to y must succeed (re-initialises global/version).
                 await yStorage.batch([
                     yStorage.freshness.putOp('nodeB', 'potentially-outdated'),
                 ]);
@@ -631,7 +601,7 @@ describe('generators/database', () => {
             try {
                 const db = await getRootDatabase(capabilities);
                 const yStorage = db.schemaStorageForReplica('y');
-                await db._rawPut(Y_META_VERSION_RAW_KEY, `${versionToString(db.version)}-mismatch`);
+                await db._rawPut(Y_GLOBAL_VERSION_RAW_KEY, `${versionToString(db.version)}-mismatch`);
 
                 /** @type {unknown} */
                 let thrownError;
