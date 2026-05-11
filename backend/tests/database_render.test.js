@@ -105,10 +105,6 @@ async function collectRawEntries(db) {
 // ---------------------------------------------------------------------------
 
 describe('keyToRelativePath()', () => {
-    test('root meta format key', () => {
-        expect(keyToRelativePath('!_meta!format')).toBe('_meta/format');
-    });
-
     test('namespace global version key', () => {
         expect(keyToRelativePath('!x!!global!version')).toBe('x/global/version');
     });
@@ -217,10 +213,6 @@ describe('keyToRelativePath()', () => {
 // ---------------------------------------------------------------------------
 
 describe('relativePathToKey()', () => {
-    test('root meta format', () => {
-        expect(relativePathToKey('_meta/format')).toBe('!_meta!format');
-    });
-
     test('namespace global version', () => {
         expect(relativePathToKey('x/global/version')).toBe('!x!!global!version');
     });
@@ -300,7 +292,7 @@ describe('relativePathToKey()', () => {
     });
 
     test('throws when plain-key sublevels have extra path segments', () => {
-        expect(() => relativePathToKey('_meta/format/extra')).toThrow(
+        expect(() => relativePathToKey('_meta/current_replica/extra')).toThrow(
             'plain-key sublevels require exactly one key segment'
         );
         expect(() => relativePathToKey('x/global/version/extra')).toThrow(
@@ -315,7 +307,7 @@ describe('relativePathToKey()', () => {
 
 describe('keyToRelativePath / relativePathToKey bijection', () => {
     const testKeys = [
-        '!_meta!format',
+        '!_meta!current_replica',
         '!x!!global!version',
         '!x!!values!{"head":"all_events","args":[]}',
         '!x!!freshness!{"head":"all_events","args":[]}',
@@ -459,7 +451,6 @@ describe('renderToFilesystem()', () => {
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/current_replica', content: JSON.stringify('x') },
-                { relPath: '_meta/format', content: JSON.stringify('xy-v2') },
                 { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
         } finally {
@@ -498,8 +489,7 @@ describe('renderToFilesystem()', () => {
         const outputDir = path.join(tmpDir, 'render-shrink');
         const staleRelPath = 'values/stale_node';
         const firstDb = await makeSeededDatabase(firstCapabilities, [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"stale_node","args":[]}', { stale: true }],
+                        ['!x!!values!{"head":"stale_node","args":[]}', { stale: true }],
         ]);
         const isolatedTmpDir = await secondCapabilities.creator.createTemporaryDirectory(
         );
@@ -515,8 +505,7 @@ describe('renderToFilesystem()', () => {
 
         try {
             const secondDb = await makeSeededDatabase(secondCapabilities, [
-                ['!_meta!format', 'xy-v1'],
-            ]);
+                            ]);
             try {
                 expect(secondCapabilities.environment.workingDirectory).toHaveBeenCalled();
                 expect(await secondCapabilities.checker.directoryExists(
@@ -539,16 +528,15 @@ describe('renderToFilesystem()', () => {
     test('file content is valid JSON matching the stored value', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'test-marker'],
-        ]);
+                    ]);
         try {
             const outputDir = path.join(tmpDir, 'render-content', '_meta');
             await renderToFilesystem(capabilities, db, outputDir, '_meta');
 
             const files = collectFiles(outputDir);
-            const metaFormatFile = files.find(f => f.relPath === 'format');
+            const metaFormatFile = files.find(f => f.relPath === 'current_replica');
             expect(metaFormatFile).toBeDefined();
-            expect(JSON.parse(metaFormatFile.content)).toBe('test-marker');
+            expect(JSON.parse(metaFormatFile.content)).toBe('x');
         } finally {
             await db.close();
         }
@@ -557,8 +545,7 @@ describe('renderToFilesystem()', () => {
     test('logs a summary after rendering', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'xy-v1'],
-        ]);
+                    ]);
         try {
             const outputDir = path.join(tmpDir, 'render-log', '_meta');
             await renderToFilesystem(capabilities, db, outputDir, '_meta');
@@ -648,8 +635,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
 
         // Render a database with one entry
         const dbA = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'xy-v2'],
-        ]);
+                    ]);
         const renderDir = path.join(tmpDir, 'stale-render', '_meta');
         await renderToFilesystem(capabilities, dbA, renderDir, '_meta');
         await dbA.close();
@@ -681,14 +667,13 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const inputDir = path.join(tmpDir, 'scan-only-input', '_meta');
         fs.mkdirSync(inputDir, { recursive: true });
         fs.writeFileSync(
-            path.join(inputDir, 'format'),
-            JSON.stringify('xy-v1')
+            path.join(inputDir, 'current_replica'),
+            JSON.stringify('x')
         );
 
         // DB has two keys — snapshot key plus one in a different top-level sublevel
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'old-value'],
-            ['!x!!values!{"head":"extra","args":[]}', { extra: true }],
+                        ['!x!!values!{"head":"extra","args":[]}', { extra: true }],
         ]);
 
         await scanFromFilesystem(capabilities, db, inputDir, '_meta');
@@ -696,7 +681,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
 
         // scanned key is replaced; non-scanned sublevel key survives
         expect(entries.size).toBe(2);
-        expect(entries.get('!_meta!format')).toBe('xy-v1');
+        expect(entries.get('!_meta!current_replica')).toBe('x');
         expect(entries.has('!x!!values!{"head":"extra","args":[]}')).toBe(true);
 
         await db.close();
@@ -707,8 +692,8 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const inputDir = path.join(tmpDir, 'scan-log-in', '_meta');
         fs.mkdirSync(inputDir, { recursive: true });
         fs.writeFileSync(
-            path.join(inputDir, 'format'),
-            JSON.stringify('xy-v1')
+            path.join(inputDir, 'current_replica'),
+            JSON.stringify('x')
         );
 
         const db = await getRootDatabase(capabilities);
@@ -734,13 +719,12 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const inputDir = path.join(tmpDir, 'scan-invalid-json', '_meta');
         await capabilities.creator.createDirectory(inputDir);
         const invalidFile = await capabilities.creator.createFile(
-            path.join(inputDir, 'format')
+            path.join(inputDir, 'current_replica')
         );
         await capabilities.writer.writeFile(invalidFile, '{"broken":');
 
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'keep-me'],
-            ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
+                        ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
         ]);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow();
@@ -755,7 +739,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-partial-invalid-path', '_meta');
         await capabilities.creator.createDirectory(inputDir);
-        await capabilities.creator.createDirectory(path.join(inputDir, 'format'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'current_replica'));
 
         const validFile = await capabilities.creator.createFile(
             path.join(inputDir, 'version')
@@ -767,8 +751,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         await capabilities.writer.writeFile(invalidFile, JSON.stringify('broken'));
 
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'keep-me'],
-            ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
+                        ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
         ]);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow(
@@ -796,8 +779,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         await capabilities.writer.writeFile(invalidFile, '{not valid json');
 
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'keep-me'],
-            ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
+                        ['!x!!values!{"head":"event","args":["stable"]}', { stable: true }],
         ]);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, 'x')).rejects.toThrow();
@@ -810,11 +792,10 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'scan-invalid-sublevel', '_meta');
         await capabilities.creator.createDirectory(inputDir);
-        const formatFile = await capabilities.creator.createFile(path.join(inputDir, 'format'));
-        await capabilities.writer.writeFile(formatFile, JSON.stringify('xy-v1'));
+        const formatFile = await capabilities.creator.createFile(path.join(inputDir, 'current_replica'));
+        await capabilities.writer.writeFile(formatFile, JSON.stringify('x'));
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'keep-me'],
-        ]);
+                    ]);
         try {
             const before = await collectRawEntries(db);
             await expect(scanFromFilesystem(capabilities, db, inputDir, '../_meta')).rejects.toThrow(
@@ -889,10 +870,10 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         expect(dbAEntries.size).toBe(0);
     });
 
-    test('single format marker', async () => {
-        const seed = [['!_meta!format', 'xy-v1']];
+    test('single current_replica marker', async () => {
+        const seed = [['!_meta!current_replica', 'x']];
         const { dbAEntries, dbBEntries } = await renderAndScan(seed);
-        expect(dbBEntries.get('!_meta!format')).toBe('xy-v1');
+        expect(dbBEntries.get('!_meta!current_replica')).toBe('x');
         assertAllEntriesPresent(dbAEntries, dbBEntries);
     });
 
@@ -969,8 +950,7 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
 
     test('entries across multiple top-level sublevels', async () => {
         const seed = [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
+                        ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
             ['!y!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [1] }],
         ];
         const { dbAEntries, dbBEntries } = await renderAndScan(seed);
@@ -994,8 +974,7 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
 
     test('many entries', async () => {
         const seed = [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!global!version', '1.2.3'],
+                        ['!x!!global!version', '1.2.3'],
             ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
             ['!x!!freshness!{"head":"all_events","args":[]}', 'up-to-date'],
             ['!x!!inputs!{"head":"event","args":["abc"]}', { inputs: ['all_events'], inputCounters: [1] }],
@@ -1032,8 +1011,7 @@ describe('sublevel parameter', () => {
     test('renderToFilesystem writes only the requested top-level database sublevel', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
+                        ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
         ]);
         try {
             const outputDir = path.join(tmpDir, 'sublevel-test', 'x');
@@ -1051,14 +1029,14 @@ describe('sublevel parameter', () => {
         const inputDir = path.join(tmpDir, 'sublevel-scan', '_meta');
         fs.mkdirSync(inputDir, { recursive: true });
         fs.writeFileSync(
-            path.join(inputDir, 'format'),
-            JSON.stringify('xy-v1')
+            path.join(inputDir, 'current_replica'),
+            JSON.stringify('x')
         );
         const db = await getRootDatabase(capabilities);
         try {
             await scanFromFilesystem(capabilities, db, inputDir, '_meta');
             const entries = await collectRawEntries(db);
-            expect(entries.get('!_meta!format')).toBe('xy-v1');
+            expect(entries.get('!_meta!current_replica')).toBe('x');
         } finally {
             await db.close();
         }
@@ -1067,8 +1045,7 @@ describe('sublevel parameter', () => {
     test('two different database sublevels can be rendered side-by-side', async () => {
         const { capabilities: capA, tmpDir } = makeTestCapabilities();
         const dbA = await makeSeededDatabase(capA, [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"node_a","args":[]}', { type: 'node_a' }],
+                        ['!x!!values!{"head":"node_a","args":[]}', { type: 'node_a' }],
             ['!y!!values!{"head":"node_b","args":[]}', { type: 'node_b' }],
         ]);
         const outputDir = path.join(tmpDir, 'shared-output', 'rendered');
@@ -1095,8 +1072,7 @@ describe('sublevel parameter', () => {
             path.join(tmpDir, 'results-b')
         );
         const seedEntries = [
-            ['!_meta!format', 'xy-v2'],
-            ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
+                        ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
             ['!x!!freshness!{"head":"event","args":["hello"]}', 'up-to-date'],
         ];
         const dbA = await makeSeededDatabase(capA, seedEntries);
@@ -1122,8 +1098,7 @@ describe('sublevel parameter', () => {
             path.join(tmpDir, 'results-b')
         );
         const seedEntries = [
-            ['!_meta!format', 'xy-v2'],
-            ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
+                        ['!x!!values!{"head":"event","args":["hello"]}', { type: 'event', value: 42 }],
         ];
         const dbA = await makeSeededDatabase(capA, seedEntries);
         const sharedDir = path.join(tmpDir, 'shared-dir-x-only', 'rendered', 'x');
@@ -1139,15 +1114,14 @@ describe('sublevel parameter', () => {
             type: 'event',
             value: 42,
         });
-        expect(dbBEntries.get('!_meta!format')).toBe('xy-v2');
     });
 
     test('scanFromFilesystem rejects mismatched filesystem and sublevel pair', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'mismatch', 'rendered', '_meta');
         await capabilities.creator.createDirectory(inputDir);
-        const formatFile = await capabilities.creator.createFile(path.join(inputDir, 'format'));
-        await capabilities.writer.writeFile(formatFile, JSON.stringify('xy-v1'));
+        const formatFile = await capabilities.creator.createFile(path.join(inputDir, 'current_replica'));
+        await capabilities.writer.writeFile(formatFile, JSON.stringify('x'));
         const db = await getRootDatabase(capabilities);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, 'x')).rejects.toThrow();
@@ -1172,8 +1146,7 @@ describe('sublevel parameter', () => {
     test('scanFromFilesystem does not mutate the database when inputDir is missing', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"event","args":["keep"]}', { keep: true }],
+                        ['!x!!values!{"head":"event","args":["keep"]}', { keep: true }],
         ]);
         const before = await collectRawEntries(db);
         const inputDir = path.join(tmpDir, 'absent-dir', 'rendered', 'x');
@@ -1213,8 +1186,7 @@ describe('additional reliability tests', () => {
     test('renderToFilesystem is idempotent when called twice on same outputDir', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
+                        ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
         ]);
         try {
             const outputDir = path.join(tmpDir, 'idem-out', 'x');
@@ -1231,8 +1203,7 @@ describe('additional reliability tests', () => {
     test('file count after render equals number of database entries', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const seedEntries = [
-            ['!_meta!format', 'xy-v1'],
-            ['!x!!values!{"head":"k1","args":[]}', { v: 1 }],
+                        ['!x!!values!{"head":"k1","args":[]}', { v: 1 }],
             ['!x!!values!{"head":"k2","args":[]}', { v: 2 }],
             ['!x!!freshness!{"head":"k1","args":[]}', 'up-to-date'],
         ];
@@ -1281,11 +1252,11 @@ describe('additional reliability tests', () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'malformed-plain-key', '_meta');
         await capabilities.creator.createDirectory(inputDir);
-        await capabilities.creator.createDirectory(path.join(inputDir, 'format'));
+        await capabilities.creator.createDirectory(path.join(inputDir, 'current_replica'));
         const malformedFile = await capabilities.creator.createFile(
             path.join(inputDir, 'format', 'extra')
         );
-        await capabilities.writer.writeFile(malformedFile, JSON.stringify('xy-v1'));
+        await capabilities.writer.writeFile(malformedFile, JSON.stringify('x'));
         const db = await getRootDatabase(capabilities);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow(
@@ -1325,8 +1296,7 @@ describe('additional reliability tests', () => {
             await db._rawPutAll(entries);
             expect(batchSpy).toHaveBeenCalledTimes(2);
             const storedEntries = await collectRawEntries(db);
-            // +2 accounts for the format marker and current_replica that getRootDatabase() writes on open.
-            expect(storedEntries.size).toBe(entriesCount + 2);
+            expect(storedEntries.size).toBe(entriesCount + 1);
             expect(
                 storedEntries.get(
                     `!x!!values!{"head":"event","args":["${entriesCount - 1}"]}`

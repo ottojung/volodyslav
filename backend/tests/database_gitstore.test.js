@@ -190,8 +190,7 @@ describe("checkpointDatabase", () => {
     test("creates a new commit on every call", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["same"]}', { version: 1 }],
+                        ['!x!!values!{"head":"event","args":["same"]}', { version: 1 }],
         ]);
         try {
             await checkpointDatabase(capabilities, "first", db);
@@ -209,8 +208,7 @@ describe("checkpointDatabase", () => {
     test("commit messages are recorded in order", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["ordered"]}', { version: "a" }],
+                        ['!x!!values!{"head":"event","args":["ordered"]}', { version: "a" }],
         ]);
         try {
             await checkpointDatabase(capabilities, "checkpoint-alpha", db);
@@ -231,7 +229,7 @@ describe("checkpointDatabase", () => {
 
     test("does not commit when no files have changed", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             await checkpointDatabase(capabilities, "first", db);
             const gitDir = checkpointGitDir(capabilities);
@@ -265,8 +263,7 @@ describe("checkpointDatabase", () => {
     test("database subdirectory is the only top-level entry in the repository", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["layout"]}', { ok: true }],
+                        ['!x!!values!{"head":"event","args":["layout"]}', { ok: true }],
         ]);
         try {
             await checkpointDatabase(capabilities, "layout check", db);
@@ -281,8 +278,7 @@ describe("checkpointDatabase", () => {
     test("rendered database files are tracked inside DATABASE_SUBPATH in the commit tree", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
+                        ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
             ['!x!!global!version', "1.2.3"],
         ]);
         try {
@@ -492,7 +488,7 @@ describe("dirty-state recovery", () => {
         await fs.writeFile(path.join(workDir, "stale-untracked.txt"), "stale untracked");
         execFileSync("git", ["-C", workDir, "add", "stale-staged.txt"]);
 
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             // Should not throw even though there are no commits yet.
             await checkpointDatabase(capabilities, "checkpoint on unborn branch", db);
@@ -510,7 +506,7 @@ describe("dirty-state recovery", () => {
 
     test("checkpointDatabase recovers when MERGE_HEAD is present from a prior interrupted merge", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             // Establish a clean baseline.
             await checkpointDatabase(capabilities, "baseline", db);
@@ -576,7 +572,7 @@ describe("dirty-state recovery", () => {
 
     test("checkpointDatabase recovers when CHERRY_PICK_HEAD is present", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             await checkpointDatabase(capabilities, "baseline", db);
             const gitDir = checkpointGitDir(capabilities);
@@ -604,7 +600,7 @@ describe("dirty-state recovery", () => {
 
     test("checkpointDatabase cleans up untracked stray files and directories from the working tree", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             await checkpointDatabase(capabilities, "baseline", db);
 
@@ -639,7 +635,7 @@ describe("dirty-state recovery", () => {
 
     test("checkpointDatabase recovers when staged files are present without a commit", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             await checkpointDatabase(capabilities, "baseline", db);
 
@@ -667,7 +663,7 @@ describe("dirty-state recovery", () => {
 
     test("checkpointDatabase fails fast when malformed rebase state cannot be aborted", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             await checkpointDatabase(capabilities, "baseline", db);
             const gitDir = checkpointGitDir(capabilities);
@@ -738,7 +734,7 @@ describe("dirty-state recovery", () => {
 
     test("multiple checkpoints succeed after dirty-state recovery", async () => {
         const capabilities = getTestCapabilities();
-        const db = await seedDatabase(capabilities, [["!_meta!format", "xy-v1"]]);
+        const db = await seedDatabase(capabilities, [["!_meta!current_replica", "x"]]);
         try {
             await checkpointDatabase(capabilities, "baseline", db);
             const gitDir = checkpointGitDir(capabilities);

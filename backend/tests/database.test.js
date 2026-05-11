@@ -433,33 +433,7 @@ describe('generators/database', () => {
         });
     });
 
-    describe('Format marker', () => {
-        test('throws DatabaseInitializationError when format marker has wrong value', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                // Write a wrong format marker directly into the DB to simulate an old/incompatible layout.
-                const rawDb = capabilities.levelDatabase.initialize(
-                    require('path').join(
-                        capabilities.environment.workingDirectory(),
-                        LIVE_DATABASE_WORKING_PATH
-                    )
-                );
-                await rawDb.open();
-                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'old-incompatible-format');
-                await rawDb.close();
-
-                // Open via getRootDatabase — should detect wrong marker and throw.
-                const error = await getRootDatabase(capabilities).catch(e => e);
-                expect(isDatabaseInitializationError(error)).toBe(true);
-                expect(error.message).toMatch(/format marker mismatch/);
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-    });
-
-    describe('Type guards', () => {
+        describe('Type guards', () => {
         test('isRootDatabase correctly identifies database instances', async () => {
             const capabilities = getTestCapabilities();
             try {
@@ -506,23 +480,20 @@ describe('generators/database', () => {
             }
         });
 
-        test('database missing current_replica throws InvalidReplicaPointerError on open', async () => {
+        test('database missing current_replica defaults to x on open', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // Write format marker without current_replica.
+                // Deliberately omit current_replica.
                 const rawDb = capabilities.levelDatabase.initialize(
                     path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
                 );
                 await rawDb.open();
-                const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v2');
                 // Deliberately omit `current_replica`.
                 await rawDb.close();
 
-                // getRootDatabase wraps errors in DatabaseInitializationError.
-                const error = await getRootDatabase(capabilities).catch(e => e);
-                expect(isDatabaseInitializationError(error)).toBe(true);
-                expect(isInvalidReplicaPointerError(error.cause)).toBe(true);
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -537,8 +508,7 @@ describe('generators/database', () => {
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v2');
-                await meta.put('current_replica', 'z');
+                                await meta.put('current_replica', 'z');
                 await rawDb.close();
 
                 // getRootDatabase wraps errors in DatabaseInitializationError.

@@ -29,7 +29,7 @@ Within each namespace there are further typed sublevels:
 | `meta`      | Namespace metadata (currently just the schema version)    |
 
 There is also a top-level `_meta` sublevel (outside the `x`/`y` namespace) that stores the database
-format marker.
+current replica pointer.
 
 ### Key format
 
@@ -46,7 +46,7 @@ At the raw LevelDB level these are concatenated with the sublevel prefixes, e.g.
 ```
 !x!!values!{"head":"all_events","args":[]}
 !x!!freshness!{"head":"all_events","args":[]}
-!_meta!format
+!_meta!current_replica
 ```
 
 ---
@@ -99,7 +99,7 @@ The stored key is a plain string (e.g. `format`, `version`).
 It is used as a single percent-encoded path segment:
 
 ```
-!_meta!format    → _meta/format
+!_meta!current_replica    → _meta/current_replica
 !x!!meta!version → x/meta/version
 ```
 
