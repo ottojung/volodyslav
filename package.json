@@ -38,7 +38,7 @@
     "concurrently": "^9.2.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-jest": "^28.11.0",
+    "eslint-plugin-jest": "^29.15.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav",
     "jest": "^30.3.0",
