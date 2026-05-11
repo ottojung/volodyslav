@@ -324,19 +324,45 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  */
 async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
+    const currentVersion = rootDatabase.version;
+    const activeReplica = rootDatabase.currentReplicaName();
+    const inactiveReplica = rootDatabase.otherReplicaName();
+
+    capabilities.logger.logDebug(
+        {
+            currentVersion,
+            activeReplica,
+            inactiveReplica,
+            nodeDefinitionCount: nodeDefs.length,
+        },
+        'Migration check: evaluating whether migration is required'
+    );
+
     /** @type {Version | undefined} */
     const prevVersion = await rootDatabase.getGlobalVersion();
     if (prevVersion === undefined) {
+        capabilities.logger.logDebug(
+            { currentVersion, activeReplica },
+            'Migration not required: no stored version found in active replica; marking fresh database with current version'
+        );
         // No previous version recorded; fresh database: record current version, nothing to migrate.
         await rootDatabase.setGlobalVersion(rootDatabase.version);
         return;
     }
 
-    const currentVersion = rootDatabase.version;
     if (prevVersion === currentVersion) {
+        capabilities.logger.logDebug(
+            { prevVersion, currentVersion, activeReplica },
+            'Migration not required: stored version already matches current application version'
+        );
         // Already on the current version.
         return;
     }
+
+    capabilities.logger.logDebug(
+        { prevVersion, currentVersion, fromReplica: activeReplica, toReplica: inactiveReplica },
+        'Migration required: stored version differs from current version; preparing replica cutover migration'
+    );
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion
