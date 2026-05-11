@@ -15,8 +15,6 @@ const {
 } = require('./gitstore');
 const {
     synchronizeNoLock,
-    InvalidSnapshotReplicaError,
-    isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
 } = require('./synchronize');
 const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
@@ -67,8 +65,6 @@ module.exports = {
     versionToString,
     stringToVersion,
     synchronizeNoLock,
-    InvalidSnapshotReplicaError,
-    isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
     renderToFilesystem,
     scanFromFilesystem,
