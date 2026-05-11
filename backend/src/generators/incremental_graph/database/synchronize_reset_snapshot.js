@@ -22,16 +22,21 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree)
     const rDir = path.join(snapshotRoot, 'r');
     const nextReplica = database.otherReplicaName();
 
-    if (await capabilities.checker.directoryExists(rDir)) {
-        await scanFromFilesystem(
-            capabilities,
-            database,
-            rDir,
-            nextReplica
-        );
-    } else {
-        await database._rawDeleteSublevel(nextReplica);
+    const hasSnapshotReplicaDirectory = await capabilities.checker.directoryExists(rDir);
+    const importDirectory = hasSnapshotReplicaDirectory
+        ? rDir
+        : path.join(workTree, DATABASE_SUBPATH, '_empty_reset_snapshot');
+
+    if (!hasSnapshotReplicaDirectory) {
+        await capabilities.creator.createDirectory(importDirectory);
     }
+
+    await scanFromFilesystem(
+        capabilities,
+        database,
+        importDirectory,
+        nextReplica
+    );
 
     await database.switchToReplica(nextReplica);
 }

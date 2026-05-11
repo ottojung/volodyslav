@@ -501,21 +501,6 @@ class RootDatabaseClass {
     }
 
     /**
-     * This is equivalent to iterating every key with the `!<sublevelName>!` prefix
-     * and deleting them, but delegates to abstract-level's `sublevel.clear()` so
-     * the operation is handled in a single efficient range-delete rather than a
-     * chunked batch.
-     *
-     * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
-     * @returns {Promise<void>}
-     */
-    async _rawDeleteSublevel(sublevelName) {
-        /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        await sublevel.clear();
-    }
-
-    /**
      * Iterates over all raw key/value pairs belonging to one top-level LevelDB
      * sublevel.  Unlike `_rawEntries()`, this method only reads the requested
      * sublevel (via abstract-level's built-in range scoping) instead of scanning
