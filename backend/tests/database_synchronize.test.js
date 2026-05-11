@@ -1,7 +1,6 @@
 const path = require("path");
 const {
     synchronizeNoLock,
-    isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
     getRootDatabase,
     CHECKPOINT_WORKING_PATH,
@@ -336,130 +335,18 @@ describe("synchronizeNoLock", () => {
         expect(error.message).toContain("input directory does not exist");
     });
 
-    test("throws InvalidSnapshotReplicaError when snapshot has incompatible _meta/current_replica", async () => {
+    test("resetToHostname succeeds when snapshot omits _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
-        const branch = `${capabilities.environment.hostname()}-main`;
-        const remotePath = capabilities.environment.generatorsRepository();
-        const workTree = await capabilities.creator.createTemporaryDirectory();
-        try {
-            await capabilities.git.call("init", "--bare", "--", remotePath);
-            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
+        await seedHostnameBranchWithRenderedFiles(capabilities, [
+            { path: "r/values/%7B%22head%22%3A%22event%22%2C%22args%22%3A%5B%22present%22%5D%7D", content: JSON.stringify({ marker: true }) },
+        ]);
 
-            const currentReplicaFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
-            );
-            await capabilities.writer.writeFile(currentReplicaFile, JSON.stringify("z"));
-
-            await capabilities.git.call("-C", workTree, "add", "--all");
-            await capabilities.git.call(
-                "-C",
-                workTree,
-                "-c",
-                "user.name=volodyslav",
-                "-c",
-                "user.email=volodyslav",
-                "commit",
-                "-m",
-                "seed snapshot without current_replica"
-            );
-            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
-            await capabilities.git.call("-C", workTree, "push", "origin", branch);
-
-            let error;
-            try {
-                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
-            } catch (caught) {
-                error = caught;
-            }
-            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
-        } finally {
-            await capabilities.deleter.deleteDirectory(workTree);
-        }
+        await expect(
+            synchronizeNoLock(capabilities, { resetToHostname: "test-host" })
+        ).resolves.toBeUndefined();
     });
 
-    test("throws InvalidSnapshotReplicaError for invalid JSON in _meta/current_replica", async () => {
-        const capabilities = getTestCapabilities();
-        const branch = `${capabilities.environment.hostname()}-main`;
-        const remotePath = capabilities.environment.generatorsRepository();
-        const workTree = await capabilities.creator.createTemporaryDirectory();
-        try {
-            await capabilities.git.call("init", "--bare", "--", remotePath);
-            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
-
-            const currentReplicaFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
-            );
-            await capabilities.writer.writeFile(currentReplicaFile, "not-json");
-
-            await capabilities.git.call("-C", workTree, "add", "--all");
-            await capabilities.git.call(
-                "-C",
-                workTree,
-                "-c",
-                "user.name=volodyslav",
-                "-c",
-                "user.email=volodyslav",
-                "commit",
-                "-m",
-                "seed invalid current_replica"
-            );
-            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
-            await capabilities.git.call("-C", workTree, "push", "origin", branch);
-
-            let error;
-            try {
-                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
-            } catch (caught) {
-                error = caught;
-            }
-            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
-        } finally {
-            await capabilities.deleter.deleteDirectory(workTree);
-        }
-    });
-
-    test("throws InvalidSnapshotReplicaError that clearly reports a missing _meta/current_replica", async () => {
-        const capabilities = getTestCapabilities();
-        const branch = `${capabilities.environment.hostname()}-main`;
-        const remotePath = capabilities.environment.generatorsRepository();
-        const workTree = await capabilities.creator.createTemporaryDirectory();
-        try {
-            await capabilities.git.call("init", "--bare", "--", remotePath);
-            await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
-            const markerFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "r", "placeholder")
-            );
-            await capabilities.writer.writeFile(markerFile, JSON.stringify("placeholder"));
-
-            await capabilities.git.call("-C", workTree, "add", "--all");
-            await capabilities.git.call(
-                "-C",
-                workTree,
-                "-c",
-                "user.name=volodyslav",
-                "-c",
-                "user.email=volodyslav",
-                "commit",
-                "-m",
-                "seed snapshot without current_replica"
-            );
-            await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
-            await capabilities.git.call("-C", workTree, "push", "origin", branch);
-
-            let error;
-            try {
-                await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
-            } catch (caught) {
-                error = caught;
-            }
-            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
-            expect(error.message).toContain('Snapshot _meta/current_replica is missing.');
-        } finally {
-            await capabilities.deleter.deleteDirectory(workTree);
-        }
-    });
-
-    test("repeat reset bootstrap failures remain deterministic and do not create live database", async () => {
+    test("repeat reset bootstrap with invalid _meta/current_replica succeeds and keeps live database available", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -498,8 +385,8 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 firstError = caught;
             }
-            expect(isInvalidSnapshotReplicaError(firstError)).toBe(true);
-            expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+            expect(firstError).toBeUndefined();
+            expect(await capabilities.checker.directoryExists(liveDbPath)).not.toBeNull();
 
             let secondError;
             try {
@@ -507,9 +394,8 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 secondError = caught;
             }
-            expect(isInvalidSnapshotReplicaError(secondError)).toBe(true);
-            expect(secondError.message).toContain('Snapshot _meta/current_replica has invalid parsed value: "z".');
-            expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+            expect(secondError).toBeUndefined();
+            expect(await capabilities.checker.directoryExists(liveDbPath)).not.toBeNull();
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }
@@ -517,7 +403,7 @@ describe("synchronizeNoLock", () => {
 
     describe("resetToHostname no-healing scenario matrix", () => {
         /**
-         * @typedef {{ name: string, files: Array<{ path: string, content: string }>, expectedErrorGuard: (error: unknown) => boolean }} ResetFailureScenario
+         * @typedef {{ name: string, files: Array<{ path: string, content: string }>, expectedErrorGuard: (error: unknown) => boolean, createsLiveDatabase: boolean }} ResetFailureScenario
          */
 
         /** @type {ResetFailureScenario[]} */
@@ -527,21 +413,24 @@ describe("synchronizeNoLock", () => {
                 files: [
                     { path: "r/placeholder", content: JSON.stringify("placeholder") },
                 ],
-                expectedErrorGuard: isInvalidSnapshotReplicaError,
+                expectedErrorGuard: (error) => error instanceof Error,
+                createsLiveDatabase: false,
             },
             {
                 name: "invalid JSON in _meta/current_replica",
                 files: [
                     { path: "_meta/current_replica", content: "not-json" },
                 ],
-                expectedErrorGuard: isInvalidSnapshotReplicaError,
+                expectedErrorGuard: (error) => error === undefined,
+                createsLiveDatabase: true,
             },
             {
                 name: "invalid _meta/current_replica value",
                 files: [
                     { path: "_meta/current_replica", content: JSON.stringify("z") },
                 ],
-                expectedErrorGuard: isInvalidSnapshotReplicaError,
+                expectedErrorGuard: (error) => error === undefined,
+                createsLiveDatabase: true,
             },
             {
                 name: "invalid JSON payload in rendered r/ subtree",
@@ -551,14 +440,14 @@ describe("synchronizeNoLock", () => {
                 ],
                 expectedErrorGuard: (error) =>
                     error instanceof Error &&
-                    !isInvalidSnapshotReplicaError(error) &&
                     !isSyncMergeAggregateError(error),
+                createsLiveDatabase: false,
             },
         ];
 
         test.each(scenarios)(
             "does not heal for scenario: $name",
-            async ({ files, expectedErrorGuard }) => {
+            async ({ files, expectedErrorGuard, createsLiveDatabase }) => {
                 const capabilities = getTestCapabilities();
                 const liveDbPath = path.join(
                     capabilities.environment.workingDirectory(),
@@ -575,7 +464,11 @@ describe("synchronizeNoLock", () => {
                 }
 
                 expect(expectedErrorGuard(firstError)).toBe(true);
-                expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+                if (createsLiveDatabase) {
+                    expect(await capabilities.checker.directoryExists(liveDbPath)).not.toBeNull();
+                } else {
+                    expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+                }
 
                 let secondError;
                 try {
@@ -585,7 +478,11 @@ describe("synchronizeNoLock", () => {
                 }
 
                 expect(expectedErrorGuard(secondError)).toBe(true);
-                expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+                if (createsLiveDatabase) {
+                    expect(await capabilities.checker.directoryExists(liveDbPath)).not.toBeNull();
+                } else {
+                    expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
+                }
             }
         );
 

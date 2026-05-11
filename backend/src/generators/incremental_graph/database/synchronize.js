@@ -23,8 +23,6 @@ const {
 } = require('./gitstore');
 const {
     synchronizeResetToHostname,
-    InvalidSnapshotReplicaError,
-    isInvalidSnapshotReplicaError,
 } = require('./synchronize_reset_snapshot');
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
@@ -260,7 +258,5 @@ async function synchronizeNoLock(capabilities, options) {
 
 module.exports = {
     synchronizeNoLock,
-    InvalidSnapshotReplicaError,
-    isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
 };
