@@ -131,8 +131,8 @@ function addressToString(address) {
  */
 async function startWithCapabilities(capabilities) {
     await capabilities.logger.setup();
-    const volodyslavVersion = await getVersion(capabilities);
-    capabilities.logger.logInfo({ version: volodyslavVersion }, `Volodyslav version: ${volodyslavVersion}`);
+    const version = await getVersion(capabilities);
+    capabilities.logger.logInfo({ version }, `Volodyslav version: ${version}`);
     const app = expressApp.make();
     // The following line is commented out because HTTP call logging is too verbose by default.
     // TODO: configure a better logging strategy for HTTP calls.
