@@ -23,14 +23,11 @@ const {
 } = require('./gitstore');
 const {
     synchronizeResetToHostname,
-    InvalidSnapshotFormatError,
-    isInvalidSnapshotFormatError,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
 } = require('./synchronize_reset_snapshot');
 const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
-const { FORMAT_MARKER } = require('./root_database');
 const {
     mergeHostIntoReplica,
     SyncMergeAggregateError,
@@ -53,57 +50,6 @@ const {
 /** @typedef {import('../../../generators/interface').Interface} Interface */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 
-class IncompatibleHostSnapshotFormatError extends Error {
-    /**
-     * @param {string} hostname
-     * @param {unknown} value
-     * @param {string} formatFile
-     * @param {'missing' | 'invalid-json' | 'invalid-value'} reason
-     */
-    constructor(hostname, value, formatFile, reason) {
-        const renderedValue = value === undefined ? 'undefined' : JSON.stringify(value);
-        let details;
-        if (reason === 'missing') {
-            details = `missing _meta/format. Expected ${JSON.stringify(FORMAT_MARKER)}`;
-        } else if (reason === 'invalid-json') {
-            details = `invalid JSON in _meta/format: ${renderedValue}. Expected JSON string ${JSON.stringify(FORMAT_MARKER)}`;
-        } else {
-            details = `incompatible format ${renderedValue}. Expected ${JSON.stringify(FORMAT_MARKER)}`;
-        }
-        super(`Cannot merge host '${hostname}': ${details}. File: ${formatFile}`);
-        this.name = 'IncompatibleHostSnapshotFormatError';
-        this.hostname = hostname;
-        this.value = value;
-        this.formatFile = formatFile;
-        this.reason = reason;
-    }
-}
-
-/**
- * @param {Capabilities} capabilities
- * @param {string} hostname
- * @param {string} tmpDir
- * @returns {Promise<void>}
- */
-async function validateHostSnapshotFormat(capabilities, hostname, tmpDir) {
-    const formatFile = path.join(tmpDir, DATABASE_SUBPATH, '_meta', 'format');
-    if (!(await capabilities.checker.fileExists(formatFile))) {
-        throw new IncompatibleHostSnapshotFormatError(hostname, undefined, formatFile, 'missing');
-    }
-
-    let parsedFormat;
-    try {
-        const formatRaw = await capabilities.reader.readFileAsText(formatFile);
-        parsedFormat = JSON.parse(formatRaw);
-    } catch {
-        const formatRaw = await capabilities.reader.readFileAsText(formatFile);
-        throw new IncompatibleHostSnapshotFormatError(hostname, formatRaw, formatFile, 'invalid-json');
-    }
-
-    if (parsedFormat !== FORMAT_MARKER) {
-        throw new IncompatibleHostSnapshotFormatError(hostname, parsedFormat, formatFile, 'invalid-value');
-    }
-}
 
 /**
  * @typedef {object} Capabilities
@@ -179,8 +125,6 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
                 'worktree', 'add', '--detach', tmpDir, remoteBranch
             );
             worktreeAdded = true;
-
-            await validateHostSnapshotFormat(capabilities, hostname, tmpDir);
 
             const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
             await scanFromFilesystem(
@@ -316,8 +260,6 @@ async function synchronizeNoLock(capabilities, options) {
 
 module.exports = {
     synchronizeNoLock,
-    InvalidSnapshotFormatError,
-    isInvalidSnapshotFormatError,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
