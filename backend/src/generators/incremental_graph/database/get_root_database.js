@@ -3,18 +3,15 @@
  *
  * This module's responsibility is to open (or create) the live LevelDB
  * instance.  `getRootDatabase` ensures the directory exists, then delegates
- * to `makeRootDatabase` which:
- *   - Reads `_meta/format`; crashes if it does not match FORMAT_MARKER
- *     (satisfies "format mismatch → crash").
- *   - Writes the current FORMAT_MARKER and replica pointer on first open of
- *     a truly empty database.
+ * to `makeRootDatabase` which initialises `_meta/current_replica` on first
+ * open of a truly empty database.
  *
  * Version migration ("version mismatch → migrate") is handled by the caller
  * (`internalEnsureInitializedWithMigration` in lifecycle.js) via
  * `runMigrationUnsafe` after this function returns.
  *
  * Recovery when the live LevelDB directory is missing (for example, deleted
- * or lost after a format-mismatch crash) is handled by the caller
+ * or lost after a previous crash) is handled by the caller
  * (`internalEnsureInitialized` in lifecycle.js): it performs bootstrap via
  * `synchronizeNoLock` before this module opens the database.
  */

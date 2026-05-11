@@ -54,11 +54,6 @@ const {
  */
 
 /**
- * The format marker value that identifies a database using the x/y namespace layout.
- */
-const FORMAT_MARKER = 'xy-v2';
-
-/**
  * The valid replica names.
  * @typedef {'x' | 'y'} ReplicaName
  */
@@ -525,7 +520,7 @@ class RootDatabaseClass {
      * the entire database and filtering by prefix.
      *
      * Each yielded key is the full root-level key (e.g. `!x!!values!...` or
-     * `!_meta!format`) reconstructed by prepending `!<sublevelName>!` to the
+     * `!_meta!bootstrap_marker`) reconstructed by prepending `!<sublevelName>!` to the
      * key returned by the sublevel iterator.
      *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
@@ -736,15 +731,14 @@ class RootDatabaseClass {
 /**
  * Factory function to create a RootDatabase instance.
  *
- * On first open (no format marker present), writes the format marker and
- * initialises `_meta/current_replica` to `"x"` for a fresh database.
+ * On first open (no replica pointer present), initialises
+ * `_meta/current_replica` to `"x"` for a fresh database.
  *
  * For an existing database without a `current_replica` pointer (legacy or
  * partially-initialised), defaults to `"x"` and writes the pointer so future
  * opens are consistent.
  *
- * Throws if the format marker does not match (incompatible layout) or if the
- * stored `current_replica` value is not `"x"` or `"y"`.
+ * Throws if the stored `current_replica` value is not `"x"` or `"y"`.
  *
  * @param {RootDatabaseCapabilities} capabilities - The capabilities required to create the database
  * @param {string} databasePath - Path to the database directory
@@ -772,25 +766,13 @@ async function makeRootDatabase(capabilities, databasePath) {
         }
     }
 
-    // Check the root-level format marker to ensure we are using the x/y namespace layout.
+    // Ensure the root-level replica pointer exists and is valid.
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
-    const formatMarker = await rootMetaSublevel.get('format');
-    if (formatMarker === undefined) {
-        // Fresh database: write the format marker and the initial replica pointer.
-        await rootMetaSublevel.put('format', FORMAT_MARKER);
-        await rootMetaSublevel.put('current_replica', 'x');
-        return new RootDatabaseClass(db, version, 'x');
-    } else if (formatMarker !== FORMAT_MARKER) {
-        // Existing database with an incompatible format — refuse to open.
-        await db.close();
-        throw new Error(`Database format marker mismatch: expected "${FORMAT_MARKER}", found "${formatMarker}". This may indicate an old database layout or a corrupted database. Please ensure the database is correct or delete it to start fresh.`);
-    }
-
-    // Read the current replica pointer.
     const storedReplica = await rootMetaSublevel.get('current_replica');
     if (storedReplica === undefined) {
-        await db.close();
-        throw new InvalidReplicaPointerError("none");
+        // Fresh database (or legacy DB missing the pointer): initialise pointer.
+        await rootMetaSublevel.put('current_replica', 'x');
+        return new RootDatabaseClass(db, version, 'x');
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
         await db.close();
@@ -812,7 +794,6 @@ function isRootDatabase(object) {
 /** @typedef {RootDatabaseClass} RootDatabase */
 
 module.exports = {
-    FORMAT_MARKER,
     makeRootDatabase,
     isRootDatabase,
     isInvalidReplicaPointerError,

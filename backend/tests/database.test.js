@@ -434,10 +434,10 @@ describe('generators/database', () => {
     });
 
     describe('Format marker', () => {
-        test('throws DatabaseInitializationError when format marker has wrong value', async () => {
+        test('throws DatabaseInitializationError when bootstrap marker has wrong value', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // Write a wrong format marker directly into the DB to simulate an old/incompatible layout.
+                // Write a wrong bootstrap marker directly into the DB to simulate an old/incompatible layout.
                 const rawDb = capabilities.levelDatabase.initialize(
                     require('path').join(
                         capabilities.environment.workingDirectory(),
@@ -452,7 +452,7 @@ describe('generators/database', () => {
                 // Open via getRootDatabase — should detect wrong marker and throw.
                 const error = await getRootDatabase(capabilities).catch(e => e);
                 expect(isDatabaseInitializationError(error)).toBe(true);
-                expect(error.message).toMatch(/format marker mismatch/);
+                expect(error.message).toMatch(/bootstrap marker mismatch/);
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -509,13 +509,13 @@ describe('generators/database', () => {
         test('database missing current_replica throws InvalidReplicaPointerError on open', async () => {
             const capabilities = getTestCapabilities();
             try {
-                // Write format marker without current_replica.
+                // Write bootstrap marker without current_replica.
                 const rawDb = capabilities.levelDatabase.initialize(
                     path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v2');
+                await meta.put('format', 'bootstrap-v2');
                 // Deliberately omit `current_replica`.
                 await rawDb.close();
 
@@ -537,7 +537,7 @@ describe('generators/database', () => {
                 );
                 await rawDb.open();
                 const meta = rawDb.sublevel('_meta', { valueEncoding: 'json' });
-                await meta.put('format', 'xy-v2');
+                await meta.put('format', 'bootstrap-v2');
                 await meta.put('current_replica', 'z');
                 await rawDb.close();
 
