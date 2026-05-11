@@ -16,6 +16,7 @@ const assetsRouter = routes.assets;
 const audioRecordingSessionRouter = routes.audioRecordingSession;
 const diarySummaryRouter = routes.diarySummary;
 const expressApp = require("./express_app");
+const { getVersion } = require("./version");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const { getBasePath } = require("./base_path");
 
@@ -130,6 +131,8 @@ function addressToString(address) {
  */
 async function startWithCapabilities(capabilities) {
     await capabilities.logger.setup();
+    const volodyslavVersion = await getVersion(capabilities);
+    capabilities.logger.logInfo({ version: volodyslavVersion }, `Volodyslav version: ${volodyslavVersion}`);
     const app = expressApp.make();
     // The following line is commented out because HTTP call logging is too verbose by default.
     // TODO: configure a better logging strategy for HTTP calls.
