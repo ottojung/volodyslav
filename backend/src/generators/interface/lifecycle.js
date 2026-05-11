@@ -207,6 +207,7 @@ async function internalEnsureInitializedWithMigration(
     }
 
     const capabilities = interfaceInstance._getCapabilities();
+    capabilities.logger.logDebug({}, 'Initialization: opening root database for graph lifecycle');
     const database = await getRootDatabase(capabilities);
     const configBox = config.makeBox();
     const allEventsBox = allEvents.makeBox();
@@ -220,12 +221,14 @@ async function internalEnsureInitializedWithMigration(
         ontologyBox
     );
     try {
+        capabilities.logger.logDebug({}, 'Initialization: running migration gate before graph construction');
         await runMigrationProcedure(
             capabilities,
             database,
             nodeDefs,
             migrationCallback(capabilities),
         );
+        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, constructing incremental graph');
         const incrementalGraph = makeIncrementalGraph(
             capabilities,
             database,
@@ -268,6 +271,7 @@ async function internalSynchronizeDatabase(interfaceInstance, options) {
  */
 async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const capabilities = interfaceInstance._getCapabilities();
+    capabilities.logger.logDebug({ options }, 'Synchronize: entering no-lock synchronization path');
     const database = interfaceInstance._database;
     const incrementalGraph = interfaceInstance._incrementalGraph;
     const allEventsBox = interfaceInstance._allEventsBox;
@@ -275,6 +279,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const diarySummaryBox = interfaceInstance._diarySummaryBox;
     const ontologyBox = interfaceInstance._ontologyBox;
     if (database === null) {
+        capabilities.logger.logDebug({ options }, 'Synchronize: interface database is not open; synchronizing directly');
         await synchronizeNoLock(capabilities, options);
         return;
     }
@@ -287,6 +292,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     interfaceInstance._ontologyBox = null;
 
     try {
+        capabilities.logger.logDebug({ options }, 'Synchronize: closing currently opened database before sync/reset');
         await database.close();
     } catch (error) {
         interfaceInstance._database = database;
@@ -301,6 +307,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     let synchronizeFailure = null;
 
     try {
+        capabilities.logger.logDebug({ options }, 'Synchronize: running synchronizeNoLock');
         await synchronizeNoLock(capabilities, options);
     } catch (error) {
         synchronizeFailure = error;
@@ -308,6 +315,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
 
     let reopenFailure = null;
     try {
+        capabilities.logger.logDebug({ options }, 'Synchronize: reopening interface and re-running migration gate after sync/reset');
         await internalEnsureInitializedWithMigration(
             interfaceInstance,
             runMigrationUnsafe
