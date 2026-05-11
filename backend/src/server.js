@@ -18,6 +18,7 @@ const diarySummaryRouter = routes.diarySummary;
 const expressApp = require("./express_app");
 const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const { getBasePath } = require("./base_path");
+const runtimeIdentifier = require("./runtime_identifier");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -130,6 +131,8 @@ function addressToString(address) {
  */
 async function startWithCapabilities(capabilities) {
     await capabilities.logger.setup();
+    const { version } = await runtimeIdentifier(capabilities);
+    capabilities.logger.logInfo({ version }, `Volodyslav version: ${version}`);
     const app = expressApp.make();
     // The following line is commented out because HTTP call logging is too verbose by default.
     // TODO: configure a better logging strategy for HTTP calls.
