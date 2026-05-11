@@ -17,7 +17,7 @@ Volodyslav uses two coordinated stores for generators data:
 1. **Live LevelDB (authoritative at runtime)**
    - Path: `<workingDirectory>/generators-leveldb`
    - Root metadata includes:
-     - `_meta/format`
+     - `_meta/current_replica`
      - `_meta/current_replica`
    - Replicated graph namespaces: `x` and `y`.
 
@@ -49,7 +49,7 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 4. **Migration checkpoint**: the `checkpointSession`-based write sequence (via `checkpointMigration`) that prepares migrated replica state and records pre/post rendered snapshots.
 5. **Replica cutover**: the committed switch of `_meta/current_replica` from old replica to migrated replica.
 6. **Fatal startup crash**: startup abort where IncrementalGraph is not exposed.
-7. **Structural validation**: boot-time checks for `_meta/format == xy-v2` and `_meta/current_replica ∈ {x,y}`.
+7. **Structural validation**: boot-time checks for `_meta/current_replica == x or y` and `_meta/current_replica ∈ {x,y}`.
 8. **Effective version**: the version metadata associated with the active replica after startup completes.
 
 ### 3.4 Out of scope
@@ -64,7 +64,7 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 If startup completes successfully, all of the following hold:
 
 1. A live LevelDB is present and openable at the runtime storage path.
-2. Root format marker is valid (`xy-v2`).
+2. Root current replica pointer is valid (`x or y`).
 3. Replica pointer is valid (`x` or `y`).
 4. Active replica version is current application version (either already current or migrated during startup).
 5. IncrementalGraph is exposed only after the above conditions are satisfied.
@@ -74,7 +74,7 @@ If startup completes successfully, all of the following hold:
 ## 5) Conceptual phases
 
 1. **Bootstrap source selection** (only if live DB directory is missing).
-2. **Open + structural validation** (format marker + replica pointer).
+2. **Open + structural validation** (current replica pointer + replica pointer).
 3. **Version check + migration** (if version mismatch).
 4. **Expose initialized graph**.
 
@@ -94,7 +94,7 @@ flowchart TD
     E -->|No| F[Fallback: normal sync from empty local DB]
     F --> C
 
-    C --> G{_meta/format == xy-v2?}
+    C --> G{_meta/current_replica == x or y?}
     G -->|No| X[Crash]
     G -->|Yes| H{_meta/current_replica in x,y?}
     H -->|No| X
@@ -128,7 +128,7 @@ Ordered behavior:
 
 On open, enforce:
 
-1. Existing DB format marker must be exactly `xy-v2`; otherwise crash.
+1. Existing DB current replica pointer must be exactly `x or y`; otherwise crash.
 2. Replica pointer must exist and be one of `x|y`; otherwise crash.
 3. Fresh DB initialization writes required root metadata.
 
@@ -149,7 +149,7 @@ IncrementalGraph becomes available only after bootstrap/open/validation/migratio
 
 ## 8) Failure semantics
 
-1. **Format mismatch** (`_meta/format != xy-v2`) -> fatal startup crash.
+1. **Format mismatch** (`_meta/current_replica != x or y`) -> fatal startup crash.
 2. **Invalid replica pointer** -> fatal startup crash.
 3. **Unexpected reset/sync failure** (non-"hostname branch absent") -> fatal startup crash.
 4. **Migration failure** -> fatal startup crash.
@@ -202,7 +202,7 @@ A compliant implementation must emit enough structured log information to recons
 2. Chosen bootstrap path (none/reset/fallback).
 3. Whether reset-to-hostname was attempted.
 4. Whether fallback was taken and exact reason.
-5. Detected format marker result.
+5. Detected current replica pointer result.
 6. Detected replica pointer result.
 7. Detected active version and current app version.
 8. Whether migration ran.
@@ -256,7 +256,7 @@ These touchpoints are informative and do not define protocol semantics.
 
 ## 14) Non-goals
 
-1. Supporting legacy format markers (for example `xy-v1`).
+1. Supporting legacy current replica pointers (for example `invalid value`).
 2. Soft recovery from format mismatch.
 3. General corruption-repair workflow for malformed local/remote data.
 4. Expanding bootstrap fallback beyond the single explicit missing-hostname-branch condition.

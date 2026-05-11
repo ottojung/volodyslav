@@ -310,11 +310,8 @@ describe("synchronizeNoLock", () => {
         }
     });
 
-    test("reports host format mismatch with explicit hostname when remote host uses legacy format", async () => {
+    test("reports host snapshot merge failure with explicit hostname", async () => {
         const capabilities = getTestCapabilities();
-        const bobNodeArgs = '{"head":"event","args":["bob"]}';
-        const bobInputsKey = `!x!!inputs!${bobNodeArgs}`;
-        const bobTimestampsKey = `!x!!timestamps!${bobNodeArgs}`;
 
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
@@ -322,17 +319,8 @@ describe("synchronizeNoLock", () => {
                 entries: [["!_meta!current_replica", "x"]],
             },
             {
-                hostname: "bob",
-                entries: [
-                                        [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
-                    [bobInputsKey, { inputs: [], inputCounters: [] }],
-                    [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
-                ],
-            },
-            {
                 hostname: "prismo",
-                entries: [
-                                    ],
+                entries: [],
             },
         ]);
 
@@ -345,18 +333,7 @@ describe("synchronizeNoLock", () => {
 
         expect(isSyncMergeAggregateError(error)).toBe(true);
         expect(error.message).toContain("prismo");
-        expect(error.message).toContain('invalid parsed value "z"');
-        expect(error.message).not.toContain("input directory does not exist");
-
-        const reopened = await getRootDatabase(capabilities);
-        try {
-            const replica = reopened.currentReplicaName();
-            const activeBobKey = `!${replica}!!values!${bobNodeArgs}`;
-            const entries = await collectRawEntries(reopened);
-            expect(entries.get(activeBobKey)).toEqual({ source: "bob" });
-        } finally {
-            await reopened.close();
-        }
+        expect(error.message).toContain("input directory does not exist");
     });
 
     test("throws InvalidSnapshotReplicaError when snapshot has incompatible _meta/current_replica", async () => {
@@ -368,10 +345,10 @@ describe("synchronizeNoLock", () => {
             await capabilities.git.call("init", "--bare", "--", remotePath);
             await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
 
-            const formatFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
+            const currentReplicaFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
             );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("z"));
+            await capabilities.writer.writeFile(currentReplicaFile, JSON.stringify("z"));
 
             await capabilities.git.call("-C", workTree, "add", "--all");
             await capabilities.git.call(
@@ -400,7 +377,7 @@ describe("synchronizeNoLock", () => {
         }
     });
 
-    test("throws InvalidSnapshotReplicaError before checking _meta/current_replica when format is incompatible", async () => {
+    test("throws InvalidSnapshotReplicaError for invalid JSON in _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -408,11 +385,6 @@ describe("synchronizeNoLock", () => {
         try {
             await capabilities.git.call("init", "--bare", "--", remotePath);
             await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
-
-            const formatFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
-            );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("z"));
 
             const currentReplicaFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
@@ -441,7 +413,6 @@ describe("synchronizeNoLock", () => {
                 error = caught;
             }
             expect(isInvalidSnapshotReplicaError(error)).toBe(true);
-            expect(isInvalidSnapshotReplicaError(error)).toBe(false);
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }
@@ -455,11 +426,10 @@ describe("synchronizeNoLock", () => {
         try {
             await capabilities.git.call("init", "--bare", "--", remotePath);
             await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
-
-            const formatFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
+            const markerFile = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, "r", "placeholder")
             );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("x"));
+            await capabilities.writer.writeFile(markerFile, JSON.stringify("placeholder"));
 
             await capabilities.git.call("-C", workTree, "add", "--all");
             await capabilities.git.call(
@@ -502,14 +472,10 @@ describe("synchronizeNoLock", () => {
             await capabilities.git.call("init", "--bare", "--", remotePath);
             await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
 
-            const formatFile = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
-            );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("z"));
             const currentReplicaFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
             );
-            await capabilities.writer.writeFile(currentReplicaFile, JSON.stringify("x"));
+            await capabilities.writer.writeFile(currentReplicaFile, JSON.stringify("z"));
 
             await capabilities.git.call("-C", workTree, "add", "--all");
             await capabilities.git.call(
@@ -521,7 +487,7 @@ describe("synchronizeNoLock", () => {
                 "user.email=volodyslav",
                 "commit",
                 "-m",
-                "seed old format"
+                "seed invalid current_replica"
             );
             await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
             await capabilities.git.call("-C", workTree, "push", "origin", branch);
@@ -559,37 +525,13 @@ describe("synchronizeNoLock", () => {
             {
                 name: "missing _meta/current_replica",
                 files: [
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
+                    { path: "r/placeholder", content: JSON.stringify("placeholder") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
                 name: "invalid JSON in _meta/current_replica",
                 files: [
-                    { path: "_meta/current_replica", content: "not-json" },
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
-                ],
-                expectedErrorGuard: isInvalidSnapshotReplicaError,
-            },
-            {
-                name: "legacy _meta/current_replica value",
-                files: [
-                    { path: "_meta/current_replica", content: JSON.stringify("z") },
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
-                ],
-                expectedErrorGuard: isInvalidSnapshotReplicaError,
-            },
-            {
-                name: "missing _meta/current_replica",
-                files: [
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
-                ],
-                expectedErrorGuard: isInvalidSnapshotReplicaError,
-            },
-            {
-                name: "invalid JSON in _meta/current_replica",
-                files: [
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "_meta/current_replica", content: "not-json" },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
@@ -597,7 +539,6 @@ describe("synchronizeNoLock", () => {
             {
                 name: "invalid _meta/current_replica value",
                 files: [
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "_meta/current_replica", content: JSON.stringify("z") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
@@ -606,13 +547,12 @@ describe("synchronizeNoLock", () => {
                 name: "invalid JSON payload in rendered r/ subtree",
                 files: [
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
-                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "r/values/%7B%22head%22%3A%22event%22%2C%22args%22%3A%5B%22broken%22%5D%7D", content: "not-json" },
                 ],
                 expectedErrorGuard: (error) =>
                     error instanceof Error &&
                     !isInvalidSnapshotReplicaError(error) &&
-                    !isInvalidSnapshotReplicaError(error),
+                    !isSyncMergeAggregateError(error),
             },
         ];
 

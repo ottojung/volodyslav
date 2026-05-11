@@ -5,7 +5,6 @@
  * instance.  `getRootDatabase` ensures the directory exists, then delegates
  * to `makeRootDatabase` which:
  *     (satisfies "format mismatch → crash").
- *   - Writes the current FORMAT_MARKER and replica pointer on first open of
  *     a truly empty database.
  *
  * Version migration ("version mismatch → migrate") is handled by the caller

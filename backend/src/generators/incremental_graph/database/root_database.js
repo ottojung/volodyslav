@@ -54,7 +54,6 @@ const {
  */
 
 /**
- * The format marker value that identifies a database using the x/y namespace layout.
  */
 /**
  * The valid replica names.
@@ -523,7 +522,7 @@ class RootDatabaseClass {
      * the entire database and filtering by prefix.
      *
      * Each yielded key is the full root-level key (e.g. `!x!!values!...` or
-     * `!_meta!format`) reconstructed by prepending `!<sublevelName>!` to the
+     * `!_meta!current_replica`) reconstructed by prepending `!<sublevelName>!` to the
      * key returned by the sublevel iterator.
      *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
