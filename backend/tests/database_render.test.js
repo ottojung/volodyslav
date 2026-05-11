@@ -459,7 +459,6 @@ describe('renderToFilesystem()', () => {
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/current_replica', content: JSON.stringify('x') },
-                { relPath: '_meta/format', content: JSON.stringify('xy-v2') },
                 { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
         } finally {
@@ -1139,7 +1138,6 @@ describe('sublevel parameter', () => {
             type: 'event',
             value: 42,
         });
-        expect(dbBEntries.get('!_meta!format')).toBe('xy-v2');
     });
 
     test('scanFromFilesystem rejects mismatched filesystem and sublevel pair', async () => {
@@ -1325,8 +1323,7 @@ describe('additional reliability tests', () => {
             await db._rawPutAll(entries);
             expect(batchSpy).toHaveBeenCalledTimes(2);
             const storedEntries = await collectRawEntries(db);
-            // +2 accounts for the format marker and current_replica that getRootDatabase() writes on open.
-            expect(storedEntries.size).toBe(entriesCount + 2);
+            expect(storedEntries.size).toBe(entriesCount + 1);
             expect(
                 storedEntries.get(
                     `!x!!values!{"head":"event","args":["${entriesCount - 1}"]}`

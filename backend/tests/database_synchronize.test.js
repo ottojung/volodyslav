@@ -1,7 +1,6 @@
 const path = require("path");
 const {
     synchronizeNoLock,
-    isInvalidSnapshotFormatError,
     isInvalidSnapshotReplicaError,
     isSyncMergeAggregateError,
     getRootDatabase,
@@ -401,7 +400,7 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 error = caught;
             }
-            expect(isInvalidSnapshotFormatError(error)).toBe(true);
+            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
         }
@@ -447,7 +446,7 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 error = caught;
             }
-            expect(isInvalidSnapshotFormatError(error)).toBe(true);
+            expect(isInvalidSnapshotReplicaError(error)).toBe(true);
             expect(isInvalidSnapshotReplicaError(error)).toBe(false);
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
@@ -539,7 +538,7 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 firstError = caught;
             }
-            expect(isInvalidSnapshotFormatError(firstError)).toBe(true);
+            expect(isInvalidSnapshotReplicaError(firstError)).toBe(true);
             expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
 
             let secondError;
@@ -548,7 +547,7 @@ describe("synchronizeNoLock", () => {
             } catch (caught) {
                 secondError = caught;
             }
-            expect(isInvalidSnapshotFormatError(secondError)).toBe(true);
+            expect(isInvalidSnapshotReplicaError(secondError)).toBe(true);
             expect(secondError.message).toContain('Snapshot _meta/format has invalid parsed value: "xy-v1".');
             expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
         } finally {
@@ -568,7 +567,7 @@ describe("synchronizeNoLock", () => {
                 files: [
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
-                expectedErrorGuard: isInvalidSnapshotFormatError,
+                expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
                 name: "invalid JSON in _meta/format",
@@ -576,7 +575,7 @@ describe("synchronizeNoLock", () => {
                     { path: "_meta/format", content: "not-json" },
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
-                expectedErrorGuard: isInvalidSnapshotFormatError,
+                expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
                 name: "legacy _meta/format value",
@@ -584,7 +583,7 @@ describe("synchronizeNoLock", () => {
                     { path: "_meta/format", content: JSON.stringify("xy-v1") },
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
-                expectedErrorGuard: isInvalidSnapshotFormatError,
+                expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
                 name: "missing _meta/current_replica",
@@ -618,7 +617,7 @@ describe("synchronizeNoLock", () => {
                 ],
                 expectedErrorGuard: (error) =>
                     error instanceof Error &&
-                    !isInvalidSnapshotFormatError(error) &&
+                    !isInvalidSnapshotReplicaError(error) &&
                     !isInvalidSnapshotReplicaError(error),
             },
         ];
@@ -702,3 +701,23 @@ describe("synchronizeNoLock", () => {
         });
     });
 });
+
+    test("reset snapshot restores current_replica pointer from metadata", async () => {
+        const capabilities = await setupTest();
+        const db = await getRootDatabase(capabilities);
+        await db.switchReplica('y');
+        await db.updateByKey('only-in-y', 'v');
+        await db.close();
+
+        await seedRemoteRepository(capabilities, [
+            ["!_meta!current_replica", "y"],
+            ["!r!only-in-y", "v"],
+        ]);
+
+        await synchronizeNoLock(capabilities, { url: capabilities.remoteUrl }, true);
+
+        const reopened = await getRootDatabase(capabilities);
+        expect(reopened.currentReplica()).toBe('y');
+        expect(await reopened.getByKey('only-in-y')).toBe('v');
+        await reopened.close();
+    });

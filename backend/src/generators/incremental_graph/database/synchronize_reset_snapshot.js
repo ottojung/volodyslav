@@ -5,7 +5,7 @@ const {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
-const { FORMAT_MARKER, makeRootDatabase } = require('./root_database');
+const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
@@ -40,46 +40,11 @@ class InvalidSnapshotReplicaError extends Error {
 }
 
 /**
- * Thrown when the snapshot's `_meta/format` marker is missing or incompatible.
- */
-class InvalidSnapshotFormatError extends Error {
-    /**
-     * @param {unknown} value - The invalid value that was read.
-     * @param {string} filePath - Path to the file that contained the bad value.
-     * @param {'missing' | 'invalid-json' | 'invalid-value'} reason
-     */
-    constructor(value, filePath, reason) {
-        const renderedValue = value === undefined ? 'undefined' : JSON.stringify(value);
-        let message;
-        if (reason === 'missing') {
-            message = `Snapshot _meta/format is missing. Expected ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`;
-        } else if (reason === 'invalid-json') {
-            message = `Snapshot _meta/format is not valid JSON: ${renderedValue}. Expected JSON string ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`;
-        } else {
-            message = `Snapshot _meta/format has invalid parsed value: ${renderedValue}. Expected ${JSON.stringify(FORMAT_MARKER)}. File: ${filePath}`;
-        }
-        super(message);
-        this.name = 'InvalidSnapshotFormatError';
-        this.value = value;
-        this.filePath = filePath;
-        this.reason = reason;
-    }
-}
-
-/**
  * @param {unknown} object
  * @returns {object is InvalidSnapshotReplicaError}
  */
 function isInvalidSnapshotReplicaError(object) {
     return object instanceof InvalidSnapshotReplicaError;
-}
-
-/**
- * @param {unknown} object
- * @returns {object is InvalidSnapshotFormatError}
- */
-function isInvalidSnapshotFormatError(object) {
-    return object instanceof InvalidSnapshotFormatError;
 }
 
 /**
@@ -98,22 +63,6 @@ async function readJsonFromFile(capabilities, filePath) {
  * @returns {Promise<'x' | 'y'>}
  */
 async function validateResetSnapshotMetadata(capabilities, snapshotMetaDir) {
-    const formatFile = path.join(snapshotMetaDir, 'format');
-    if (!(await capabilities.checker.fileExists(formatFile))) {
-        throw new InvalidSnapshotFormatError(undefined, formatFile, 'missing');
-    }
-
-    let parsedFormat;
-    try {
-        parsedFormat = await readJsonFromFile(capabilities, formatFile);
-    } catch {
-        const formatRaw = await capabilities.reader.readFileAsText(formatFile);
-        throw new InvalidSnapshotFormatError(formatRaw, formatFile, 'invalid-json');
-    }
-    if (parsedFormat !== FORMAT_MARKER) {
-        throw new InvalidSnapshotFormatError(parsedFormat, formatFile, 'invalid-value');
-    }
-
     const currentReplicaFile = path.join(snapshotMetaDir, 'current_replica');
     if (!(await capabilities.checker.fileExists(currentReplicaFile))) {
         throw new InvalidSnapshotReplicaError(undefined, currentReplicaFile, 'missing');
@@ -155,6 +104,7 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         await database._rawDeleteSublevel(snapshotReplica);
     }
 
+    await database.switchReplica(snapshotReplica);
 }
 
 /**
@@ -263,8 +213,6 @@ async function synchronizeResetToHostname(capabilities, remoteLocation) {
 
 module.exports = {
     synchronizeResetToHostname,
-    InvalidSnapshotFormatError,
-    isInvalidSnapshotFormatError,
     InvalidSnapshotReplicaError,
     isInvalidSnapshotReplicaError,
 };
