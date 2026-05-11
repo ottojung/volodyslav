@@ -102,7 +102,7 @@ describe("synchronizeNoLock", () => {
     test("renders the live database into the tracked repository and pushes it to remote", async () => {
         const capabilities = getTestCapabilities();
         const branch = defaultBranch(capabilities);
-        await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v1"]]);
+        await seedRemoteRepository(capabilities, [["!_meta!current_replica", "z"]]);
 
         const db = await getRootDatabase(capabilities);
         const eventKey = '!x!!values!{"head":"event","args":["local"]}';
@@ -164,8 +164,7 @@ describe("synchronizeNoLock", () => {
         const capabilities = getTestCapabilities();
         const remoteKey = '!x!!values!{"head":"event","args":["remote"]}';
         await seedRemoteRepository(capabilities, [
-            ["!_meta!format", "xy-v2"],
-            [remoteKey, { source: "remote" }],
+                        [remoteKey, { source: "remote" }],
             ["!x!!global!version", "remote-version"],
         ]);
 
@@ -191,7 +190,7 @@ describe("synchronizeNoLock", () => {
 
     test("can synchronize twice even though the persistent rendered repository work tree is stale between runs", async () => {
         const capabilities = getTestCapabilities();
-        await seedRemoteRepository(capabilities, [["!_meta!format", "xy-v2"]]);
+        await seedRemoteRepository(capabilities, [["!_meta!current_replica", "x"]]);
 
         const firstKey = '!x!!values!{"head":"event","args":["first"]}';
         const secondKey = '!x!!values!{"head":"event","args":["second"]}';
@@ -232,13 +231,12 @@ describe("synchronizeNoLock", () => {
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
-                entries: [["!_meta!format", "xy-v2"]],
+                entries: [["!_meta!current_replica", "x"]],
             },
             {
                 hostname: "alice",
                 entries: [
-                    ["!_meta!format", "xy-v2"],
-                    [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
+                                        [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
                     [aliceInputsKey, { inputs: [], inputCounters: [] }],
                     [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                 ],
@@ -269,13 +267,12 @@ describe("synchronizeNoLock", () => {
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
-                entries: [["!_meta!format", "xy-v2"]],
+                entries: [["!_meta!current_replica", "x"]],
             },
             {
                 hostname: "bob",
                 entries: [
-                    ["!_meta!format", "xy-v2"],
-                    [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
+                                        [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
                     [bobInputsKey, { inputs: [], inputCounters: [] }],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                 ],
@@ -283,8 +280,7 @@ describe("synchronizeNoLock", () => {
             {
                 hostname: "zed",
                 entries: [
-                    ["!_meta!format", "xy-v2"],
-                    ['!x!!global!version', "incompatible-version"],
+                                        ['!x!!global!version', "incompatible-version"],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
                     ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
                 ],
@@ -323,13 +319,12 @@ describe("synchronizeNoLock", () => {
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
-                entries: [["!_meta!format", "xy-v2"]],
+                entries: [["!_meta!current_replica", "x"]],
             },
             {
                 hostname: "bob",
                 entries: [
-                    ["!_meta!format", "xy-v2"],
-                    [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
+                                        [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
                     [bobInputsKey, { inputs: [], inputCounters: [] }],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                 ],
@@ -337,8 +332,7 @@ describe("synchronizeNoLock", () => {
             {
                 hostname: "prismo",
                 entries: [
-                    ["!_meta!format", "xy-v1"],
-                ],
+                                    ],
             },
         ]);
 
@@ -351,7 +345,7 @@ describe("synchronizeNoLock", () => {
 
         expect(isSyncMergeAggregateError(error)).toBe(true);
         expect(error.message).toContain("prismo");
-        expect(error.message).toContain('incompatible format "xy-v1"');
+        expect(error.message).toContain('invalid parsed value "z"');
         expect(error.message).not.toContain("input directory does not exist");
 
         const reopened = await getRootDatabase(capabilities);
@@ -365,7 +359,7 @@ describe("synchronizeNoLock", () => {
         }
     });
 
-    test("throws InvalidSnapshotFormatError when snapshot has incompatible _meta/format", async () => {
+    test("throws InvalidSnapshotReplicaError when snapshot has incompatible _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -377,7 +371,7 @@ describe("synchronizeNoLock", () => {
             const formatFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
             );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v1"));
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("z"));
 
             await capabilities.git.call("-C", workTree, "add", "--all");
             await capabilities.git.call(
@@ -406,7 +400,7 @@ describe("synchronizeNoLock", () => {
         }
     });
 
-    test("throws InvalidSnapshotFormatError before checking _meta/current_replica when format is incompatible", async () => {
+    test("throws InvalidSnapshotReplicaError before checking _meta/current_replica when format is incompatible", async () => {
         const capabilities = getTestCapabilities();
         const branch = `${capabilities.environment.hostname()}-main`;
         const remotePath = capabilities.environment.generatorsRepository();
@@ -418,7 +412,7 @@ describe("synchronizeNoLock", () => {
             const formatFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
             );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v1"));
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("z"));
 
             const currentReplicaFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
@@ -465,7 +459,7 @@ describe("synchronizeNoLock", () => {
             const formatFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
             );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v2"));
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("x"));
 
             await capabilities.git.call("-C", workTree, "add", "--all");
             await capabilities.git.call(
@@ -511,7 +505,7 @@ describe("synchronizeNoLock", () => {
             const formatFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "format")
             );
-            await capabilities.writer.writeFile(formatFile, JSON.stringify("xy-v1"));
+            await capabilities.writer.writeFile(formatFile, JSON.stringify("z"));
             const currentReplicaFile = await capabilities.creator.createFile(
                 path.join(workTree, DATABASE_SUBPATH, "_meta", "current_replica")
             );
@@ -548,7 +542,7 @@ describe("synchronizeNoLock", () => {
                 secondError = caught;
             }
             expect(isInvalidSnapshotReplicaError(secondError)).toBe(true);
-            expect(secondError.message).toContain('Snapshot _meta/format has invalid parsed value: "xy-v1".');
+            expect(secondError.message).toContain('Snapshot _meta/current_replica has invalid parsed value: "z".');
             expect(await capabilities.checker.directoryExists(liveDbPath)).toBeNull();
         } finally {
             await capabilities.deleter.deleteDirectory(workTree);
@@ -563,24 +557,24 @@ describe("synchronizeNoLock", () => {
         /** @type {ResetFailureScenario[]} */
         const scenarios = [
             {
-                name: "missing _meta/format",
+                name: "missing _meta/current_replica",
                 files: [
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
-                name: "invalid JSON in _meta/format",
+                name: "invalid JSON in _meta/current_replica",
                 files: [
-                    { path: "_meta/format", content: "not-json" },
+                    { path: "_meta/current_replica", content: "not-json" },
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
-                name: "legacy _meta/format value",
+                name: "legacy _meta/current_replica value",
                 files: [
-                    { path: "_meta/format", content: JSON.stringify("xy-v1") },
+                    { path: "_meta/current_replica", content: JSON.stringify("z") },
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
@@ -588,14 +582,14 @@ describe("synchronizeNoLock", () => {
             {
                 name: "missing _meta/current_replica",
                 files: [
-                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
             },
             {
                 name: "invalid JSON in _meta/current_replica",
                 files: [
-                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "_meta/current_replica", content: "not-json" },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
@@ -603,7 +597,7 @@ describe("synchronizeNoLock", () => {
             {
                 name: "invalid _meta/current_replica value",
                 files: [
-                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "_meta/current_replica", content: JSON.stringify("z") },
                 ],
                 expectedErrorGuard: isInvalidSnapshotReplicaError,
@@ -611,7 +605,7 @@ describe("synchronizeNoLock", () => {
             {
                 name: "invalid JSON payload in rendered r/ subtree",
                 files: [
-                    { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                    { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "_meta/current_replica", content: JSON.stringify("x") },
                     { path: "r/values/%7B%22head%22%3A%22event%22%2C%22args%22%3A%5B%22broken%22%5D%7D", content: "not-json" },
                 ],
@@ -670,7 +664,7 @@ describe("synchronizeNoLock", () => {
             }
 
             await seedHostnameBranchWithRenderedFiles(capabilities, [
-                { path: "_meta/format", content: JSON.stringify("xy-v2") },
+                { path: "_meta/current_replica", content: JSON.stringify("x") },
                 { path: "_meta/current_replica", content: JSON.stringify("x") },
             ]);
 
@@ -702,22 +696,4 @@ describe("synchronizeNoLock", () => {
     });
 });
 
-    test("reset snapshot restores current_replica pointer from metadata", async () => {
-        const capabilities = await setupTest();
-        const db = await getRootDatabase(capabilities);
-        await db.switchReplica('y');
-        await db.updateByKey('only-in-y', 'v');
-        await db.close();
-
-        await seedRemoteRepository(capabilities, [
-            ["!_meta!current_replica", "y"],
-            ["!r!only-in-y", "v"],
-        ]);
-
-        await synchronizeNoLock(capabilities, { url: capabilities.remoteUrl }, true);
-
-        const reopened = await getRootDatabase(capabilities);
-        expect(reopened.currentReplica()).toBe('y');
-        expect(await reopened.getByKey('only-in-y')).toBe('v');
-        await reopened.close();
-    });
+    

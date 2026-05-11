@@ -190,8 +190,7 @@ describe("checkpointDatabase", () => {
     test("creates a new commit on every call", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["same"]}', { version: 1 }],
+                        ['!x!!values!{"head":"event","args":["same"]}', { version: 1 }],
         ]);
         try {
             await checkpointDatabase(capabilities, "first", db);
@@ -209,8 +208,7 @@ describe("checkpointDatabase", () => {
     test("commit messages are recorded in order", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["ordered"]}', { version: "a" }],
+                        ['!x!!values!{"head":"event","args":["ordered"]}', { version: "a" }],
         ]);
         try {
             await checkpointDatabase(capabilities, "checkpoint-alpha", db);
@@ -265,8 +263,7 @@ describe("checkpointDatabase", () => {
     test("database subdirectory is the only top-level entry in the repository", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["layout"]}', { ok: true }],
+                        ['!x!!values!{"head":"event","args":["layout"]}', { ok: true }],
         ]);
         try {
             await checkpointDatabase(capabilities, "layout check", db);
@@ -281,8 +278,7 @@ describe("checkpointDatabase", () => {
     test("rendered database files are tracked inside DATABASE_SUBPATH in the commit tree", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-            ["!_meta!format", "xy-v1"],
-            ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
+                        ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
             ['!x!!global!version', "1.2.3"],
         ]);
         try {

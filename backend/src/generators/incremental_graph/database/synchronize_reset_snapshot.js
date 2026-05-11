@@ -104,7 +104,7 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         await database._rawDeleteSublevel(snapshotReplica);
     }
 
-    await database.switchReplica(snapshotReplica);
+    await database.switchToReplica(snapshotReplica);
 }
 
 /**
