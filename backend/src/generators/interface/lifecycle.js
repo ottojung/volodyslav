@@ -219,6 +219,10 @@ async function internalEnsureInitializedWithMigration(
         diarySummaryBox,
         ontologyBox
     );
+    capabilities.logger.logDebug(
+        { nodeDefinitions: nodeDefs.length },
+        'Startup: created graph definition; evaluating migration requirements before graph initialization'
+    );
     try {
         await runMigrationProcedure(
             capabilities,
@@ -274,6 +278,10 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const configBox = interfaceInstance._configBox;
     const diarySummaryBox = interfaceInstance._diarySummaryBox;
     const ontologyBox = interfaceInstance._ontologyBox;
+    capabilities.logger.logDebug(
+        { hasOpenDatabase: database !== null, options: options ?? null },
+        'Sync/reset request: entering synchronizeDatabaseNoLock'
+    );
     if (database === null) {
         await synchronizeNoLock(capabilities, options);
         return;

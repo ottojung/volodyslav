@@ -210,8 +210,13 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
 async function synchronizeNoLock(capabilities, options) {
     const remotePath = capabilities.environment.generatorsRepository();
     const remoteLocation = { url: remotePath };
+    const resetToHostname = options?.resetToHostname;
 
-    if (options?.resetToHostname !== undefined) {
+    if (resetToHostname !== undefined) {
+        capabilities.logger.logDebug(
+            { remotePath, resetToHostname },
+            'Synchronization mode: reset-to-hostname path selected'
+        );
         await workingRepository.synchronize(
             capabilities,
             CHECKPOINT_WORKING_PATH,
@@ -225,6 +230,11 @@ async function synchronizeNoLock(capabilities, options) {
         );
         return;
     }
+
+    capabilities.logger.logDebug(
+        { remotePath },
+        'Synchronization mode: standard merge path selected'
+    );
 
     /** @type {RootDatabase | undefined} */
     let rootDatabase;

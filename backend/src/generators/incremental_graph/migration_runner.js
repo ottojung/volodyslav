@@ -326,17 +326,41 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 {
     /** @type {Version | undefined} */
     const prevVersion = await rootDatabase.getGlobalVersion();
+    const currentVersion = rootDatabase.version;
+    const activeReplica = rootDatabase.currentReplicaName();
+
+    capabilities.logger.logDebug(
+        {
+            prevVersion: prevVersion === undefined ? null : prevVersion,
+            currentVersion,
+            activeReplica,
+        },
+        'Migration check: evaluated database version state before startup migration decision'
+    );
+
     if (prevVersion === undefined) {
         // No previous version recorded; fresh database: record current version, nothing to migrate.
+        capabilities.logger.logDebug(
+            { currentVersion, activeReplica },
+            'Migration not initiated: no stored replica version found (fresh or reset database), recording current version only'
+        );
         await rootDatabase.setGlobalVersion(rootDatabase.version);
         return;
     }
 
-    const currentVersion = rootDatabase.version;
     if (prevVersion === currentVersion) {
         // Already on the current version.
+        capabilities.logger.logDebug(
+            { prevVersion, currentVersion, activeReplica },
+            'Migration not initiated: stored replica version already matches the running application version'
+        );
         return;
     }
+
+    capabilities.logger.logDebug(
+        { prevVersion, currentVersion, activeReplica },
+        'Migration initiated: stored replica version differs from running application version'
+    );
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion
@@ -350,6 +374,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         async () => {
             const fromReplica = rootDatabase.currentReplicaName();
             const toReplica = rootDatabase.otherReplicaName();
+
+            capabilities.logger.logDebug(
+                { fromReplica, toReplica },
+                'Migration execution: prepared source and target replicas for two-phase migration'
+            );
 
             const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
 
@@ -373,6 +402,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
+
+            capabilities.logger.logDebug(
+                { decisionCount: decisions.size },
+                'Migration execution: callback decisions finalized'
+            );
 
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
