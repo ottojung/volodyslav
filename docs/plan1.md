@@ -97,6 +97,16 @@ lookup tables carrying the `NodeKey ↔ NodeIdentifier` relationship.
   - [ ] Remove `serializeNodeKey` / `deserializeNodeKey` usage from graph-state path encoding/decoding; after this change those conversions are only allowed for reading/writing `/${current_replica}/global/identifiers_keys_map`, not for graph-state files.
   - [ ] Update `backend/tests/database_render.test.js` cases that currently enforce “expected NodeKey JSON” for data sublevels; those assertions become wrong once keys are opaque identifiers and will otherwise force accidental reintroduction of NodeKey-based path decoding.
   - [ ] Add a render/scan regression test that seeds raw keys like `!x!!values!nodeid1` + `!x!!inputs!nodeid1`, verifies rendered files are `rendered/x/values/nodeid1` / `rendered/x/inputs/nodeid1`, and round-trips back without any `head`/`args` directories.
+  - [ ] Update synchronization/git checkpoint helpers that currently hardcode NodeKey-based rendered paths.
+    - [ ] Migrate `renderedKeyPath()` expectations in `backend/tests/database_synchronize.test.js` from `.../values/<head>/<arg...>` to direct identifier paths `.../values/<id>`.
+    - [ ] Migrate the same helper expectations in `backend/tests/database_gitstore.test.js`; this suite asserts tracked commit-tree paths and will otherwise keep forcing legacy head/args directories.
+    - [ ] Audit any `renderedKeyPath`-style test utilities under `backend/tests/` that call `keyToRelativePath` and still document node-key-style path segments.
+  - [ ] Add one end-to-end sync/checkpoint assertion that starts from identifier-keyed raw DB entries (for example `!x!!values!nodeid1`) and verifies all of the following together:
+    - [ ] render/synchronize writes git snapshot files at identifier paths,
+    - [ ] scan/synchronize imports those files back into raw keys unchanged, and
+    - [ ] no path in the rendered tree introduces `/<head>/` or extra arg segments for graph-state sublevels.
+  - [ ] Keep the top-level replica/sublevel layout unchanged (`rendered/x/...`, `rendered/y/...`, `rendered/_meta/...`); only concrete-node key segments become opaque identifiers.
+    - [ ] Add/adjust one assertion in synchronize-related tests that still checks the top-level directory contract so key-shape migration does not accidentally mutate replica routing semantics.
 
 This requires careful audit to avoid leaving hidden key-path transforms.
 
