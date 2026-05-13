@@ -25,6 +25,12 @@ Extend the root database so graph state is identifier-addressed and the semantic
 - [ ] Ensure the lookup table represents a bijection and is written atomically with graph-state lifecycle changes. Any drift between the cache and the durable storage should be handled in a fail-fast style: eg when a new key couldn't be added to the durable storage, this should prompt a failure to add it to the cache.
 - [ ] Load the full bijection into RAM at database open time and maintain it as an in-memory cache; all `NodeKey ↔ NodeIdentifier` lookups go through this cache rather than direct database reads.
 - [ ] The cache should be stored in a two-way hashmap structure for efficient lookups in both directions, and should be the authoritative source for the bijection while the database is open.
+- [ ] Make identifier allocation explicitly collision-safe at the storage boundary (`nodeKeyToId` path), not just "random enough":
+  - [ ] Allocation must retry when a generated `NodeIdentifier` already exists in `id -> key` mapping, and must only commit once a truly unused identifier is found.
+  - [ ] On collision, the pre-existing mapping must remain unchanged; never overwrite `nodeIdToKey(existingId)` or "steal" an identifier from another node.
+  - [ ] If repeated collisions prevent allocation from finding a free id within a bounded retry budget, fail with a dedicated storage error instead of silently writing an inconsistent map.
+  - [ ] Add a focused test that stubs identifier generation to return a duplicate id first, then a fresh id, and asserts the second id is the one persisted for the new node.
+  - [ ] Add a focused test that forces persistent collisions and asserts no partial writes to either direction of the bijection or any graph-state sublevels.
 - [ ] Expand batch builder type to include `metaIdentifiers` operations so identifier allocation/removal can commit in the same physical batch as graph-state updates.
   - [ ] Add integration tests for failure injection: if a batch write fails, neither state sublevels nor lookup metadata should advance.
 - [ ] Update every schema-storage adapter to carry the identifiers map as first-class replica data, not as an out-of-band special case.
