@@ -86,7 +86,12 @@ identifier-addressed storage model directly.
 
 - [ ] Change the HTTP inspection API so concrete-node operations address nodes by `NodeIdentifier`, not by `head/args`
 - [ ] Update the HTTP graph API spec, route shapes, handlers, and tests to the identifier-based concrete-node model
-  - [ ] Replace concrete-node `head/args` routes (`/graph/nodes/:head`, `/graph/nodes/:head/*` and the matching POST/DELETE handlers) with identifier-addressed concrete-node routes so handlers no longer parse concrete args from URL path segments. Keep `/graph/schemas` endpoints head-based.
+  - [ ] Replace concrete-node `head/args` routes (`/graph/nodes/:head`, `/graph/nodes/:head/*` and the matching POST/DELETE handlers) with identifier-addressed concrete-node routes, and remove all URL-arg decoding logic tied to concrete-node addressing.
+    - Current handlers rely on wildcard path parsing (`req.params[0]`) plus `getArgsFromRequest()` in `backend/src/routes/graph_helpers.js` to recover `ConstValue[]` from URL segments (including encoded `/` and `~`-prefixed non-strings). If this helper path is left in place after route migration, identifier endpoints can accidentally continue treating identifiers as split arg vectors or apply JSON-ish decoding to IDs.
+    - Define explicit concrete-node routes that take one opaque identifier segment (for example `GET/POST/DELETE /graph/nodes/id/:nodeIdentifier`) and ensure handlers call identifier-based interface methods directly rather than reconstructing `(head, args)` from the URL.
+    - Keep schema endpoints head-based (`/graph/schemas`, `/graph/schemas/:head`) and do not route them through identifier parsing.
+    - Update route registration order/comments in `backend/src/routes/graph.js`: wildcard-first ordering is currently required only for `:head/*`; once identifier routes are used, preserve only the ordering constraints that still apply.
+    - Replace route tests that currently assert head/args parsing behavior (including encoded slash and `~` decoding cases) with identifier-focused tests that assert identifiers are passed through as opaque strings and never decoded as `ConstValue` arguments.
 - [ ] Keep the schema-oriented HTTP endpoints aligned with the public graph model where they are still head-based rather than concrete-node based
 
 ## 6. Filesystem snapshot simplification
