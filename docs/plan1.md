@@ -9,7 +9,7 @@ storage to `NodeIdentifier`-based storage in IncrementalGraph.
 Introduce a nominal `NodeIdentifier` type that defines the persisted identifier format
 in one place and enforces it consistently.
 
-- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`, except that it must use `basicString` function for generating random identifiers.
+- [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`, except that it must use `basicString(length=9)` function for generating random identifiers.
 - [ ] Define construction and parsing around the exact full-string validity rule from the design: `/^[a-z_][a-z0-9_]*$/`
 - [ ] Reject invalid identifiers during construction, parsing, and before persistence, including explicit rejection of any string that does not match the entire validity rule
 
@@ -82,6 +82,7 @@ Replace (not preserve) the current `NodeKey`-addressed migration callback surfac
 - [ ] Remove both lookup entries and all identifier-keyed state for migration `delete`
 
 Then, write a single migration that will migrate the database from `NodeKey`-based storage to `NodeIdentifier`-based one.
+For this one-time legacy `NodeKey` -> `NodeIdentifier` migration, identifiers must be deterministic from the old `NodeKey`, such as hash of the `NodeKey` (still conform to `[a-z]*` regex of `basicString(length=9)`).
 This requires changing the existing migration API for all future migrations so the migration surface is consistently `NodeIdentifier`-based; do not keep a mixed `NodeKey`/`NodeIdentifier` migration mode, even temporarily.
 
 ## 5. HTTP inspection API
