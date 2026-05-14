@@ -7,17 +7,20 @@
 
 /**
  * @template T
- * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ * @template [K=import('./types').DatabaseKey]
+ * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 /**
  * @template T
- * @typedef {import('./types').DatabasePutOperation<T>} DatabasePutOperation
+ * @template [K=import('./types').DatabaseKey]
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, K>, key: K, value: T }} DatabasePutOperation
  */
 
 /**
  * @template T
- * @typedef {import('./types').DatabaseDelOperation<T>} DatabaseDelOperation
+ * @template [K=import('./types').DatabaseKey]
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, K>, key: K }} DatabaseDelOperation
  */
 
 /**
@@ -28,34 +31,36 @@
  * Generic typed database interface.
  * All databases (values, freshness, inputs, revdeps) implement this interface.
  * @template TValue - The value type
+ * @template TKey - The key type
  * @typedef {object} GenericDatabase
- * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Retrieve a value
- * @property {(key: DatabaseKey, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: DatabaseKey, value: *) => Promise<void>} rawPut - Store a value with sync:false (for unification adapters where runtime type is guaranteed by schema invariant)
- * @property {(key: DatabaseKey) => Promise<void>} del - Delete a value
- * @property {(key: DatabaseKey) => Promise<void>} rawDel - Delete a value with sync:false (for unification adapters; mirrors rawPut)
- * @property {(key: DatabaseKey, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
- * @property {(key: DatabaseKey, value: *) => DatabasePutOperation<TValue>} rawPutOp - Store a value operation accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
- * @property {(key: DatabaseKey) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
- * @property {() => AsyncIterable<DatabaseKey>} keys - Iterate over all keys
+ * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
+ * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: TKey, value: *) => Promise<void>} rawPut - Store a value with sync:false (for unification adapters where runtime type is guaranteed by schema invariant)
+ * @property {(key: TKey) => Promise<void>} del - Delete a value
+ * @property {(key: TKey) => Promise<void>} rawDel - Delete a value with sync:false (for unification adapters; mirrors rawPut)
+ * @property {(key: TKey, value: TValue) => DatabasePutOperation<TValue, TKey>} putOp - Store a value operation
+ * @property {(key: TKey, value: *) => DatabasePutOperation<TValue, TKey>} rawPutOp - Store a value operation accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
+ * @property {(key: TKey) => DatabaseDelOperation<TValue, TKey>} delOp - Delete a value operation
+ * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
  */
 
 /**
  * Wrapper class that adapts a LevelDB sublevel to the GenericDatabase interface.
  * @template TValue
+ * @template TKey
  */
 class TypedDatabaseClass {
     /**
      * The underlying LevelDB sublevel instance.
      * @private
-     * @type {SimpleSublevel<TValue>}
+     * @type {SimpleSublevel<TValue, TKey>}
      */
     sublevel;
 
     /**
      * @constructor
-     * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
+     * @param {SimpleSublevel<TValue, TKey>} sublevel - The LevelDB sublevel instance
      */
     constructor(sublevel) {
         this.sublevel = sublevel;
@@ -67,7 +72,7 @@ class TypedDatabaseClass {
      * Note: Level v10+ returns `undefined` for missing keys rather than throwing an error.
      * This is the expected behavior and we pass it through directly.
      *
-     * @param {import('./types').DatabaseKey} key - The key to retrieve
+     * @param {TKey} key - The key to retrieve
      * @returns {Promise<TValue | undefined>}
      */
     async get(key) {
@@ -76,7 +81,7 @@ class TypedDatabaseClass {
 
     /**
      * Store a value in the database.
-     * @param {DatabaseKey} key - The key to store
+     * @param {TKey} key - The key to store
      * @param {TValue} value - The value to store
      * @returns {Promise<void>}
      */
@@ -94,7 +99,7 @@ class TypedDatabaseClass {
      * sync:false means the OS may buffer the write before flushing to disk.
      * Callers must invoke rootDatabase._rawSync() once after all unification
      * writes are complete to ensure durability.
-     * @param {DatabaseKey} key - The key to store
+     * @param {TKey} key - The key to store
      * @param {*} value - The value to store (must be TValue at runtime)
      * @returns {Promise<void>}
      */
@@ -115,7 +120,7 @@ class TypedDatabaseClass {
      * Mirrors rawPut(): for use only in unification adapters.
      * Callers must invoke rootDatabase._rawSync() once after all unification
      * writes are complete to ensure durability.
-     * @param {DatabaseKey} key - The key to delete
+     * @param {TKey} key - The key to delete
      * @returns {Promise<void>}
      */
     async rawDel(key) {
@@ -127,7 +132,7 @@ class TypedDatabaseClass {
 
     /**
      * Delete a value from the database.
-     * @param {DatabaseKey} key - The key to delete
+     * @param {TKey} key - The key to delete
      * @returns {Promise<void>}
      */
     async del(key) {
@@ -136,9 +141,9 @@ class TypedDatabaseClass {
 
     /**
      * Create a put operation for batch processing.
-     * @param {DatabaseKey} key - The key to store
+     * @param {TKey} key - The key to store
      * @param {TValue} value - The value to store
-     * @returns {DatabasePutOperation<TValue>}
+     * @returns {DatabasePutOperation<TValue, TKey>}
      */
     putOp(key, value) {
         return { sublevel: this.sublevel, type: "put", key, value };
@@ -150,9 +155,9 @@ class TypedDatabaseClass {
      * schema and are therefore the correct runtime type despite being typed as
      * unknown at the call site.  Keeping this separate from putOp preserves
      * the typed boundary for normal callers.
-     * @param {DatabaseKey} key - The key to store
+     * @param {TKey} key - The key to store
      * @param {*} value - The value to store (must be TValue at runtime)
-     * @returns {DatabasePutOperation<TValue>}
+     * @returns {DatabasePutOperation<TValue, TKey>}
      */
     rawPutOp(key, value) {
         return { sublevel: this.sublevel, type: "put", key, value };
@@ -160,20 +165,20 @@ class TypedDatabaseClass {
 
     /**
      * Create a delete operation for batch processing.
-     * @param {DatabaseKey} key - The key to delete
-     * @returns {DatabaseDelOperation<TValue>}
+     * @param {TKey} key - The key to delete
+     * @returns {DatabaseDelOperation<TValue, TKey>}
      */
     delOp(key) {
-        /** @type {SimpleSublevel<TValue>} */
+        /** @type {SimpleSublevel<TValue, TKey>} */
         const thisSublevel = this.sublevel;
-        /** @type {SimpleSublevel<TValue>} */
+        /** @type {SimpleSublevel<TValue, TKey>} */
         const sublevel = thisSublevel;
         return { sublevel: sublevel, type: "del", key };
     }
 
     /**
      * Iterate over all keys in the database.
-     * @returns {AsyncIterable<DatabaseKey>}
+     * @returns {AsyncIterable<TKey>}
      */
     async *keys() {
         for await (const key of this.sublevel.keys()) {
@@ -193,8 +198,9 @@ class TypedDatabaseClass {
 /**
  * Factory function to create a TypedDatabase instance.
  * @template TValue
- * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
- * @returns {GenericDatabase<TValue>}
+ * @template TKey
+ * @param {SimpleSublevel<TValue, TKey>} sublevel - The LevelDB sublevel instance
+ * @returns {GenericDatabase<TValue, TKey>}
  */
 function makeTypedDatabase(sublevel) {
     return new TypedDatabaseClass(sublevel);

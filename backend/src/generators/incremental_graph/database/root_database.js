@@ -43,14 +43,12 @@ const {
  * so it can represent both the root database and any nested sublevel.
  * Used as a looser parameter type for internal helpers that only need the shared
  * abstract-level API (sublevel(), batch(), etc.).
- * @typedef {import('abstract-level').AbstractLevel<SublevelFormat, NodeKeyString, DatabaseStoredValue>} AnyLevelType
+ * @typedef {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} AnyLevelType
  */
 
 /**
  * Sublevel for storing replica-level global state (e.g., version).
- * Uses NodeKeyString as the key type to satisfy the generic typed-database
- * interface; in practice only the 'version' key is stored here.
- * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, NodeKeyString, Version>} GlobalSublevelType
+ * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version>} GlobalSublevelType
  */
 
 /**
@@ -73,21 +71,22 @@ function assertNeverReplicaName(name) {
 
 /**
  * @template T
- * @typedef {import('./typed_database').GenericDatabase<T>} GenericDatabase
+ * @template K
+ * @typedef {import('./typed_database').GenericDatabase<T, K>} GenericDatabase
  */
 
 /**
  * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<ComputedValue>} ValuesDatabase
+ * @typedef {GenericDatabase<ComputedValue, NodeKeyString>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase<Freshness>} FreshnessDatabase
+ * @typedef {GenericDatabase<Freshness, NodeKeyString>} FreshnessDatabase
  */
 
 /**
@@ -101,35 +100,35 @@ function assertNeverReplicaName(name) {
  * Database for storing node input dependencies.
  * Key: canonical node name
  * Value: inputs record with array of dependency names
- * @typedef {GenericDatabase<InputsRecord>} InputsDatabase
+ * @typedef {GenericDatabase<InputsRecord, NodeKeyString>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
  * Key: canonical input node name
  * Value: array of canonical dependent node names
- * @typedef {GenericDatabase<NodeKeyString[]>} RevdepsDatabase
+ * @typedef {GenericDatabase<NodeKeyString[], NodeKeyString>} RevdepsDatabase
  */
 
 /**
  * Database for storing node counters.
  * Key: canonical node name
  * Value: counter (monotonic integer tracking value changes)
- * @typedef {GenericDatabase<Counter>} CountersDatabase
+ * @typedef {GenericDatabase<Counter, NodeKeyString>} CountersDatabase
  */
 
 /**
  * Database for storing node timestamps (creation and modification times).
  * Key: canonical node name
  * Value: timestamp record with createdAt and modifiedAt ISO strings
- * @typedef {GenericDatabase<TimestampRecord>} TimestampsDatabase
+ * @typedef {GenericDatabase<TimestampRecord, NodeKeyString>} TimestampsDatabase
  */
 
 /**
  * Database for storing replica-level global state (e.g., version).
  * Key: plain string (e.g., 'version')
  * Value: version string
- * @typedef {GenericDatabase<Version>} GlobalVersionDatabase
+ * @typedef {GenericDatabase<Version, string>} GlobalVersionDatabase
  */
 
 /**
@@ -190,10 +189,10 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
             return;
         }
         if (!touchedSchema) {
-            const existing = await globalSublevel.get(stringToNodeKeyString('version'));
+            const existing = await globalSublevel.get('version');
             if (existing === undefined) {
                 // New or freshly-cleared namespace: write version to global to initialise.
-                await globalSublevel.put(stringToNodeKeyString('version'), version);
+                await globalSublevel.put('version', version);
             } else if (existing !== version) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
@@ -401,7 +400,7 @@ class RootDatabaseClass {
         } else {
             return assertNeverReplicaName(current);
         }
-        return await globalSublevel.get(stringToNodeKeyString('version'));
+        return await globalSublevel.get('version');
     }
 
     /**
@@ -419,7 +418,7 @@ class RootDatabaseClass {
         } else {
             return assertNeverReplicaName(current);
         }
-        await globalSublevel.put(stringToNodeKeyString('version'), version);
+        await globalSublevel.put('version', version);
     }
 
     /**

@@ -373,13 +373,13 @@ function versionToString(Version) {
 /**
  * A database put operation.
  * @template T
- * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: DatabaseKey, value: T }} DatabasePutOperation
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {{ type: 'del', sublevel: SimpleSublevel<T>, key: DatabaseKey }} DatabaseDelOperation
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey }} DatabaseDelOperation
  */
 
 /**
@@ -486,7 +486,8 @@ function schemaPatternToString(schemaPattern) {
 
 /**
  * @template T
- * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, DatabaseKey, T>} SimpleSublevel
+ * @template [K=NodeKeyString]
+ * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
  */
 
 module.exports = {
