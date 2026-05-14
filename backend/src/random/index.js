@@ -1,6 +1,6 @@
 const { string } = require("./string");
 const { defaultGenerator } = require("./default");
-const { variableName } = require("./variable_name");
+const { basicString } = require("./basic_string");
 const seed = require("./seed");
 
 /**
@@ -10,6 +10,6 @@ const seed = require("./seed");
 module.exports = {
     defaultGenerator,
     string,
-    variableName,
+    basicString,
     seed,
 };
