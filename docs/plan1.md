@@ -97,6 +97,12 @@ identifier-addressed storage model directly.
     - Keep schema endpoints head-based (`/graph/schemas`, `/graph/schemas/:head`) and do not route them through identifier parsing.
     - Update route registration order/comments in `backend/src/routes/graph.js`: wildcard-first ordering is currently required only for `:head/*`; once identifier routes are used, preserve only the ordering constraints that still apply.
     - Replace route tests that currently assert head/args parsing behavior (including encoded slash and `~` decoding cases) with identifier-focused tests that assert identifiers are passed through as opaque strings and never decoded as `ConstValue` arguments.
+  - [ ] Update list/read response payloads so concrete-node records returned by HTTP inspection are identifier-addressed, not `(head,args)`-addressed.
+    - Current `GET /graph/nodes` and `GET /graph/nodes/:head` handlers in `backend/src/routes/graph.js` enumerate materialized nodes from `interface.listMaterializedNodes()` and emit `{ head, args, freshness, ... }` objects. After route migration, this payload shape leaves clients unable to call identifier-addressed pull/delete/invalidate endpoints without recomputing keys.
+    - Introduce interface/inspection methods that can enumerate concrete nodes by `NodeIdentifier` (with freshness/value/timestamps), and have HTTP handlers read from those methods directly instead of re-keying from `(head,args)`.
+    - Keep any schema-oriented responses head-based, but require concrete-node response objects (lists and single-node reads) to carry `nodeIdentifier` as the addressing field used by follow-up concrete-node operations.
+    - Update `backend/tests/graph_routes.test.js` assertions to reject legacy concrete-node payloads that omit `nodeIdentifier` and to verify round-trip workflow (`list` → `GET/POST/DELETE by id`) without any `head/args` URL construction.
+    - Add at least one regression test for encoded-looking identifiers (for example containing `%2F` as literal characters) to prove response-to-route flow treats identifiers as opaque and never applies argument-decoding semantics.
 - [ ] Keep the schema-oriented HTTP endpoints aligned with the public graph model where they are still head-based rather than concrete-node based
 
 ## 6. Filesystem snapshot simplification
