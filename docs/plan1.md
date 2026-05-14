@@ -69,6 +69,11 @@ Replace (not preserve) the current `NodeKey`-addressed migration callback surfac
 - [ ] Preserve node identifiers across `keep`, `override`, and `invalidate` migration decisions
 - [ ] Allocate fresh identifiers for migration `create`
 - [ ] Remove both lookup entries and all identifier-keyed state for migration `delete`
+- [ ] Update migration replication source/unification so identifier lookup metadata is copied during cutover, not just graph-state sublevels.
+  - [ ] `migration_runner.js` currently builds a lazy source whose `global.keys()` yields only `version`; after introducing `identifiers_keys_map`, that source must also expose the lookup-map key or cutover to the inactive replica will drop all `NodeIdentifier ↔ NodeKey` metadata.
+  - [ ] Ensure the migration source can return both global entries (`version` and `identifiers_keys_map`) in a deterministic order, and that `db_to_db` unification writes both keys into the destination replica before pointer switch.
+  - [ ] Add a migration-runner regression test that executes a migration using the lazy source path, switches replicas, and asserts the destination replica still has a readable `identifiers_keys_map` entry plus graph-state keys that reference those identifiers.
+  - [ ] Add a negative-path test that would fail with the old behavior (global source exposing only `version`): destination replica contains identifier-keyed `inputs`/`revdeps` but missing `identifiers_keys_map`; assert this is rejected/fails fast.
 
 Then, write a single migration that will migrate the database from `NodeKey`-based storage to `NodeIdentifier`-based one.
 This requires changing the existing migration API for all future migrations so the migration surface is consistently `NodeIdentifier`-based; do not keep a mixed `NodeKey`/`NodeIdentifier` migration mode, even temporarily.
