@@ -82,7 +82,7 @@ Replace (not preserve) the current `NodeKey`-addressed migration callback surfac
 - [ ] Remove both lookup entries and all identifier-keyed state for migration `delete`
 
 Then, write a single migration that will migrate the database from `NodeKey`-based storage to `NodeIdentifier`-based one.
-For this one-time legacy `NodeKey` -> `NodeIdentifier` migration, identifiers must be deterministic from the old `NodeKey`, such as hash of the `NodeKey` (still conform to `[a-z]*` regex of `basicString(length=9)`).
+For this one-time legacy `NodeKey` -> `NodeIdentifier` migration, identifiers must be deterministic from the old `NodeKey` (still conform to `[a-z]*` regex of `basicString(length=9)`). To achieve this, set a fixed `seed` for the random generator, and then from that seed, generate all the `basicString(length=9)` values.
 This requires changing the existing migration API for all future migrations so the migration surface is consistently `NodeIdentifier`-based; do not keep a mixed `NodeKey`/`NodeIdentifier` migration mode, even temporarily.
 
 ## 5. HTTP inspection API
