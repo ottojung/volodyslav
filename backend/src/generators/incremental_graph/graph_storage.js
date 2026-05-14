@@ -106,7 +106,7 @@ function findInsertionIndex(sortedArray, node, compareFn) {
  * Creates a transactional database view for batch-consistent reads.
  * Implements read-your-writes semantics within a batch.
  * @template TValue
- * @param {import('./database/typed_database').GenericDatabase<TValue>} db - The underlying database
+ * @param {import('./database/typed_database').GenericDatabase<TValue, DatabaseKey>} db - The underlying database
  * @param {Array<DatabasePutOperation<TValue> | DatabaseDelOperation<TValue>>} operations - Array to append operations to
  * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
  * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations

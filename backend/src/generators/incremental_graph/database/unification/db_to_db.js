@@ -39,24 +39,14 @@ const { stringToNodeKeyString } = require('../types');
  * source side of the DB→DB adapter.  Both GenericDatabase<T> and the
  * InMemorySchemaStorage sublevels satisfy this interface.
  *
- * @typedef {object} ReadableSublevel
- * @property {(key: NodeKeyString) => Promise<unknown>} get
- * @property {() => AsyncIterable<NodeKeyString>} keys
- */
-
-/**
- * Read-only structural type accepted as source by makeDbToDbAdapter.
- * Both SchemaStorage (via GenericDatabase<T>) and InMemorySchemaStorage
- * satisfy this interface without any casts.
- *
  * @typedef {object} ReadableSchemaStorage
- * @property {ReadableSublevel} values
- * @property {ReadableSublevel} freshness
- * @property {ReadableSublevel} global
- * @property {ReadableSublevel} inputs
- * @property {ReadableSublevel} revdeps
- * @property {ReadableSublevel} counters
- * @property {ReadableSublevel} timestamps
+ * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} values
+ * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} freshness
+ * @property {{ get: (key: string) => Promise<unknown>, keys: () => AsyncIterable<string> }} global
+ * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} inputs
+ * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} revdeps
+ * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} counters
+ * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} timestamps
  */
 
 /**
@@ -120,7 +110,7 @@ function parseCompositeKey(compositeKey) {
  *
  * @param {ReadableSchemaStorage} source
  * @param {string} sublevel
- * @returns {ReadableSublevel}
+ * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['inputs'] | ReadableSchemaStorage['revdeps'] | ReadableSchemaStorage['counters'] | ReadableSchemaStorage['timestamps']}
  */
 function getSourceSubDb(source, sublevel) {
     switch (sublevel) {
@@ -135,31 +125,11 @@ function getSourceSubDb(source, sublevel) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Target accessor
-// ---------------------------------------------------------------------------
-
 /**
- * Returns the typed sublevel object from a SchemaStorage.
- * Used only for the target side where put/del ops require concrete types.
- *
- * @param {SchemaStorage} storage
  * @param {string} sublevel
- * @returns {AnySubDb}
+ * @param {string} nodeKey
+ * @returns {string | NodeKeyString}
  */
-function getTargetSubDb(storage, sublevel) {
-    switch (sublevel) {
-        case 'values': return storage.values;
-        case 'freshness': return storage.freshness;
-        case 'global': return storage.global;
-        case 'inputs': return storage.inputs;
-        case 'revdeps': return storage.revdeps;
-        case 'counters': return storage.counters;
-        case 'timestamps': return storage.timestamps;
-        default: throw new Error(`Unknown sublevel name: ${sublevel}`);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Key iteration
 // ---------------------------------------------------------------------------
@@ -214,12 +184,30 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async readSource(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            return await getSourceSubDb(source, sublevel).get(stringToNodeKeyString(nodeKey));
+            if (sublevel === 'global') return await source.global.get(nodeKey);
+            switch (sublevel) {
+                case 'values': return await source.values.get(stringToNodeKeyString(nodeKey));
+                case 'freshness': return await source.freshness.get(stringToNodeKeyString(nodeKey));
+                case 'inputs': return await source.inputs.get(stringToNodeKeyString(nodeKey));
+                case 'revdeps': return await source.revdeps.get(stringToNodeKeyString(nodeKey));
+                case 'counters': return await source.counters.get(stringToNodeKeyString(nodeKey));
+                case 'timestamps': return await source.timestamps.get(stringToNodeKeyString(nodeKey));
+                default: throw new Error(`Unknown sublevel name: ${sublevel}`);
+            }
         },
 
         async readTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            return await getTargetSubDb(target, sublevel).get(stringToNodeKeyString(nodeKey));
+            if (sublevel === 'global') return await target.global.get(nodeKey);
+            switch (sublevel) {
+                case 'values': return await target.values.get(stringToNodeKeyString(nodeKey));
+                case 'freshness': return await target.freshness.get(stringToNodeKeyString(nodeKey));
+                case 'inputs': return await target.inputs.get(stringToNodeKeyString(nodeKey));
+                case 'revdeps': return await target.revdeps.get(stringToNodeKeyString(nodeKey));
+                case 'counters': return await target.counters.get(stringToNodeKeyString(nodeKey));
+                case 'timestamps': return await target.timestamps.get(stringToNodeKeyString(nodeKey));
+                default: throw new Error(`Unknown sublevel name: ${sublevel}`);
+            }
         },
 
         equals(sv, tv) {
@@ -228,12 +216,36 @@ function makeDbToDbAdapter(source, target, options = {}) {
 
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            await getTargetSubDb(target, sublevel).rawPut(stringToNodeKeyString(nodeKey), value);
+            if (sublevel === 'global') {
+                await target.global.rawPut(nodeKey, value);
+                return;
+            }
+            switch (sublevel) {
+                case 'values': await target.values.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'freshness': await target.freshness.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'inputs': await target.inputs.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'revdeps': await target.revdeps.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'counters': await target.counters.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'timestamps': await target.timestamps.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                default: throw new Error(`Unknown sublevel name: ${sublevel}`);
+            }
         },
 
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
-            await getTargetSubDb(target, sublevel).rawDel(stringToNodeKeyString(nodeKey));
+            if (sublevel === 'global') {
+                await target.global.rawDel(nodeKey);
+                return;
+            }
+            switch (sublevel) {
+                case 'values': await target.values.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'freshness': await target.freshness.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'inputs': await target.inputs.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'revdeps': await target.revdeps.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'counters': await target.counters.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'timestamps': await target.timestamps.rawDel(stringToNodeKeyString(nodeKey)); return;
+                default: throw new Error(`Unknown sublevel name: ${sublevel}`);
+            }
         },
     };
 }

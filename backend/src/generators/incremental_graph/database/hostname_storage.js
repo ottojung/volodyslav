@@ -100,7 +100,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Version>} */
+    /** @type {import('abstract-level').AbstractSublevel<SchemaSublevelType, import('./types').SublevelFormat, string, Version>} */
     const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
