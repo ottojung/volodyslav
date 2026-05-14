@@ -43,6 +43,7 @@ Extend the root database so graph state is identifier-addressed and the semantic
   - [ ] Mirror the same typed store in `database/hostname_storage.js`; migration/sync code uses hostname-backed storages and will silently drop lookup metadata unless this path is updated too.
   - [ ] Update `database/unification/db_to_db.js` so `identifiers_keys_map` participates in copy/unify operations; otherwise sync can copy `inputs`/`revdeps` that reference ids absent from the destination lookup table.
   - [ ] Add focused tests that perform sync/unification between replicas and assert both directions of the bijection survive, not just graph-state sublevels.
+- [ ] Always serialize `identifiers_keys_map` sorted by `NodeIdentifier`.
 
 ## 3. Storage boundary and lifecycle behavior
 
