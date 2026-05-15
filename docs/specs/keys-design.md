@@ -9,7 +9,7 @@ This model separates three concerns:
 
 - `NodeKey` is the semantic identity of a concrete node instance
 - `NodeIdentifier` is the persisted storage identity of a materialized node
-- filesystem snapshots and the HTTP inspection API operate directly on stored identifiers
+- filesystem snapshots and internal storage operate directly on stored identifiers
 
 This document is the **intended target design specification** for IncrementalGraph
 node addressing. It describes the model as it is meant to be.
@@ -24,34 +24,29 @@ node addressing. It describes the model as it is meant to be.
 
 ## Boundary
 
-Concrete-node operations are `NodeIdentifier`-addressed.
+Public concrete-node operations remain `NodeKey`-addressed (`head + args` / `NodeKey`).
 
-`NodeKey` remains important, but only as semantic identity and as the explicit lookup
-input to:
+`IncrementalGraph` is the conversion boundary:
 
-- `nodeKeyToId(nodeKey)`
-- `nodeIdToKey(id)`
+- Public callers and HTTP routes provide semantic keys (`head + args` / `NodeKey`).
+- At public method entry, `IncrementalGraph` resolves to `NodeIdentifier` immediately.
+- All logic below that boundary (storage, recompute, invalidation propagation, migration, sync, render, scan) is identifier-native.
+
+`nodeKeyToId(nodeKey)` and `nodeIdToKey(id)` are internal/lower-level translation helpers,
+not public `IncrementalGraph` methods and not HTTP API operations.
 
 ### Required workflow
 
-If a caller has only a `NodeKey` and needs to operate on a concrete materialized node,
-it must first resolve the identifier:
+Upstream/public workflow stays semantic:
 
 ```js
-const id = await nodeKeyToId(nodeKey);
+await graph.pull(head, args);
+await graph.invalidate(head, args);
 ```
 
-After that conversion, concrete-node operations run by id (for example
-`getValueById(id)`, `getFreshnessById(id)`, `invalidateById(id)`, `pullById(id)`,
-`deleteById(id)`).
+Internal workflow converts once at the boundary, then stays identifier-native.
 
-No mixed model is allowed where some concrete-node operations remain `NodeKey`-addressed.
-No mixed model is allowed where some concrete-node operations remain `(head, args)`-addressed.
-
-`(head, args)` is semantic construction data for `NodeKey`, not a concrete-node
-address. Outside schema/head APIs and the explicit translation bridge, `(head, args)`
-must not be used as an addressing input, output, or internal transport shape for
-concrete-node logic.
+No mixed model is allowed where storage-layer concrete-node operations remain `NodeKey`-addressed after boundary conversion.
 
 ### Schema/head APIs
 
@@ -70,11 +65,12 @@ There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are
 
 ### HTTP inspection API
 
-The HTTP inspection API is not a user-facing API. It is an internal development and
-inspection surface.
+HTTP concrete-node routes remain `head + args` based to preserve existing API behavior.
 
-Every HTTP operation that addresses a concrete node uses `NodeIdentifier`.
-Schema/head inspection endpoints may remain schema/head-oriented.
+- Route addressing remains semantic (`head + args`).
+- Handlers call the public graph API in semantic form.
+- Identifier conversion happens inside `IncrementalGraph` at the same boundary as non-HTTP callers.
+- `NodeIdentifier` is not exposed as required request-addressing for public graph routes.
 
 ## NodeIdentifier requirements
 
@@ -115,7 +111,6 @@ This applies to:
 - values inside `revdeps`
 - all migration callback payloads and migration-produced state
 - filesystem-rendered snapshots
-- HTTP API addressing of concrete nodes
 
 ### Graph-state sublevels
 
@@ -148,6 +143,21 @@ These functions operate on the `/${current_replica}/global/identifiers_keys_map`
 Here `${current_replica}` is the replica name of the current database instance, for example `x` or `y`.
 
 `NodeKeyString` may remain persisted only in this lookup table at `/${current_replica}/global/identifiers_keys_map`.
+
+The map is the materialized-node identity table, with a strict invariant:
+
+1. contains every materialized node;
+2. contains only materialized nodes.
+
+Lifecycle rules:
+
+- `NodeIdentifier` allocation happens when a node becomes materialized (not on arbitrary key mention/lookups).
+- `nodeKeyToId(nodeKey)` is an internal lookup helper and must not allocate for non-materialized nodes.
+- if `nodeKeyToId(nodeKey)` is called for a non-materialized node, it returns missing (or equivalent lookup-miss error/value).
+- the materialization write path is responsible for atomically inserting both graph-state records and id↔key entry.
+- node deletion/de-materialization path is responsible for atomically removing both graph-state records and id↔key entry.
+- `inputs`/`revdeps` may reference only materialized-node identifiers; they must never require lookup entries for non-materialized nodes.
+- migration/render/scan/sync validation must fail fast if any graph-state id lacks a key entry, or if any key entry exists without materialized graph-state presence.
 
 ## Allocation and stability
 
@@ -243,18 +253,14 @@ Accordingly:
 
 ## API invariants
 
-- every concrete-node `IncrementalGraph` method uses `NodeIdentifier` arguments/returns
-- concrete-node read/write/invalidate/delete/pull/inspection operations use `NodeIdentifier`
-- this includes all pull variants and invalidate variants, with no exceptions
-- `(head, args)` concrete-node method signatures are forbidden
-- the only `NodeKey`-typed concrete-node bridge methods are:
-  - `nodeKeyToId(nodeKey)`
-  - `nodeIdToKey(id)`
-- schema/head family operations may remain schema/head-based
-- HTTP concrete-node routes are identifier-based
-- HTTP schema routes may remain schema/head-based
-- migration APIs are identifier-based
-- no mixed migration callback surface is allowed
+- public `IncrementalGraph` methods remain semantic (`NodeKey` / `head + args`)
+- `pull`, `invalidate`, `unsafePull`, `unsafeInvalidate`, `getValue`, `getFreshness`, and timestamp/inspection helpers are all semantic at the public boundary
+- `IncrementalGraph` converts to `NodeIdentifier` immediately at method entry
+- concrete-node read/write/recompute/invalidate/delete/inspection/storage operations below that boundary use `NodeIdentifier`
+- `nodeKeyToId(nodeKey)` and `nodeIdToKey(id)` are internal translation helpers, not public graph-interface methods
+- HTTP concrete-node routes remain semantic (`head + args`)
+- migration APIs are identifier-based internally
+- no mixed model below the boundary is allowed
 
 ## Invariants
 

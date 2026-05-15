@@ -54,22 +54,21 @@ The semantic `NodeKey` should remain recoverable through explicit lookup tables.
 
 ## 3. Storage boundary and lifecycle behavior
 
-Make `NodeIdentifier` the normal concrete-node address for IncrementalGraph operations.
-`NodeKey` remains semantic identity and the explicit lookup input to `nodeKeyToId(nodeKey)`.
-If a caller starts with a `NodeKey`, it must resolve `id = nodeKeyToId(nodeKey)` first and
-then run concrete-node operations by identifier.
+`IncrementalGraph` is the conversion boundary.
 
+- Public graph-facing APIs remain semantic-key based (`NodeKey` and existing `head + args` forms).
+- At the public method boundary (`pull`, `invalidate`, `unsafePull`, `unsafeInvalidate`, `getValue`, `getFreshness`, timestamp/inspection helpers), convert immediately to `NodeIdentifier`.
+- After this conversion point, all internals (storage, recompute, invalidation propagation, migration/sync/render/scan interactions) must use `NodeIdentifier` only.
+
+- [ ] Keep public `IncrementalGraph` concrete-node API signatures `NodeKey`/`head+args` based (`pull`, `invalidate`, `unsafePull`, `unsafeInvalidate`, `getValue`, `getFreshness`, timestamp helpers, inspection helpers)
+- [ ] Refactor `incremental_graph/class.js` internals so conversion from `NodeKey`/`head+args` to `NodeIdentifier` happens immediately at method entry before storage/internal calls
+  - [ ] Add focused tests that assert public methods still accept `head + args` and do not require callers to resolve ids first
+  - [ ] Add focused tests that verify internal calls below the boundary are `NodeIdentifier`-only (no `NodeKeyString` passed into storage/migration/sync helpers)
+- [ ] Keep `nodeKeyToId` / `nodeIdToKey` as lower-level translation helpers (storage/internal boundary), not public `IncrementalGraph` methods
+  - [ ] Place them in storage/database-facing helper modules used by `IncrementalGraph` internals and migration/sync/render paths
+  - [ ] Add tests that guard against re-introducing `graph.nodeKeyToId(...)` / `graph.nodeIdToKey(...)` on the public interface
 - [ ] Refactor `graph_storage.js` so graph-state sublevels are keyed by `NodeIdentifier`, not `NodeKeyString`
-- [ ] Refactor `incremental_graph/class.js` so that all of `IncrementalGraph` methods accept (and return) `NodeIdentifier`, not `NodeKeyString`. The `NodeKeyString` must not even be imported into that module.
-- [ ] Remove the `(head, args)` concrete-node addressing model from `IncrementalGraph` entirely.
-  - [ ] `IncrementalGraph` concrete-node methods must accept a single `NodeIdentifier` argument (or `NodeIdentifier[]` for collections), never `(head, args)`.
-  - [ ] This includes all pull variants, invalidate variants, delete variants, concrete-node read/write helpers, dependency/revdep helpers, and any internal helper that currently reconstructs a `NodeKey` from `(head, args)`.
-  - [ ] Any method that currently returns `(head, args)` for concrete nodes must return `NodeIdentifier` (or objects keyed by `nodeIdentifier`) instead.
-  - [ ] The only `NodeKey`-typed methods on `IncrementalGraph` are the translation bridge methods `nodeKeyToId(nodeKey)` and `nodeIdToKey(id)`.
-- [ ] Add two methods to `IncrementalGraph` public interface:
-  - [ ] `nodeKeyToId`
-  - [ ] `nodeIdToKey`
-- [ ] Make all internal logic work on `NodeIdentifier` instead of `NodeKey`. Including, but not limited to:
+- [ ] Make all internal logic below the boundary use `NodeIdentifier` instead of `NodeKey`. Including, but not limited to:
   - [ ] Update `inputs` and `revdeps` persistence so all stored references are `NodeIdentifier[]`
     - [ ] When rewriting `inputs`, preserve original input order so `inputs[i]` still corresponds to `inputCounters[i]`; only translate each element from `NodeKeyString` to `NodeIdentifier` without reordering.
   - [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
@@ -84,8 +83,7 @@ then run concrete-node operations by identifier.
   - [ ] Ensure merged-input-map construction, topo ordering, and revdeps rebuild run only after the above validation succeeds.
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
-- [ ] Old key-addressed concrete-node APIs must be removed once identifier-based paths exist. Remove key-path transforms, key-based storage helpers, and key-based rendering helpers. Outside schema/head APIs and the explicit lookup bridge (`nodeKeyToId` / `nodeIdToKey`), concrete-node operations must not be `NodeKey`-addressed.
-
+- [ ] Remove legacy key-based concrete-node storage internals after boundary conversion is in place. Outside public API entrypoints and semantic-schema helpers, concrete-node operations must not be `NodeKey`-addressed.
 ## 4. Migration behavior
 
 Replace (not preserve) the current `NodeKey`-addressed migration callback surface with a fully `NodeIdentifier`-addressed one, while keeping identifier stability where required by the design.
@@ -112,25 +110,18 @@ This requires changing the existing migration API for all future migrations so t
 
 ## 5. HTTP inspection API
 
-Refactor the internal HTTP inspection surface so concrete-node addressing matches the
-identifier-addressed storage model directly.
+Keep the HTTP graph API compatible with the existing public graph model.
+Concrete-node routes stay `head + args` addressed, while handler internals convert to
+`NodeIdentifier` at the same `IncrementalGraph` boundary.
 
-- [ ] Change the HTTP inspection API so concrete-node operations address nodes by `NodeIdentifier`, not by `head/args`
-- [ ] Update the HTTP graph API spec, route shapes, handlers, and tests to the identifier-based concrete-node model
-  - [ ] Replace concrete-node `head/args` routes (`/graph/nodes/:head`, `/graph/nodes/:head/*` and the matching POST/DELETE handlers) with identifier-addressed concrete-node routes, and remove all URL-arg decoding logic tied to concrete-node addressing.
-    - Current handlers rely on wildcard path parsing (`req.params[0]`) plus `getArgsFromRequest()` in `backend/src/routes/graph_helpers.js` to recover `ConstValue[]` from URL segments (including encoded `/` and `~`-prefixed non-strings). If this helper path is left in place after route migration, identifier endpoints can accidentally continue treating identifiers as split arg vectors or apply JSON-ish decoding to IDs.
-    - Define explicit concrete-node routes that take one opaque identifier segment (for example `GET/POST/DELETE /graph/nodes/id/:nodeIdentifier`) and ensure handlers call identifier-based interface methods directly rather than reconstructing `(head, args)` from the URL.
-    - Keep schema endpoints head-based (`/graph/schemas`, `/graph/schemas/:head`) and do not route them through identifier parsing.
-    - Update route registration order/comments in `backend/src/routes/graph.js`: wildcard-first ordering is currently required only for `:head/*`; once identifier routes are used, preserve only the ordering constraints that still apply.
-    - Replace route tests that currently assert head/args parsing behavior (including encoded slash and `~` decoding cases) with identifier-focused tests that assert identifiers are passed through as opaque strings and never decoded as `ConstValue` arguments.
-  - [ ] Update list/read response payloads so concrete-node records returned by HTTP inspection are identifier-addressed, not `(head,args)`-addressed.
-    - Current `GET /graph/nodes` and `GET /graph/nodes/:head` handlers in `backend/src/routes/graph.js` enumerate materialized nodes from `interface.listMaterializedNodes()` and emit `{ id, head, args, freshness, ... }` objects. After route migration, this payload shape leaves clients unable to call identifier-addressed pull/delete/invalidate endpoints without recomputing keys.
-    - Introduce interface/inspection methods that can enumerate concrete nodes by `NodeIdentifier` (with freshness/value/timestamps), and have HTTP handlers read from those methods directly instead of re-keying from `(head,args)`.
-    - Keep any schema-oriented responses head-based, but require concrete-node response objects (lists and single-node reads) to carry `nodeIdentifier` as the addressing field used by follow-up concrete-node operations.
-    - Update `backend/tests/graph_routes.test.js` assertions to reject legacy concrete-node payloads that omit `nodeIdentifier` and to verify round-trip workflow (`list` → `GET/POST/DELETE by id`) without any `head/args` URL construction.
-    - Add at least one regression test for encoded-looking identifiers to prove response-to-route flow treats identifiers as opaque and never applies argument-decoding semantics.
-- [ ] Keep the schema-oriented HTTP endpoints aligned with the public graph model where they are still head-based rather than concrete-node based
-
+- [ ] Keep HTTP concrete-node routes `head/args` based (`/graph/nodes/:head`, `/graph/nodes/:head/*`, and matching POST/DELETE flows)
+- [ ] Do **not** introduce identifier-addressed public concrete-node routes such as `/graph/nodes/id/:nodeIdentifier`
+- [ ] Keep request parsing behavior in `backend/src/routes/graph.js` and `graph_helpers.js` aligned with current head/args semantics
+- [ ] Add regression tests that protect against accidental identifier leakage into HTTP API:
+  - [ ] round-trip workflows remain `list/read/pull/invalidate` via `head + args`
+  - [ ] responses do not require caller-visible `NodeIdentifier` for follow-up operations
+  - [ ] encoded arg parsing behavior remains intact where currently supported
+- [ ] Add integration tests that prove HTTP handlers can stay head/args-facing while graph internals execute identifier-native storage paths after boundary conversion
 ## 6. Filesystem snapshot simplification
 
 Simplify snapshot rendering and scanning around direct identifier paths, with readable
@@ -164,4 +155,4 @@ Update the documentation and focused tests so the new identifier-addressed model
 fully specified and regression-protected.
 
 - [ ] Update docs and tests that currently assert raw `NodeKeyString` storage in `inputs`, `revdeps`, rendering, migration, and unification
-- [ ] Add focused tests for identifier allocation, lookup bijection, stable id reuse, migration preservation, identifier-based HTTP inspection, and snapshot round-tripping
+- [ ] Add focused tests for identifier allocation, lookup bijection, stable id reuse, migration preservation, head+args HTTP API boundary protections, identifier-native internals validation, and snapshot round-tripping
