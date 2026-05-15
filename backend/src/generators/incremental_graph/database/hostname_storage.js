@@ -60,6 +60,7 @@ function validateHostname(hostname) {
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
+/** @typedef {import('./types').GlobalSublevelType} GlobalSublevelType */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
@@ -100,7 +101,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
-    /** @type {import('abstract-level').AbstractSublevel<SchemaSublevelType, import('./types').SublevelFormat, string, Version>} */
+    /** @type {GlobalSublevelType} */
     const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
@@ -123,6 +124,18 @@ function buildBareSchemaStorage(namespaceSublevel) {
 }
 
 /**
+ * @param {RootLevelType} db
+ * @param {string} hostname
+ * @returns {SchemaSublevelType}
+ */
+function getHostnameNamespaceSublevel(db, hostname) {
+    validateHostname(hostname);
+    /** @type {SchemaSublevelType} */
+    const hostnameSublevel = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
+    return hostnameSublevel;
+}
+
+/**
  * Returns a bare SchemaStorage for a hostname staging namespace.
  * The storage reads/writes under `_h_<hostname>` and does NOT enforce any
  * local version check.
@@ -133,9 +146,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
  * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 function hostnameSchemaStorage(db, hostname) {
-    validateHostname(hostname);
-    /** @type {SchemaSublevelType} */
-    const hostnameSub = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
+    const hostnameSub = getHostnameNamespaceSublevel(db, hostname);
     return buildBareSchemaStorage(hostnameSub);
 }
 
@@ -148,10 +159,7 @@ function hostnameSchemaStorage(db, hostname) {
  * @throws {InvalidHostnameError} If the hostname is invalid.
  */
 async function clearHostnameStorage(db, hostname) {
-    validateHostname(hostname);
-    /** @type {SchemaSublevelType} */
-    const hostnameSub = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
-    await hostnameSub.clear();
+    await getHostnameNamespaceSublevel(db, hostname).clear();
 }
 
 /**
