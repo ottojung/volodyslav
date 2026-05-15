@@ -116,7 +116,7 @@ identifier-addressed storage model directly.
     - Introduce interface/inspection methods that can enumerate concrete nodes by `NodeIdentifier` (with freshness/value/timestamps), and have HTTP handlers read from those methods directly instead of re-keying from `(head,args)`.
     - Keep any schema-oriented responses head-based, but require concrete-node response objects (lists and single-node reads) to carry `nodeIdentifier` as the addressing field used by follow-up concrete-node operations.
     - Update `backend/tests/graph_routes.test.js` assertions to reject legacy concrete-node payloads that omit `nodeIdentifier` and to verify round-trip workflow (`list` → `GET/POST/DELETE by id`) without any `head/args` URL construction.
-    - Add at least one regression test for encoded-looking identifiers (for example containing `%2F` as literal characters) to prove response-to-route flow treats identifiers as opaque and never applies argument-decoding semantics.
+    - Add at least one regression test for encoded-looking identifiers to prove response-to-route flow treats identifiers as opaque and never applies argument-decoding semantics.
 - [ ] Keep the schema-oriented HTTP endpoints aligned with the public graph model where they are still head-based rather than concrete-node based
 
 ## 6. Filesystem snapshot simplification
