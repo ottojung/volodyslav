@@ -83,7 +83,7 @@ module.exports = {
         "volodyslav/no-deep-imports": [
             "error",
             {
-                "ignorePatterns": ["**/tests/**", "**/test/**"]
+                "ignorePatterns": ["**/tests/**", "**/test/**", "scripts/**"]
             }
         ],
     },

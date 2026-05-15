@@ -19,7 +19,8 @@
     "docs:dev": "npm run dev -w docs",
     "docs:build": "npm run build -w docs",
     "rules:test": "npm --prefix tools/eslint-plugin-volodyslav run test",
-    "rules:new": "node scripts/new-rule.mjs"
+    "rules:new": "node scripts/new-rule.mjs",
+    "backend:migration-fixture:update": "node scripts/update-migration-fixture-populated-remote.js"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
