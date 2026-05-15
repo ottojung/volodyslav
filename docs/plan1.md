@@ -10,7 +10,7 @@ Introduce a nominal `NodeIdentifier` type that defines the persisted identifier 
 in one place and enforces it consistently.
 
 - [ ] Add a `NodeIdentifier` nominal type module modeled on the existing `backend/src/event/id.js`, except that it must use `basicString(length=9)` function for generating random identifiers.
-- [ ] Define construction and parsing around the exact full-string validity rule from the design: `/^[a-z_][a-z0-9_]*$/`
+- [ ] Define construction and parsing around the exact full-string validity rule from the design: `/^[a-z]*$/`
 - [ ] Reject invalid identifiers during construction, parsing, and before persistence, including explicit rejection of any string that does not match the entire validity rule
 
 ## 2. Database shape and lookup metadata
