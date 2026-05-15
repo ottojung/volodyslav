@@ -24,28 +24,33 @@ node addressing. It describes the model as it is meant to be.
 
 ## Boundary
 
-### IncrementalGraph and Interface API
+Concrete-node operations are `NodeIdentifier`-addressed.
 
-The `IncrementalGraph` API and the higher-level `Interface` API continue to address
-nodes by `NodeKey`.
+`NodeKey` remains important, but only as semantic identity and as the explicit lookup
+input to:
 
-That includes:
+- `nodeKeyToId(nodeKey)`
+- `nodeIdToKey(id)`
 
-- `pull(head, args)`
-- `invalidate(head, args)`
-- `getValue(head, args)`
-- `getFreshness(head, args)`
-- `getCreationTime(head, args)`
-- `getModificationTime(head, args)`
-- `listMaterializedNodes()`
+### Required workflow
 
-For these APIs, callers do not pass `NodeIdentifier`s.
+If a caller has only a `NodeKey` and needs to operate on a concrete materialized node,
+it must first resolve the identifier:
 
-`NodeKey` is used exclusively at this user-facing boundary. It is not used for any
-internal logic. Inside the storage layer, all node addressing, sorting, and
-edge-following uses `NodeIdentifier` only. `NodeKey` values appear only as arguments
-or return values of user-facing API calls and in the bijection lookup tables.
+```js
+const id = await nodeKeyToId(nodeKey);
+```
 
+After that conversion, concrete-node operations run by id (for example
+`getValueById(id)`, `getFreshnessById(id)`, `invalidateById(id)`, `pullById(id)`,
+`deleteById(id)`).
+
+No mixed model is allowed where some concrete-node operations remain `NodeKey`-addressed.
+
+### Schema/head APIs
+
+Schema-family APIs may remain head/schema-oriented where they are genuinely schema-level
+operations rather than concrete-node operations.
 
 ### Migration API boundary
 
@@ -53,7 +58,7 @@ Migration code is internal storage logic, so migrations are fully `NodeIdentifie
 
 - Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
 - Migration-produced `inputs`/`revdeps` must contain only `NodeIdentifier` values.
-- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for external API translation.
+- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
 
 There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
 
@@ -62,8 +67,8 @@ There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are
 The HTTP inspection API is not a user-facing API. It is an internal development and
 inspection surface.
 
-Every HTTP operation that addresses or returns a concrete node instance uses
-`NodeIdentifier`.
+Every HTTP operation that addresses a concrete node uses `NodeIdentifier`.
+Schema/head inspection endpoints may remain schema/head-oriented.
 
 ## NodeIdentifier requirements
 
@@ -89,9 +94,9 @@ them, not just the documentation.
 
 Example values:
 
-- `nodeid1`
-- `gid_0123456789abcdef`
-- `_cache3`
+- `aaaaaaaaa`
+- `nodecachex`
+- `zzzzzzzzz`
 
 ## Persisted storage model
 
@@ -114,6 +119,16 @@ This applies to:
 - `timestamps[id] -> TimestampRecord`
 - `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }`
 - `revdeps[id] -> NodeIdentifier[]`
+
+### Storage invariants
+
+- graph-state sublevel keys are `NodeIdentifier`
+- `inputs[id].inputs` contains `NodeIdentifier[]`
+- `revdeps[id]` contains `NodeIdentifier[]`
+- reverse dependencies are sorted by `NodeIdentifier` (lexicographic), never by `NodeKey`
+- render/scan paths use direct identifier path segments
+- graph-state path encoding/decoding must not reconstruct `NodeKey` values
+- `NodeKeyString` may persist only inside explicit lookup metadata (`identifiers_keys_map`)
 
 ### Lookup metadata
 
@@ -219,6 +234,15 @@ Accordingly:
 - scan consumes those direct identifier paths
 - render writes those direct identifier paths
 - any `NodeKey ↔ path` logic is limited to the lookup-metadata namespace above
+
+## API invariants
+
+- concrete-node read/write/invalidate/delete/pull/inspection operations use `NodeIdentifier`
+- schema/head family operations may remain schema/head-based
+- HTTP concrete-node routes are identifier-based
+- HTTP schema routes may remain schema/head-based
+- migration APIs are identifier-based
+- no mixed migration callback surface is allowed
 
 ## Invariants
 
