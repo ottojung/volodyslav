@@ -11,14 +11,14 @@ function forceVersion(capabilities, version) {
     const originalReadFileAsText = capabilities.reader.readFileAsText.bind(capabilities.reader);
 
     capabilities.checker.instantiate = async (filePath) => {
-        if (filePath.endsWith('/VERSION')) {
+        if (path.basename(filePath) === "VERSION") {
             return { path: filePath };
         }
         return originalInstantiate(filePath);
     };
 
     capabilities.reader.readFileAsText = async (filePath) => {
-        if (filePath.endsWith('/VERSION')) {
+        if (path.basename(filePath) === "VERSION") {
             return `${version}\n`;
         }
         return originalReadFileAsText(filePath);

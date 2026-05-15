@@ -1,10 +1,12 @@
 const path = require("path");
 const fs = require("fs/promises");
-const { makeInterface } = require("../backend/src/generators/interface");
-const { DATABASE_SUBPATH } = require("../backend/src/generators/incremental_graph/database");
-const { make: makeRootCapabilities } = require("../backend/src/capabilities/root");
-const { forceVersion } = require("../backend/tests/migration_fixture_helpers");
-const { stubIncrementalDatabaseRemoteBranches } = require("../backend/tests/stub_incremental_database_remote");
+const {
+    makeInterface,
+    DATABASE_SUBPATH,
+    makeRootCapabilities,
+    forceVersion,
+    stubIncrementalDatabaseRemoteBranches,
+} = require("../backend");
 
 async function copyDirectoryRecursively(source, destination) {
     await fs.rm(destination, { recursive: true, force: true });

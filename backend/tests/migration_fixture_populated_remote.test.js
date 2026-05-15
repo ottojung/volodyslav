@@ -40,6 +40,7 @@ describe("populated rendered fixture migration", () => {
                 clonedRemote
             );
 
+            expect(await capabilities.checker.directoryExists(clonedRemote)).toBeTruthy();
             await assertDirectoriesExactlyEqual(
                 path.join(clonedRemote, DATABASE_SUBPATH),
                 path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH)

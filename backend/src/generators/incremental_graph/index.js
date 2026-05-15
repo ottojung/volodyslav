@@ -31,7 +31,7 @@ const {
     makeMissingTimestampError,
     isMissingTimestamp,
 } = require('./errors');
-const { makeRootDatabase, getRootDatabase, LIVE_DATABASE_WORKING_PATH, CHECKPOINT_WORKING_PATH } = require('./database');
+const { makeRootDatabase, getRootDatabase, LIVE_DATABASE_WORKING_PATH, CHECKPOINT_WORKING_PATH, DATABASE_SUBPATH } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration, runMigrationUnsafe } = require('./migration_runner');
 const { withMutex, withExclusiveMode } = require('./lock');
@@ -67,6 +67,7 @@ module.exports = {
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
     makeIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,
