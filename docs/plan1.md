@@ -61,6 +61,10 @@ The semantic `NodeKey` should remain recoverable through explicit lookup tables.
 - After this conversion point, all internals (storage, recompute, invalidation propagation, migration/sync/render/scan interactions) must use `NodeIdentifier` only.
 
 - [ ] Keep public `IncrementalGraph` concrete-node API signatures `NodeKey`/`head+args` based (`pull`, `invalidate`, `unsafePull`, `unsafeInvalidate`, `getValue`, `getFreshness`, timestamp helpers, inspection helpers)
+- [ ] Keep `listMaterializedNodes()` as a semantic API returning `[head, args]`, even after storage keys become `NodeIdentifier`
+  - [ ] Update `inspection.js` + `graph_storage.js` boundary so materialization listing reads identifier-keyed materialized records, translates each id through `nodeIdToKey`, then deserializes to existing `[head, args]` route-facing output.
+  - [ ] Treat missing/invalid bijection entries during this translation as hard errors (fail-fast), not as silently skipped nodes; otherwise `/graph/nodes` can hide durable corruption.
+  - [ ] Add a regression test for `/graph/nodes` and `listMaterializedNodes()` proving no caller-visible `NodeIdentifier` leakage and stable pre-migration response shape.
 - [ ] Refactor `incremental_graph/class.js` internals so conversion from `NodeKey`/`head+args` to `NodeIdentifier` happens immediately at method entry before storage/internal calls
   - [ ] Add focused tests that assert public methods still accept `head + args` and do not require callers to resolve ids first
   - [ ] Add focused tests that verify internal calls below the boundary are `NodeIdentifier`-only (no `NodeKeyString` passed into storage/migration/sync helpers)
