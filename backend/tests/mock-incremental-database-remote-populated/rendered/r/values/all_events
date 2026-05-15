@@ -2,38 +2,290 @@
   "type": "all_events",
   "events": [
     {
-      "id": "ajqw7mgcbxrjwcu3",
-      "date": "2025-06-28T16:31:37+0000",
-      "original": "mood [level happy]",
-      "input": "mood [level happy]",
+      "id": "fx-anchor-latest",
+      "date": "2025-04-20T22:10:00+0000",
+      "original": "Shipped recap and backlog tidy #focus #project-x",
+      "input": "Shipped recap and backlog tidy #focus #project-x",
       "creator": {
         "name": "Volodyslav",
         "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
-        "version": "v0.1.0-674-g8b127ea",
+        "version": "0.0.0-dev",
         "hostname": "fixturehost"
       }
     },
     {
-      "id": "r49r56mbh2hssujf",
-      "date": "2025-06-28T16:33:19+0000",
-      "original": "exercise [type cardio] walking",
-      "input": "exercise [type cardio] walking",
+      "id": "fx-anchor-earliest",
+      "date": "2025-01-02T06:45:00+0000",
+      "original": "Early start note before sunrise #focus",
+      "input": "Early start note before sunrise #focus",
       "creator": {
         "name": "Volodyslav",
         "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
-        "version": "v0.1.0-674-g8b127ea",
+        "version": "0.0.0-dev",
         "hostname": "fixturehost"
       }
     },
     {
-      "id": "xovxev9i1b8j4kqm",
-      "date": "2025-06-28T16:33:30+0000",
-      "original": "work [type development] programming",
-      "input": "work [type development] programming",
+      "id": "evtalphaaa",
+      "date": "2025-01-15T08:20:00+0000",
+      "original": "Breakfast journaling no tags just oatmeal and tea.",
+      "input": "Breakfast journaling no tags just oatmeal and tea.",
       "creator": {
         "name": "Volodyslav",
         "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
-        "version": "v0.1.0-674-g8b127ea",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphabb",
+      "date": "2025-03-28T12:00:00+0000",
+      "original": "Lunch walk felt good #health",
+      "input": "Lunch walk felt good #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "fx-anchor-focus-a",
+      "date": "2025-02-03T09:15:00+0000",
+      "original": "Deep work sprint #focus #project-x",
+      "input": "Deep work sprint #focus #project-x",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphacc",
+      "date": "2025-02-03T11:45:00+0000",
+      "original": "Follow-up implementation review #project-x",
+      "input": "Follow-up implementation review #project-x",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphadd",
+      "date": "2025-02-10T07:00:00+0000",
+      "original": "Morning planning board refresh #focus",
+      "input": "Morning planning board refresh #focus",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "fx-anchor-focus-b",
+      "date": "2025-02-10T14:40:00+0000",
+      "original": "Afternoon checkpoint, closed two tasks #focus",
+      "input": "Afternoon checkpoint, closed two tasks #focus",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphaee",
+      "date": "2025-02-10T18:05:00+0000",
+      "original": "Evening stretch and hydration #health",
+      "input": "Evening stretch and hydration #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "fx-anchor-health-a",
+      "date": "2025-03-01T07:05:00+0000",
+      "original": "Jog around the park before rain #health",
+      "input": "Jog around the park before rain #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "fx-anchor-no-tags",
+      "date": "2025-03-05T19:30:00+0000",
+      "original": "Read two chapters and sketched architecture ideas.",
+      "input": "Read two chapters and sketched architecture ideas.",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphaff",
+      "date": "2025-01-25T21:10:00+0000",
+      "original": "Debug diary: traced issue, added notes! #project-x",
+      "input": "Debug diary: traced issue, added notes! #project-x",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphagg",
+      "date": "2025-03-05T07:55:00+0000",
+      "original": "Stacked habits today #focus #health",
+      "input": "Stacked habits today #focus #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphahh",
+      "date": "2025-03-12T10:10:00+0000",
+      "original": "Team sync, punctuation test: wow, steady progress; yes. #focus",
+      "input": "Team sync, punctuation test: wow, steady progress; yes. #focus",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphaii",
+      "date": "2025-03-12T22:45:00+0000",
+      "original": "Late tea and writing, no hashtag this time.",
+      "input": "Late tea and writing, no hashtag this time.",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphajj",
+      "date": "2025-04-01T09:00:00+0000",
+      "original": "Quarter reset checklist #focus #project-x",
+      "input": "Quarter reset checklist #focus #project-x",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphakk",
+      "date": "2025-04-01T09:30:00+0000",
+      "original": "Second note same day different minute #health",
+      "input": "Second note same day different minute #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphall",
+      "date": "2025-04-02T16:15:00+0000",
+      "original": "Weight session complete #health",
+      "input": "Weight session complete #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphamm",
+      "date": "2025-04-10T06:25:00+0000",
+      "original": "Quiet morning brain dump without tags.",
+      "input": "Quiet morning brain dump without tags.",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphann",
+      "date": "2025-04-11T13:00:00+0000",
+      "original": "Pairing session solved parser edge #project-x #focus",
+      "input": "Pairing session solved parser edge #project-x #focus",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphaoo",
+      "date": "2025-02-20T20:20:00+0000",
+      "original": "Watched a talk; keyword repeat project but no tag.",
+      "input": "Watched a talk; keyword repeat project but no tag.",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphapp",
+      "date": "2025-03-18T15:35:00+0000",
+      "original": "Meal prep and hydration audit #health",
+      "input": "Meal prep and hydration audit #health",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalphaqq",
+      "date": "2025-01-30T17:05:00+0000",
+      "original": "Context weaving across weeks #focus",
+      "input": "Context weaving across weeks #focus",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "evtalpharr",
+      "date": "2025-04-18T11:11:00+0000",
+      "original": "Final pre-release smoke pass #focus",
+      "input": "Final pre-release smoke pass #focus",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
         "hostname": "fixturehost"
       }
     }
