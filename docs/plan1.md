@@ -99,7 +99,10 @@ Replace (not preserve) the current `NodeKey`-addressed migration callback surfac
 - [ ] Remove both lookup entries and all identifier-keyed state for migration `delete`
 
 Then, write a single migration that will migrate the database from `NodeKey`-based storage to `NodeIdentifier`-based one.
-For this one-time legacy `NodeKey` -> `NodeIdentifier` migration, identifiers must be deterministic from the old `NodeKey` (still conform to `[a-z]*` regex of `basicString(length=9)`). To achieve this, set a fixed `seed` for the random generator, and then from that seed, generate all the `basicString(length=9)` values.
+For this one-time legacy `NodeKey` -> `NodeIdentifier` migration, identifiers must be deterministic from the old `NodeKey` (still conform to `[a-z]*` regex of `basicString(length=9)`), **and must not depend on traversal order**.
+- [ ] Do **not** use a single global fixed-seed generator consumed in iteration order; migration traversal order can change (for example, by key enumeration or topology tie-break differences), which would remap stable nodes to different identifiers across runs.
+- [ ] Instead, derive each legacy node’s candidate identifier from that node’s own `NodeKey` in an order-independent way (for example: key-derived deterministic PRNG seed or hash-to-identifier mapping), then resolve rare collisions with a deterministic per-key retry sequence.
+- [ ] Add a regression test that runs the legacy migration from the same source data under two different node-iteration orders and asserts the resulting `identifiers_keys_map` is identical.
 This requires changing the existing migration API for all future migrations so the migration surface is consistently `NodeIdentifier`-based; do not keep a mixed `NodeKey`/`NodeIdentifier` migration mode, even temporarily.
 
 ## 5. HTTP inspection API
