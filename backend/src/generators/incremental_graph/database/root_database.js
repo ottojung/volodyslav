@@ -26,6 +26,7 @@ const {
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
+/** @typedef {import('./types').GlobalSublevelType} GlobalSublevelType */
 /** @typedef {import('./types').SublevelFormat} SublevelFormat */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
@@ -46,13 +47,6 @@ const {
  * @typedef {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} AnyLevelType
  */
 
-/**
- * Sublevel for storing replica-level global state (e.g., version).
- * @typedef {import('abstract-level').AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version>} GlobalSublevelType
- */
-
-/**
- */
 /**
  * The valid replica names.
  * @typedef {'x' | 'y'} ReplicaName

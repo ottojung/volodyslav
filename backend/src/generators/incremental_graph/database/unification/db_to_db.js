@@ -39,21 +39,24 @@ const { stringToNodeKeyString } = require('../types');
  * source side of the DB→DB adapter.  Both GenericDatabase<T> and the
  * InMemorySchemaStorage sublevels satisfy this interface.
  *
- * @typedef {object} ReadableSchemaStorage
- * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} values
- * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} freshness
- * @property {{ get: (key: string) => Promise<unknown>, keys: () => AsyncIterable<string> }} global
- * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} inputs
- * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} revdeps
- * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} counters
- * @property {{ get: (key: NodeKeyString) => Promise<unknown>, keys: () => AsyncIterable<NodeKeyString> }} timestamps
+ * @typedef {object} ReadableNodeSublevel
+ * @property {(key: NodeKeyString) => Promise<unknown>} get
+ * @property {() => AsyncIterable<NodeKeyString>} keys
  */
 
 /**
- * Union of all concrete typed sublevels in a SchemaStorage.
- * Used for the target side only (where put/del ops must be typed).
+ * @typedef {object} ReadableGlobalSublevel
+ * @property {(key: string) => Promise<unknown>} get
+ * @property {() => AsyncIterable<string>} keys
  *
- * @typedef {import('../root_database').ValuesDatabase | import('../root_database').FreshnessDatabase | import('../root_database').GlobalVersionDatabase | import('../root_database').InputsDatabase | import('../root_database').RevdepsDatabase | import('../root_database').CountersDatabase | import('../root_database').TimestampsDatabase} AnySubDb
+ * @typedef {object} ReadableSchemaStorage
+ * @property {ReadableNodeSublevel} values
+ * @property {ReadableNodeSublevel} freshness
+ * @property {ReadableGlobalSublevel} global
+ * @property {ReadableNodeSublevel} inputs
+ * @property {ReadableNodeSublevel} revdeps
+ * @property {ReadableNodeSublevel} counters
+ * @property {ReadableNodeSublevel} timestamps
  */
 
 /**
@@ -125,11 +128,6 @@ function getSourceSubDb(source, sublevel) {
     }
 }
 
-/**
- * @param {string} sublevel
- * @param {string} nodeKey
- * @returns {string | NodeKeyString}
- */
 // ---------------------------------------------------------------------------
 // Key iteration
 // ---------------------------------------------------------------------------

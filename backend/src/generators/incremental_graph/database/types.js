@@ -485,6 +485,10 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
+ * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version>} GlobalSublevelType
+ */
+
+/**
  * @template T
  * @template [K=NodeKeyString]
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
