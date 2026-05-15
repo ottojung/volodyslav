@@ -46,6 +46,12 @@ After that conversion, concrete-node operations run by id (for example
 `deleteById(id)`).
 
 No mixed model is allowed where some concrete-node operations remain `NodeKey`-addressed.
+No mixed model is allowed where some concrete-node operations remain `(head, args)`-addressed.
+
+`(head, args)` is semantic construction data for `NodeKey`, not a concrete-node
+address. Outside schema/head APIs and the explicit translation bridge, `(head, args)`
+must not be used as an addressing input, output, or internal transport shape for
+concrete-node logic.
 
 ### Schema/head APIs
 
@@ -237,7 +243,13 @@ Accordingly:
 
 ## API invariants
 
+- every concrete-node `IncrementalGraph` method uses `NodeIdentifier` arguments/returns
 - concrete-node read/write/invalidate/delete/pull/inspection operations use `NodeIdentifier`
+- this includes all pull variants and invalidate variants, with no exceptions
+- `(head, args)` concrete-node method signatures are forbidden
+- the only `NodeKey`-typed concrete-node bridge methods are:
+  - `nodeKeyToId(nodeKey)`
+  - `nodeIdToKey(id)`
 - schema/head family operations may remain schema/head-based
 - HTTP concrete-node routes are identifier-based
 - HTTP schema routes may remain schema/head-based
