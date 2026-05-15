@@ -61,6 +61,11 @@ then run concrete-node operations by identifier.
 
 - [ ] Refactor `graph_storage.js` so graph-state sublevels are keyed by `NodeIdentifier`, not `NodeKeyString`
 - [ ] Refactor `incremental_graph/class.js` so that all of `IncrementalGraph` methods accept (and return) `NodeIdentifier`, not `NodeKeyString`. The `NodeKeyString` must not even be imported into that module.
+- [ ] Remove the `(head, args)` concrete-node addressing model from `IncrementalGraph` entirely.
+  - [ ] `IncrementalGraph` concrete-node methods must accept a single `NodeIdentifier` argument (or `NodeIdentifier[]` for collections), never `(head, args)`.
+  - [ ] This includes all pull variants, invalidate variants, delete variants, concrete-node read/write helpers, dependency/revdep helpers, and any internal helper that currently reconstructs a `NodeKey` from `(head, args)`.
+  - [ ] Any method that currently returns `(head, args)` for concrete nodes must return `NodeIdentifier` (or objects keyed by `nodeIdentifier`) instead.
+  - [ ] The only `NodeKey`-typed methods on `IncrementalGraph` are the translation bridge methods `nodeKeyToId(nodeKey)` and `nodeIdToKey(id)`.
 - [ ] Add two methods to `IncrementalGraph` public interface:
   - [ ] `nodeKeyToId`
   - [ ] `nodeIdToKey`
