@@ -44,6 +44,13 @@ Extend the root database so graph state is identifier-addressed and the semantic
   - [ ] Update `database/unification/db_to_db.js` so `identifiers_keys_map` participates in copy/unify operations; otherwise sync can copy `inputs`/`revdeps` that reference ids absent from the destination lookup table.
   - [ ] Add focused tests that perform sync/unification between replicas and assert both directions of the bijection survive, not just graph-state sublevels.
 - [ ] Always serialize `identifiers_keys_map` sorted by `NodeIdentifier`.
+- [ ] Add eager fail-fast bijection validation primitives and run them before every graph merge/sync/unification operation.
+  - [ ] Validate the full `NodeIdentifier ↔ NodeKey` mapping as a strict bijection (no duplicate ids, no duplicate keys, no malformed ids, no malformed keys) before reading merge inputs.
+  - [ ] Reject any state where one `NodeKey` maps to multiple `NodeIdentifier` values (or vice versa) so semantic-node identity cannot split across identifiers.
+  - [ ] Fail immediately if graph-state sublevels (`values`, `inputs`, `revdeps`, `counters`, `timestamps`, `freshness`) reference identifiers absent from the bijection.
+  - [ ] Fail immediately if any merge input references a semantic node key that resolves to a different identifier on the two sides of a merge operation.
+  - [ ] Treat validation failures as hard sync errors (no best-effort repair, no partial writes, no fallback merge path), because proceeding can create duplicate semantic nodes, incorrect timestamp winner selection, and stale edge sets.
+  - [ ] Add targeted tests that intentionally construct identifier/key divergence across replicas and assert merge aborts before topo-sort, timestamp arbitration, or revdeps rebuild.
 
 ## 3. Storage boundary and lifecycle behavior
 
@@ -60,6 +67,11 @@ state and graph-to-graph references to `NodeIdentifier`.
   - Update all revdeps materialization points (`graph_storage`, `migration_runner`, `database/sync_merge.js`, topo/unification where relevant) to enforce this order.
   - Update topological ordering tie-breakers (`database/topo_sort.js` and merge logic in `database/sync_merge.js`) to compare `NodeIdentifier` lexically, otherwise migration/sync decisions can remain `NodeKey`-ordered even after revdeps are identifier-ordered.
   - Add invariant tests: inserting dependencies in random order yields persisted revdeps sorted by identifier lexical order.
+- [ ] Add sync-merge preconditions that must hold before timestamp arbitration runs.
+  - [ ] In `database/sync_merge.js`, perform eager validation that semantic equality is computed from `NodeKey` via the bijection and is never inferred from raw `NodeIdentifier` equality alone.
+  - [ ] Abort merge if the same semantic `NodeKey` appears under two different identifiers across T/H inputs, instead of mechanically treating them as distinct nodes.
+  - [ ] Abort merge if two identifiers in one side resolve to the same semantic `NodeKey`.
+  - [ ] Ensure merged-input-map construction, topo ordering, and revdeps rebuild run only after the above validation succeeds.
 - [ ] Update `listMaterializedNodes()` and inspection helpers to map stored ids back to public node keys
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
