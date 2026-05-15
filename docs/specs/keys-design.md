@@ -73,15 +73,11 @@ A `NodeIdentifier` is an opaque random identifier with the following properties:
 - round-trippable as a nominal type
 - unique within the database
 - suitable for direct use as persisted key content and as a filesystem path segment
-- matches `/^[a-z_][a-z0-9_]*$/` (full-string match)
+- matches `/^[a-z]*$/` (full-string match)
 
 So the allowed character set is:
 
 - lowercase ASCII letters `a-z`
-- ASCII digits `0-9`
-- underscore `_`
-
-The first character is a lowercase ASCII letter or underscore.
 
 No other characters are permitted in a `NodeIdentifier`. In particular, a
 `NodeIdentifier` MUST NOT contain `/`, `\`, `.`, whitespace, control characters, `!`,
