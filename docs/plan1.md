@@ -15,10 +15,10 @@ in one place and enforces it consistently.
 
 ## 2. Database shape and lookup metadata
 
-Extend the root database so graph state is identifier-addressed and the semantic
-`NodeKey` remains recoverable through explicit lookup tables.
+Modify the root database so that graph state is identifier-addressed instead of `NodeKey` adressed.
+The semantic `NodeKey` should remain recoverable through explicit lookup tables.
 
-- [ ] Extend incremental-graph database typings with `NodeIdentifier` and identifier-based dependency payloads
+- [ ] Switch incremental-graph database typings to `NodeIdentifier` and identifier-based dependency payloads
 - [ ] Add lookup table at `/${current_replica}/global/identifiers_keys_map` (stores an object of type `Array<[NodeIdentifier, NodeKey]>`)
   - Here `${current_replica}` is the replica name of the current database instance, for example `x` or `y`.
 - [ ] Add helper methods `nodeKeyToId` and `nodeIdToKey` to `root_database.js`
@@ -58,21 +58,23 @@ Keep the public graph-facing API keyed by `NodeKey`, while moving all persisted 
 state and graph-to-graph references to `NodeIdentifier`.
 
 - [ ] Refactor `graph_storage.js` so graph-state sublevels are keyed by `NodeIdentifier`, not `NodeKeyString`
-- [ ] Add atomic helper(s) to resolve or allocate an identifier for a `NodeKeyString`
-- [ ] Keep `IncrementalGraph` and `Interface` APIs unchanged by translating `NodeKey` ↔ `NodeIdentifier` at the storage boundary; `NodeKey` must not appear in any internal storage logic beyond this translation step
-- [ ] Update `inputs` and `revdeps` persistence so all stored references are `NodeIdentifier[]`
-  - [ ] When rewriting `inputs`, preserve original input order so `inputs[i]` still corresponds to `inputCounters[i]`; only translate each element from `NodeKeyString` to `NodeIdentifier` without reordering.
-- [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
-  - Replace comparator plumbing with `compareNodeIdentifier(a, b)` implemented as string lexical compare on validated ID strings.
-  - Update all revdeps materialization points (`graph_storage`, `migration_runner`, `database/sync_merge.js`, topo/unification where relevant) to enforce this order.
-  - Update topological ordering tie-breakers (`database/topo_sort.js` and merge logic in `database/sync_merge.js`) to compare `NodeIdentifier` lexically, otherwise migration/sync decisions can remain `NodeKey`-ordered even after revdeps are identifier-ordered.
-  - Add invariant tests: inserting dependencies in random order yields persisted revdeps sorted by identifier lexical order.
+- [ ] Refactor `incremental_graph/class.js` so that all of `IncrementalGraph` methods accept (and return) `NodeIdentifier`, not `NodeKeyString`. The `NodeKeyString` must not even be imported into that module.
+- [ ] Add two methods to `IncrementalGraph` public interface:
+  - [ ] `nodeKeyToId`
+  - [ ] `nodeIdToKey`
+- [ ] Make all internal logic work on `NodeIdentifier` instead of `NodeKey`. Including, but not limited to:
+  - [ ] Update `inputs` and `revdeps` persistence so all stored references are `NodeIdentifier[]`
+    - [ ] When rewriting `inputs`, preserve original input order so `inputs[i]` still corresponds to `inputCounters[i]`; only translate each element from `NodeKeyString` to `NodeIdentifier` without reordering.
+  - [ ] Preserve deterministic revdeps ordering by sorting `NodeIdentifier` values in ascending lexicographic order (do not consult `NodeKey` for ordering)
+    - Replace comparator plumbing with `compareNodeIdentifier(a, b)` implemented as string lexical compare on validated ID strings.
+    - Update all revdeps materialization points (`graph_storage`, `migration_runner`, `database/sync_merge.js`, topo/unification where relevant) to enforce this order.
+    - Update topological ordering tie-breakers (`database/topo_sort.js` and merge logic in `database/sync_merge.js`) to compare `NodeIdentifier` lexically, otherwise migration/sync decisions can remain `NodeKey`-ordered even after revdeps are identifier-ordered.
+    - Add invariant tests: inserting dependencies in random order yields persisted revdeps sorted by identifier lexical order.
 - [ ] Add sync-merge preconditions that must hold before timestamp arbitration runs.
   - [ ] In `database/sync_merge.js`, perform eager validation that semantic equality is computed from `NodeKey` via the bijection and is never inferred from raw `NodeIdentifier` equality alone.
   - [ ] Abort merge if the same semantic `NodeKey` appears under two different identifiers across T/H inputs, instead of mechanically treating them as distinct nodes.
   - [ ] Abort merge if two identifiers in one side resolve to the same semantic `NodeKey`.
   - [ ] Ensure merged-input-map construction, topo ordering, and revdeps rebuild run only after the above validation succeeds.
-- [ ] Update `listMaterializedNodes()` and inspection helpers to map stored ids back to public node keys
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
 - [ ] Old APIs must no longer be supported, and all their legacy burden (eg key-path transforms, key-based storage, key-based rendering) must be removed. The only place `NodeKey` should be used is in the public graph API and the bijection lookup table. Do not preserve any backwards compatibility at all, anywhere.
@@ -112,7 +114,7 @@ identifier-addressed storage model directly.
     - Update route registration order/comments in `backend/src/routes/graph.js`: wildcard-first ordering is currently required only for `:head/*`; once identifier routes are used, preserve only the ordering constraints that still apply.
     - Replace route tests that currently assert head/args parsing behavior (including encoded slash and `~` decoding cases) with identifier-focused tests that assert identifiers are passed through as opaque strings and never decoded as `ConstValue` arguments.
   - [ ] Update list/read response payloads so concrete-node records returned by HTTP inspection are identifier-addressed, not `(head,args)`-addressed.
-    - Current `GET /graph/nodes` and `GET /graph/nodes/:head` handlers in `backend/src/routes/graph.js` enumerate materialized nodes from `interface.listMaterializedNodes()` and emit `{ head, args, freshness, ... }` objects. After route migration, this payload shape leaves clients unable to call identifier-addressed pull/delete/invalidate endpoints without recomputing keys.
+    - Current `GET /graph/nodes` and `GET /graph/nodes/:head` handlers in `backend/src/routes/graph.js` enumerate materialized nodes from `interface.listMaterializedNodes()` and emit `{ id, head, args, freshness, ... }` objects. After route migration, this payload shape leaves clients unable to call identifier-addressed pull/delete/invalidate endpoints without recomputing keys.
     - Introduce interface/inspection methods that can enumerate concrete nodes by `NodeIdentifier` (with freshness/value/timestamps), and have HTTP handlers read from those methods directly instead of re-keying from `(head,args)`.
     - Keep any schema-oriented responses head-based, but require concrete-node response objects (lists and single-node reads) to carry `nodeIdentifier` as the addressing field used by follow-up concrete-node operations.
     - Update `backend/tests/graph_routes.test.js` assertions to reject legacy concrete-node payloads that omit `nodeIdentifier` and to verify round-trip workflow (`list` → `GET/POST/DELETE by id`) without any `head/args` URL construction.
