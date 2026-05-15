@@ -1,29 +1,293 @@
 {
   "type": "all_events",
   "events": [
-    {"id":"cfocusa01","date":"2025-02-03T09:15:00.000Z","original":"Deep work sprint on parser cleanup #focus #project-x","input":"Deep work sprint on parser cleanup #focus #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"dhealthb2","date":"2025-03-12T18:50:00.000Z","original":"Recovery walk and stretching #health","input":"Recovery walk and stretching #health","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"alatez999","date":"2025-04-20T22:10:00.000Z","original":"Wrap up and weekly review #focus","input":"Wrap up and weekly review #focus","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"bearly111","date":"2025-01-02T06:45:00.000Z","original":"Early planning note #project-x","input":"Early planning note #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"cfocusb02","date":"2025-02-10T14:40:00.000Z","original":"Inbox zero checkpoint #focus","input":"Inbox zero checkpoint #focus","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"dhealtha1","date":"2025-03-01T07:05:00.000Z","original":"Morning stretch and hydration #health","input":"Morning stretch and hydration #health","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"enotags01x","date":"2025-03-05T19:30:00.000Z","original":"Read 20 pages and called parents.","input":"Read 20 pages and called parents.","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"hfocusc03","date":"2025-02-17T08:00:00.000Z","original":"Focused writing block, no meetings #focus","input":"Focused writing block, no meetings #focus","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"iproject01","date":"2025-03-08T11:20:00.000Z","original":"Implemented API cache invalidation #project-x","input":"Implemented API cache invalidation #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"jhealthc3","date":"2025-03-20T06:35:00.000Z","original":"Short run before sunrise #health #focus","input":"Short run before sunrise #health #focus","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"kplainnote","date":"2025-01-19T20:05:00.000Z","original":"A longer reflective entry: today felt dense, but surprisingly coherent.","input":"A longer reflective entry: today felt dense, but surprisingly coherent.","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"lfocusd04","date":"2025-02-24T16:10:00.000Z","original":"Debug session: race condition fixed! #focus #project-x","input":"Debug session: race condition fixed! #focus #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"mhealthd4","date":"2025-04-01T09:00:00.000Z","original":"Meal prep and vitamin check #health","input":"Meal prep and vitamin check #health","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"nfocuse05","date":"2025-04-12T13:55:00.000Z","original":"Research sprint with duplicated keyword focus but no hashtag","input":"Research sprint with duplicated keyword focus but no hashtag","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"oprojx002","date":"2025-01-27T10:12:00.000Z","original":"Scaffolded project board #project-x","input":"Scaffolded project board #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"pnotags02","date":"2025-04-04T21:40:00.000Z","original":"Movie night, laughed a lot.","input":"Movie night, laughed a lot.","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"qfocusf06","date":"2025-03-29T15:25:00.000Z","original":"Context switching penalties noted #focus","input":"Context switching penalties noted #focus","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"rhealthz5","date":"2025-04-15T07:45:00.000Z","original":"Doctor check-in summary #health","input":"Doctor check-in summary #health","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"splain003","date":"2025-02-02T18:18:00.000Z","original":"Just a plain text evening note.","input":"Just a plain text evening note.","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"tfocusg07","date":"2025-03-23T10:00:00.000Z","original":"Pair-programming notes #focus #project-x","input":"Pair-programming notes #focus #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"uhealthx6","date":"2025-01-30T07:22:00.000Z","original":"Slept early and tracked water #health","input":"Slept early and tracked water #health","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"vfocush08","date":"2025-04-18T12:05:00.000Z","original":"Final QA push #focus","input":"Final QA push #focus","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"wjourna11","date":"2025-02-28T23:59:00.000Z","original":"Detailed journal entry: mixed punctuation, commas, semicolons; all good.","input":"Detailed journal entry: mixed punctuation, commas, semicolons; all good.","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}},
-    {"id":"xmiscnote9","date":"2025-03-14T12:00:00.000Z","original":"Lunch with collaborator #project-x","input":"Lunch with collaborator #project-x","creator":{"name":"Fixture","uuid":"00000000-0000-0000-0000-000000000042","version":"0.0.0-dev","hostname":"fixturehost"}}
+    {
+      "id": "cfocusa01",
+      "date": "2025-02-03T09:15:00.000Z",
+      "original": "Deep work sprint on parser cleanup #focus #project-x",
+      "input": "Deep work sprint on parser cleanup #focus #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "dhealthb2",
+      "date": "2025-03-12T18:50:00.000Z",
+      "original": "Recovery walk and stretching #health",
+      "input": "Recovery walk and stretching #health",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "alatez999",
+      "date": "2025-04-20T22:10:00.000Z",
+      "original": "Wrap up and weekly review #focus",
+      "input": "Wrap up and weekly review #focus",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "bearly111",
+      "date": "2025-01-02T06:45:00.000Z",
+      "original": "Early planning note #project-x",
+      "input": "Early planning note #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "cfocusb02",
+      "date": "2025-02-10T14:40:00.000Z",
+      "original": "Inbox zero checkpoint #focus",
+      "input": "Inbox zero checkpoint #focus",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "dhealtha1",
+      "date": "2025-03-01T07:05:00.000Z",
+      "original": "Morning stretch and hydration #health",
+      "input": "Morning stretch and hydration #health",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "enotags01x",
+      "date": "2025-03-05T19:30:00.000Z",
+      "original": "Read 20 pages and called parents.",
+      "input": "Read 20 pages and called parents.",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "hfocusc03",
+      "date": "2025-02-17T08:00:00.000Z",
+      "original": "Focused writing block, no meetings #focus",
+      "input": "Focused writing block, no meetings #focus",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "iproject01",
+      "date": "2025-03-08T11:20:00.000Z",
+      "original": "Implemented API cache invalidation #project-x",
+      "input": "Implemented API cache invalidation #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "jhealthc3",
+      "date": "2025-03-20T06:35:00.000Z",
+      "original": "Short run before sunrise #health #focus",
+      "input": "Short run before sunrise #health #focus",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "kplainnote",
+      "date": "2025-01-19T20:05:00.000Z",
+      "original": "A longer reflective entry: today felt dense, but surprisingly coherent.",
+      "input": "A longer reflective entry: today felt dense, but surprisingly coherent.",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "lfocusd04",
+      "date": "2025-02-24T16:10:00.000Z",
+      "original": "Debug session: race condition fixed! #focus #project-x",
+      "input": "Debug session: race condition fixed! #focus #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "mhealthd4",
+      "date": "2025-04-01T09:00:00.000Z",
+      "original": "Meal prep and vitamin check #health",
+      "input": "Meal prep and vitamin check #health",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "nfocuse05",
+      "date": "2025-04-12T13:55:00.000Z",
+      "original": "Research sprint with duplicated keyword focus but no hashtag",
+      "input": "Research sprint with duplicated keyword focus but no hashtag",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "oprojx002",
+      "date": "2025-01-27T10:12:00.000Z",
+      "original": "Scaffolded project board #project-x",
+      "input": "Scaffolded project board #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "pnotags02",
+      "date": "2025-04-04T21:40:00.000Z",
+      "original": "Movie night, laughed a lot.",
+      "input": "Movie night, laughed a lot.",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "qfocusf06",
+      "date": "2025-03-29T15:25:00.000Z",
+      "original": "Context switching penalties noted #focus",
+      "input": "Context switching penalties noted #focus",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "rhealthz5",
+      "date": "2025-04-15T07:45:00.000Z",
+      "original": "Doctor check-in summary #health",
+      "input": "Doctor check-in summary #health",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "splain003",
+      "date": "2025-02-02T18:18:00.000Z",
+      "original": "Just a plain text evening note.",
+      "input": "Just a plain text evening note.",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "tfocusg07",
+      "date": "2025-03-23T10:00:00.000Z",
+      "original": "Pair-programming notes #focus #project-x",
+      "input": "Pair-programming notes #focus #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "uhealthx6",
+      "date": "2025-01-30T07:22:00.000Z",
+      "original": "Slept early and tracked water #health",
+      "input": "Slept early and tracked water #health",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "vfocush08",
+      "date": "2025-04-18T12:05:00.000Z",
+      "original": "Final QA push #focus",
+      "input": "Final QA push #focus",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "wjourna11",
+      "date": "2025-02-28T23:59:00.000Z",
+      "original": "Detailed journal entry: mixed punctuation, commas, semicolons; all good.",
+      "input": "Detailed journal entry: mixed punctuation, commas, semicolons; all good.",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "xmiscnote9",
+      "date": "2025-03-14T12:00:00.000Z",
+      "original": "Lunch with collaborator #project-x",
+      "input": "Lunch with collaborator #project-x",
+      "creator": {
+        "name": "Fixture",
+        "uuid": "00000000-0000-0000-0000-000000000042",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    }
   ]
 }
