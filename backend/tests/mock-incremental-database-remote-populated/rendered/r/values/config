@@ -32,6 +32,26 @@
         "gym",
         "exercise [type strength] gym workout",
         "Gym workout shortcut"
+      ],
+      [
+        "focusmode",
+        "work [tag focus] #focus",
+        "Focus-mode shortcut"
+      ],
+      [
+        "healthcheck",
+        "health [tag health] #health",
+        "Health check shortcut"
+      ],
+      [
+        "shipx",
+        "work [project x] #project-x",
+        "Project X shortcut"
+      ],
+      [
+        "nightnote",
+        "journal [when night] freeform note",
+        "Night note shortcut"
       ]
     ]
   }
