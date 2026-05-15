@@ -497,7 +497,7 @@ describe("generators/interface", () => {
                 expect.objectContaining({ hostname: 'test-host' }),
                 'Bootstrap: hostname branch found; using reset-to-hostname sync path'
             );
-            await expect(iface.getAllEvents()).resolves.toHaveLength(3);
+            await expect(iface.getAllEvents()).resolves.toHaveLength(24);
             await expect(iface.getConfig()).resolves.toMatchObject({
                 help: expect.stringContaining("Event logging help text"),
                 shortcuts: expect.arrayContaining([
