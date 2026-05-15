@@ -9,6 +9,7 @@ const {
 const CURRENT_REPLICA_META_KEY = "!_meta!current_replica";
 const EMPTY_FIXTURE_NAME = "mock-incremental-database-remote";
 const POPULATED_FIXTURE_NAME = "mock-incremental-database-remote-populated";
+const POPULATED_LASTVERSION_FIXTURE_NAME = "mock-incremental-database-remote-populated-lastversion";
 
 class IncrementalDatabaseRemoteFixtureError extends Error {
     /**
@@ -33,7 +34,7 @@ function isIncrementalDatabaseRemoteFixtureError(object) {
 /**
  * @typedef {object} IncrementalDatabaseRemoteBranch
  * @property {string} hostname
- * @property {"empty" | "populated"} [fixtureName]
+ * @property {"empty" | "populated" | "populated-lastversion"} [fixtureName]
  * @property {Array<[string, *]>} [entries]
  */
 
@@ -47,6 +48,8 @@ function fixturePath(fixtureName) {
             return path.join(__dirname, EMPTY_FIXTURE_NAME);
         case "populated":
             return path.join(__dirname, POPULATED_FIXTURE_NAME);
+        case "populated-lastversion":
+            return path.join(__dirname, POPULATED_LASTVERSION_FIXTURE_NAME);
         default:
             throw new IncrementalDatabaseRemoteFixtureError(
                 `Unknown incremental database remote fixture: ${fixtureName}`,
