@@ -54,8 +54,10 @@ The semantic `NodeKey` should remain recoverable through explicit lookup tables.
 
 ## 3. Storage boundary and lifecycle behavior
 
-Keep the public graph-facing API keyed by `NodeKey`, while moving all persisted graph
-state and graph-to-graph references to `NodeIdentifier`.
+Make `NodeIdentifier` the normal concrete-node address for IncrementalGraph operations.
+`NodeKey` remains semantic identity and the explicit lookup input to `nodeKeyToId(nodeKey)`.
+If a caller starts with a `NodeKey`, it must resolve `id = nodeKeyToId(nodeKey)` first and
+then run concrete-node operations by identifier.
 
 - [ ] Refactor `graph_storage.js` so graph-state sublevels are keyed by `NodeIdentifier`, not `NodeKeyString`
 - [ ] Refactor `incremental_graph/class.js` so that all of `IncrementalGraph` methods accept (and return) `NodeIdentifier`, not `NodeKeyString`. The `NodeKeyString` must not even be imported into that module.
@@ -77,7 +79,7 @@ state and graph-to-graph references to `NodeIdentifier`.
   - [ ] Ensure merged-input-map construction, topo ordering, and revdeps rebuild run only after the above validation succeeds.
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
-- [ ] Old APIs must no longer be supported, and all their legacy burden (eg key-path transforms, key-based storage, key-based rendering) must be removed. The only place `NodeKey` should be used is in the public graph API and the bijection lookup table. Do not preserve any backwards compatibility at all, anywhere.
+- [ ] Old key-addressed concrete-node APIs must be removed once identifier-based paths exist. Remove key-path transforms, key-based storage helpers, and key-based rendering helpers. Outside schema/head APIs and the explicit lookup bridge (`nodeKeyToId` / `nodeIdToKey`), concrete-node operations must not be `NodeKey`-addressed.
 
 ## 4. Migration behavior
 
