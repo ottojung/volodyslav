@@ -24,7 +24,7 @@ const {
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
-/** @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /**
  * @template TValue

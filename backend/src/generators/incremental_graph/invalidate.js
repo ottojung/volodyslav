@@ -26,7 +26,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
- * @param {import('./database/node_identifier').NodeIdentifier} changedIdentifier
+ * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
  * @param {Set<string>} [nodesBecomingOutdated]
  * @returns {Promise<void>}

@@ -116,7 +116,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
  *   keyToSourceKey: (nodeKey: NodeKeyString) => NodeKeyString,
  *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
  *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
- *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>,
+ *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeKeyString]>,
  * }>}
  */
 async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
@@ -144,7 +144,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         };
     }
 
-    /** @type {Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>} */
+    /** @type {Array<[import('./database/types').NodeIdentifier, NodeKeyString]>} */
     const outputEntries = [];
     /** @type {Map<string, NodeKeyString>} */
     const decisionKeyByOutputKey = new Map();
@@ -299,7 +299,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
  * @param {{
  *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
  *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
- *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>,
+ *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeKeyString]>,
  * }} keyPlan
  * @returns {ReadableSchemaStorage}
  */

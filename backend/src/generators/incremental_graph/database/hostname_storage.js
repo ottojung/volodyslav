@@ -11,7 +11,7 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion } = require('./types');
+const { stringToNodeIdentifier, stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -67,7 +67,8 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').InputsRecord} InputsRecord */
-/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 
@@ -170,10 +171,10 @@ async function clearHostnameStorage(db, hostname) {
  * @param {string} hostname
  * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
  * @param {string} subkey
- * @returns {string}
+ * @returns {DatabaseKey}
  */
 function hostnameRawKey(hostname, sublevelName, subkey) {
-    return `!_h_${hostname}!!${sublevelName}!${subkey}`;
+    return stringToNodeIdentifier(`!_h_${hostname}!!${sublevelName}!${subkey}`);
 }
 
 /**
@@ -228,7 +229,7 @@ async function rawPutAllToHostname(db, hostname, entries) {
     validateHostname(hostname);
     /**
      * @param {{ sublevelName: string, subkey: string, value: * }} entry
-     * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+     * @returns {{ type: 'put', key: DatabaseKey, value: * }}
      */
     function makePutOp(entry) {
         return {

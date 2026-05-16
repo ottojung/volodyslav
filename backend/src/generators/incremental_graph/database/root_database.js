@@ -48,7 +48,7 @@ const {
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 

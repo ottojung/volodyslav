@@ -20,7 +20,7 @@ const {
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').GlobalVersionDatabase} GlobalVersionDatabase */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 
