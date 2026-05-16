@@ -50,6 +50,18 @@ describe("generators/incremental_graph", () => {
 
             await db.close();
         });
+
+        test("does not expose identifier lookup helpers on public graph interface", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const graph = makeIncrementalGraph(capabilities, db, []);
+
+            expect(graph.nodeKeyToId).toBeUndefined();
+            expect(graph.nodeIdToKey).toBeUndefined();
+
+            await db.close();
+        });
+
     });
 
     describe("pull()", () => {
