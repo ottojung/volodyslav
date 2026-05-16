@@ -213,6 +213,39 @@ describe("runMigration", () => {
         await expect(currentStorage.freshness.get(migratedKey)).resolves.toBe("potentially-outdated");
     });
 
+    test("migration preserves non-version global keys from previous storage", async () => {
+        const capabilities = await getTestCapabilities();
+        const previousStorage = makeSchemaStorage();
+        const currentStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await previousStorage.freshness.put(nodeKey, "up-to-date");
+        await previousStorage.global.put("custom_flag", { enabled: true });
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage: previousStorage,
+            yStorage: currentStorage,
+        });
+
+        const nodeDefs = [{
+            output: "A",
+            inputs: [],
+            computor: async () => ({ type: "all_events", events: [] }),
+            isDeterministic: true,
+            hasSideEffects: false,
+        }];
+
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(nodeKey);
+        });
+
+        await expect(currentStorage.global.get("custom_flag")).resolves.toEqual({ enabled: true });
+    });
+
     describe("fresh database (getGlobalVersion returns undefined)", () => {
         test("skips migration and does not switch to replica", async () => {
             const capabilities = await getTestCapabilities();

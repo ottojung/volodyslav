@@ -313,6 +313,23 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
 
     const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
 
+    /**
+     * @returns {Promise<string[]>}
+     */
+    async function globalKeysToCopy() {
+        /** @type {Set<string>} */
+        const keys = new Set();
+        const globalStorage = prevStorage.global;
+        if (globalStorage && "keys" in globalStorage && typeof globalStorage.keys === "function") {
+            for await (const key of globalStorage.keys()) {
+                keys.add(String(key));
+            }
+        }
+        keys.add("version");
+        keys.add(IDENTIFIERS_KEY);
+        return [...keys].sort();
+    }
+
     return {
         values: {
             async *keys() {
@@ -448,14 +465,23 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         global: {
             async *keys() {
-                yield 'version';
-                yield IDENTIFIERS_KEY;
+                const keys = await globalKeysToCopy();
+                for (const key of keys) {
+                    yield key;
+                }
             },
             async get(/** @type {string} */ key) {
                 if (key === IDENTIFIERS_KEY) {
                     return keyPlan.outputEntries;
                 }
-                return newVersion;
+                if (key === "version") {
+                    return newVersion;
+                }
+                const globalStorage = prevStorage.global;
+                if (!globalStorage) {
+                    return undefined;
+                }
+                return await globalStorage.get(key);
             },
         },
     };
