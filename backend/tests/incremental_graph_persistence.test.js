@@ -12,7 +12,7 @@ const {
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase } = require("./test_database_helper");
+const { makeSemanticStorage, makeTestDatabase } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
@@ -167,7 +167,7 @@ describe("Incremental graph persistence and restart", () => {
             await graph2.pull("B");
 
             // Verify that schema2 can list dependents properly
-            const storage2 = graph2.storage;
+            const storage2 = makeSemanticStorage(graph2);
             let dependents2;
             await storage2.withBatch(async (batch) => {
                 dependents2 = await storage2.listDependents(toJsonKey("A"), batch);

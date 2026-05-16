@@ -9,6 +9,7 @@ const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
+const { makeSemanticStorage } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
 /**
@@ -48,7 +49,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
                 const testValue = { type: "all_events", events: [{ id: "test" }] };
@@ -80,7 +81,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
                 const testValue = { type: "all_events", events: [{ id: "test" }] };
@@ -116,7 +117,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
                 const oldValue = { type: "all_events", events: [{ id: "old" }] };
@@ -156,7 +157,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
 
@@ -185,7 +186,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
 
@@ -229,7 +230,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"derived","args":[]}';
                 const testValue = { inputs: ['{"head":"source","args":[]}'] };
@@ -268,7 +269,7 @@ describe("incremental_graph batch consistency", () => {
                 ];
 
                 const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = graph.storage;
+                const storage = makeSemanticStorage(graph);
 
                 const inputKey = '{"head":"source","args":[]}';
                 const dependents = ['{"head":"derived","args":[]}'];
@@ -315,7 +316,7 @@ describe("incremental_graph batch consistency", () => {
             ];
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
 
             const inputKey = '{"head":"source","args":[]}';
             const dependentA = '{"head":"dependentA","args":["val1"]}';
@@ -361,7 +362,7 @@ describe("incremental_graph batch consistency", () => {
             ];
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
 
             const nodeKey = '{"head":"derived","args":[]}';
             const inputA = '{"head":"source","args":["A"]}';

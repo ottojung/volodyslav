@@ -1,18 +1,17 @@
 /**
- * Tests for deterministic revdeps ordering in graph_storage.js.
+ * Tests for deterministic revdeps ordering in identifier-native graph_storage.js.
  *
- * Verifies that ensureReverseDepsIndexed always produces sorted arrays
- * regardless of insertion order.
+ * Verifies that ensureReverseDepsIndexed always produces lexicographically
+ * sorted identifier arrays regardless of insertion order.
  */
 
-const { makeGraphStorage } = require("../src/generators/incremental_graph/semantic_graph_storage");
-const { serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
-const { compareNodeKeyStringByNodeKey } = require("../src/generators/incremental_graph/database/node_key");
-const { stringToNodeName } = require("../src/generators/incremental_graph/database");
+const { makeGraphStorage } = require("../src/generators/incremental_graph/graph_storage");
+const {
+    nodeIdentifierFromString,
+    nodeIdentifierToDatabaseKey,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
 
-// ---------------------------------------------------------------------------
-// In-memory database stubs (copied from migration_runner.test.js pattern)
-// ---------------------------------------------------------------------------
 function makeInMemoryDb(table) {
     const store = new Map();
     return {
@@ -25,13 +24,19 @@ function makeInMemoryDb(table) {
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
         async *keys() {
-            for (const key of [...store.keys()].sort()) yield key;
+            for (const key of [...store.keys()].sort()) {
+                yield key;
+            }
         },
         apply(operation) {
-            if (operation.table !== table) return;
+            if (operation.table !== table) {
+                return;
+            }
             if (operation.type === "put") {
                 store.set(operation.key, operation.value);
-            } else if (operation.type === "del") {
+                return;
+            }
+            if (operation.type === "del") {
                 store.delete(operation.key);
             }
         },
@@ -45,6 +50,7 @@ function makeSchemaStorage() {
     const revdeps = makeInMemoryDb("revdeps");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
+    const global = makeInMemoryDb("global");
 
     return {
         values,
@@ -53,6 +59,7 @@ function makeSchemaStorage() {
         revdeps,
         counters,
         timestamps,
+        global,
         async batch(operations) {
             for (const operation of operations) {
                 values.apply(operation);
@@ -61,6 +68,7 @@ function makeSchemaStorage() {
                 revdeps.apply(operation);
                 counters.apply(operation);
                 timestamps.apply(operation);
+                global.apply(operation);
             }
         },
     };
@@ -72,34 +80,31 @@ function makeRootDatabase(schemaStorage) {
     };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 /**
- * @param {string} head
- * @param {Array<unknown>} args
+ * @param {string} identifier
  */
-function nks(head, args = []) {
-    return serializeNodeKey({ head: stringToNodeName(head), args });
+function nid(identifier) {
+    return nodeIdentifierFromString(identifier);
 }
 
 /**
- * Returns true if the array is sorted according to compareNodeKeyStringByNodeKey.
- * @param {string[]} arr
+ * @param {Array<import('../src/generators/incremental_graph/database').NodeIdentifier>} identifiers
  */
-function isSorted(arr) {
-    for (let i = 0; i < arr.length - 1; i++) {
-        if (compareNodeKeyStringByNodeKey(arr[i], arr[i + 1]) > 0) {
+function isSorted(identifiers) {
+    for (let index = 0; index < identifiers.length - 1; index++) {
+        const left = identifiers[index];
+        const right = identifiers[index + 1];
+        if (left === undefined || right === undefined) {
+            throw new Error("Unexpected undefined identifier while checking order");
+        }
+        if (nodeIdentifierToString(left) > nodeIdentifierToString(right)) {
             return false;
         }
     }
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-describe("ensureReverseDepsIndexed – sorted insertion", () => {
+describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     /** @type {ReturnType<typeof makeSchemaStorage>} */
     let schema;
     /** @type {ReturnType<typeof makeGraphStorage>} */
@@ -111,21 +116,21 @@ describe("ensureReverseDepsIndexed – sorted insertion", () => {
     });
 
     test("insert into empty list produces single-element array", async () => {
-        const input = nks("input");
-        const dep = nks("dep");
+        const input = nid("inputaaaa");
+        const dep = nid("depaaaaaa");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(dep, [input], batch);
         });
 
-        const result = await schema.revdeps.get(input);
+        const result = await storage.revdeps.get(input);
         expect(result).toEqual([dep]);
     });
 
     test("inserts at beginning (new dep sorts before existing)", async () => {
-        const input = nks("input");
-        const depB = nks("b");
-        const depA = nks("a"); // "a" < "b"
+        const input = nid("inputaaaa");
+        const depB = nid("bbbbbbbbb");
+        const depA = nid("aaaaaaaaa");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depB, [input], batch);
@@ -134,15 +139,15 @@ describe("ensureReverseDepsIndexed – sorted insertion", () => {
             await storage.ensureReverseDepsIndexed(depA, [input], batch);
         });
 
-        const result = await schema.revdeps.get(input);
+        const result = await storage.revdeps.get(input);
         expect(result).toEqual([depA, depB]);
         expect(isSorted(result)).toBe(true);
     });
 
     test("inserts at end (new dep sorts after existing)", async () => {
-        const input = nks("input");
-        const depA = nks("a");
-        const depB = nks("b"); // "b" > "a"
+        const input = nid("inputaaaa");
+        const depA = nid("aaaaaaaaa");
+        const depB = nid("bbbbbbbbb");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depA, [input], batch);
@@ -151,16 +156,16 @@ describe("ensureReverseDepsIndexed – sorted insertion", () => {
             await storage.ensureReverseDepsIndexed(depB, [input], batch);
         });
 
-        const result = await schema.revdeps.get(input);
+        const result = await storage.revdeps.get(input);
         expect(result).toEqual([depA, depB]);
         expect(isSorted(result)).toBe(true);
     });
 
     test("inserts in the middle", async () => {
-        const input = nks("input");
-        const depA = nks("a");
-        const depC = nks("c");
-        const depB = nks("b"); // should go between a and c
+        const input = nid("inputaaaa");
+        const depA = nid("aaaaaaaaa");
+        const depC = nid("ccccccccc");
+        const depB = nid("bbbbbbbbb");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depA, [input], batch);
@@ -172,14 +177,14 @@ describe("ensureReverseDepsIndexed – sorted insertion", () => {
             await storage.ensureReverseDepsIndexed(depB, [input], batch);
         });
 
-        const result = await schema.revdeps.get(input);
+        const result = await storage.revdeps.get(input);
         expect(result).toEqual([depA, depB, depC]);
         expect(isSorted(result)).toBe(true);
     });
 
     test("duplicate insertion is ignored (idempotent)", async () => {
-        const input = nks("input");
-        const dep = nks("dep");
+        const input = nid("inputaaaa");
+        const dep = nid("depaaaaaa");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(dep, [input], batch);
@@ -191,15 +196,15 @@ describe("ensureReverseDepsIndexed – sorted insertion", () => {
             await storage.ensureReverseDepsIndexed(dep, [input], batch);
         });
 
-        const result = await schema.revdeps.get(input);
+        const result = await storage.revdeps.get(input);
         expect(result).toEqual([dep]);
     });
 
     test("multiple inserts in one batch keep sorted invariant", async () => {
-        const input = nks("input");
-        const depC = nks("c");
-        const depA = nks("a");
-        const depB = nks("b");
+        const input = nid("inputaaaa");
+        const depC = nid("ccccccccc");
+        const depA = nid("aaaaaaaaa");
+        const depB = nid("bbbbbbbbb");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depC, [input], batch);
@@ -207,105 +212,54 @@ describe("ensureReverseDepsIndexed – sorted insertion", () => {
             await storage.ensureReverseDepsIndexed(depB, [input], batch);
         });
 
-        const result = await schema.revdeps.get(input);
+        const result = await storage.revdeps.get(input);
         expect(isSorted(result)).toBe(true);
         expect(result).toHaveLength(3);
     });
 
     test("same dependents inserted in different orders produce identical stored array", async () => {
-        const input1 = nks("input1");
-        const input2 = nks("input2");
-        const depA = nks("a");
-        const depB = nks("b");
-        const depC = nks("c");
+        const input1 = nid("inputaaab");
+        const input2 = nid("inputaaac");
+        const depA = nid("aaaaaaaaa");
+        const depB = nid("bbbbbbbbb");
+        const depC = nid("ccccccccc");
 
-        // Storage 1: insert A, B, C
         const schema1 = makeSchemaStorage();
         const storage1 = makeGraphStorage(makeRootDatabase(schema1));
         await storage1.withBatch(async (batch) => {
-            await storage1.ensureReverseDepsIndexed(depA, [input1], batch);
-        });
-        await storage1.withBatch(async (batch) => {
-            await storage1.ensureReverseDepsIndexed(depB, [input1], batch);
-        });
-        await storage1.withBatch(async (batch) => {
-            await storage1.ensureReverseDepsIndexed(depC, [input1], batch);
+            await storage1.ensureReverseDepsIndexed(depC, [input1, input2], batch);
+            await storage1.ensureReverseDepsIndexed(depA, [input1, input2], batch);
+            await storage1.ensureReverseDepsIndexed(depB, [input1, input2], batch);
         });
 
-        // Storage 2: insert C, A, B (different order)
         const schema2 = makeSchemaStorage();
         const storage2 = makeGraphStorage(makeRootDatabase(schema2));
         await storage2.withBatch(async (batch) => {
-            await storage2.ensureReverseDepsIndexed(depC, [input2], batch);
-        });
-        await storage2.withBatch(async (batch) => {
-            await storage2.ensureReverseDepsIndexed(depA, [input2], batch);
-        });
-        await storage2.withBatch(async (batch) => {
-            await storage2.ensureReverseDepsIndexed(depB, [input2], batch);
+            await storage2.ensureReverseDepsIndexed(depB, [input1, input2], batch);
+            await storage2.ensureReverseDepsIndexed(depC, [input1, input2], batch);
+            await storage2.ensureReverseDepsIndexed(depA, [input1, input2], batch);
         });
 
-        const result1 = await schema1.revdeps.get(input1);
-        const result2 = await schema2.revdeps.get(input2);
-        expect(result1).toEqual(result2);
-        expect(isSorted(result1)).toBe(true);
+        const first1 = await storage1.revdeps.get(input1);
+        const first2 = await storage1.revdeps.get(input2);
+        const second1 = await storage2.revdeps.get(input1);
+        const second2 = await storage2.revdeps.get(input2);
+
+        expect(first1).toEqual(second1);
+        expect(first2).toEqual(second2);
+        expect(isSorted(first1)).toBe(true);
+        expect(isSorted(first2)).toBe(true);
     });
 
-    test("mixed heads and arg shapes sort deterministically", async () => {
-        const input = nks("input");
-        // variety of dep keys
-        const deps = [
-            nks("z"),
-            nks("a"),
-            nks("m"),
-            nks("f", [null]),
-            nks("f", [false]),
-            nks("f", [1]),
-            nks("f", ["hello"]),
-            nks("f", [[]]),
-            nks("f", [{}]),
-        ];
-
-        // Insert in original order
-        for (const dep of deps) {
-            await storage.withBatch(async (batch) => {
-                await storage.ensureReverseDepsIndexed(dep, [input], batch);
-            });
-        }
-
-        const result1 = await schema.revdeps.get(input);
-        expect(isSorted(result1)).toBe(true);
-
-        // Insert in reversed order on a fresh storage
-        const schema2 = makeSchemaStorage();
-        const storage2 = makeGraphStorage(makeRootDatabase(schema2));
-        for (const dep of [...deps].reverse()) {
-            await storage2.withBatch(async (batch) => {
-                await storage2.ensureReverseDepsIndexed(dep, [input], batch);
-            });
-        }
-
-        const result2 = await schema2.revdeps.get(input);
-        expect(result1).toEqual(result2);
-    });
-
-    test("multiple inputs each get correctly sorted revdeps", async () => {
-        const inputX = nks("x");
-        const inputY = nks("y");
-        const depB = nks("b");
-        const depA = nks("a");
+    test("stored representation uses identifier database keys", async () => {
+        const input = nid("inputaaaa");
+        const dep = nid("depaaaaaa");
 
         await storage.withBatch(async (batch) => {
-            // Both deps depend on both inputs
-            await storage.ensureReverseDepsIndexed(depB, [inputX, inputY], batch);
-            await storage.ensureReverseDepsIndexed(depA, [inputX, inputY], batch);
+            await storage.ensureReverseDepsIndexed(dep, [input], batch);
         });
 
-        const resultX = await schema.revdeps.get(inputX);
-        const resultY = await schema.revdeps.get(inputY);
-        expect(isSorted(resultX)).toBe(true);
-        expect(isSorted(resultY)).toBe(true);
-        expect(resultX).toEqual([depA, depB]);
-        expect(resultY).toEqual([depA, depB]);
+        const raw = await schema.revdeps.get(nodeIdentifierToDatabaseKey(input));
+        expect(raw).toEqual([nodeIdentifierToDatabaseKey(dep)]);
     });
 });

@@ -12,7 +12,11 @@ const {
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
+const {
+    makeSemanticStorage,
+    makeTestDatabase,
+    freshnessKey,
+} = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
@@ -111,7 +115,7 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["level1", "level2"]);
 
             // level3 should not have been computed
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             const level3 = await storage.values.get("level3");
             expect(level3).toBeUndefined();
 
@@ -146,7 +150,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
 
             // Seed data using storage after graph creation
             await storage.values.put(toJsonKey("input1"), { type: 'all_events', events: [] });
@@ -1017,7 +1021,7 @@ describe("generators/incremental_graph", () => {
             expect(computeCalls).toEqual(["outputA"]);
 
             // OutputB should not exist in the database yet
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             const outputB = await storage.values.get("outputB");
             expect(outputB).toBeUndefined();
 
@@ -1268,7 +1272,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Manually mark output as potentially-outdated (simulating inconsistent state)
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             await storage.freshness.put(toJsonKey("output", []), "potentially-outdated");
             
             // This represents an inconsistent state where inputs are clean but output is dirty

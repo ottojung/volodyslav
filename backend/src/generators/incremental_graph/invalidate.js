@@ -2,18 +2,23 @@
  * Invalidation operations for IncrementalGraph.
  */
 
-/** @typedef {import('./semantic_graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 /**
  * @typedef {object} IncrementalGraphInvalidateAccess
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {import('./semantic_graph_storage').GraphStorage} storage
+ * @property {import('./graph_storage').GraphStorage} storage
+ * @property {() => IdentifierResolver} makeIdentifierResolver
+ * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<void>) => Promise<void>} withIdentifierBatch
+ * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
 const { stringToNodeName } = require("./database");
+const { nodeIdentifierToString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
 const { serializeNodeKey } = require("./database");
@@ -21,30 +26,31 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
- * @param {NodeKeyString} changedKey
+ * @param {import('./database/node_identifier').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
- * @param {Set<NodeKeyString>} [nodesBecomingOutdated]
+ * @param {Set<string>} [nodesBecomingOutdated]
  * @returns {Promise<void>}
  */
 async function internalPropagateOutdated(
     incrementalGraph,
-    changedKey,
+    changedIdentifier,
     batch,
     nodesBecomingOutdated = new Set()
 ) {
     const dynamicDependents = await incrementalGraph.storage.listDependents(
-        changedKey,
+        changedIdentifier,
         batch
     );
     for (const output of dynamicDependents) {
-        if (nodesBecomingOutdated.has(output)) {
+        const outputIdentifierString = nodeIdentifierToString(output);
+        if (nodesBecomingOutdated.has(outputIdentifierString)) {
             continue;
         }
 
         const currentFreshness = await batch.freshness.get(output);
         if (currentFreshness === "up-to-date") {
             batch.freshness.put(output, "potentially-outdated");
-            nodesBecomingOutdated.add(output);
+            nodesBecomingOutdated.add(outputIdentifierString);
             await internalPropagateOutdated(
                 incrementalGraph,
                 output,
@@ -63,7 +69,7 @@ async function internalPropagateOutdated(
         /** @type {never} */
         const freshness = currentFreshness;
         throw new Error(
-            `Unexpected freshness value ${freshness} for node ${output}`
+            `Unexpected freshness value ${freshness} for node ${outputIdentifierString}`
         );
     }
 }
@@ -90,39 +96,44 @@ async function internalUnsafeInvalidate(
 
     const nodeKey = { head: nodeNameTyped, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    const nodeDefinition = incrementalGraph.getOrCreateConcreteNode(
+    const concreteNode = incrementalGraph.getOrCreateConcreteNode(
         concreteKey,
         compiledNode,
         bindings
     );
+    const identifierResolver = incrementalGraph.makeIdentifierResolver();
 
     /**
      * @param {BatchBuilder} batch
      * @returns {Promise<void>}
      */
     const run = async (batch) => {
-        batch.freshness.put(nodeDefinition.output, "potentially-outdated");
+        const nodeDefinition = incrementalGraph.resolveConcreteNode(
+            concreteNode,
+            identifierResolver
+        );
+        batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
 
         const inputCounters = [];
-        for (const inputKey of nodeDefinition.inputs) {
-            const counter = await batch.counters.get(inputKey);
+        for (const inputIdentifier of nodeDefinition.inputIdentifiers) {
+            const counter = await batch.counters.get(inputIdentifier);
             inputCounters.push(counter !== undefined ? counter : 0);
         }
 
         await incrementalGraph.storage.ensureMaterialized(
-            nodeDefinition.output,
-            nodeDefinition.inputs,
+            nodeDefinition.outputIdentifier,
+            nodeDefinition.inputIdentifiers,
             inputCounters,
             batch
         );
         await internalPropagateOutdated(
             incrementalGraph,
-            nodeDefinition.output,
+            nodeDefinition.outputIdentifier,
             batch
         );
     };
 
-    await incrementalGraph.storage.withBatch(run);
+    await incrementalGraph.withIdentifierBatch(identifierResolver, run);
 }
 
 /**

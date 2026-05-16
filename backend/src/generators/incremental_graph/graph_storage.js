@@ -51,6 +51,7 @@ const {
  * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
+ * @property {(operation: *) => void} appendOperation - Append a raw batch operation owned by a higher layer.
  */
 
 /**
@@ -311,6 +312,9 @@ function makeBatchBuilder(schemaStorage) {
                     }
                     return await schemaStorage.timestamps.get(toDatabaseKey(key));
                 },
+            },
+            appendOperation(operation) {
+                operations.push(operation);
             },
         };
 
