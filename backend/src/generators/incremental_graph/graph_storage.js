@@ -5,11 +5,10 @@
  */
 
 const {
-    databaseKeyToNodeIdentifier,
-    nodeIdentifierFromString,
     nodeIdentifierToDatabaseKey,
     nodeIdentifierToString,
 } = require('./database');
+const { stringToNodeIdentifier } = require('./database/types');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -268,7 +267,7 @@ function makeBatchBuilder(schemaStorage) {
                     if (stored === undefined) {
                         return undefined;
                     }
-                    return stored.map(databaseKeyToNodeIdentifier);
+                    return stored;
                 },
             },
             counters: {
@@ -421,7 +420,7 @@ function makeGraphStorage(rootDatabase) {
         if (record === undefined) {
             return null;
         }
-        return record.inputs.map((input) => nodeIdentifierFromString(input));
+        return record.inputs.map((input) => stringToNodeIdentifier(input));
     }
 
     /**
@@ -430,7 +429,7 @@ function makeGraphStorage(rootDatabase) {
     async function listMaterializedNodes() {
         const nodes = [];
         for await (const key of schemaStorage.inputs.keys()) {
-            nodes.push(databaseKeyToNodeIdentifier(key));
+            nodes.push(key);
         }
         return nodes;
     }
@@ -440,42 +439,42 @@ function makeGraphStorage(rootDatabase) {
             async get(key) { return await schemaStorage.values.get(toDatabaseKey(key)); },
             async put(key, value) { await schemaStorage.values.put(toDatabaseKey(key), value); },
             async del(key) { await schemaStorage.values.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.values.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+            async *keys() { for await (const key of schemaStorage.values.keys()) { yield key; } },
         }),
         freshness: makeIdentifierDatabase({
             async get(key) { return await schemaStorage.freshness.get(toDatabaseKey(key)); },
             async put(key, value) { await schemaStorage.freshness.put(toDatabaseKey(key), value); },
             async del(key) { await schemaStorage.freshness.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.freshness.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+            async *keys() { for await (const key of schemaStorage.freshness.keys()) { yield key; } },
         }),
         inputs: makeIdentifierDatabase({
             async get(key) { return await schemaStorage.inputs.get(toDatabaseKey(key)); },
             async put(key, value) { await schemaStorage.inputs.put(toDatabaseKey(key), value); },
             async del(key) { await schemaStorage.inputs.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.inputs.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+            async *keys() { for await (const key of schemaStorage.inputs.keys()) { yield key; } },
         }),
         revdeps: makeIdentifierDatabase({
             async get(key) {
                 const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
-                return stored === undefined ? undefined : stored.map(databaseKeyToNodeIdentifier);
+                return stored;
             },
             async put(key, value) {
                 await schemaStorage.revdeps.put(toDatabaseKey(key), value.map(toDatabaseKey));
             },
             async del(key) { await schemaStorage.revdeps.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.revdeps.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+            async *keys() { for await (const key of schemaStorage.revdeps.keys()) { yield key; } },
         }),
         counters: makeIdentifierDatabase({
             async get(key) { return await schemaStorage.counters.get(toDatabaseKey(key)); },
             async put(key, value) { await schemaStorage.counters.put(toDatabaseKey(key), value); },
             async del(key) { await schemaStorage.counters.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.counters.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+            async *keys() { for await (const key of schemaStorage.counters.keys()) { yield key; } },
         }),
         timestamps: makeIdentifierDatabase({
             async get(key) { return await schemaStorage.timestamps.get(toDatabaseKey(key)); },
             async put(key, value) { await schemaStorage.timestamps.put(toDatabaseKey(key), value); },
             async del(key) { await schemaStorage.timestamps.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.timestamps.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+            async *keys() { for await (const key of schemaStorage.timestamps.keys()) { yield key; } },
         }),
         withBatch,
         ensureMaterialized,
