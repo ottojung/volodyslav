@@ -11,7 +11,7 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToNodeIdentifier, stringToVersion } = require('./types');
+const { stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -170,10 +170,10 @@ async function clearHostnameStorage(db, hostname) {
  * @param {string} hostname
  * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
  * @param {string} subkey
- * @returns {NodeIdentifier}
+ * @returns {string}
  */
 function hostnameRawKey(hostname, sublevelName, subkey) {
-    return stringToNodeIdentifier(`!_h_${hostname}!!${sublevelName}!${subkey}`);
+    return `!_h_${hostname}!!${sublevelName}!${subkey}`;
 }
 
 /**
