@@ -5,10 +5,9 @@
  */
 
 const {
-    nodeIdentifierToDatabaseKey,
     nodeIdentifierToString,
-} = require('./database');
-const { stringToNodeIdentifier } = require('./database/types');
+    stringToNodeIdentifier,
+} = require('./database/types');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -76,10 +75,10 @@ const { stringToNodeIdentifier } = require('./database/types');
 /**
  * Convert a nominal identifier to the underlying database key used by typed sublevels.
  * @param {NodeIdentifier} nodeIdentifier
- * @returns {import('./database/types').NodeKeyString}
+ * @returns {NodeIdentifier}
  */
 function toDatabaseKey(nodeIdentifier) {
-    return nodeIdentifierToDatabaseKey(nodeIdentifier);
+    return nodeIdentifier;
 }
 
 /**
