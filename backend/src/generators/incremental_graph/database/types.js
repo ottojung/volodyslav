@@ -522,7 +522,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
+ * @typedef {import('./node_identifier').NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**

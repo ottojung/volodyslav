@@ -8,7 +8,7 @@
 const { getVersion } = require('../../../version');
 const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const { stringToVersion, versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -48,7 +48,7 @@ const {
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
@@ -699,9 +699,9 @@ class RootDatabaseClass {
      * @returns {Promise<unknown | undefined>}
      */
     async _rawGetInSublevel(sublevelName, innerKey) {
-        /** @type {SchemaSublevelType} */
+        /** @type {import('abstract-level').AbstractSublevel<RootLevelType, SublevelFormat, string, unknown>} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(stringToNodeKeyString(innerKey));
+        return await sublevel.get(innerKey);
     }
 
     /**
@@ -724,12 +724,6 @@ class RootDatabaseClass {
      * Call _rawSync() once after all bulk unification writes are done to
      * ensure the writes are flushed to durable storage.
      *
-     * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
-     * static typing expectations: `this.db` is documented as using
-     * `NodeKeyString` keys, so its `put` method is typed to require a
-     * `NodeKeyString`. At runtime `stringToNodeKeyString` is effectively a
-     * no-op, so the raw sublevel-prefixed key passes through unchanged.
-     *
      * @param {string} key
      * @param {*} value
      * @returns {Promise<void>}
@@ -742,7 +736,9 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(stringToNodeKeyString(key), value, opts);
+        /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
+        const rawDb = this.db;
+        await rawDb.put(key, value, opts);
     }
 
     /**
@@ -761,7 +757,9 @@ class RootDatabaseClass {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.del(stringToNodeKeyString(key), opts);
+        /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
+        const rawDb = this.db;
+        await rawDb.del(key, opts);
     }
 
     /**
@@ -797,21 +795,22 @@ class RootDatabaseClass {
     async _rawPutAll(entries) {
         /**
          * Converts a plain raw-entry object into a LevelDB batch put operation,
-         * applying the JSDoc-level NodeKeyString wrapper expected by this.db.
          * @param {{ key: string, value: * }} entry
-         * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+         * @returns {{ type: 'put', key: string, value: * }}
          */
         function makePutOp(entry) {
             return {
                 type: 'put',
-                key: stringToNodeKeyString(entry.key),
+                key: entry.key,
                 value: entry.value,
             };
         }
 
         for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
             const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
-            await this.db.batch(chunk.map(makePutOp));
+            /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
+            const rawDb = this.db;
+            await rawDb.batch(chunk.map(makePutOp));
         }
     }
 
@@ -825,7 +824,9 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDeleteKeys(keys) {
-        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeKeyString(k) })));
+        /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
+        const rawDb = this.db;
+        await rawDb.batch(keys.map(k => ({ type: 'del', key: k })));
     }
 
     /**
