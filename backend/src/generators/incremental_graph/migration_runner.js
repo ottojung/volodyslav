@@ -125,12 +125,12 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         const lookup = makeIdentifierLookup(persistedEntries);
         return {
             keyToSourceKey(nodeKey) {
-                return stringToNodeKeyString(
+                return nodeIdentifierFromString(
                     nodeIdentifierToString(requireNodeIdentifierForKey(lookup, nodeKey))
                 );
             },
             keyToOutputKey(nodeKey) {
-                return stringToNodeKeyString(
+                return nodeIdentifierFromString(
                     nodeIdentifierToString(requireNodeIdentifierForKey(lookup, nodeKey))
                 );
             },
@@ -151,7 +151,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
     for (const nodeKey of materializedNodes) {
         const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
         const nodeIdentifier = deterministicNodeIdentifierFromNodeKey(canonicalKey);
-        const outputKey = stringToNodeKeyString(nodeIdentifierToString(nodeIdentifier));
+        const outputKey = nodeIdentifierFromString(nodeIdentifierToString(nodeIdentifier));
         outputEntries.push([nodeIdentifier, canonicalKey]);
         decisionKeyByOutputKey.set(String(outputKey), nodeKey);
     }
@@ -161,12 +161,12 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         },
         keyToOutputKey(nodeKey) {
             const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
-            return stringToNodeKeyString(
+            return nodeIdentifierFromString(
                 nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(canonicalKey))
             );
         },
         outputKeyToDecisionKey(outputKey) {
-            return decisionKeyByOutputKey.get(String(outputKey)) ?? stringToNodeKeyString(String(outputKey));
+            return decisionKeyByOutputKey.get(String(outputKey)) ?? nodeIdentifierFromString(String(outputKey));
         },
         outputEntries: serializeIdentifierLookup(makeIdentifierLookup(outputEntries)),
     };
@@ -208,7 +208,7 @@ function makeMigrationDecisionStorage(prevStorage, keyPlan) {
                 }
                 return {
                     inputs: record.inputs.map((input) =>
-                        String(keyPlan.outputKeyToDecisionKey(stringToNodeKeyString(input)))
+                        String(keyPlan.outputKeyToDecisionKey(nodeIdentifierFromString(input)))
                     ),
                     inputCounters: record.inputCounters,
                 };
@@ -255,7 +255,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
         if (!inputsRecord) continue;
 
         for (const inputStr of inputsRecord.inputs) {
-            const inputKey = stringToNodeKeyString(inputStr);
+            const inputKey = nodeIdentifierFromString(inputStr);
             const inputDecision = decisions.get(inputKey);
             if (inputDecision && inputDecision.kind === "delete") continue;
             const outputInputKey = keyPlan.keyToOutputKey(inputKey);
@@ -272,7 +272,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
     /** @type {Map<NodeKeyString, NodeKeyString[]>} */
     const result = new Map();
     for (const [inputStr, depSet] of revdepSets) {
-        const inputKey = stringToNodeKeyString(inputStr);
+        const inputKey = nodeIdentifierFromString(inputStr);
         result.set(
             inputKey,
             [...depSet].sort((left, right) => String(left).localeCompare(String(right)))
@@ -387,7 +387,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 }
                 return {
                     inputs: record.inputs.map((input) =>
-                        String(keyPlan.keyToOutputKey(stringToNodeKeyString(input)))
+                        String(keyPlan.keyToOutputKey(nodeIdentifierFromString(input)))
                     ),
                     inputCounters: record.inputCounters,
                 };
