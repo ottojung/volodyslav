@@ -1,7 +1,15 @@
 const random = require("../../../random");
 
+/**
+ * Persisted node identifiers are exactly 9 lowercase ASCII letters.
+ * They are safe to embed in database keys and filesystem path segments
+ * without any additional escaping layer.
+ */
 const NODE_IDENTIFIER_PATTERN = /^[a-z]{9}$/;
 
+/**
+ * Thrown when code attempts to construct or parse an invalid identifier string.
+ */
 class InvalidNodeIdentifierError extends Error {
     /**
      * @param {string} identifier
@@ -42,7 +50,11 @@ class NodeIdentifierClass {
     }
 }
 
-/** @typedef {NodeIdentifierClass} NodeIdentifier */
+/**
+ * Opaque random identifier for a materialized incremental-graph node.
+ * The string format is intentionally restricted to nine lowercase letters.
+ * @typedef {NodeIdentifierClass} NodeIdentifier
+ */
 
 /**
  * @typedef {object} Capabilities
@@ -50,6 +62,7 @@ class NodeIdentifierClass {
  */
 
 /**
+ * Check whether a plain string already satisfies the NodeIdentifier format.
  * @param {string} identifier
  * @returns {boolean}
  */
@@ -58,6 +71,7 @@ function isValidNodeIdentifier(identifier) {
 }
 
 /**
+ * Allocate a new random identifier using the shared random capability.
  * @param {Capabilities} capabilities
  * @returns {NodeIdentifier}
  */
@@ -66,6 +80,7 @@ function makeNodeIdentifier(capabilities) {
 }
 
 /**
+ * Parse and validate a persisted identifier string.
  * @param {string} identifier
  * @returns {NodeIdentifier}
  */
@@ -77,6 +92,7 @@ function nodeIdentifierFromString(identifier) {
 }
 
 /**
+ * Convert a nominal identifier back to its persisted string form.
  * @param {NodeIdentifier} identifier
  * @returns {string}
  */
@@ -85,6 +101,7 @@ function nodeIdentifierToString(identifier) {
 }
 
 /**
+ * Compare identifiers lexicographically by their persisted string values.
  * @param {NodeIdentifier} a
  * @param {NodeIdentifier} b
  * @returns {number}

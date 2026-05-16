@@ -7,11 +7,20 @@ const {
 } = require("./node_identifier");
 const {
     nodeKeyStringToString,
-    stringToNodeKeyString,
 } = require("./types");
 
+/** @typedef {import("./node_identifier").NodeIdentifier} NodeIdentifier */
+/** @typedef {import("./types").NodeKeyString} NodeKeyString */
+
+/**
+ * Global metadata key that stores the sorted `NodeIdentifier -> NodeKey` bijection.
+ * The name matches the persisted on-disk/database format described in the design doc.
+ */
 const IDENTIFIERS_KEY = "identifiers_keys_map";
 
+/**
+ * Thrown when the in-memory or persisted identifier lookup stops being a bijection.
+ */
 class IdentifierLookupError extends Error {
     /**
      * @param {string} message
@@ -51,8 +60,8 @@ function isIdentifierAllocationError(object) {
 
 /**
  * @typedef {object} IdentifierLookup
- * @property {Map<string, import('./node_identifier').NodeIdentifier>} keyToId
- * @property {Map<string, import('./types').NodeKeyString>} idToKey
+ * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
+ * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key.
  */
 
 /**
@@ -66,7 +75,9 @@ function makeEmptyIdentifierLookup() {
 }
 
 /**
- * @param {Array<[import('./node_identifier').NodeIdentifier, import('./types').NodeKeyString]>} entries
+ * Build a validated in-memory lookup from persisted `[id, key]` entries.
+ * The input must already be a strict bijection.
+ * @param {Array<[NodeIdentifier, NodeKeyString]>} entries
  * @returns {IdentifierLookup}
  */
 function makeIdentifierLookup(entries) {
@@ -87,6 +98,7 @@ function makeIdentifierLookup(entries) {
 }
 
 /**
+ * Clone the lookup through the persisted representation so validation stays centralized.
  * @param {IdentifierLookup} lookup
  * @returns {IdentifierLookup}
  */
@@ -95,11 +107,12 @@ function cloneIdentifierLookup(lookup) {
 }
 
 /**
+ * Convert the lookup back into its persisted form, sorted by identifier string.
  * @param {IdentifierLookup} lookup
- * @returns {Array<[import('./node_identifier').NodeIdentifier, import('./types').NodeKeyString]>}
+ * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
 function serializeIdentifierLookup(lookup) {
-    /** @type {Array<[import('./node_identifier').NodeIdentifier, import('./types').NodeKeyString]>} */
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
     const entries = [];
     for (const [identifierString, nodeKey] of lookup.idToKey.entries()) {
         entries.push([
@@ -114,27 +127,31 @@ function serializeIdentifierLookup(lookup) {
 }
 
 /**
+ * Read the identifier currently assigned to a semantic node key.
  * @param {IdentifierLookup} lookup
- * @param {import('./types').NodeKeyString} nodeKey
- * @returns {import('./node_identifier').NodeIdentifier | undefined}
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier | undefined}
  */
 function nodeKeyToIdFromLookup(lookup, nodeKey) {
     return lookup.keyToId.get(nodeKeyStringToString(nodeKey));
 }
 
 /**
+ * Read the semantic node key currently assigned to an identifier.
  * @param {IdentifierLookup} lookup
- * @param {import('./node_identifier').NodeIdentifier} nodeIdentifier
- * @returns {import('./types').NodeKeyString | undefined}
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString | undefined}
  */
 function nodeIdToKeyFromLookup(lookup, nodeIdentifier) {
     return lookup.idToKey.get(nodeIdentifierToString(nodeIdentifier));
 }
 
 /**
+ * Insert or re-assert a mapping in the bijection.
+ * This throws if either side is already associated with a different counterpart.
  * @param {IdentifierLookup} lookup
- * @param {import('./node_identifier').NodeIdentifier} nodeIdentifier
- * @param {import('./types').NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {NodeKeyString} nodeKey
  * @returns {void}
  */
 function setIdentifierMapping(lookup, nodeIdentifier, nodeKey) {
@@ -157,8 +174,9 @@ function setIdentifierMapping(lookup, nodeIdentifier, nodeKey) {
 }
 
 /**
+ * Remove the mapping for a semantic node key if one exists.
  * @param {IdentifierLookup} lookup
- * @param {import('./types').NodeKeyString} nodeKey
+ * @param {NodeKeyString} nodeKey
  * @returns {void}
  */
 function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
@@ -172,9 +190,11 @@ function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
 }
 
 /**
- * @param {import('./types').NodeKeyString} nodeKey
+ * Deterministically derive the legacy-migration identifier candidate for a node key.
+ * Retry attempts perturb the hash input so collision handling is deterministic.
+ * @param {NodeKeyString} nodeKey
  * @param {number} attempt
- * @returns {import('./node_identifier').NodeIdentifier}
+ * @returns {NodeIdentifier}
  */
 function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
     const nodeKeyString = nodeKeyStringToString(nodeKey);
@@ -195,11 +215,13 @@ function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
 }
 
 /**
+ * Allocate a fresh identifier for a node key, retrying on collisions.
+ * If the key already has an identifier, the existing identifier is reused.
  * @param {IdentifierLookup} lookup
- * @param {import('./types').NodeKeyString} nodeKey
- * @param {(attempt: number) => import('./node_identifier').NodeIdentifier} makeIdentifier
+ * @param {NodeKeyString} nodeKey
+ * @param {(attempt: number) => NodeIdentifier} makeIdentifier
  * @param {number} [maxAttempts=64]
- * @returns {import('./node_identifier').NodeIdentifier}
+ * @returns {NodeIdentifier}
  */
 function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = 64) {
     const existing = nodeKeyToIdFromLookup(lookup, nodeKey);
@@ -220,9 +242,10 @@ function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = 6
 }
 
 /**
+ * Require the semantic node key for an identifier.
  * @param {IdentifierLookup} lookup
- * @param {import('./node_identifier').NodeIdentifier} nodeIdentifier
- * @returns {import('./types').NodeKeyString}
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString}
  */
 function requireNodeKeyForIdentifier(lookup, nodeIdentifier) {
     const nodeKey = nodeIdToKeyFromLookup(lookup, nodeIdentifier);
@@ -235,9 +258,10 @@ function requireNodeKeyForIdentifier(lookup, nodeIdentifier) {
 }
 
 /**
+ * Require the identifier for a semantic node key.
  * @param {IdentifierLookup} lookup
- * @param {import('./types').NodeKeyString} nodeKey
- * @returns {import('./node_identifier').NodeIdentifier}
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier}
  */
 function requireNodeIdentifierForKey(lookup, nodeKey) {
     const nodeIdentifier = nodeKeyToIdFromLookup(lookup, nodeKey);

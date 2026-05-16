@@ -85,14 +85,14 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: canonical node name (e.g., "user('alice')")
+ * Key: persisted node identifier (e.g., "nodecachex")
  * Value: the computed value (object with type field)
  * @typedef {GenericDatabase<ComputedValue, NodeKeyString>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: canonical node name (e.g., "user('alice')")
+ * Key: persisted node identifier (e.g., "nodecachex")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
  * @typedef {GenericDatabase<Freshness, NodeKeyString>} FreshnessDatabase
  */
@@ -100,42 +100,42 @@ function assertNeverReplicaName(name) {
 /**
  * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of materialized input identifiers
+ * @property {string[]} inputs - Array of persisted input identifiers, kept in the original input order.
  * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
 /**
  * Database for storing node input dependencies.
- * Key: canonical node name
- * Value: inputs record with array of dependency names
+ * Key: persisted node identifier
+ * Value: inputs record with identifier-addressed dependencies
  * @typedef {GenericDatabase<InputsRecord, NodeKeyString>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
- * Key: canonical input node name
- * Value: array of canonical dependent node names
+ * Key: persisted input identifier
+ * Value: array of dependent identifiers sorted lexicographically by identifier
  * @typedef {GenericDatabase<NodeKeyString[], NodeKeyString>} RevdepsDatabase
  */
 
 /**
  * Database for storing node counters.
- * Key: canonical node name
+ * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)
  * @typedef {GenericDatabase<Counter, NodeKeyString>} CountersDatabase
  */
 
 /**
  * Database for storing node timestamps (creation and modification times).
- * Key: canonical node name
+ * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
  * @typedef {GenericDatabase<TimestampRecord, NodeKeyString>} TimestampsDatabase
  */
 
 /**
  * Database for storing replica-level global state (e.g., version).
- * Key: plain string (e.g., 'version')
- * Value: version string
+ * Key: plain string (e.g., 'version' or 'identifiers_keys_map')
+ * Value: version string or identifier lookup metadata
  * @typedef {GenericDatabase<Version, string>} GlobalVersionDatabase
  */
 
