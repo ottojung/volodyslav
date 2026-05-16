@@ -12,6 +12,7 @@ const {
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
+const { makeSemanticStorage } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
@@ -262,7 +263,7 @@ describe("generators/incremental_graph counters", () => {
             await graph.pull("derived");
 
             // Manually corrupt the database by deleting the counter for src
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             await storage.counters.del(toJsonKey("src", []));
             
             // Invalidate derived by marking it potentially-outdated
@@ -307,7 +308,7 @@ describe("generators/incremental_graph counters", () => {
             await graph.pull("derived");
 
             // Manually corrupt the database by removing inputCounters from derived's InputsRecord
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             const inputsRecord = await storage.inputs.get(derivedKey);
             if (inputsRecord) {
@@ -376,7 +377,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Now manually corrupt the InputsRecord to point to sourceB instead
             // This simulates a database corruption scenario
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             const sourceBKey = toJsonKey("sourceB", []);
             
@@ -445,7 +446,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Manually corrupt the InputsRecord to have wrong inputs
             // This simulates a database corruption or bug scenario
-            const storage = graph.storage;
+            const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             
             // Corrupt the InputsRecord to point to sourceB instead of sourceA

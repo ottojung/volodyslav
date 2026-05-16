@@ -11,6 +11,7 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('./types').Version} dbVersion
+ * @property {() => import('./identifier_resolver').IdentifierResolver} makeIdentifierResolver
  */
 
 const {
@@ -46,7 +47,12 @@ async function internalGetFreshness(
 
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        const freshness = await incrementalGraph.storage.freshness.get(concreteKey);
+        const identifierResolver = incrementalGraph.makeIdentifierResolver();
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
+        if (nodeIdentifier === undefined) {
+            return "missing";
+        }
+        const freshness = await incrementalGraph.storage.freshness.get(nodeIdentifier);
         if (freshness === undefined) {
             return "missing";
         }
@@ -72,7 +78,12 @@ async function internalGetValue(incrementalGraph, head, bindings = []) {
 
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        return await incrementalGraph.storage.values.get(concreteKey);
+        const identifierResolver = incrementalGraph.makeIdentifierResolver();
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
+        if (nodeIdentifier === undefined) {
+            return undefined;
+        }
+        return await incrementalGraph.storage.values.get(nodeIdentifier);
     });
 }
 
@@ -100,8 +111,10 @@ function internalGetSchemaByHead(incrementalGraph, head) {
  */
 async function internalListMaterializedNodes(incrementalGraph) {
     return withObserveMode(incrementalGraph.sleeper, async () => {
+        const identifierResolver = incrementalGraph.makeIdentifierResolver();
         const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
-        return materializedNodes.map((nodeKey) => {
+        return materializedNodes.map((nodeIdentifier) => {
+            const nodeKey = identifierResolver.requireNodeKey(nodeIdentifier);
             const parsed = deserializeNodeKey(nodeKey);
             return [nodeNameToString(parsed.head), parsed.args];
         });
@@ -139,7 +152,12 @@ async function internalGetCreationTime(
 
         const nodeKey = { head: nodeNameTyped, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        const record = await incrementalGraph.storage.timestamps.get(concreteKey);
+        const identifierResolver = incrementalGraph.makeIdentifierResolver();
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
+        if (nodeIdentifier === undefined) {
+            throw makeMissingTimestampError(concreteKey);
+        }
+        const record = await incrementalGraph.storage.timestamps.get(nodeIdentifier);
         if (record === undefined) {
             throw makeMissingTimestampError(concreteKey);
         }
@@ -170,7 +188,12 @@ async function internalGetModificationTime(
 
         const nodeKey = { head: nodeNameTyped, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        const record = await incrementalGraph.storage.timestamps.get(concreteKey);
+        const identifierResolver = incrementalGraph.makeIdentifierResolver();
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
+        if (nodeIdentifier === undefined) {
+            throw makeMissingTimestampError(concreteKey);
+        }
+        const record = await incrementalGraph.storage.timestamps.get(nodeIdentifier);
         if (record === undefined) {
             throw makeMissingTimestampError(concreteKey);
         }

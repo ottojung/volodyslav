@@ -7,6 +7,10 @@
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
+const {
+    deterministicNodeIdentifierFromNodeKey,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
@@ -22,12 +26,18 @@ const { checkpointMigration: mockCheckpointMigration } = require('../src/generat
 
 function makeInMemoryDb(table) {
     const store = new Map();
+    function resolveKey(key) {
+        if (store.has(key) || typeof key !== "string" || !key.startsWith("{")) {
+            return key;
+        }
+        return nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(key));
+    }
     return {
-        async get(key) { return store.get(key); },
+        async get(key) { return store.get(resolveKey(key)); },
         async put(key, value) { store.set(key, value); },
         async rawPut(key, value) { store.set(key, value); },
-        async del(key) { store.delete(key); },
-        async rawDel(key) { store.delete(key); },
+        async del(key) { store.delete(resolveKey(key)); },
+        async rawDel(key) { store.delete(resolveKey(key)); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },

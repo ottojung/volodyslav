@@ -17,6 +17,18 @@ const { deserializeNodeKey } = require("./database");
  */
 
 /**
+ * @param {NodeKeyString} nodeKey
+ * @returns {import('./types').NodeName}
+ */
+function nodeHeadForMigrationNode(nodeKey) {
+    const nodeKeyString = String(nodeKey);
+    if (nodeKeyString.startsWith("{")) {
+        return deserializeNodeKey(nodeKey).head;
+    }
+    return stringToNodeName(nodeKeyString);
+}
+
+/**
  * A migration callback that keeps all nodes of a certain type.
  *
  * @param {string} nodeName - The name of the node type to keep (e.g., "meta_events")
@@ -27,8 +39,7 @@ async function keepNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        const parsed = deserializeNodeKey(nodeKey);
-        if (parsed.head === nodeNameTyped) {
+        if (nodeHeadForMigrationNode(nodeKey) === nodeNameTyped) {
             await storage.keep(nodeKey);
         }
     }
@@ -45,8 +56,7 @@ async function deleteNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        const parsed = deserializeNodeKey(nodeKey);
-        if (parsed.head === nodeNameTyped) {
+        if (nodeHeadForMigrationNode(nodeKey) === nodeNameTyped) {
             await storage.delete(nodeKey);
         }
     }

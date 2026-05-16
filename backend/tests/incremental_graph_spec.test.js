@@ -10,6 +10,7 @@ const {
     makeUnchanged,
     isUnchanged,
 } = require("../src/generators/incremental_graph");
+const { makeSemanticStorage } = require("./test_database_helper");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -1437,7 +1438,7 @@ describe("Inspection interface", () => {
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
-        const storage = g.storage;
+        const storage = makeSemanticStorage(g);
         let inputsRecord;
         await storage.withBatch(async (batch) => {
             inputsRecord = await storage.getInputs(toJsonKey("source"), batch);
@@ -1471,7 +1472,7 @@ describe("Inspection interface", () => {
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
-        const storage = g.storage;
+        const storage = makeSemanticStorage(g);
         let inputsRecord;
         await storage.withBatch(async (batch) => {
             inputsRecord = await storage.getInputs(toJsonKey("leaf"), batch);

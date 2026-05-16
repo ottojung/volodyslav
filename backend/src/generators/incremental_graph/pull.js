@@ -8,13 +8,17 @@
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 /**
  * @typedef {object} IncrementalGraphPullAccess
  * @property {Map<NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_storage').GraphStorage} storage
+ * @property {() => IdentifierResolver} makeIdentifierResolver
+ * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<RecomputeResult>) => Promise<RecomputeResult>} withIdentifierBatch
+ * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
- * @property {(nodeDefinition: import('./types').ConcreteNode, batch: BatchBuilder) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} maybeRecalculate
  */
 
 const { nodeKeyStringToString, stringToNodeName } = require("./database");
@@ -97,7 +101,8 @@ async function internalPullWithStatus(
     const concreteKey = serializeNodeKey(nodeKey);
     return await internalPullByNodeKeyStringWithStatusDuringPull(
         incrementalGraph,
-        concreteKey
+        concreteKey,
+        incrementalGraph.makeIdentifierResolver()
     );
 }
 
@@ -121,36 +126,44 @@ async function internalPullByNodeKeyStringWithStatus(
 /**
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeKeyString} nodeKeyStr
+ * @param {IdentifierResolver} [identifierResolver=incrementalGraph.makeIdentifierResolver()]
  * @returns {Promise<RecomputeResult>}
  */
 async function internalPullByNodeKeyStringWithStatusDuringPull(
     incrementalGraph,
-    nodeKeyStr
+    nodeKeyStr,
+    identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
+    const nodeKey = deserializeNodeKey(nodeKeyStr);
+    const nodeName = nodeKey.head;
+    const bindings = nodeKey.args;
+    const compiledNode = incrementalGraph.headIndex.get(nodeName);
+    if (!compiledNode) {
+        throw makeInvalidNodeError(nodeName);
+    }
+
+    checkArity(compiledNode, bindings);
+
+    const concreteNode = incrementalGraph.getOrCreateConcreteNode(
+        nodeKeyStr,
+        compiledNode,
+        bindings
+    );
+
     /**
      * @param {BatchBuilder} batch
      * @returns {Promise<RecomputeResult>}
      */
     const run = async (batch) => {
-        const nodeKey = deserializeNodeKey(nodeKeyStr);
-        const nodeName = nodeKey.head;
-        const bindings = nodeKey.args;
-        const compiledNode = incrementalGraph.headIndex.get(nodeName);
-        if (!compiledNode) {
-            throw makeInvalidNodeError(nodeName);
-        }
-
-        checkArity(compiledNode, bindings);
-
-        const nodeDefinition = incrementalGraph.getOrCreateConcreteNode(
-            nodeKeyStr,
-            compiledNode,
-            bindings
+        const outputIdentifier = identifierResolver.getOrAllocateNodeIdentifier(
+            concreteNode.output
         );
-        const nodeFreshness = await batch.freshness.get(nodeKeyStr);
+        const nodeFreshness = await batch.freshness.get(
+            outputIdentifier
+        );
 
         if (nodeFreshness === "up-to-date") {
-            const result = await batch.values.get(nodeKeyStr);
+            const result = await batch.values.get(outputIdentifier);
             if (result === undefined) {
                 throw new Error(
                     `Impossible: up-to-date node has no stored value: ${nodeKeyStringToString(nodeKeyStr)}`
@@ -159,13 +172,18 @@ async function internalPullByNodeKeyStringWithStatusDuringPull(
             return { value: result, status: "cached" };
         }
 
+        const nodeDefinition = incrementalGraph.resolveConcreteNode(
+            concreteNode,
+            identifierResolver
+        );
         return await incrementalGraph.maybeRecalculate(
             nodeDefinition,
-            batch
+            batch,
+            identifierResolver
         );
     };
     return withPullNodeMutex(incrementalGraph.sleeper, nodeKeyStr, () =>
-        incrementalGraph.storage.withBatch(run)
+        incrementalGraph.withIdentifierBatch(identifierResolver, run)
     );
 }
 

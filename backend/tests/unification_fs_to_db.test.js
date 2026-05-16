@@ -63,13 +63,13 @@ async function collectRawEntries(db) {
  * Raw DB key for a zero-arg node in the 'x' namespace values sublevel.
  * @type {string}
  */
-const X_VALUES_KEY = '!x!!values!{"head":"all_events","args":[]}';
+const X_VALUES_KEY = '!x!!values!nodecachex';
 
 /**
  * File path for the same key within the 'x' inputDir.
  * @type {string}
  */
-const X_VALUES_REL = path.join('values', 'all_events');
+const X_VALUES_REL = path.join('values', 'nodecachex');
 
 // ---------------------------------------------------------------------------
 // Tests

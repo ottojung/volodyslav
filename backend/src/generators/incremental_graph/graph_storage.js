@@ -1,10 +1,15 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
- * GraphStorage module.
- * Encapsulates database access for the incremental graph using typed sublevels.
+ * Identifier-native graph storage.
+ * This module is the low-level persistence layer below IncrementalGraph runtime logic.
  */
 
-const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
-const { compareNodeKeyStringByNodeKey } = require("./database");
+const {
+    databaseKeyToNodeIdentifier,
+    nodeIdentifierFromString,
+    nodeIdentifierToDatabaseKey,
+    nodeIdentifierToString,
+} = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -19,41 +24,34 @@ const { compareNodeKeyStringByNodeKey } = require("./database");
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
-/** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {import('./database/types').SchemaSublevelType} SchemaSublevelType */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/types').DatabaseKey} DatabaseKey */
+/** @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier */
 
 /**
- * @template T
- * @typedef {import('./database/types').DatabasePutOperation<T>} DatabasePutOperation
+ * @template TValue
+ * @typedef {object} IdentifierDatabase
+ * @property {(key: NodeIdentifier) => Promise<TValue | undefined>} get - Read one identifier-keyed record.
+ * @property {(key: NodeIdentifier, value: TValue) => Promise<void>} put - Write one identifier-keyed record.
+ * @property {(key: NodeIdentifier) => Promise<void>} del - Delete one identifier-keyed record.
+ * @property {() => AsyncIterable<NodeIdentifier>} keys - Iterate over identifier keys in storage order.
  */
 
 /**
- * @template T
- * @typedef {import('./database/types').DatabaseDelOperation<T>} DatabaseDelOperation
- */
-
-/**
- * Interface for batch operations on a specific database.
- * Provides transactional view with read-your-writes consistency.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
- * @property {(key: DatabaseKey, value: TValue) => void} put - Queue a put operation
- * @property {(key: DatabaseKey) => void} del - Queue a delete operation
- * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Read with batch consistency
+ * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue a put operation in the current batch.
+ * @property {(key: NodeIdentifier) => void} del - Queue a delete operation in the current batch.
+ * @property {(key: NodeIdentifier) => Promise<TValue | undefined>} get - Read with read-your-writes batch consistency.
  */
 
 /**
- * Batch builder for atomic operations across multiple databases.
- * Each database field is properly typed - no unions or type casts needed.
  * @typedef {object} BatchBuilder
- * @property {BatchDatabaseOps<ComputedValue>} values - Batch operations for values database
- * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
- * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
- * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
- * @property {BatchDatabaseOps<Counter>} counters - Batch operations for counters database (monotonic integers)
- * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Batch operations for timestamps database (creation/modification times)
+ * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
+ * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
+ * @property {BatchDatabaseOps<InputsRecord>} inputs - Dependency metadata storage.
+ * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
+ * @property {BatchDatabaseOps<Counter>} counters - Change counters.
+ * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
+ * @property {(operation: *) => void} appendOperation - Append a raw batch operation owned by a higher layer.
  */
 
 /**
@@ -61,312 +59,425 @@ const { compareNodeKeyStringByNodeKey } = require("./database");
  */
 
 /**
- * GraphStorage exposes typed databases as fields.
- * All databases are from the same schema namespace.
  * @typedef {object} GraphStorage
- * @property {ValuesDatabase} values - Node values
- * @property {FreshnessDatabase} freshness - Node freshness
- * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
- * @property {CountersDatabase} counters - Node counters (monotonic integers)
- * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
- * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record with counters)
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
- * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input (requires batch for consistency)
- * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
- * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
+ * @property {IdentifierDatabase<ComputedValue>} values - Identifier-keyed value storage.
+ * @property {IdentifierDatabase<Freshness>} freshness - Identifier-keyed freshness storage.
+ * @property {IdentifierDatabase<InputsRecord>} inputs - Identifier-keyed input metadata storage.
+ * @property {IdentifierDatabase<NodeIdentifier[]>} revdeps - Identifier-keyed reverse dependency index.
+ * @property {IdentifierDatabase<Counter>} counters - Identifier-keyed counters.
+ * @property {IdentifierDatabase<TimestampRecord>} timestamps - Identifier-keyed timestamps.
+ * @property {BatchFunction} withBatch - Run atomically against all graph sublevels.
+ * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
+ * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
+ * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
+ * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
+ * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
  */
 
 /**
- * Find the insertion index for a node in a sorted array using binary search.
- * @param {NodeKeyString[]} sortedArray - The sorted array to search in
- * @param {NodeKeyString} node - The node to find the insertion index for
- * @param {(a: NodeKeyString, b: NodeKeyString) => number} compareFn - Comparator function
+ * Convert a nominal identifier to the underlying database key used by typed sublevels.
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {string}
+ */
+function toDatabaseKey(nodeIdentifier) {
+    return nodeIdentifierToDatabaseKey(nodeIdentifier);
+}
+
+/**
+ * Create a stable string key for per-batch overlay maps.
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {string}
+ */
+function pendingKey(nodeIdentifier) {
+    return nodeIdentifierToString(nodeIdentifier);
+}
+
+/**
+ * Find the insertion point for an identifier inside an already-sorted identifier array.
+ * @param {NodeIdentifier[]} sortedArray
+ * @param {NodeIdentifier} nodeIdentifier
  * @returns {{ index: number, found: boolean }}
  */
-function findInsertionIndex(sortedArray, node, compareFn) {
+function findInsertionIndex(sortedArray, nodeIdentifier) {
+    const needle = nodeIdentifierToString(nodeIdentifier);
     let lo = 0;
     let hi = sortedArray.length;
     while (lo < hi) {
         const mid = (lo + hi) >>> 1;
-        const midVal = sortedArray[mid];
-        if (midVal === undefined) {
-            throw new Error("findInsertionIndex: unexpected undefined element at index " + String(mid));
+        const current = sortedArray[mid];
+        if (current === undefined) {
+            throw new Error(`findInsertionIndex: missing identifier at index ${String(mid)}`);
         }
-        const cmp = compareFn(midVal, node);
-        if (cmp === 0) return { index: mid, found: true };
-        if (cmp < 0) lo = mid + 1;
-        else hi = mid;
+        const currentString = nodeIdentifierToString(current);
+        if (currentString === needle) {
+            return { index: mid, found: true };
+        }
+        if (currentString < needle) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
     }
     return { index: lo, found: false };
 }
 
 /**
- * Creates a transactional database view for batch-consistent reads.
- * Implements read-your-writes semantics within a batch.
+ * Read a value from the per-batch overlay.
  * @template TValue
- * @param {import('./database/typed_database').GenericDatabase<TValue, DatabaseKey>} db - The underlying database
- * @param {Array<DatabasePutOperation<TValue> | DatabaseDelOperation<TValue>>} operations - Array to append operations to
- * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
- * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations
- * @returns {BatchDatabaseOps<TValue>}
+ * @param {Map<string, TValue>} pendingPuts
+ * @param {Set<string>} pendingDels
+ * @param {NodeIdentifier} key
+ * @returns {TValue | undefined}
  */
-function makeTxDb(db, operations, pendingPuts, pendingDels) {
-    return {
-        /**
-         * Queue a put operation and record in overlay.
-         * @param {DatabaseKey} key
-         * @param {TValue} value
-         */
-        put: (key, value) => {
-            pendingPuts.set(key, value);
-            pendingDels.delete(key);
-            operations.push(db.putOp(key, value));
-        },
-
-        /**
-         * Queue a delete operation and record in overlay.
-         * @param {DatabaseKey} key
-         */
-        del: (key) => {
-            pendingDels.add(key);
-            pendingPuts.delete(key);
-            operations.push(db.delOp(key));
-        },
-
-        /**
-         * Get value with batch consistency.
-         * Checks overlay before falling back to underlying database.
-         * @param {DatabaseKey} key
-         * @returns {Promise<TValue | undefined>}
-         */
-        get: async (key) => {
-            // Check if deleted in this batch
-            if (pendingDels.has(key)) {
-                return undefined;
-            }
-            // Check if written in this batch
-            if (pendingPuts.has(key)) {
-                return pendingPuts.get(key);
-            }
-            // Fall back to underlying database
-            return await db.get(key);
-        },
-    };
+function readPendingValue(pendingPuts, pendingDels, key) {
+    const overlayKey = pendingKey(key);
+    if (pendingDels.has(overlayKey)) {
+        return undefined;
+    }
+    return pendingPuts.get(overlayKey);
 }
 
 /**
- * Creates a batch builder for atomic operations.
- * @param {SchemaStorage} schemaStorage - The schema storage instance
+ * Create the identifier-native batch builder used by the low-level storage API.
+ * @param {SchemaStorage} schemaStorage
  * @returns {BatchFunction}
  */
 function makeBatchBuilder(schemaStorage) {
     /** @type {BatchFunction} */
-    const ret = async (fn) => {
-        // Create separate operations arrays for each sublevel
-        /** @type {Array<DatabasePutOperation<ComputedValue> | DatabaseDelOperation<ComputedValue>>} */
-        const valuesOps = [];
-        /** @type {Array<DatabasePutOperation<Freshness> | DatabaseDelOperation<Freshness>>} */
-        const freshnessOps = [];
-        /** @type {Array<DatabasePutOperation<InputsRecord> | DatabaseDelOperation<InputsRecord>>} */
-        const inputsOps = [];
-        /** @type {Array<DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<NodeKeyString[]>>} */
-        const revdepsOps = [];
-        /** @type {Array<DatabasePutOperation<Counter> | DatabaseDelOperation<Counter>>} */
-        const countersOps = [];
-        /** @type {Array<DatabasePutOperation<TimestampRecord> | DatabaseDelOperation<TimestampRecord>>} */
-        const timestampsOps = [];
+    const withBatch = async (fn) => {
+        /** @type {Array<*>} */
+        const operations = [];
 
-        // Create overlay state for each sublevel
-        /** @type {Map<DatabaseKey, ComputedValue>} */
+        /** @type {Map<string, ComputedValue>} */
         const valuesPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const valuesDels = new Set();
-
-        /** @type {Map<DatabaseKey, Freshness>} */
+        /** @type {Map<string, Freshness>} */
         const freshnessPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const freshnessDels = new Set();
-
-        /** @type {Map<DatabaseKey, InputsRecord>} */
+        /** @type {Map<string, InputsRecord>} */
         const inputsPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const inputsDels = new Set();
-
-        /** @type {Map<DatabaseKey, NodeKeyString[]>} */
+        /** @type {Map<string, NodeIdentifier[]>} */
         const revdepsPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const revdepsDels = new Set();
-
-        /** @type {Map<DatabaseKey, Counter>} */
+        /** @type {Map<string, Counter>} */
         const countersPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const countersDels = new Set();
-
-        /** @type {Map<DatabaseKey, TimestampRecord>} */
+        /** @type {Map<string, TimestampRecord>} */
         const timestampsPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const timestampsDels = new Set();
 
         /** @type {BatchBuilder} */
-        const builder = {
-            values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
-            freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
-            inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
-            revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
-            counters: makeTxDb(schemaStorage.counters, countersOps, countersPuts, countersDels),
-            timestamps: makeTxDb(schemaStorage.timestamps, timestampsOps, timestampsPuts, timestampsDels),
+        const batch = {
+            values: {
+                put(key, value) {
+                    const overlayKey = pendingKey(key);
+                    valuesPuts.set(overlayKey, value);
+                    valuesDels.delete(overlayKey);
+                    operations.push(schemaStorage.values.putOp(toDatabaseKey(key), value));
+                },
+                del(key) {
+                    const overlayKey = pendingKey(key);
+                    valuesDels.add(overlayKey);
+                    valuesPuts.delete(overlayKey);
+                    operations.push(schemaStorage.values.delOp(toDatabaseKey(key)));
+                },
+                async get(key) {
+                    const pending = readPendingValue(valuesPuts, valuesDels, key);
+                    if (pending !== undefined || valuesDels.has(pendingKey(key))) {
+                        return pending;
+                    }
+                    return await schemaStorage.values.get(toDatabaseKey(key));
+                },
+            },
+            freshness: {
+                put(key, value) {
+                    const overlayKey = pendingKey(key);
+                    freshnessPuts.set(overlayKey, value);
+                    freshnessDels.delete(overlayKey);
+                    operations.push(schemaStorage.freshness.putOp(toDatabaseKey(key), value));
+                },
+                del(key) {
+                    const overlayKey = pendingKey(key);
+                    freshnessDels.add(overlayKey);
+                    freshnessPuts.delete(overlayKey);
+                    operations.push(schemaStorage.freshness.delOp(toDatabaseKey(key)));
+                },
+                async get(key) {
+                    const pending = readPendingValue(freshnessPuts, freshnessDels, key);
+                    if (pending !== undefined || freshnessDels.has(pendingKey(key))) {
+                        return pending;
+                    }
+                    return await schemaStorage.freshness.get(toDatabaseKey(key));
+                },
+            },
+            inputs: {
+                put(key, value) {
+                    const overlayKey = pendingKey(key);
+                    inputsPuts.set(overlayKey, value);
+                    inputsDels.delete(overlayKey);
+                    operations.push(schemaStorage.inputs.putOp(toDatabaseKey(key), {
+                        inputs: value.inputs,
+                        inputCounters: value.inputCounters,
+                    }));
+                },
+                del(key) {
+                    const overlayKey = pendingKey(key);
+                    inputsDels.add(overlayKey);
+                    inputsPuts.delete(overlayKey);
+                    operations.push(schemaStorage.inputs.delOp(toDatabaseKey(key)));
+                },
+                async get(key) {
+                    const pending = readPendingValue(inputsPuts, inputsDels, key);
+                    if (pending !== undefined || inputsDels.has(pendingKey(key))) {
+                        return pending;
+                    }
+                    return await schemaStorage.inputs.get(toDatabaseKey(key));
+                },
+            },
+            revdeps: {
+                put(key, value) {
+                    const overlayKey = pendingKey(key);
+                    revdepsPuts.set(overlayKey, value);
+                    revdepsDels.delete(overlayKey);
+                    operations.push(
+                        schemaStorage.revdeps.putOp(
+                            toDatabaseKey(key),
+                            value.map(toDatabaseKey)
+                        )
+                    );
+                },
+                del(key) {
+                    const overlayKey = pendingKey(key);
+                    revdepsDels.add(overlayKey);
+                    revdepsPuts.delete(overlayKey);
+                    operations.push(schemaStorage.revdeps.delOp(toDatabaseKey(key)));
+                },
+                async get(key) {
+                    const pending = readPendingValue(revdepsPuts, revdepsDels, key);
+                    if (pending !== undefined || revdepsDels.has(pendingKey(key))) {
+                        return pending;
+                    }
+                    const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
+                    if (stored === undefined) {
+                        return undefined;
+                    }
+                    return stored.map(databaseKeyToNodeIdentifier);
+                },
+            },
+            counters: {
+                put(key, value) {
+                    const overlayKey = pendingKey(key);
+                    countersPuts.set(overlayKey, value);
+                    countersDels.delete(overlayKey);
+                    operations.push(schemaStorage.counters.putOp(toDatabaseKey(key), value));
+                },
+                del(key) {
+                    const overlayKey = pendingKey(key);
+                    countersDels.add(overlayKey);
+                    countersPuts.delete(overlayKey);
+                    operations.push(schemaStorage.counters.delOp(toDatabaseKey(key)));
+                },
+                async get(key) {
+                    const pending = readPendingValue(countersPuts, countersDels, key);
+                    if (pending !== undefined || countersDels.has(pendingKey(key))) {
+                        return pending;
+                    }
+                    return await schemaStorage.counters.get(toDatabaseKey(key));
+                },
+            },
+            timestamps: {
+                put(key, value) {
+                    const overlayKey = pendingKey(key);
+                    timestampsPuts.set(overlayKey, value);
+                    timestampsDels.delete(overlayKey);
+                    operations.push(schemaStorage.timestamps.putOp(toDatabaseKey(key), value));
+                },
+                del(key) {
+                    const overlayKey = pendingKey(key);
+                    timestampsDels.add(overlayKey);
+                    timestampsPuts.delete(overlayKey);
+                    operations.push(schemaStorage.timestamps.delOp(toDatabaseKey(key)));
+                },
+                async get(key) {
+                    const pending = readPendingValue(timestampsPuts, timestampsDels, key);
+                    if (pending !== undefined || timestampsDels.has(pendingKey(key))) {
+                        return pending;
+                    }
+                    return await schemaStorage.timestamps.get(toDatabaseKey(key));
+                },
+            },
+            appendOperation(operation) {
+                operations.push(operation);
+            },
         };
 
-        const value = await fn(builder);
-        
-        // Combine all operations into a single array for the batch
-        /** @type {DatabaseBatchOperation[]} */
-        const allOperations = [
-            ...valuesOps,
-            ...freshnessOps,
-            ...inputsOps,
-            ...revdepsOps,
-            ...countersOps,
-            ...timestampsOps,
-        ];
-        
-        await schemaStorage.batch(allOperations);
+        const value = await fn(batch);
+        await schemaStorage.batch(operations);
         return value;
     };
 
-    return ret;
+    return withBatch;
 }
 
 /**
- * Creates a GraphStorage instance using typed databases.
- *
- * @param {RootDatabase} rootDatabase - The root database instance
+ * Create the identifier-native graph storage facade for one schema namespace.
+ * @param {RootDatabase} rootDatabase
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase) {
     const schemaStorage = rootDatabase.getSchemaStorage();
+    const withBatch = makeBatchBuilder(schemaStorage);
 
     /**
-     * Ensure a node is marked as materialized in the inputs database.
-     * This is always called and always writes the full record including inputCounters.
-     * inputCounters must be updated whenever the node is validated (computed or skipped).
-     * @param {NodeKeyString} node - Canonical node key
-     * @param {NodeKeyString[]} inputs - Array of canonical input keys (may be empty)
-     * @param {number[]} inputCounters - Array of counter values for each input (must match inputs.length)
-     * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @param {IdentifierDatabase<*>} database
+     * @returns {IdentifierDatabase<*>}
+     */
+    function makeIdentifierDatabase(database) {
+        return {
+            async get(key) {
+                return await database.get(key);
+            },
+            async put(key, value) {
+                await database.put(key, value);
+            },
+            async del(key) {
+                await database.del(key);
+            },
+            async *keys() {
+                for await (const key of database.keys()) {
+                    yield key;
+                }
+            },
+        };
+    }
+
+    /**
+     * @param {NodeIdentifier} node
+     * @param {NodeIdentifier[]} inputs
+     * @param {number[]} inputCounters
+     * @param {BatchBuilder} batch
      * @returns {Promise<void>}
      */
     async function ensureMaterialized(node, inputs, inputCounters, batch) {
-        // Validate that inputCounters length matches inputs length
         if (inputs.length !== inputCounters.length) {
             throw new Error(
-                `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${node}`
+                `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${nodeIdentifierToString(node)}`
             );
         }
-
-        // Convert NodeKeyString[] to string[] for storage
-        const inputsAsStrings = inputs.map(nodeKeyStringToString);
-        
-        // Always write the full record (no early return)
-        batch.inputs.put(node, { 
-            inputs: inputsAsStrings,
-            inputCounters: inputCounters
+        batch.inputs.put(node, {
+            inputs: inputs.map(nodeIdentifierToString),
+            inputCounters,
         });
     }
 
     /**
-     * Ensure a node's reverse dependencies are indexed.
-     * This is only called when the node has inputs.
-     * Writes reverse dependency arrays.
-     * @param {NodeKeyString} node - Canonical node key
-     * @param {NodeKeyString[]} inputs - Array of canonical input keys (must be non-empty)
-     * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @param {NodeIdentifier} node
+     * @param {NodeIdentifier[]} inputs
+     * @param {BatchBuilder} batch
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
-        // For each input, add this node to its dependents array (maintaining sorted order)
         for (const input of inputs) {
-            // Get existing dependents for this input (use batch-consistent read)
             const existingDependents = await batch.revdeps.get(input);
-
-            if (existingDependents !== undefined) {
-                // Use binary search to find position or detect duplicate
-                const { index, found } = findInsertionIndex(existingDependents, node, compareNodeKeyStringByNodeKey);
-                if (found) {
-                    continue; // Already indexed, skip
-                }
-                // Insert at sorted position
-                const newDependents = [
-                    ...existingDependents.slice(0, index),
-                    node,
-                    ...existingDependents.slice(index),
-                ];
-                batch.revdeps.put(input, newDependents);
-            } else {
-                // Create a new dependents array with just this node
+            if (existingDependents === undefined) {
                 batch.revdeps.put(input, [node]);
+                continue;
             }
+            const { index, found } = findInsertionIndex(existingDependents, node);
+            if (found) {
+                continue;
+            }
+            batch.revdeps.put(input, [
+                ...existingDependents.slice(0, index),
+                node,
+                ...existingDependents.slice(index),
+            ]);
         }
     }
 
     /**
-     * List all dependents of an input.
-     * Returns the array of dependents stored for this input.
-     * @param {NodeKeyString} input - Canonical input key
-     * @param {BatchBuilder} batch - Batch builder for consistent reads
-     * @returns {Promise<NodeKeyString[]>}
+     * @param {NodeIdentifier} input
+     * @param {BatchBuilder} batch
+     * @returns {Promise<NodeIdentifier[]>}
      */
     async function listDependents(input, batch) {
-        const dependents = await batch.revdeps.get(input);
-        if (dependents === undefined) {
-            return [];
-        }
-        return dependents;
+        return (await batch.revdeps.get(input)) ?? [];
     }
 
     /**
-     * Get inputs for a node.
-     * @param {NodeKeyString} node - Canonical node key
-     * @param {BatchBuilder} batch - Batch builder for consistent reads
-     * @returns {Promise<NodeKeyString[] | null>}
+     * @param {NodeIdentifier} node
+     * @param {BatchBuilder} batch
+     * @returns {Promise<NodeIdentifier[] | null>}
      */
     async function getInputs(node, batch) {
         const record = await batch.inputs.get(node);
-        if (!record) return null;
-        // Convert string[] from DB to NodeKeyString[]
-        return record.inputs.map(stringToNodeKeyString);
+        if (record === undefined) {
+            return null;
+        }
+        return record.inputs.map((input) => nodeIdentifierFromString(input));
     }
 
     /**
-     * List all materialized nodes.
-     * @returns {Promise<NodeKeyString[]>}
+     * @returns {Promise<NodeIdentifier[]>}
      */
     async function listMaterializedNodes() {
-        const keys = [];
+        const nodes = [];
         for await (const key of schemaStorage.inputs.keys()) {
-            if (typeof key !== "string") {
-                throw new Error("Invalid key type in inputs database");
-            }
-            keys.push(stringToNodeKeyString(key));
+            nodes.push(databaseKeyToNodeIdentifier(key));
         }
-        return keys;
+        return nodes;
     }
 
     return {
-        // Expose all databases as fields
-        values: schemaStorage.values,
-        freshness: schemaStorage.freshness,
-        inputs: schemaStorage.inputs,
-        revdeps: schemaStorage.revdeps,
-        counters: schemaStorage.counters,
-        timestamps: schemaStorage.timestamps,
-
-        // Batch builder for atomic operations
-        withBatch: makeBatchBuilder(schemaStorage),
-
-        // Helper methods
+        values: makeIdentifierDatabase({
+            async get(key) { return await schemaStorage.values.get(toDatabaseKey(key)); },
+            async put(key, value) { await schemaStorage.values.put(toDatabaseKey(key), value); },
+            async del(key) { await schemaStorage.values.del(toDatabaseKey(key)); },
+            async *keys() { for await (const key of schemaStorage.values.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+        }),
+        freshness: makeIdentifierDatabase({
+            async get(key) { return await schemaStorage.freshness.get(toDatabaseKey(key)); },
+            async put(key, value) { await schemaStorage.freshness.put(toDatabaseKey(key), value); },
+            async del(key) { await schemaStorage.freshness.del(toDatabaseKey(key)); },
+            async *keys() { for await (const key of schemaStorage.freshness.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+        }),
+        inputs: makeIdentifierDatabase({
+            async get(key) { return await schemaStorage.inputs.get(toDatabaseKey(key)); },
+            async put(key, value) { await schemaStorage.inputs.put(toDatabaseKey(key), value); },
+            async del(key) { await schemaStorage.inputs.del(toDatabaseKey(key)); },
+            async *keys() { for await (const key of schemaStorage.inputs.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+        }),
+        revdeps: makeIdentifierDatabase({
+            async get(key) {
+                const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
+                return stored === undefined ? undefined : stored.map(databaseKeyToNodeIdentifier);
+            },
+            async put(key, value) {
+                await schemaStorage.revdeps.put(toDatabaseKey(key), value.map(toDatabaseKey));
+            },
+            async del(key) { await schemaStorage.revdeps.del(toDatabaseKey(key)); },
+            async *keys() { for await (const key of schemaStorage.revdeps.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+        }),
+        counters: makeIdentifierDatabase({
+            async get(key) { return await schemaStorage.counters.get(toDatabaseKey(key)); },
+            async put(key, value) { await schemaStorage.counters.put(toDatabaseKey(key), value); },
+            async del(key) { await schemaStorage.counters.del(toDatabaseKey(key)); },
+            async *keys() { for await (const key of schemaStorage.counters.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+        }),
+        timestamps: makeIdentifierDatabase({
+            async get(key) { return await schemaStorage.timestamps.get(toDatabaseKey(key)); },
+            async put(key, value) { await schemaStorage.timestamps.put(toDatabaseKey(key), value); },
+            async del(key) { await schemaStorage.timestamps.del(toDatabaseKey(key)); },
+            async *keys() { for await (const key of schemaStorage.timestamps.keys()) { yield databaseKeyToNodeIdentifier(key); } },
+        }),
+        withBatch,
         ensureMaterialized,
         ensureReverseDepsIndexed,
         listDependents,

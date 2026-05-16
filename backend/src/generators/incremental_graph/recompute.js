@@ -3,69 +3,82 @@
  */
 
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
-/** @typedef {import('./types').ConcreteNode} ConcreteNode */
+/** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 /**
  * @typedef {object} IncrementalGraphRecomputeAccess
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatusDuringPull
+ * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { deserializeNodeKey } = require("./database");
 const { isUnchanged } = require("./unchanged");
-const { nodeKeyStringToString } = require("./database");
+const { nodeIdentifierToString } = require("./database");
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
- * @param {ConcreteNode} nodeDefinition
+ * @param {ResolvedConcreteNode} nodeDefinition
  * @param {BatchBuilder} batch
+ * @param {IdentifierResolver} identifierResolver
  * @returns {Promise<RecomputeResult>}
  */
 async function internalMaybeRecalculate(
     incrementalGraph,
     nodeDefinition,
-    batch
+    batch,
+    identifierResolver
 ) {
-    const nodeKey = nodeDefinition.output;
-    const oldValue = await batch.values.get(nodeKey);
+    const nodeIdentifier = nodeDefinition.outputIdentifier;
+    const oldValue = await batch.values.get(nodeIdentifier);
 
     /** @type {Array<import('./database/types').ComputedValue>} */
     const inputValues = [];
     const currentInputCounters = [];
 
-    for (const inputKey of nodeDefinition.inputs) {
+    for (let index = 0; index < nodeDefinition.inputKeys.length; index++) {
+        const inputKey = nodeDefinition.inputKeys[index];
+        const inputIdentifier = nodeDefinition.inputIdentifiers[index];
+        if (inputKey === undefined || inputIdentifier === undefined) {
+            throw new Error(`Missing input identifier for node ${nodeDefinition.outputKey}`);
+        }
         const { value: inputValue } =
-            await incrementalGraph.pullByNodeKeyStringWithStatusDuringPull(
-                inputKey
+            await incrementalGraph._pullDuringPull(
+                inputKey,
+                identifierResolver
             );
         inputValues.push(inputValue);
 
-        const inputCounter = await batch.counters.get(inputKey);
+        const inputCounter = await batch.counters.get(inputIdentifier);
         if (inputCounter === undefined) {
-            throw new Error(`Missing counter for input ${inputKey} after pull`);
+            throw new Error(
+                `Missing counter for input ${nodeIdentifierToString(inputIdentifier)} after pull`
+            );
         }
         currentInputCounters.push(inputCounter);
     }
 
-    if (nodeDefinition.inputs.length > 0 && oldValue !== undefined) {
-        const inputsRecord = await batch.inputs.get(nodeKey);
+    if (nodeDefinition.inputIdentifiers.length > 0 && oldValue !== undefined) {
+        const inputsRecord = await batch.inputs.get(nodeIdentifier);
         if (inputsRecord) {
             if (!inputsRecord.inputCounters) {
                 throw new Error(
-                    `Missing inputCounters in InputsRecord for node ${nodeKey}`
+                    `Missing inputCounters in InputsRecord for node ${nodeDefinition.outputKey}`
                 );
             }
-            if (inputsRecord.inputCounters.length !== nodeDefinition.inputs.length) {
+            if (inputsRecord.inputCounters.length !== nodeDefinition.inputIdentifiers.length) {
                 throw new Error(
-                    `inputCounters length mismatch for node ${nodeKey}: ` +
-                    `expected ${nodeDefinition.inputs.length}, got ${inputsRecord.inputCounters.length}`
+                    `inputCounters length mismatch for node ${nodeDefinition.outputKey}: ` +
+                    `expected ${nodeDefinition.inputIdentifiers.length}, got ${inputsRecord.inputCounters.length}`
                 );
             }
 
             const storedInputs = inputsRecord.inputs;
-            const currentInputs = nodeDefinition.inputs.map(nodeKeyStringToString);
+            const currentInputs = nodeDefinition.inputIdentifiers.map(
+                nodeIdentifierToString
+            );
             let inputsMatch = storedInputs.length === currentInputs.length;
             if (inputsMatch) {
                 for (let index = 0; index < storedInputs.length; index++) {
@@ -94,17 +107,17 @@ async function internalMaybeRecalculate(
 
                 if (countersMatch) {
                     await incrementalGraph.storage.ensureReverseDepsIndexed(
-                        nodeKey,
-                        nodeDefinition.inputs,
+                        nodeIdentifier,
+                        nodeDefinition.inputIdentifiers,
                         batch
                     );
                     await incrementalGraph.storage.ensureMaterialized(
-                        nodeKey,
-                        nodeDefinition.inputs,
+                        nodeIdentifier,
+                        nodeDefinition.inputIdentifiers,
                         currentInputCounters,
                         batch
                     );
-                    batch.freshness.put(nodeKey, "up-to-date");
+                    batch.freshness.put(nodeIdentifier, "up-to-date");
                     return { value: oldValue, status: "cached" };
                 }
             }
@@ -114,75 +127,75 @@ async function internalMaybeRecalculate(
     const computedValue = await nodeDefinition.computor(inputValues, oldValue);
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
-            throw makeInvalidUnchangedError(nodeKey);
+            throw makeInvalidUnchangedError(nodeDefinition.outputKey);
         }
     } else if (computedValue === null || computedValue === undefined) {
         throw makeInvalidComputorReturnValueError(
-            deserializeNodeKey(nodeKey).head,
+            deserializeNodeKey(nodeDefinition.outputKey).head,
             computedValue
         );
     }
 
-    if (nodeDefinition.inputs.length > 0) {
+    if (nodeDefinition.inputIdentifiers.length > 0) {
         await incrementalGraph.storage.ensureReverseDepsIndexed(
-            nodeKey,
-            nodeDefinition.inputs,
+            nodeIdentifier,
+            nodeDefinition.inputIdentifiers,
             batch
         );
     }
 
-    for (const inputKey of nodeDefinition.inputs) {
-        batch.freshness.put(inputKey, "up-to-date");
+    for (const inputIdentifier of nodeDefinition.inputIdentifiers) {
+        batch.freshness.put(inputIdentifier, "up-to-date");
     }
 
     if (isUnchanged(computedValue)) {
-        const oldCounter = await batch.counters.get(nodeKey);
+        const oldCounter = await batch.counters.get(nodeIdentifier);
         if (oldCounter === undefined) {
-            batch.counters.put(nodeKey, 1);
+            batch.counters.put(nodeIdentifier, 1);
         }
 
         await incrementalGraph.storage.ensureMaterialized(
-            nodeKey,
-            nodeDefinition.inputs,
+            nodeIdentifier,
+            nodeDefinition.inputIdentifiers,
             currentInputCounters,
             batch
         );
-        batch.freshness.put(nodeKey, "up-to-date");
+        batch.freshness.put(nodeIdentifier, "up-to-date");
 
-        const result = await batch.values.get(nodeKey);
+        const result = await batch.values.get(nodeIdentifier);
         if (result === undefined) {
-            throw makeInvalidUnchangedError(nodeKey);
+            throw makeInvalidUnchangedError(nodeDefinition.outputKey);
         }
         return { value: result, status: "unchanged" };
     }
 
-    const oldCounter = await batch.counters.get(nodeKey);
+    const oldCounter = await batch.counters.get(nodeIdentifier);
     const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
-    batch.counters.put(nodeKey, newCounter);
+    batch.counters.put(nodeIdentifier, newCounter);
 
     const nowIso = incrementalGraph.datetime.now().toISOString();
     if (oldCounter === undefined) {
-        batch.timestamps.put(nodeKey, {
+        batch.timestamps.put(nodeIdentifier, {
             createdAt: nowIso,
             modifiedAt: nowIso,
         });
     } else {
-        const existingTimestamp = await batch.timestamps.get(nodeKey);
+        const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
         const createdAt =
             existingTimestamp !== undefined
                 ? existingTimestamp.createdAt
                 : nowIso;
-        batch.timestamps.put(nodeKey, { createdAt, modifiedAt: nowIso });
+        batch.timestamps.put(nodeIdentifier, { createdAt, modifiedAt: nowIso });
     }
 
-    batch.values.put(nodeKey, computedValue);
+    batch.values.put(nodeIdentifier, computedValue);
     await incrementalGraph.storage.ensureMaterialized(
-        nodeKey,
-        nodeDefinition.inputs,
+        nodeIdentifier,
+        nodeDefinition.inputIdentifiers,
         currentInputCounters,
         batch
     );
-    batch.freshness.put(nodeKey, "up-to-date");
+    batch.freshness.put(nodeIdentifier, "up-to-date");
     return { value: computedValue, status: "changed" };
 }
 

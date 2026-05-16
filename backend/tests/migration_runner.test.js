@@ -1,5 +1,9 @@
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
+    deterministicNodeIdentifierFromNodeKey,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
+const {
     isUndecidedNodes,
     isPartialDeleteFanIn,
     isDecisionConflict,
@@ -202,8 +206,11 @@ describe("runMigration", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(currentStorage.counters.get(nodeKey)).resolves.toBe(5);
-        await expect(currentStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
+        const migratedKey = nodeIdentifierToString(
+            deterministicNodeIdentifierFromNodeKey(nodeKey)
+        );
+        await expect(currentStorage.counters.get(migratedKey)).resolves.toBe(5);
+        await expect(currentStorage.freshness.get(migratedKey)).resolves.toBe("potentially-outdated");
     });
 
     describe("fresh database (getGlobalVersion returns undefined)", () => {
@@ -323,7 +330,9 @@ describe("runMigration", () => {
             });
 
             // y namespace is populated with the migrated node's inputs record.
-            const migratedInputs = await yStorage.inputs.get(nodeKey);
+            const migratedInputs = await yStorage.inputs.get(
+                nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(nodeKey))
+            );
             expect(migratedInputs).toBeDefined();
         });
 

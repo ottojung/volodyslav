@@ -58,6 +58,54 @@ function nodeKeyStringToString(nodeKeyString) {
  * @typedef {NodeKeyStringClass} NodeKeyString
  */
 
+class NodeIdentifierClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("NodeIdentifier cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {string} _value
+ * @returns {_value is NodeIdentifier}
+ */
+function castToNodeIdentifier(_value) {
+    return true;
+}
+
+/**
+ * @param {string} nodeIdentifierStr
+ * @returns {NodeIdentifier}
+ */
+function stringToNodeIdentifier(nodeIdentifierStr) {
+    if (castToNodeIdentifier(nodeIdentifierStr)) {
+        return nodeIdentifierStr;
+    }
+    throw new Error("Invalid node identifier string");
+}
+
+/**
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {string}
+ */
+function nodeIdentifierToString(nodeIdentifier) {
+    if (typeof nodeIdentifier === "string") {
+        return nodeIdentifier;
+    }
+    throw new Error("Invalid node identifier type");
+}
+
+/**
+ * Opaque persisted identifier for a materialized graph node.
+ * @typedef {NodeIdentifierClass} NodeIdentifier
+ */
+
 class NodeNameClass {
     /**
      * @private
@@ -121,6 +169,7 @@ function nodeNameToString(nodeName) {
  * @property {Logger} logger - A logger instance
  * @property {LevelDatabase} levelDatabase - A level database instance
  * @property {Command} git - A command instance for Git operations.
+ * @property {import('../../../random/seed').NonDeterministicSeed} [seed] - Random seed capability.
  */
 
 class VersionClass {
@@ -367,7 +416,11 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord} DatabaseStoredValue
+ * @typedef {Array<[NodeIdentifier, NodeKeyString]>} IdentifiersKeysMap
+ */
+
+/**
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -394,13 +447,13 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 /**
  * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of canonical input node names
+ * @property {string[]} inputs - Array of materialized input identifiers
  * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
@@ -498,6 +551,9 @@ module.exports = {
     versionToString,
     stringToVersion,
     VersionClass,
+    nodeIdentifierToString,
+    stringToNodeIdentifier,
+    NodeIdentifierClass,
     nodeNameToString,
     stringToNodeName,
     NodeNameClass,

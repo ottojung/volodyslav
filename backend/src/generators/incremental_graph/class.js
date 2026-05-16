@@ -6,6 +6,7 @@
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
+/** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
@@ -17,6 +18,7 @@
 /** @typedef {import('../../datetime').Datetime} Datetime */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
+/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 
 const {
     compileNodeDef,
@@ -26,6 +28,7 @@ const {
     validateSingleArityPerHead,
 } = require("./compiled_node");
 const { makeGraphStorage } = require("./graph_storage");
+const { makeIdentifierResolver } = require("./identifier_resolver");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -45,10 +48,9 @@ const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
-    internalPullByNodeKeyStringWithStatusDuringPull,
-    internalPullByNodeKeyStringWithStatus,
     internalSafePullWithStatus,
     internalUnsafePull,
+    internalPullByNodeKeyStringWithStatusDuringPull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
 
@@ -71,6 +73,9 @@ class IncrementalGraphClass {
     /** @type {Datetime} */
     datetime;
 
+    /** @type {RootDatabase} */
+    rootDatabase;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -84,6 +89,7 @@ class IncrementalGraphClass {
         validateInputArities(compiledNodes);
 
         this.storage = makeGraphStorage(rootDatabase);
+        this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.version;
         this.headIndex = new Map();
         for (const compiledNode of compiledNodes) {
@@ -96,9 +102,9 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {NodeKeyString} changedKey
+     * @param {import('./types').NodeIdentifier} changedKey
      * @param {BatchBuilder} batch
-     * @param {Set<NodeKeyString>} [nodesBecomingOutdated]
+     * @param {Set<string>} [nodesBecomingOutdated]
      * @returns {Promise<void>}
      */
     async propagateOutdated(changedKey, batch, nodesBecomingOutdated = new Set()) {
@@ -143,13 +149,59 @@ class IncrementalGraphClass {
         );
     }
 
+    /** @returns {IdentifierResolver} */
+    makeIdentifierResolver() {
+        return makeIdentifierResolver(this.rootDatabase);
+    }
+
     /**
-     * @param {ConcreteNode} nodeDefinition
+     * @param {IdentifierResolver} identifierResolver
+     * @param {(batch: BatchBuilder) => Promise<*>} procedure
+     * @returns {Promise<*>}
+     */
+    async withIdentifierBatch(identifierResolver, procedure) {
+        const schemaStorage = this.rootDatabase.getSchemaStorage();
+        const value = await this.storage.withBatch(async (batch) => {
+            const result = await procedure(batch);
+            identifierResolver.queueLookupPersistence(batch, schemaStorage.global);
+            return result;
+        });
+        identifierResolver.commitPersistedLookup(this.rootDatabase);
+        return value;
+    }
+
+    /**
+     * @param {ConcreteNode} concreteNode
+     * @param {IdentifierResolver} identifierResolver
+     * @returns {ResolvedConcreteNode}
+     */
+    resolveConcreteNode(concreteNode, identifierResolver) {
+        return {
+            outputKey: concreteNode.output,
+            inputKeys: concreteNode.inputs,
+            outputIdentifier: identifierResolver.getOrAllocateNodeIdentifier(
+                concreteNode.output
+            ),
+            inputIdentifiers: concreteNode.inputs.map((inputKey) =>
+                identifierResolver.getOrAllocateNodeIdentifier(inputKey)
+            ),
+            computor: concreteNode.computor,
+        };
+    }
+
+    /**
+     * @param {ResolvedConcreteNode} nodeDefinition
      * @param {BatchBuilder} batch
+     * @param {IdentifierResolver} identifierResolver
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, batch) {
-        return await internalMaybeRecalculate(this, nodeDefinition, batch);
+    async maybeRecalculate(nodeDefinition, batch, identifierResolver) {
+        return await internalMaybeRecalculate(
+            this,
+            nodeDefinition,
+            batch,
+            identifierResolver
+        );
     }
 
     /**
@@ -181,20 +233,14 @@ class IncrementalGraphClass {
 
     /**
      * @param {NodeKeyString} nodeKeyStr
+     * @param {IdentifierResolver} identifierResolver
      * @returns {Promise<RecomputeResult>}
      */
-    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
-        return await internalPullByNodeKeyStringWithStatus(this, nodeKeyStr);
-    }
-
-    /**
-     * @param {NodeKeyString} nodeKeyStr
-     * @returns {Promise<RecomputeResult>}
-     */
-    async pullByNodeKeyStringWithStatusDuringPull(nodeKeyStr) {
+    async _pullDuringPull(nodeKeyStr, identifierResolver) {
         return await internalPullByNodeKeyStringWithStatusDuringPull(
             this,
-            nodeKeyStr
+            nodeKeyStr,
+            identifierResolver
         );
     }
 

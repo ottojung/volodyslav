@@ -1,3 +1,4 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * RootDatabase module.
  * Provides replica-pointer-aware storage using LevelDB sublevels.
@@ -5,9 +6,20 @@
  */
 
 const { getVersion } = require('../../../version');
+const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
 const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const {
+    IDENTIFIERS_KEY,
+    cloneIdentifierLookup,
+    makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+    serializeIdentifierLookup,
+} = require('./identifier_lookup');
+const { makeNodeIdentifier } = require('./node_identifier');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -36,7 +48,9 @@ const {
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
+/** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 /**
  * Common base type for any abstract-level database instance at any nesting depth.
@@ -71,14 +85,14 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: canonical node name (e.g., "user('alice')")
+ * Key: persisted node identifier (e.g., "nodecachex")
  * Value: the computed value (object with type field)
  * @typedef {GenericDatabase<ComputedValue, NodeKeyString>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: canonical node name (e.g., "user('alice')")
+ * Key: persisted node identifier (e.g., "nodecachex")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
  * @typedef {GenericDatabase<Freshness, NodeKeyString>} FreshnessDatabase
  */
@@ -86,42 +100,42 @@ function assertNeverReplicaName(name) {
 /**
  * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of canonical input node names
+ * @property {string[]} inputs - Array of persisted input identifiers, kept in the original input order.
  * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
 /**
  * Database for storing node input dependencies.
- * Key: canonical node name
- * Value: inputs record with array of dependency names
+ * Key: persisted node identifier
+ * Value: inputs record with identifier-addressed dependencies
  * @typedef {GenericDatabase<InputsRecord, NodeKeyString>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
- * Key: canonical input node name
- * Value: array of canonical dependent node names
+ * Key: persisted input identifier
+ * Value: array of dependent identifiers sorted lexicographically by identifier
  * @typedef {GenericDatabase<NodeKeyString[], NodeKeyString>} RevdepsDatabase
  */
 
 /**
  * Database for storing node counters.
- * Key: canonical node name
+ * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)
  * @typedef {GenericDatabase<Counter, NodeKeyString>} CountersDatabase
  */
 
 /**
  * Database for storing node timestamps (creation and modification times).
- * Key: canonical node name
+ * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
  * @typedef {GenericDatabase<TimestampRecord, NodeKeyString>} TimestampsDatabase
  */
 
 /**
  * Database for storing replica-level global state (e.g., version).
- * Key: plain string (e.g., 'version')
- * Value: version string
+ * Key: plain string (e.g., 'version' or 'identifiers_keys_map')
+ * Value: version string or identifier lookup metadata
  * @typedef {GenericDatabase<Version, string>} GlobalVersionDatabase
  */
 
@@ -135,9 +149,24 @@ function assertNeverReplicaName(name) {
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
- * @property {GlobalVersionDatabase} global - Replica-level global state (version)
+ * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
+
+/**
+ * @param {GlobalSublevelType} globalSublevel
+ * @returns {Promise<IdentifierLookup>}
+ */
+async function loadIdentifierLookupFromGlobal(globalSublevel) {
+    const rawEntries = await globalSublevel.get(IDENTIFIERS_KEY);
+    if (rawEntries === undefined) {
+        return makeEmptyIdentifierLookup();
+    }
+    if (!Array.isArray(rawEntries)) {
+        return makeEmptyIdentifierLookup();
+    }
+    return makeIdentifierLookup(rawEntries);
+}
 
 /**
  * @template T
@@ -276,15 +305,35 @@ class RootDatabaseClass {
     _ySchemaStorage;
 
     /**
+     * @private
+     * @type {import('../../../random/seed').NonDeterministicSeed}
+     */
+    _seed;
+
+    /**
+     * @private
+     * @type {IdentifierLookup}
+     */
+    _xIdentifierLookup;
+
+    /**
+     * @private
+     * @type {IdentifierLookup}
+     */
+    _yIdentifierLookup;
+
+    /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
      * @param {Version} version - The current application version
      * @param {ReplicaName} currentReplicaName - The initially active replica ("x" or "y")
+     * @param {import('../../../random/seed').NonDeterministicSeed | undefined} seed
      */
-    constructor(db, version, currentReplicaName) {
+    constructor(db, version, currentReplicaName, seed) {
         this.db = db;
         this.version = version;
         this._cachedValueOfCurrentReplica = currentReplicaName;
+        this._seed = seed ?? random.seed.make();
 
         // Root-level _meta sublevel for the replica pointer.
         this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
@@ -296,6 +345,8 @@ class RootDatabaseClass {
         this._yGlobalSublevel = this._yNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
         this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, version);
         this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, version);
+        this._xIdentifierLookup = makeEmptyIdentifierLookup();
+        this._yIdentifierLookup = makeEmptyIdentifierLookup();
     }
 
     /**
@@ -305,6 +356,111 @@ class RootDatabaseClass {
      */
     currentReplicaName() {
         return this._cachedValueOfCurrentReplica;
+    }
+
+    /**
+     * @private
+     * @param {ReplicaName} name
+     * @returns {IdentifierLookup}
+     */
+    _identifierLookupForReplica(name) {
+        if (name === 'x') {
+            return this._xIdentifierLookup;
+        }
+        if (name === 'y') {
+            return this._yIdentifierLookup;
+        }
+        return assertNeverReplicaName(name);
+    }
+
+    /**
+     * @private
+     * @param {ReplicaName} name
+     * @param {IdentifierLookup} lookup
+     * @returns {void}
+     */
+    _setIdentifierLookupForReplica(name, lookup) {
+        if (name === 'x') {
+            this._xIdentifierLookup = lookup;
+            return;
+        }
+        if (name === 'y') {
+            this._yIdentifierLookup = lookup;
+            return;
+        }
+        assertNeverReplicaName(name);
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {IdentifierLookup}
+     */
+    cloneIdentifierLookupForReplica(name) {
+        return cloneIdentifierLookup(this._identifierLookupForReplica(name));
+    }
+
+    /**
+     * @returns {IdentifierLookup}
+     */
+    cloneActiveIdentifierLookup() {
+        return this.cloneIdentifierLookupForReplica(this.currentReplicaName());
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @param {IdentifierLookup} lookup
+     * @returns {Promise<void>}
+     */
+    async replaceIdentifierLookupForReplica(name, lookup) {
+        const globalDatabase =
+            name === 'x' ? this._xSchemaStorage.global : this._ySchemaStorage.global;
+        await globalDatabase.rawPut(IDENTIFIERS_KEY, serializeIdentifierLookup(lookup));
+        this._setIdentifierLookupForReplica(name, lookup);
+    }
+
+    /**
+     * @param {IdentifierLookup} lookup
+     * @returns {void}
+     */
+    replaceActiveIdentifierLookup(lookup) {
+        this._setIdentifierLookupForReplica(this.currentReplicaName(), lookup);
+    }
+
+    /**
+     * @param {NodeKeyString} nodeKey
+     * @returns {NodeIdentifier | undefined}
+     */
+    nodeKeyToId(nodeKey) {
+        return nodeKeyToIdFromLookup(
+            this._identifierLookupForReplica(this.currentReplicaName()),
+            nodeKey
+        );
+    }
+
+    /**
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {NodeKeyString | undefined}
+     */
+    nodeIdToKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(
+            this._identifierLookupForReplica(this.currentReplicaName()),
+            nodeIdentifier
+        );
+    }
+
+    /**
+     * @returns {NodeIdentifier}
+     */
+    generateNodeIdentifier() {
+        return makeNodeIdentifier({ seed: this._seed ?? random.seed.make() });
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    async initializeIdentifierLookups() {
+        this._xIdentifierLookup = await loadIdentifierLookupFromGlobal(this._xGlobalSublevel);
+        this._yIdentifierLookup = await loadIdentifierLookupFromGlobal(this._yGlobalSublevel);
     }
 
     /**
@@ -430,10 +586,12 @@ class RootDatabaseClass {
             await this._xNamespaceSublevel.clear();
             // Rebuild to reset the version-initialisation cache in the new closure.
             this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, this.version);
+            this._xIdentifierLookup = await loadIdentifierLookupFromGlobal(this._xGlobalSublevel);
         } else if (name === 'y') {
             await this._yNamespaceSublevel.clear();
             // Rebuild to reset the version-initialisation cache in the new closure.
             this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, this.version);
+            this._yIdentifierLookup = await loadIdentifierLookupFromGlobal(this._yGlobalSublevel);
         } else {
             return assertNeverReplicaName(name);
         }
@@ -706,6 +864,7 @@ class RootDatabaseClass {
  * @property {Logger} logger - A logger instance.
  * @property {FileReader} reader - A file reader instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {import('../../../random/seed').NonDeterministicSeed} [seed] - Random seed capability for identifier allocation.
  */
 
 /**
@@ -749,14 +908,18 @@ async function makeRootDatabase(capabilities, databasePath) {
     const storedReplica = await rootMetaSublevel.get('current_replica');
     if (storedReplica === undefined) {
         await rootMetaSublevel.put('current_replica', 'x');
-        return new RootDatabaseClass(db, version, 'x');
+        const rootDatabase = new RootDatabaseClass(db, version, 'x', capabilities.seed);
+        await rootDatabase.initializeIdentifierLookups();
+        return rootDatabase;
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
         await db.close();
         throw new InvalidReplicaPointerError(storedReplica);
     }
 
-    return new RootDatabaseClass(db, version, storedReplica);
+    const rootDatabase = new RootDatabaseClass(db, version, storedReplica, capabilities.seed);
+    await rootDatabase.initializeIdentifierLookups();
+    return rootDatabase;
 }
 
 /**
