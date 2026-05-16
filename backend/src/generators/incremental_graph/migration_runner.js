@@ -22,7 +22,6 @@ const {
     serializeNodeKey,
     serializeIdentifierLookup,
     stringToNodeName,
-    stringToNodeKeyString,
 } = require("./database");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -31,7 +30,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */
@@ -86,10 +85,10 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /**
  * Collect all materialized node keys from a schema storage.
  * @param {SchemaStorage} storage
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {Promise<NodeIdentifier[]>}
  */
 async function loadMaterializedNodes(storage) {
-    /** @type {NodeKeyString[]} */
+    /** @type {NodeIdentifier[]} */
     const nodes = [];
     for await (const key of storage.inputs.keys()) {
         nodes.push(key);
@@ -98,25 +97,25 @@ async function loadMaterializedNodes(storage) {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
- * @returns {NodeKeyString}
+ * @param {NodeIdentifier} nodeKey
+ * @returns {NodeIdentifier}
  */
 function canonicalizeMigrationNodeKey(nodeKey) {
     const nodeKeyString = String(nodeKey);
     if (nodeKeyString.startsWith("{")) {
-        return stringToNodeKeyString(nodeKeyString);
+        return stringToNodeIdentifier(nodeKeyString);
     }
     return serializeNodeKey({ head: stringToNodeName(nodeKeyString), args: [] });
 }
 
 /**
  * @param {SchemaStorage} prevStorage
- * @param {NodeKeyString[]} materializedNodes
+ * @param {NodeIdentifier[]} materializedNodes
  * @returns {Promise<{
- *   keyToSourceKey: (nodeKey: NodeKeyString) => NodeKeyString,
- *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
- *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
- *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>,
+ *   keyToSourceKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
+ *   keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
+ *   outputKeyToDecisionKey: (outputKey: NodeIdentifier) => NodeIdentifier,
+ *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeIdentifier]>,
  * }>}
  */
 async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
@@ -144,9 +143,9 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         };
     }
 
-    /** @type {Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>} */
+    /** @type {Array<[import('./database/node_identifier').NodeIdentifier, NodeIdentifier]>} */
     const outputEntries = [];
-    /** @type {Map<string, NodeKeyString>} */
+    /** @type {Map<string, NodeIdentifier>} */
     const decisionKeyByOutputKey = new Map();
     for (const nodeKey of materializedNodes) {
         const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
@@ -177,17 +176,17 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
  * node keys even when the persisted replica is already identifier-native.
  * @param {SchemaStorage} prevStorage
  * @param {{
- *   keyToSourceKey: (nodeKey: NodeKeyString) => NodeKeyString,
- *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
- *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
+ *   keyToSourceKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
+ *   keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
+ *   outputKeyToDecisionKey: (outputKey: NodeIdentifier) => NodeIdentifier,
  * }} keyPlan
  * @returns {ReadableMigrationStorage}
  */
 function makeMigrationDecisionStorage(prevStorage, keyPlan) {
     /**
      * @template TValue
-     * @param {{ get(key: NodeKeyString): Promise<TValue | undefined> }} database
-     * @returns {{ get(key: NodeKeyString): Promise<TValue | undefined> }}
+     * @param {{ get(key: NodeIdentifier): Promise<TValue | undefined> }} database
+     * @returns {{ get(key: NodeIdentifier): Promise<TValue | undefined> }}
      */
     function makeSimpleDatabase(database) {
         return {
@@ -240,12 +239,12 @@ function makeMigrationDecisionStorage(prevStorage, keyPlan) {
  * at a time).
  *
  * @param {ReadableMigrationStorage} prevStorage
- * @param {Map<NodeKeyString, Decision>} decisions
- * @param {{ keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString }} keyPlan
- * @returns {Promise<Map<NodeKeyString, NodeKeyString[]>>}
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {{ keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier }} keyPlan
+ * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
  */
 async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
-    /** @type {Map<string, Set<NodeKeyString>>} */
+    /** @type {Map<string, Set<NodeIdentifier>>} */
     const revdepSets = new Map();
 
     for (const [nodeKey, decision] of decisions) {
@@ -269,7 +268,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
         }
     }
 
-    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const result = new Map();
     for (const [inputStr, depSet] of revdepSets) {
         const inputKey = nodeIdentifierFromString(inputStr);
@@ -293,13 +292,13 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
  * trade-off that avoids per-value memory retention.
  *
  * @param {ReadableMigrationStorage} prevStorage
- * @param {Map<NodeKeyString, Decision>} decisions
- * @param {Map<NodeKeyString, NodeKeyString[]>} desiredRevdeps
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredRevdeps
  * @param {import('./database/types').Version} newVersion
  * @param {{
- *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
- *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
- *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>,
+ *   keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
+ *   outputKeyToDecisionKey: (outputKey: NodeIdentifier) => NodeIdentifier,
+ *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeIdentifier]>,
  * }} keyPlan
  * @returns {ReadableSchemaStorage}
  */
@@ -329,7 +328,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     // 'invalidate': no value in values sublevel
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 const decisionKey = keyPlan.outputKeyToDecisionKey(key);
                 const decision = decisions.get(decisionKey);
                 if (!decision) return undefined;
@@ -353,7 +352,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     }
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 const decisionKey = keyPlan.outputKeyToDecisionKey(key);
                 const decision = decisions.get(decisionKey);
                 if (!decision) return undefined;
@@ -376,7 +375,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     }
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 const decisionKey = keyPlan.outputKeyToDecisionKey(key);
                 const decision = decisions.get(decisionKey);
                 if (!decision || decision.kind === "delete") return undefined;
@@ -399,7 +398,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     yield key;
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 return desiredRevdeps.get(key);
             },
         },
@@ -417,7 +416,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     }
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 const decisionKey = keyPlan.outputKeyToDecisionKey(key);
                 const decision = decisions.get(decisionKey);
                 if (!decision || decision.kind === "delete") return undefined;
@@ -439,7 +438,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     if (ts !== undefined) yield keyPlan.keyToOutputKey(nodeKey);
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 const decisionKey = keyPlan.outputKeyToDecisionKey(key);
                 const decision = decisions.get(decisionKey);
                 if (!decision || decision.kind === "delete" || decision.kind === "create") return undefined;
