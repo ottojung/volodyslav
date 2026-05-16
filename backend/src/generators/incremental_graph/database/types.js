@@ -10,53 +10,6 @@
 /** @typedef {import('../../../environment').Environment} Environment */
 /** @typedef {import('../../../subprocess/command').Command} Command */
 
-class NodeKeyStringClass {
-    /**
-     * @private
-     * @type {undefined}
-     */
-    __brand;
-    constructor() {
-        if (this.__brand !== undefined) {
-            throw new Error("NodeKeyString cannot be instantiated");
-        }
-    }
-}
-
-/**
- * @param {string} _value
- * @returns {_value is NodeKeyString}
- */
-function castToNodeKeyString(_value) {
-    return true;
-}
-
-/**
- * @param {string} nodeKeyStr
- * @returns {NodeKeyString}
- */
-function stringToNodeKeyString(nodeKeyStr) {
-    if (castToNodeKeyString(nodeKeyStr)) {
-        return nodeKeyStr;
-    }
-    throw new Error("Invalid node key string");
-}
-
-/**
- * @param {NodeKeyString} nodeKeyString
- * @returns {string}
- */
-function nodeKeyStringToString(nodeKeyString) {
-    if (typeof nodeKeyString === "string") {
-        return nodeKeyString;
-    }
-    throw new Error("Invalid node key string type");
-}
-
-/**
- * A serialized node key string for storage.
- * @typedef {NodeKeyStringClass} NodeKeyString
- */
 
 class NodeIdentifierClass {
     /**
@@ -416,11 +369,11 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {Array<[NodeIdentifier, NodeKeyString]>} IdentifiersKeysMap
+ * @typedef {Array<[NodeIdentifier, string]>} IdentifiersKeysMap
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -447,7 +400,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 /**
@@ -522,7 +475,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /** 
- * @typedef {NodeKeyString} DatabaseKey
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**
@@ -530,7 +483,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {Level<DatabaseKey, DatabaseStoredValue>} RootLevelType
+ * @typedef {Level<string, DatabaseStoredValue>} RootLevelType
  */
 
 /**
@@ -543,7 +496,7 @@ function schemaPatternToString(schemaPattern) {
 
 /**
  * @template T
- * @template [K=NodeKeyString]
+ * @template [K=NodeIdentifier]
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
  */
 
@@ -557,9 +510,6 @@ module.exports = {
     nodeNameToString,
     stringToNodeName,
     NodeNameClass,
-    nodeKeyStringToString,
-    stringToNodeKeyString,
-    NodeKeyStringClass,
     schemaPatternToString,
     stringToSchemaPattern,
     SchemaPatternClass,

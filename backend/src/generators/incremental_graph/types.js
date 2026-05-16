@@ -44,7 +44,7 @@
 
 /**
  * A serialized node key string for storage.
- * @typedef {import('./database/types').NodeKeyString} NodeKeyString
+ * @typedef {import('./database/node_key').NodeKeyString} NodeKeyString
  */
 
 /**

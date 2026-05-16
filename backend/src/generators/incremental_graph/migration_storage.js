@@ -19,7 +19,7 @@ const {
 } = require("./migration_errors");
 
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/node_key').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').NodeName} NodeName */
 

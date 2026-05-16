@@ -31,7 +31,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/node_key').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */

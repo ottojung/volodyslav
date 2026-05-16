@@ -77,7 +77,7 @@ const {
 /**
  * Convert a nominal identifier to the underlying database key used by typed sublevels.
  * @param {NodeIdentifier} nodeIdentifier
- * @returns {import('./database/types').NodeKeyString}
+ * @returns {import('./database/node_key').NodeKeyString}
  */
 function toDatabaseKey(nodeIdentifier) {
     return nodeIdentifierToDatabaseKey(nodeIdentifier);

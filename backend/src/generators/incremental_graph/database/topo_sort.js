@@ -13,9 +13,9 @@
  */
 
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
-const { stringToNodeKeyString } = require('./types');
+const { stringToNodeKeyString } = require('./node_key');
 
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_key').NodeKeyString} NodeKeyString */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 const CYCLE_MESSAGE_SAMPLE_LIMIT = 20;
 

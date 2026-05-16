@@ -30,9 +30,9 @@
 
 /** @typedef {import('../root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
-/** @typedef {import('../types').NodeKeyString} NodeKeyString */
+/** @typedef {import('../node_key').NodeKeyString} NodeKeyString */
 
-const { stringToNodeKeyString } = require('../types');
+const { stringToNodeKeyString } = require('../node_key');
 
 /**
  * Read-only view of a single sublevel — the minimum interface required by the

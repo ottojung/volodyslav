@@ -2,7 +2,7 @@
  * Error classes for MigrationStorage operations.
  */
 
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/node_key').NodeKeyString} NodeKeyString */
 
 /**
  * Thrown when two different decisions are assigned to the same node.

@@ -7,10 +7,10 @@ const {
 } = require("./node_identifier");
 const {
     nodeKeyStringToString,
-} = require("./types");
+} = require("./node_key");
 
 /** @typedef {import("./node_identifier").NodeIdentifier} NodeIdentifier */
-/** @typedef {import("./types").NodeKeyString} NodeKeyString */
+/** @typedef {import("./node_key").NodeKeyString} NodeKeyString */
 
 /**
  * Global metadata key that stores the sorted `NodeIdentifier -> NodeKey` bijection.

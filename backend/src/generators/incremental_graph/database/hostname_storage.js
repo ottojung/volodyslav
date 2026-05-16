@@ -11,7 +11,8 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToNodeKeyString, stringToVersion } = require('./types');
+const { stringToVersion } = require('./types');
+const { stringToNodeKeyString } = require('./node_key');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -67,7 +68,7 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').InputsRecord} InputsRecord */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_key').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 

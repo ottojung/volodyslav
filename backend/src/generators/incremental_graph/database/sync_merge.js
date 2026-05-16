@@ -45,7 +45,8 @@
  */
 
 const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
-const { stringToNodeKeyString, versionToString } = require('./types');
+const { versionToString } = require('./types');
+const { stringToNodeKeyString } = require('./node_key');
 const { compareNodeKeyStringByNodeKey } = require('./node_key');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
@@ -53,7 +54,7 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_key').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 

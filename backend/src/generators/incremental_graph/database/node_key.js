@@ -16,14 +16,32 @@
 
 const { makeArityMismatchError } = require("../errors");
 const {
-    stringToNodeKeyString,
     nodeNameToString,
     stringToNodeName,
-    nodeKeyStringToString,
 } = require("./types");
 
+
+/**
+ * @typedef {string} NodeKeyString
+ */
+
+/**
+ * @param {string} nodeKeyStr
+ * @returns {NodeKeyString}
+ */
+function stringToNodeKeyString(nodeKeyStr) {
+    return nodeKeyStr;
+}
+
+/**
+ * @param {NodeKeyString} nodeKeyString
+ * @returns {string}
+ */
+function nodeKeyStringToString(nodeKeyString) {
+    return nodeKeyString;
+}
+
 /** @typedef {import('../types').ConstValue} ConstValue */
-/** @typedef {import('../types').NodeKeyString} NodeKeyString */
 /** @typedef {import('../types').NodeName} NodeName */
 /** @typedef {import('../types').SchemaPattern} SchemaPattern */
 

@@ -8,7 +8,8 @@
 const { getVersion } = require('../../../version');
 const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const { stringToVersion, versionToString } = require('./types');
+const { stringToNodeKeyString } = require('./node_key');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -47,7 +48,7 @@ const {
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_key').NodeKeyString} NodeKeyString */
 /** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
