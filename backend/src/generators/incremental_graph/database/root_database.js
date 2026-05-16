@@ -737,9 +737,8 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
-        const rawDb = this.db;
-        await rawDb.put(key, value, opts);
+        // @ts-ignore raw root-level operation intentionally accepts arbitrary raw keys.
+        await this.db.put(key, value, opts);
     }
 
     /**
@@ -758,9 +757,8 @@ class RootDatabaseClass {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
         const opts = { sync: false, keyEncoding: undefined };
-        /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
-        const rawDb = this.db;
-        await rawDb.del(key, opts);
+        // @ts-ignore raw root-level operation intentionally accepts arbitrary raw keys.
+        await this.db.del(key, opts);
     }
 
     /**
@@ -809,9 +807,8 @@ class RootDatabaseClass {
 
         for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
             const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
-            /** @type {import('abstract-level').AbstractLevel<SublevelFormat, string, DatabaseStoredValue>} */
-            const rawDb = this.db;
-            await rawDb.batch(chunk.map(makePutOp));
+            // @ts-ignore raw root-level operation intentionally accepts arbitrary raw keys.
+            await this.db.batch(chunk.map(makePutOp));
         }
     }
 
