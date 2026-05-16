@@ -683,11 +683,7 @@ function makeLegacyGraphStorage(schemaStorage) {
                     const semanticKey = nodeKeyStringKey(key);
                     puts.set(`${tag}:${semanticKey}`, value);
                     dels.delete(`${tag}:${semanticKey}`);
-                    operations.push(
-                        typeof database.rawPutOp === "function"
-                            ? database.rawPutOp(key, value)
-                            : database.putOp(key, value)
-                    );
+                    operations.push(database.rawPutOp(key, value));
                 },
                 del(key) {
                     const semanticKey = nodeKeyStringKey(key);

@@ -291,5 +291,4 @@ module.exports = {
     requireNodeKeyForIdentifier,
     serializeIdentifierLookup,
     setIdentifierMapping,
-    stringToNodeKeyString,
 };
