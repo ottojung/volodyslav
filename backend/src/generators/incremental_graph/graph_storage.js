@@ -1,7 +1,7 @@
 /* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * Identifier-native graph storage.
- * This module is the low-level persistence layer below the semantic graph API.
+ * This module is the low-level persistence layer below IncrementalGraph runtime logic.
  */
 
 const {
@@ -77,7 +77,7 @@ const {
 /**
  * Convert a nominal identifier to the underlying database key used by typed sublevels.
  * @param {NodeIdentifier} nodeIdentifier
- * @returns {import('./database/types').NodeKeyString}
+ * @returns {string}
  */
 function toDatabaseKey(nodeIdentifier) {
     return nodeIdentifierToDatabaseKey(nodeIdentifier);
