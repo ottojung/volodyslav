@@ -30,7 +30,8 @@ The semantic `NodeKey` should remain recoverable through explicit lookup tables.
   - [ ] Keep cache lifecycle symmetric across normal runtime and migration runtime: migration writes to inactive replica storage before cutover, so inactive-replica cache must be updated from the same batch writes that mutate `values|inputs|revdeps|...`.
   - [ ] Add focused tests that (1) seed different identifier maps in `x` and `y`, switch replicas, and assert lookups switch maps immediately; and (2) clear a replica, repopulate it, and assert old cache entries are impossible to read.
 - [ ] The cache should be stored in a two-way hashmap structure for efficient lookups in both directions, and should be the authoritative source for the bijection while the database is open.
-- [ ] Make identifier allocation explicitly collision-safe at the storage boundary (`nodeKeyToId` path), not just "random enough":
+- [ ] Make identifier allocation explicitly collision-safe at the **materialization write path** (not in `nodeKeyToId` lookup), not just "random enough":
+  - [ ] Keep `nodeKeyToId(nodeKey)` as a pure lookup helper that never allocates for non-materialized nodes; on miss it returns missing (or equivalent lookup-miss error/value).
   - [ ] Allocation must retry when a generated `NodeIdentifier` already exists in `id -> key` mapping, and must only commit once a truly unused identifier is found.
   - [ ] On collision, the pre-existing mapping must remain unchanged; never overwrite `nodeIdToKey(existingId)` or "steal" an identifier from another node.
   - [ ] If repeated collisions prevent allocation from finding a free id within a bounded retry budget, fail with a dedicated storage error instead of silently writing an inconsistent map.
