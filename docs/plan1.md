@@ -69,7 +69,7 @@ The semantic `NodeKey` should remain recoverable through explicit lookup tables.
   - [ ] Add focused tests that assert public methods still accept `head + args` and do not require callers to resolve ids first
   - [ ] Add focused tests that verify internal calls below the boundary are `NodeIdentifier`-only (no `NodeKeyString` passed into storage/migration/sync helpers)
 - [ ] Remove the remaining `NodeKeyString`-addressed graph methods from the public class surface in `incremental_graph/class.js` (`pullByNodeKeyStringWithStatus`, `pullByNodeKeyStringWithStatusDuringPull`)
-  - [ ] Keep equivalent functionality as internal-only helpers for recompute/pull internals (for example in `pull.js`) so recursion does not re-open a semantic/public boundary.
+  - [ ] Replace them with **NodeIdentifier-addressed** internal helpers for recompute/pull recursion (for example in `pull.js`); do not keep `NodeKeyString`-addressed recursion helpers after boundary conversion, or internal pull paths will silently violate the identifier-native invariant.
   - [ ] Update `recompute.js` capability typing to depend on identifier-native/internal helper calls instead of public `NodeKeyString` class methods.
   - [ ] Add a regression test that public graph-facing routes and interface flows still work, while no public `NodeKeyString`-addressed concrete-node entrypoints remain exposed on the graph object.
 - [ ] Keep `nodeKeyToId` / `nodeIdToKey` as lower-level translation helpers (storage/internal boundary), not public `IncrementalGraph` methods
