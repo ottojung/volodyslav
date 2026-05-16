@@ -521,8 +521,8 @@ function schemaPatternToString(schemaPattern) {
  * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
  */
 
-/** 
- * @typedef {NodeKeyString} DatabaseKey
+/**
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**
@@ -538,12 +538,12 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version>} GlobalSublevelType
+ * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, 'version' | 'identifiers_keys_map', Version>} GlobalSublevelType
  */
 
 /**
  * @template T
- * @template [K=NodeKeyString]
+ * @template [K=DatabaseKey]
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
  */
 
