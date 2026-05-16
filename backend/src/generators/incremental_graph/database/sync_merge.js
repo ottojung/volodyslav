@@ -45,15 +45,15 @@
  */
 
 const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
-const { stringToNodeKeyString, versionToString } = require('./types');
-const { compareNodeKeyStringByNodeKey } = require('./node_key');
+const { nodeIdentifierFromString, nodeIdentifierToString } = require('./node_identifier');
+const { versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 
@@ -175,7 +175,7 @@ async function copyReplicaGently(rootDatabase, from, to) {
  *
  * @param {SchemaStorage} T - Target (inactive) replica storage.
  * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeKeyString} key
+ * @param {NodeIdentifier} key
  * @returns {Promise<DatabaseBatchOperation[]>}
  */
 async function buildTakeOps(T, H, key) {
@@ -225,7 +225,7 @@ async function buildTakeOps(T, H, key) {
  * typed revdeps to avoid unsafe value coercions.
  *
  * @param {SchemaStorage} T
- * @param {Map<NodeKeyString, NodeKeyString[]>} mergedInputsMap
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @returns {Promise<void>}
  */
 async function unifyRevdeps(T, mergedInputsMap) {
@@ -238,7 +238,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
     // writing.  This is bounded by the number of nodes+edges in the graph,
     // not by value sizes, so it fits within the O(n) target where
     // n = max(max_value_size, num_nodes + num_edges).
-    /** @type {Map<string, Set<NodeKeyString>>} */
+    /** @type {Map<string, Set<NodeIdentifier>>} */
     const desiredSets = new Map();
 
     for (const [node, inputKeys] of mergedInputsMap) {
@@ -254,10 +254,13 @@ async function unifyRevdeps(T, mergedInputsMap) {
     }
 
     // Convert to sorted arrays for determinism and stable serialisation.
-    /** @type {Map<string, NodeKeyString[]>} */
+    /** @type {Map<string, NodeIdentifier[]>} */
     const desired = new Map();
     for (const [key, depSet] of desiredSets) {
-        desired.set(key, [...depSet].sort(compareNodeKeyStringByNodeKey));
+        desired.set(
+            key,
+            [...depSet].sort((left, right) => nodeIdentifierToString(left).localeCompare(nodeIdentifierToString(right)))
+        );
     }
 
     // Materialise the current target key set.
@@ -273,7 +276,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
     /** @type {DatabaseBatchOperation[]} */
     const ops = [];
     for (const [inputStr, dependents] of desired) {
-        const inputKey = stringToNodeKeyString(inputStr);
+        const inputKey = nodeIdentifierFromString(inputStr);
         if (!targetKeys.has(inputStr)) {
             ops.push(T.revdeps.putOp(inputKey, dependents));
         } else {
@@ -290,7 +293,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
     // Delete stale entries.
     for (const existingKey of targetKeys) {
         if (!desired.has(existingKey)) {
-            ops.push(T.revdeps.delOp(stringToNodeKeyString(existingKey)));
+            ops.push(T.revdeps.delOp(nodeIdentifierFromString(existingKey)));
         }
         if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
             await T.batch(ops.splice(0, ops.length));
