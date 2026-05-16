@@ -426,13 +426,15 @@ function versionToString(Version) {
 /**
  * A database put operation.
  * @template T
- * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey, value: T }} DatabasePutOperation
+ * @template [K=DatabaseKey]
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, K>, key: K, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey }} DatabaseDelOperation
+ * @template [K=DatabaseKey]
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, K>, key: K }} DatabaseDelOperation
  */
 
 /**
@@ -522,7 +524,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /** 
- * @typedef {NodeKeyString} DatabaseKey
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**
@@ -530,11 +532,11 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {Level<DatabaseKey, DatabaseStoredValue>} RootLevelType
+ * @typedef {Level<NodeKeyString, DatabaseStoredValue>} RootLevelType
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>} SchemaSublevelType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, NodeKeyString, DatabaseStoredValue>} SchemaSublevelType
  */
 
 /**
@@ -544,7 +546,7 @@ function schemaPatternToString(schemaPattern) {
 /**
  * @template T
  * @template [K=NodeKeyString]
- * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
+ * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, NodeKeyString, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
  */
 
 module.exports = {
