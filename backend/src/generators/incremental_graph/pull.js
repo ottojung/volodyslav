@@ -2,7 +2,7 @@
  * Pull operations for IncrementalGraph.
  */
 
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./semantic_graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeName} NodeName */
@@ -12,7 +12,7 @@
  * @typedef {object} IncrementalGraphPullAccess
  * @property {Map<NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {import('./graph_storage').GraphStorage} storage
+ * @property {import('./semantic_graph_storage').GraphStorage} storage
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ConcreteNode, batch: BatchBuilder) => Promise<RecomputeResult>} maybeRecalculate
  */

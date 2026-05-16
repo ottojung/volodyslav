@@ -10,8 +10,8 @@
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
-/** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./semantic_graph_storage').GraphStorage} GraphStorage */
+/** @typedef {import('./semantic_graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 /** @typedef {import('../../datetime').DateTime} DateTime */
 /** @typedef {import('../../datetime').Datetime} Datetime */
@@ -25,7 +25,7 @@ const {
     validateNoOverlap,
     validateSingleArityPerHead,
 } = require("./compiled_node");
-const { makeGraphStorage } = require("./graph_storage");
+const { makeGraphStorage } = require("./semantic_graph_storage");
 const {
     internalGetDbVersion,
     internalGetFreshness,

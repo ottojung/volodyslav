@@ -18,11 +18,24 @@ const {
     makeCreateExistingNodeError,
 } = require("./migration_errors");
 
-/** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').NodeName} NodeName */
+
+/**
+ * Read-only database view used by migration decision logic.
+ * Migration callbacks never write directly to the previous replica.
+ * @typedef {object} ReadableMigrationStorage
+ * @property {{ get(nodeKey: NodeKeyString): Promise<ComputedValue | undefined> }} values
+ * @property {{ get(nodeKey: NodeKeyString): Promise<import('./database/types').Freshness | undefined> }} freshness
+ * @property {{ get(nodeKey: NodeKeyString): Promise<import('./database/root_database').InputsRecord | undefined> }} inputs
+ * @property {{ get(nodeKey: NodeKeyString): Promise<NodeKeyString[] | undefined> }} revdeps
+ * @property {{ get(nodeKey: NodeKeyString): Promise<number | undefined> }} counters
+ * @property {{ get(nodeKey: NodeKeyString): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
+ * @property {{ get(key: string): Promise<unknown> }} [global]
+ * @property {(operations: Array<*>) => Promise<void>} [batch]
+ */
 
 /**
  * @typedef {{ kind: 'keep' }} KeepDecision
@@ -73,7 +86,7 @@ function checkSchemaCompatibility(nodeKey, newHeadIndex) {
  * Reads the inputs list for a node from the previous storage.
  * Throws MissingDependencyMetadataError if the record is absent or corrupted.
  * @param {NodeKeyString} nodeKey
- * @param {SchemaStorage} prevStorage
+ * @param {ReadableMigrationStorage} prevStorage
  * @returns {Promise<NodeKeyString[]>}
  */
 async function readInputsRecord(nodeKey, prevStorage) {
@@ -87,7 +100,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
 /**
  * Reads the dependents list for a node from the previous storage.
  * @param {NodeKeyString} nodeKey
- * @param {SchemaStorage} prevStorage
+ * @param {ReadableMigrationStorage} prevStorage
  * @returns {Promise<NodeKeyString[]>}
  */
 async function readDependents(nodeKey, prevStorage) {
@@ -102,7 +115,7 @@ async function readDependents(nodeKey, prevStorage) {
 class MigrationStorageClass {
     /**
      * @private
-     * @type {SchemaStorage}
+     * @type {ReadableMigrationStorage}
      */
     prevStorage;
 
@@ -127,7 +140,7 @@ class MigrationStorageClass {
     decisions;
 
     /**
-     * @param {SchemaStorage} prevStorage
+     * @param {ReadableMigrationStorage} prevStorage
      * @param {Map<NodeName, CompiledNode>} newHeadIndex
      * @param {NodeKeyString[]} materializedNodes
      */
@@ -411,7 +424,7 @@ class MigrationStorageClass {
 
 /**
  * Factory function to create a MigrationStorage instance.
- * @param {SchemaStorage} prevStorage
+ * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @param {NodeKeyString[]} materializedNodes
  * @returns {MigrationStorageClass}

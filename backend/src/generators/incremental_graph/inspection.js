@@ -9,7 +9,7 @@
  * @typedef {object} IncrementalGraphInspectionAccess
  * @property {Map<import('./types').NodeName, CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {import('./graph_storage').GraphStorage} storage
+ * @property {import('./semantic_graph_storage').GraphStorage} storage
  * @property {import('./types').Version} dbVersion
  */
 

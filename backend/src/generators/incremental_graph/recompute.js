@@ -2,12 +2,12 @@
  * Recalculation helpers for IncrementalGraph.
  */
 
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./semantic_graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /**
  * @typedef {object} IncrementalGraphRecomputeAccess
- * @property {import('./graph_storage').GraphStorage} storage
+ * @property {import('./semantic_graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} _pullDuringPull

@@ -1,4 +1,5 @@
 const random = require("../../../random");
+const { nodeKeyStringToString, stringToNodeKeyString } = require("./types");
 
 /**
  * Persisted node identifiers are exactly 9 lowercase ASCII letters.
@@ -101,6 +102,25 @@ function nodeIdentifierToString(identifier) {
 }
 
 /**
+ * Convert an identifier to the branded database-key type used by typed sublevels.
+ * This hides the NodeKeyString storage-brand detail from identifier-native callers.
+ * @param {NodeIdentifier} identifier
+ * @returns {import('./types').NodeKeyString}
+ */
+function nodeIdentifierToDatabaseKey(identifier) {
+    return stringToNodeKeyString(nodeIdentifierToString(identifier));
+}
+
+/**
+ * Convert a typed database key that is known to hold an identifier back into a NodeIdentifier.
+ * @param {import('./types').NodeKeyString} key
+ * @returns {NodeIdentifier}
+ */
+function databaseKeyToNodeIdentifier(key) {
+    return nodeIdentifierFromString(nodeKeyStringToString(key));
+}
+
+/**
  * Compare identifiers lexicographically by their persisted string values.
  * @param {NodeIdentifier} a
  * @param {NodeIdentifier} b
@@ -120,10 +140,12 @@ function compareNodeIdentifier(a, b) {
 
 module.exports = {
     compareNodeIdentifier,
+    databaseKeyToNodeIdentifier,
     InvalidNodeIdentifierError,
     isInvalidNodeIdentifierError,
     isValidNodeIdentifier,
     makeNodeIdentifier,
+    nodeIdentifierToDatabaseKey,
     nodeIdentifierFromString,
     nodeIdentifierToString,
 };

@@ -15,7 +15,10 @@ const {
     deterministicNodeIdentifierFromNodeKey,
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
+    nodeIdentifierFromString,
     nodeIdentifierToString,
+    requireNodeIdentifierForKey,
+    requireNodeKeyForIdentifier,
     serializeNodeKey,
     serializeIdentifierLookup,
     stringToNodeName,
@@ -24,7 +27,6 @@ const {
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
-const { compareNodeKeyStringByNodeKey } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -40,6 +42,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./migration_storage').MigrationStorage} MigrationStorage */
+/** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 /** @typedef {import('./migration_storage').Decision} Decision */
 
 /**
@@ -110,6 +113,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
  * @param {SchemaStorage} prevStorage
  * @param {NodeKeyString[]} materializedNodes
  * @returns {Promise<{
+ *   keyToSourceKey: (nodeKey: NodeKeyString) => NodeKeyString,
  *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
  *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
  *   outputEntries: Array<[import('./database/node_identifier').NodeIdentifier, NodeKeyString]>,
@@ -120,11 +124,21 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
     if (Array.isArray(persistedEntries)) {
         const lookup = makeIdentifierLookup(persistedEntries);
         return {
+            keyToSourceKey(nodeKey) {
+                return stringToNodeKeyString(
+                    nodeIdentifierToString(requireNodeIdentifierForKey(lookup, nodeKey))
+                );
+            },
             keyToOutputKey(nodeKey) {
-                return nodeKey;
+                return stringToNodeKeyString(
+                    nodeIdentifierToString(requireNodeIdentifierForKey(lookup, nodeKey))
+                );
             },
             outputKeyToDecisionKey(outputKey) {
-                return outputKey;
+                return requireNodeKeyForIdentifier(
+                    lookup,
+                    nodeIdentifierFromString(String(outputKey))
+                );
             },
             outputEntries: serializeIdentifierLookup(lookup),
         };
@@ -142,6 +156,9 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         decisionKeyByOutputKey.set(String(outputKey), nodeKey);
     }
     return {
+        keyToSourceKey(nodeKey) {
+            return nodeKey;
+        },
         keyToOutputKey(nodeKey) {
             const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
             return stringToNodeKeyString(
@@ -156,13 +173,73 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
 }
 
 /**
+ * Wrap previous storage so migration callbacks can keep operating on semantic
+ * node keys even when the persisted replica is already identifier-native.
+ * @param {SchemaStorage} prevStorage
+ * @param {{
+ *   keyToSourceKey: (nodeKey: NodeKeyString) => NodeKeyString,
+ *   keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString,
+ *   outputKeyToDecisionKey: (outputKey: NodeKeyString) => NodeKeyString,
+ * }} keyPlan
+ * @returns {ReadableMigrationStorage}
+ */
+function makeMigrationDecisionStorage(prevStorage, keyPlan) {
+    /**
+     * @template TValue
+     * @param {{ get(key: NodeKeyString): Promise<TValue | undefined> }} database
+     * @returns {{ get(key: NodeKeyString): Promise<TValue | undefined> }}
+     */
+    function makeSimpleDatabase(database) {
+        return {
+            async get(key) {
+                return await database.get(keyPlan.keyToSourceKey(key));
+            },
+        };
+    }
+
+    return {
+        values: makeSimpleDatabase(prevStorage.values),
+        freshness: makeSimpleDatabase(prevStorage.freshness),
+        inputs: {
+            async get(key) {
+                const record = await prevStorage.inputs.get(keyPlan.keyToSourceKey(key));
+                if (record === undefined) {
+                    return undefined;
+                }
+                return {
+                    inputs: record.inputs.map((input) =>
+                        String(keyPlan.outputKeyToDecisionKey(stringToNodeKeyString(input)))
+                    ),
+                    inputCounters: record.inputCounters,
+                };
+            },
+        },
+        revdeps: {
+            async get(key) {
+                const dependents = await prevStorage.revdeps.get(keyPlan.keyToSourceKey(key));
+                if (dependents === undefined) {
+                    return undefined;
+                }
+                return dependents.map((dependent) =>
+                    keyPlan.outputKeyToDecisionKey(dependent)
+                );
+            },
+        },
+        counters: makeSimpleDatabase(prevStorage.counters),
+        timestamps: makeSimpleDatabase(prevStorage.timestamps),
+        global: prevStorage.global,
+        batch: prevStorage.batch,
+    };
+}
+
+/**
  * Build the desired revdeps map from decisions, reading inputs from prevStorage.
  *
  * Memory: O(|keys|) — only stores key strings in the result map; no large
  * values are retained.  Reads from prevStorage are streaming (one InputsRecord
  * at a time).
  *
- * @param {SchemaStorage} prevStorage
+ * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeKeyString, Decision>} decisions
  * @param {{ keyToOutputKey: (nodeKey: NodeKeyString) => NodeKeyString }} keyPlan
  * @returns {Promise<Map<NodeKeyString, NodeKeyString[]>>}
@@ -196,7 +273,10 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
     const result = new Map();
     for (const [inputStr, depSet] of revdepSets) {
         const inputKey = stringToNodeKeyString(inputStr);
-        result.set(inputKey, [...depSet].sort(compareNodeKeyStringByNodeKey));
+        result.set(
+            inputKey,
+            [...depSet].sort((left, right) => String(left).localeCompare(String(right)))
+        );
     }
     return result;
 }
@@ -212,7 +292,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
  * keys() to check existence, once during readSource()) — this is an I/O
  * trade-off that avoids per-value memory retention.
  *
- * @param {SchemaStorage} prevStorage
+ * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeKeyString, Decision>} decisions
  * @param {Map<NodeKeyString, NodeKeyString[]>} desiredRevdeps
  * @param {import('./database/types').Version} newVersion
@@ -484,12 +564,16 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Load previous-version materialized nodes.
             const materializedNodes = await loadMaterializedNodes(prevStorage);
             const keyPlan = await makeMigrationKeyPlan(prevStorage, materializedNodes);
+            const decisionNodes = materializedNodes.map((nodeKey) =>
+                keyPlan.outputKeyToDecisionKey(nodeKey)
+            );
+            const decisionStorage = makeMigrationDecisionStorage(prevStorage, keyPlan);
 
             // Create the MigrationStorage for the user callback.
             const migrationStorage = makeMigrationStorage(
-                prevStorage,
+                decisionStorage,
                 newHeadIndex,
-                materializedNodes
+                decisionNodes
             );
 
             // Execute user migration callback.
@@ -502,13 +586,17 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Build the desired revdeps map.  Reads inputs from prevStorage once
             // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
-            const desiredRevdeps = await buildDesiredRevdeps(prevStorage, decisions, keyPlan);
+            const desiredRevdeps = await buildDesiredRevdeps(
+                decisionStorage,
+                decisions,
+                keyPlan
+            );
 
             // Create a lazy source that computes desired values on demand.
             // Combined with makeDbToDbAdapter + unifyStores this keeps peak
             // memory at O(|max value| + |keys|), matching the sync path.
             const lazySource = makeLazyMigrationSource(
-                prevStorage,
+                decisionStorage,
                 decisions,
                 desiredRevdeps,
                 currentVersion,

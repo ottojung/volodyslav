@@ -28,7 +28,9 @@ const {
 } = require('./node_key');
 const {
     compareNodeIdentifier,
+    databaseKeyToNodeIdentifier,
     makeNodeIdentifier,
+    nodeIdentifierToDatabaseKey,
     nodeIdentifierFromString,
     nodeIdentifierToString,
     isInvalidNodeIdentifierError,
@@ -103,7 +105,9 @@ module.exports = {
     compareNodeKey,
     compareNodeKeyStringByNodeKey,
     compareNodeIdentifier,
+    databaseKeyToNodeIdentifier,
     makeNodeIdentifier,
+    nodeIdentifierToDatabaseKey,
     nodeIdentifierFromString,
     nodeIdentifierToString,
     isInvalidNodeIdentifierError,

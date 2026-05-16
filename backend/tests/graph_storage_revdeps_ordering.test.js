@@ -5,7 +5,7 @@
  * regardless of insertion order.
  */
 
-const { makeGraphStorage } = require("../src/generators/incremental_graph/graph_storage");
+const { makeGraphStorage } = require("../src/generators/incremental_graph/semantic_graph_storage");
 const { serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { compareNodeKeyStringByNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { stringToNodeName } = require("../src/generators/incremental_graph/database");
