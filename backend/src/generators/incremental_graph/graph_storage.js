@@ -1,10 +1,25 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * GraphStorage module.
  * Encapsulates database access for the incremental graph using typed sublevels.
  */
 
-const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
-const { compareNodeKeyStringByNodeKey } = require("./database");
+const {
+    IDENTIFIERS_KEY,
+    allocateNodeIdentifier,
+    cloneIdentifierLookup,
+    makeEmptyIdentifierLookup,
+    nodeIdentifierFromString,
+    nodeIdentifierToString,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+    requireNodeIdentifierForKey,
+    requireNodeKeyForIdentifier,
+    serializeIdentifierLookup,
+    setIdentifierMapping,
+    stringToNodeKeyString,
+} = require("./database");
+const { nodeKeyStringToString } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -19,41 +34,37 @@ const { compareNodeKeyStringByNodeKey } = require("./database");
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
-/** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {import('./database/types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/types').DatabaseKey} DatabaseKey */
+/** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
+/** @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier */
 
 /**
- * @template T
- * @typedef {import('./database/types').DatabasePutOperation<T>} DatabasePutOperation
- */
-
-/**
- * @template T
- * @typedef {import('./database/types').DatabaseDelOperation<T>} DatabaseDelOperation
+ * @template TValue
+ * @typedef {object} SemanticDatabase
+ * @property {(key: NodeKeyString) => Promise<TValue | undefined>} get
+ * @property {(key: NodeKeyString, value: TValue) => Promise<void>} put
+ * @property {(key: NodeKeyString) => Promise<void>} del
+ * @property {() => AsyncIterable<NodeKeyString>} keys
  */
 
 /**
  * Interface for batch operations on a specific database.
- * Provides transactional view with read-your-writes consistency.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
- * @property {(key: DatabaseKey, value: TValue) => void} put - Queue a put operation
- * @property {(key: DatabaseKey) => void} del - Queue a delete operation
- * @property {(key: DatabaseKey) => Promise<TValue | undefined>} get - Read with batch consistency
+ * @property {(key: NodeKeyString, value: TValue) => void} put
+ * @property {(key: NodeKeyString) => void} del
+ * @property {(key: NodeKeyString) => Promise<TValue | undefined>} get
  */
 
 /**
- * Batch builder for atomic operations across multiple databases.
- * Each database field is properly typed - no unions or type casts needed.
  * @typedef {object} BatchBuilder
- * @property {BatchDatabaseOps<ComputedValue>} values - Batch operations for values database
- * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
- * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
- * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
- * @property {BatchDatabaseOps<Counter>} counters - Batch operations for counters database (monotonic integers)
- * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Batch operations for timestamps database (creation/modification times)
+ * @property {BatchDatabaseOps<ComputedValue>} values
+ * @property {BatchDatabaseOps<Freshness>} freshness
+ * @property {BatchDatabaseOps<InputsRecord>} inputs
+ * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps
+ * @property {BatchDatabaseOps<Counter>} counters
+ * @property {BatchDatabaseOps<TimestampRecord>} timestamps
+ * @property {IdentifierLookup} identifierLookup
  */
 
 /**
@@ -61,31 +72,120 @@ const { compareNodeKeyStringByNodeKey } = require("./database");
  */
 
 /**
- * GraphStorage exposes typed databases as fields.
- * All databases are from the same schema namespace.
+ * GraphStorage exposes semantic-keyed databases while persisting identifier-keyed state.
  * @typedef {object} GraphStorage
- * @property {ValuesDatabase} values - Node values
- * @property {FreshnessDatabase} freshness - Node freshness
- * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
- * @property {CountersDatabase} counters - Node counters (monotonic integers)
- * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
- * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record with counters)
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
- * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input (requires batch for consistency)
- * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node (requires batch for consistency)
- * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
+ * @property {SemanticDatabase<ComputedValue>} values
+ * @property {SemanticDatabase<Freshness>} freshness
+ * @property {SemanticDatabase<InputsRecord>} inputs
+ * @property {SemanticDatabase<NodeKeyString[]>} revdeps
+ * @property {SemanticDatabase<Counter>} counters
+ * @property {SemanticDatabase<TimestampRecord>} timestamps
+ * @property {BatchFunction} withBatch
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed
+ * @property {(input: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[]>} listDependents
+ * @property {(node: NodeKeyString, batch: BatchBuilder) => Promise<NodeKeyString[] | null>} getInputs
+ * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes
  */
 
 /**
- * Find the insertion index for a node in a sorted array using binary search.
- * @param {NodeKeyString[]} sortedArray - The sorted array to search in
- * @param {NodeKeyString} node - The node to find the insertion index for
- * @param {(a: NodeKeyString, b: NodeKeyString) => number} compareFn - Comparator function
+ * @param {NodeKeyString} nodeKey
+ * @returns {string}
+ */
+function nodeKeyStringKey(nodeKey) {
+    return nodeKeyStringToString(nodeKey);
+}
+
+/**
+ * @param {RootDatabase} rootDatabase
+ * @param {IdentifierLookup} identifierLookup
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier}
+ */
+function getOrAllocateNodeIdentifier(rootDatabase, identifierLookup, nodeKey) {
+    return allocateNodeIdentifier(
+        identifierLookup,
+        nodeKey,
+        () => rootDatabase.generateNodeIdentifier()
+    );
+}
+
+/**
+ * @param {IdentifierLookup} identifierLookup
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier | undefined}
+ */
+function lookupNodeIdentifier(identifierLookup, nodeKey) {
+    try {
+        return requireNodeIdentifierForKey(identifierLookup, nodeKey);
+    } catch (_error) {
+        return undefined;
+    }
+}
+
+/**
+ * @param {RootDatabase | null} rootDatabase
+ * @param {IdentifierLookup} identifierLookup
+ * @param {string[]} identifiers
+ * @returns {NodeKeyString[]}
+ */
+function translateStoredIdentifiersToNodeKeys(rootDatabase, identifierLookup, identifiers) {
+    return identifiers.map((identifierString) => {
+        const nodeIdentifier = nodeIdentifierFromString(String(identifierString));
+        try {
+            return requireNodeKeyForIdentifier(identifierLookup, nodeIdentifier);
+        } catch (_error) {
+            if (rootDatabase !== null && typeof rootDatabase.nodeIdToKey === "function") {
+                const committedNodeKey = rootDatabase.nodeIdToKey(nodeIdentifier);
+                if (committedNodeKey !== undefined) {
+                    setIdentifierMapping(identifierLookup, nodeIdentifier, committedNodeKey);
+                    return committedNodeKey;
+                }
+            }
+            throw _error;
+        }
+    });
+}
+
+/**
+ * @param {IdentifierLookup} identifierLookup
+ * @param {NodeKeyString[]} nodeKeys
+ * @param {boolean} allowAllocate
+ * @param {RootDatabase} rootDatabase
+ * @returns {string[]}
+ */
+function translateNodeKeysToStoredIdentifiers(
+    identifierLookup,
+    nodeKeys,
+    allowAllocate,
+    rootDatabase
+) {
+    return nodeKeys.map((nodeKey) => {
+        if (allowAllocate) {
+            return nodeIdentifierToString(
+                getOrAllocateNodeIdentifier(rootDatabase, identifierLookup, nodeKey)
+            );
+        }
+        return nodeIdentifierToString(
+            requireNodeIdentifierForKey(identifierLookup, nodeKey)
+        );
+    });
+}
+
+/**
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString}
+ */
+function nodeIdentifierToStoredKey(nodeIdentifier) {
+    return stringToNodeKeyString(nodeIdentifierToString(nodeIdentifier));
+}
+
+/**
+ * @param {string[]} sortedArray
+ * @param {string} node
  * @returns {{ index: number, found: boolean }}
  */
-function findInsertionIndex(sortedArray, node, compareFn) {
+function findInsertionIndex(sortedArray, node) {
     let lo = 0;
     let hi = sortedArray.length;
     while (lo < hi) {
@@ -94,145 +194,371 @@ function findInsertionIndex(sortedArray, node, compareFn) {
         if (midVal === undefined) {
             throw new Error("findInsertionIndex: unexpected undefined element at index " + String(mid));
         }
-        const cmp = compareFn(midVal, node);
-        if (cmp === 0) return { index: mid, found: true };
-        if (cmp < 0) lo = mid + 1;
-        else hi = mid;
+        const cmp = midVal < node ? -1 : midVal > node ? 1 : 0;
+        if (cmp === 0) {
+            return { index: mid, found: true };
+        }
+        if (cmp < 0) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
     }
     return { index: lo, found: false };
 }
 
 /**
- * Creates a transactional database view for batch-consistent reads.
- * Implements read-your-writes semantics within a batch.
  * @template TValue
- * @param {import('./database/typed_database').GenericDatabase<TValue, DatabaseKey>} db - The underlying database
- * @param {Array<DatabasePutOperation<TValue> | DatabaseDelOperation<TValue>>} operations - Array to append operations to
- * @param {Map<DatabaseKey, TValue>} pendingPuts - Overlay of pending put operations
- * @param {Set<DatabaseKey>} pendingDels - Set of pending delete operations
- * @returns {BatchDatabaseOps<TValue>}
+ * @param {Map<string, TValue>} pendingPuts
+ * @param {Set<string>} pendingDels
+ * @param {NodeKeyString} key
+ * @returns {TValue | undefined}
  */
-function makeTxDb(db, operations, pendingPuts, pendingDels) {
-    return {
-        /**
-         * Queue a put operation and record in overlay.
-         * @param {DatabaseKey} key
-         * @param {TValue} value
-         */
-        put: (key, value) => {
-            pendingPuts.set(key, value);
-            pendingDels.delete(key);
-            operations.push(db.putOp(key, value));
-        },
-
-        /**
-         * Queue a delete operation and record in overlay.
-         * @param {DatabaseKey} key
-         */
-        del: (key) => {
-            pendingDels.add(key);
-            pendingPuts.delete(key);
-            operations.push(db.delOp(key));
-        },
-
-        /**
-         * Get value with batch consistency.
-         * Checks overlay before falling back to underlying database.
-         * @param {DatabaseKey} key
-         * @returns {Promise<TValue | undefined>}
-         */
-        get: async (key) => {
-            // Check if deleted in this batch
-            if (pendingDels.has(key)) {
-                return undefined;
-            }
-            // Check if written in this batch
-            if (pendingPuts.has(key)) {
-                return pendingPuts.get(key);
-            }
-            // Fall back to underlying database
-            return await db.get(key);
-        },
-    };
+function readPendingValue(pendingPuts, pendingDels, key) {
+    const semanticKey = nodeKeyStringKey(key);
+    if (pendingDels.has(semanticKey)) {
+        return undefined;
+    }
+    return pendingPuts.get(semanticKey);
 }
 
 /**
- * Creates a batch builder for atomic operations.
- * @param {SchemaStorage} schemaStorage - The schema storage instance
+ * @param {SchemaStorage} schemaStorage
+ * @param {RootDatabase} rootDatabase
  * @returns {BatchFunction}
  */
-function makeBatchBuilder(schemaStorage) {
+function makeBatchBuilder(schemaStorage, rootDatabase) {
     /** @type {BatchFunction} */
     const ret = async (fn) => {
-        // Create separate operations arrays for each sublevel
-        /** @type {Array<DatabasePutOperation<ComputedValue> | DatabaseDelOperation<ComputedValue>>} */
-        const valuesOps = [];
-        /** @type {Array<DatabasePutOperation<Freshness> | DatabaseDelOperation<Freshness>>} */
-        const freshnessOps = [];
-        /** @type {Array<DatabasePutOperation<InputsRecord> | DatabaseDelOperation<InputsRecord>>} */
-        const inputsOps = [];
-        /** @type {Array<DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<NodeKeyString[]>>} */
-        const revdepsOps = [];
-        /** @type {Array<DatabasePutOperation<Counter> | DatabaseDelOperation<Counter>>} */
-        const countersOps = [];
-        /** @type {Array<DatabasePutOperation<TimestampRecord> | DatabaseDelOperation<TimestampRecord>>} */
-        const timestampsOps = [];
+        const identifierLookup = cloneIdentifierLookup(rootDatabase.cloneActiveIdentifierLookup());
+        let identifiersDirty = false;
+        let identifierMappingsChanged = false;
 
-        // Create overlay state for each sublevel
-        /** @type {Map<DatabaseKey, ComputedValue>} */
+        /** @type {Array<*>} */
+        const operations = [];
+
+        /** @type {Map<string, ComputedValue>} */
         const valuesPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const valuesDels = new Set();
-
-        /** @type {Map<DatabaseKey, Freshness>} */
+        /** @type {Map<string, Freshness>} */
         const freshnessPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const freshnessDels = new Set();
-
-        /** @type {Map<DatabaseKey, InputsRecord>} */
+        /** @type {Map<string, InputsRecord>} */
         const inputsPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const inputsDels = new Set();
-
-        /** @type {Map<DatabaseKey, NodeKeyString[]>} */
+        /** @type {Map<string, NodeKeyString[]>} */
         const revdepsPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const revdepsDels = new Set();
-
-        /** @type {Map<DatabaseKey, Counter>} */
+        /** @type {Map<string, Counter>} */
         const countersPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const countersDels = new Set();
-
-        /** @type {Map<DatabaseKey, TimestampRecord>} */
+        /** @type {Map<string, TimestampRecord>} */
         const timestampsPuts = new Map();
-        /** @type {Set<DatabaseKey>} */
+        /** @type {Set<string>} */
         const timestampsDels = new Set();
 
-        /** @type {BatchBuilder} */
+        /**
+         * @param {NodeKeyString} key
+         * @param {boolean} allowAllocate
+         * @returns {NodeKeyString | undefined}
+         */
+        function resolveIdentifier(key, allowAllocate) {
+            const existing = lookupNodeIdentifier(identifierLookup, key);
+            if (existing !== undefined) {
+                return nodeIdentifierToStoredKey(existing);
+            }
+            if (typeof rootDatabase.nodeKeyToId === "function") {
+                const committedIdentifier = rootDatabase.nodeKeyToId(key);
+                if (committedIdentifier !== undefined) {
+                    setIdentifierMapping(identifierLookup, committedIdentifier, key);
+                    return nodeIdentifierToStoredKey(committedIdentifier);
+                }
+            }
+            if (!allowAllocate) {
+                return undefined;
+            }
+            identifiersDirty = true;
+            identifierMappingsChanged = true;
+            return nodeIdentifierToStoredKey(
+                getOrAllocateNodeIdentifier(rootDatabase, identifierLookup, key)
+            );
+        }
+
+        /** @returns {void} */
+        function queueIdentifiersWrite() {
+            if (!identifiersDirty) {
+                return;
+            }
+            operations.push(
+                schemaStorage.global.rawPutOp(
+                    IDENTIFIERS_KEY,
+                    serializeIdentifierLookup(identifierLookup)
+                )
+            );
+            identifiersDirty = false;
+        }
+
+        /** @type {BatchBuilder & { identifierLookup: IdentifierLookup, markIdentifiersDirty: () => void }} */
         const builder = {
-            values: makeTxDb(schemaStorage.values, valuesOps, valuesPuts, valuesDels),
-            freshness: makeTxDb(schemaStorage.freshness, freshnessOps, freshnessPuts, freshnessDels),
-            inputs: makeTxDb(schemaStorage.inputs, inputsOps, inputsPuts, inputsDels),
-            revdeps: makeTxDb(schemaStorage.revdeps, revdepsOps, revdepsPuts, revdepsDels),
-            counters: makeTxDb(schemaStorage.counters, countersOps, countersPuts, countersDels),
-            timestamps: makeTxDb(schemaStorage.timestamps, timestampsOps, timestampsPuts, timestampsDels),
+            identifierLookup,
+            markIdentifiersDirty: () => {
+                identifiersDirty = true;
+                identifierMappingsChanged = true;
+            },
+            values: {
+                put: (key, value) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, true);
+                    if (nodeIdentifier === undefined) {
+                        throw new Error(`Missing node identifier for ${semanticKey}`);
+                    }
+                    valuesPuts.set(semanticKey, value);
+                    valuesDels.delete(semanticKey);
+                    operations.push(schemaStorage.values.putOp(nodeIdentifier, value));
+                },
+                del: (key) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    valuesDels.add(semanticKey);
+                    valuesPuts.delete(semanticKey);
+                    if (nodeIdentifier !== undefined) {
+                        operations.push(schemaStorage.values.delOp(nodeIdentifier));
+                    }
+                },
+                get: async (key) => {
+                    const pending = readPendingValue(valuesPuts, valuesDels, key);
+                    if (pending !== undefined || valuesDels.has(nodeKeyStringKey(key))) {
+                        return pending;
+                    }
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        return undefined;
+                    }
+                    return await schemaStorage.values.get(nodeIdentifier);
+                },
+            },
+            freshness: {
+                put: (key, value) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, true);
+                    if (nodeIdentifier === undefined) {
+                        throw new Error(`Missing node identifier for ${semanticKey}`);
+                    }
+                    freshnessPuts.set(semanticKey, value);
+                    freshnessDels.delete(semanticKey);
+                    operations.push(schemaStorage.freshness.putOp(nodeIdentifier, value));
+                },
+                del: (key) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    freshnessDels.add(semanticKey);
+                    freshnessPuts.delete(semanticKey);
+                    if (nodeIdentifier !== undefined) {
+                        operations.push(schemaStorage.freshness.delOp(nodeIdentifier));
+                    }
+                },
+                get: async (key) => {
+                    const pending = readPendingValue(freshnessPuts, freshnessDels, key);
+                    if (pending !== undefined || freshnessDels.has(nodeKeyStringKey(key))) {
+                        return pending;
+                    }
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        return undefined;
+                    }
+                    return await schemaStorage.freshness.get(nodeIdentifier);
+                },
+            },
+            inputs: {
+                put: (key, value) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, true);
+                    if (nodeIdentifier === undefined) {
+                        throw new Error(`Missing node identifier for ${semanticKey}`);
+                    }
+                    const translatedInputs = translateNodeKeysToStoredIdentifiers(
+                        identifierLookup,
+                        value.inputs.map(stringToNodeKeyString),
+                        false,
+                        rootDatabase
+                    );
+                    inputsPuts.set(semanticKey, value);
+                    inputsDels.delete(semanticKey);
+                    operations.push(
+                        schemaStorage.inputs.putOp(nodeIdentifier, {
+                            inputs: translatedInputs,
+                            inputCounters: value.inputCounters,
+                        })
+                    );
+                },
+                del: (key) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    inputsDels.add(semanticKey);
+                    inputsPuts.delete(semanticKey);
+                    if (nodeIdentifier !== undefined) {
+                        operations.push(schemaStorage.inputs.delOp(nodeIdentifier));
+                    }
+                },
+                get: async (key) => {
+                    const pending = readPendingValue(inputsPuts, inputsDels, key);
+                    if (pending !== undefined || inputsDels.has(nodeKeyStringKey(key))) {
+                        return pending;
+                    }
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        return undefined;
+                    }
+                    const record = await schemaStorage.inputs.get(nodeIdentifier);
+                    if (record === undefined) {
+                        return undefined;
+                    }
+                    return {
+                        inputs: translateStoredIdentifiersToNodeKeys(
+                            rootDatabase,
+                            identifierLookup,
+                            record.inputs
+                        ).map(nodeKeyStringToString),
+                        inputCounters: record.inputCounters,
+                    };
+                },
+            },
+            revdeps: {
+                put: (key, value) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        throw new Error(`Missing input node identifier for ${semanticKey}`);
+                    }
+                    const translatedDependents = translateNodeKeysToStoredIdentifiers(
+                        identifierLookup,
+                        value,
+                        true,
+                        rootDatabase
+                    );
+                    revdepsPuts.set(semanticKey, value);
+                    revdepsDels.delete(semanticKey);
+                    operations.push(
+                        schemaStorage.revdeps.putOp(
+                            nodeIdentifier,
+                            translatedDependents.map(stringToNodeKeyString)
+                        )
+                    );
+                },
+                del: (key) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    revdepsDels.add(semanticKey);
+                    revdepsPuts.delete(semanticKey);
+                    if (nodeIdentifier !== undefined) {
+                        operations.push(schemaStorage.revdeps.delOp(nodeIdentifier));
+                    }
+                },
+                get: async (key) => {
+                    const pending = readPendingValue(revdepsPuts, revdepsDels, key);
+                    if (pending !== undefined || revdepsDels.has(nodeKeyStringKey(key))) {
+                        return pending;
+                    }
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        return undefined;
+                    }
+                    const dependents = await schemaStorage.revdeps.get(nodeIdentifier);
+                    if (dependents === undefined) {
+                        return undefined;
+                    }
+                    return translateStoredIdentifiersToNodeKeys(
+                        rootDatabase,
+                        identifierLookup,
+                        dependents.map(nodeKeyStringToString)
+                    );
+                },
+            },
+            counters: {
+                put: (key, value) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, true);
+                    if (nodeIdentifier === undefined) {
+                        throw new Error(`Missing node identifier for ${semanticKey}`);
+                    }
+                    countersPuts.set(semanticKey, value);
+                    countersDels.delete(semanticKey);
+                    operations.push(schemaStorage.counters.putOp(nodeIdentifier, value));
+                },
+                del: (key) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    countersDels.add(semanticKey);
+                    countersPuts.delete(semanticKey);
+                    if (nodeIdentifier !== undefined) {
+                        operations.push(schemaStorage.counters.delOp(nodeIdentifier));
+                    }
+                },
+                get: async (key) => {
+                    const pending = readPendingValue(countersPuts, countersDels, key);
+                    if (pending !== undefined || countersDels.has(nodeKeyStringKey(key))) {
+                        return pending;
+                    }
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        return undefined;
+                    }
+                    return await schemaStorage.counters.get(nodeIdentifier);
+                },
+            },
+            timestamps: {
+                put: (key, value) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, true);
+                    if (nodeIdentifier === undefined) {
+                        throw new Error(`Missing node identifier for ${semanticKey}`);
+                    }
+                    timestampsPuts.set(semanticKey, value);
+                    timestampsDels.delete(semanticKey);
+                    operations.push(schemaStorage.timestamps.putOp(nodeIdentifier, value));
+                },
+                del: (key) => {
+                    const semanticKey = nodeKeyStringKey(key);
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    timestampsDels.add(semanticKey);
+                    timestampsPuts.delete(semanticKey);
+                    if (nodeIdentifier !== undefined) {
+                        operations.push(schemaStorage.timestamps.delOp(nodeIdentifier));
+                    }
+                },
+                get: async (key) => {
+                    const pending = readPendingValue(timestampsPuts, timestampsDels, key);
+                    if (pending !== undefined || timestampsDels.has(nodeKeyStringKey(key))) {
+                        return pending;
+                    }
+                    const nodeIdentifier = resolveIdentifier(key, false);
+                    if (nodeIdentifier === undefined) {
+                        return undefined;
+                    }
+                    return await schemaStorage.timestamps.get(nodeIdentifier);
+                },
+            },
         };
 
         const value = await fn(builder);
-        
-        // Combine all operations into a single array for the batch
-        /** @type {DatabaseBatchOperation[]} */
-        const allOperations = [
-            ...valuesOps,
-            ...freshnessOps,
-            ...inputsOps,
-            ...revdepsOps,
-            ...countersOps,
-            ...timestampsOps,
-        ];
-        
-        await schemaStorage.batch(allOperations);
+        queueIdentifiersWrite();
+        await schemaStorage.batch(operations);
+        if (identifierMappingsChanged) {
+            const committedLookup = rootDatabase.cloneActiveIdentifierLookup();
+            for (const [nodeIdentifier, nodeKey] of serializeIdentifierLookup(identifierLookup)) {
+                const existingKey = nodeIdToKeyFromLookup(committedLookup, nodeIdentifier);
+                const existingIdentifier = nodeKeyToIdFromLookup(committedLookup, nodeKey);
+                if (existingKey === undefined && existingIdentifier === undefined) {
+                    setIdentifierMapping(committedLookup, nodeIdentifier, nodeKey);
+                }
+            }
+            rootDatabase.replaceActiveIdentifierLookup(committedLookup);
+        }
         return value;
     };
 
@@ -240,82 +566,306 @@ function makeBatchBuilder(schemaStorage) {
 }
 
 /**
- * Creates a GraphStorage instance using typed databases.
- *
- * @param {RootDatabase} rootDatabase - The root database instance
+ * @param {RootDatabase} rootDatabase
+ * @param {SchemaStorage} schemaStorage
+ * @param {ValuesDatabase | FreshnessDatabase | InputsDatabase | RevdepsDatabase | CountersDatabase | TimestampsDatabase} rawDatabase
+ * @param {'values' | 'freshness' | 'inputs' | 'revdeps' | 'counters' | 'timestamps'} kind
+ * @returns {SemanticDatabase<*>}
+ */
+function makeSemanticDatabase(rootDatabase, schemaStorage, rawDatabase, kind) {
+    /** @type {SemanticDatabase<*>} */
+    const storage = {
+        async get(/** @type {NodeKeyString} */ key) {
+            const identifier = rootDatabase.nodeKeyToId(key);
+            if (identifier === undefined) {
+                return undefined;
+            }
+            const value = await rawDatabase.get(nodeIdentifierToStoredKey(identifier));
+            if (value === undefined) {
+                return undefined;
+            }
+            if (
+                kind === 'inputs' &&
+                typeof value === 'object' &&
+                value !== null &&
+                !Array.isArray(value) &&
+                'inputs' in value &&
+                'inputCounters' in value
+            ) {
+                return {
+                    inputs: translateStoredIdentifiersToNodeKeys(
+                        rootDatabase,
+                        rootDatabase.cloneActiveIdentifierLookup(),
+                        value.inputs
+                    ).map(nodeKeyStringToString),
+                    inputCounters: value.inputCounters,
+                };
+            }
+            if (kind === 'revdeps' && Array.isArray(value)) {
+                return translateStoredIdentifiersToNodeKeys(
+                    rootDatabase,
+                    rootDatabase.cloneActiveIdentifierLookup(),
+                    value.map(nodeKeyStringToString)
+                );
+            }
+            return value;
+        },
+        async put(/** @type {NodeKeyString} */ key, /** @type {*} */ value) {
+            await makeBatchBuilder(schemaStorage, rootDatabase)(async (batch) => {
+                if (kind === 'values') {
+                    batch.values.put(key, value);
+                } else if (kind === 'freshness') {
+                    batch.freshness.put(key, value);
+                } else if (kind === 'inputs') {
+                    batch.inputs.put(key, value);
+                } else if (kind === 'revdeps') {
+                    batch.revdeps.put(key, value);
+                } else if (kind === 'counters') {
+                    batch.counters.put(key, value);
+                } else {
+                    batch.timestamps.put(key, value);
+                }
+            });
+        },
+        async del(/** @type {NodeKeyString} */ key) {
+            await makeBatchBuilder(schemaStorage, rootDatabase)(async (batch) => {
+                if (kind === 'values') {
+                    batch.values.del(key);
+                } else if (kind === 'freshness') {
+                    batch.freshness.del(key);
+                } else if (kind === 'inputs') {
+                    batch.inputs.del(key);
+                } else if (kind === 'revdeps') {
+                    batch.revdeps.del(key);
+                } else if (kind === 'counters') {
+                    batch.counters.del(key);
+                } else {
+                    batch.timestamps.del(key);
+                }
+            });
+        },
+        async *keys() {
+            for await (const rawKey of rawDatabase.keys()) {
+                yield requireNodeKeyForIdentifier(
+                    rootDatabase.cloneActiveIdentifierLookup(),
+                    nodeIdentifierFromString(nodeKeyStringToString(rawKey))
+                );
+            }
+        },
+    };
+    return storage;
+}
+
+/**
+ * @param {SchemaStorage} schemaStorage
+ * @returns {GraphStorage}
+ */
+function makeLegacyGraphStorage(schemaStorage) {
+    /** @type {BatchFunction} */
+    const withBatch = async (fn) => {
+        /** @type {Array<*>} */
+        const operations = [];
+        /** @type {Map<string, *>} */
+        const puts = new Map();
+        /** @type {Set<string>} */
+        const dels = new Set();
+
+        /**
+         * @template TValue
+         * @param {ValuesDatabase | FreshnessDatabase | InputsDatabase | RevdepsDatabase | CountersDatabase | TimestampsDatabase} database
+         * @returns {BatchDatabaseOps<TValue>}
+         */
+        function tx(database) {
+            return {
+                put(key, value) {
+                    const semanticKey = nodeKeyStringKey(key);
+                    puts.set(`${database}:${semanticKey}`, value);
+                    dels.delete(`${database}:${semanticKey}`);
+                    operations.push(database.putOp(key, value));
+                },
+                del(key) {
+                    const semanticKey = nodeKeyStringKey(key);
+                    dels.add(`${database}:${semanticKey}`);
+                    puts.delete(`${database}:${semanticKey}`);
+                    operations.push(database.delOp(key));
+                },
+                async get(key) {
+                    const semanticKey = `${database}:${nodeKeyStringKey(key)}`;
+                    if (dels.has(semanticKey)) {
+                        return undefined;
+                    }
+                    if (puts.has(semanticKey)) {
+                        return puts.get(semanticKey);
+                    }
+                    return await database.get(key);
+                },
+            };
+        }
+
+        /** @type {BatchBuilder} */
+        const batch = {
+            values: tx(schemaStorage.values),
+            freshness: tx(schemaStorage.freshness),
+            inputs: tx(schemaStorage.inputs),
+            revdeps: tx(schemaStorage.revdeps),
+            counters: tx(schemaStorage.counters),
+            timestamps: tx(schemaStorage.timestamps),
+            identifierLookup: makeEmptyIdentifierLookup(),
+        };
+        const result = await fn(batch);
+        await schemaStorage.batch(operations);
+        return result;
+    };
+
+    async function ensureMaterialized(node, inputs, inputCounters, batch) {
+        batch.inputs.put(node, {
+            inputs: inputs.map(nodeKeyStringToString),
+            inputCounters,
+        });
+    }
+
+    async function ensureReverseDepsIndexed(node, inputs, batch) {
+        for (const input of inputs) {
+            const existingDependents = await batch.revdeps.get(input);
+            if (existingDependents !== undefined) {
+                const { index, found } = findInsertionIndex(
+                    existingDependents.map(nodeKeyStringToString),
+                    nodeKeyStringToString(node)
+                );
+                if (found) {
+                    continue;
+                }
+                batch.revdeps.put(input, [
+                    ...existingDependents.slice(0, index),
+                    node,
+                    ...existingDependents.slice(index),
+                ]);
+            } else {
+                batch.revdeps.put(input, [node]);
+            }
+        }
+    }
+
+    async function listDependents(input, batch) {
+        return (await batch.revdeps.get(input)) ?? [];
+    }
+
+    async function getInputs(node, batch) {
+        const record = await batch.inputs.get(node);
+        if (!record) {
+            return null;
+        }
+        return record.inputs.map(stringToNodeKeyString);
+    }
+
+    async function listMaterializedNodes() {
+        const nodes = [];
+        for await (const key of schemaStorage.inputs.keys()) {
+            nodes.push(key);
+        }
+        return nodes;
+    }
+
+    return {
+        values: schemaStorage.values,
+        freshness: schemaStorage.freshness,
+        inputs: schemaStorage.inputs,
+        revdeps: schemaStorage.revdeps,
+        counters: schemaStorage.counters,
+        timestamps: schemaStorage.timestamps,
+        withBatch,
+        ensureMaterialized,
+        ensureReverseDepsIndexed,
+        listDependents,
+        getInputs,
+        listMaterializedNodes,
+    };
+}
+
+/**
+ * @param {RootDatabase} rootDatabase
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase) {
     const schemaStorage = rootDatabase.getSchemaStorage();
+    if (
+        typeof rootDatabase.cloneActiveIdentifierLookup !== "function" ||
+        typeof rootDatabase.nodeKeyToId !== "function" ||
+        typeof rootDatabase.replaceActiveIdentifierLookup !== "function"
+    ) {
+        return makeLegacyGraphStorage(schemaStorage);
+    }
+
+    /** @type {BatchFunction} */
+    const withBatch = makeBatchBuilder(schemaStorage, rootDatabase);
 
     /**
-     * Ensure a node is marked as materialized in the inputs database.
-     * This is always called and always writes the full record including inputCounters.
-     * inputCounters must be updated whenever the node is validated (computed or skipped).
-     * @param {NodeKeyString} node - Canonical node key
-     * @param {NodeKeyString[]} inputs - Array of canonical input keys (may be empty)
-     * @param {number[]} inputCounters - Array of counter values for each input (must match inputs.length)
-     * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @param {NodeKeyString} node
+     * @param {NodeKeyString[]} inputs
+     * @param {number[]} inputCounters
+     * @param {BatchBuilder} batch
      * @returns {Promise<void>}
      */
     async function ensureMaterialized(node, inputs, inputCounters, batch) {
-        // Validate that inputCounters length matches inputs length
         if (inputs.length !== inputCounters.length) {
             throw new Error(
                 `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${node}`
             );
         }
 
-        // Convert NodeKeyString[] to string[] for storage
-        const inputsAsStrings = inputs.map(nodeKeyStringToString);
-        
-        // Always write the full record (no early return)
-        batch.inputs.put(node, { 
-            inputs: inputsAsStrings,
-            inputCounters: inputCounters
+        batch.inputs.put(node, {
+            inputs: inputs.map(nodeKeyStringToString),
+            inputCounters,
         });
     }
 
     /**
-     * Ensure a node's reverse dependencies are indexed.
-     * This is only called when the node has inputs.
-     * Writes reverse dependency arrays.
-     * @param {NodeKeyString} node - Canonical node key
-     * @param {NodeKeyString[]} inputs - Array of canonical input keys (must be non-empty)
-     * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @param {NodeKeyString} node
+     * @param {NodeKeyString[]} inputs
+     * @param {BatchBuilder} batch
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
-        // For each input, add this node to its dependents array (maintaining sorted order)
-        for (const input of inputs) {
-            // Get existing dependents for this input (use batch-consistent read)
-            const existingDependents = await batch.revdeps.get(input);
+        const identifierLookup = batch.identifierLookup;
+        const hadNodeIdentifier = lookupNodeIdentifier(identifierLookup, node) !== undefined;
+        const nodeIdentifier = nodeIdentifierToString(
+            getOrAllocateNodeIdentifier(rootDatabase, identifierLookup, node)
+        );
+        if (!hadNodeIdentifier) {
+            batch.markIdentifiersDirty();
+        }
 
+        for (const input of inputs) {
+            if (rootDatabase.nodeKeyToId(input) === undefined) {
+                throw new Error(`Missing node identifier for input ${nodeKeyStringKey(input)}`);
+            }
+            const existingDependents = await batch.revdeps.get(input);
             if (existingDependents !== undefined) {
-                // Use binary search to find position or detect duplicate
-                const { index, found } = findInsertionIndex(existingDependents, node, compareNodeKeyStringByNodeKey);
+                const existingIdentifiers = translateNodeKeysToStoredIdentifiers(
+                    identifierLookup,
+                    existingDependents,
+                    false,
+                    rootDatabase
+                );
+                const { index, found } = findInsertionIndex(existingIdentifiers, nodeIdentifier);
                 if (found) {
-                    continue; // Already indexed, skip
+                    continue;
                 }
-                // Insert at sorted position
                 const newDependents = [
                     ...existingDependents.slice(0, index),
                     node,
                     ...existingDependents.slice(index),
                 ];
                 batch.revdeps.put(input, newDependents);
-            } else {
-                // Create a new dependents array with just this node
-                batch.revdeps.put(input, [node]);
+                continue;
             }
+            batch.revdeps.put(input, [node]);
         }
     }
 
     /**
-     * List all dependents of an input.
-     * Returns the array of dependents stored for this input.
-     * @param {NodeKeyString} input - Canonical input key
-     * @param {BatchBuilder} batch - Batch builder for consistent reads
+     * @param {NodeKeyString} input
+     * @param {BatchBuilder} batch
      * @returns {Promise<NodeKeyString[]>}
      */
     async function listDependents(input, batch) {
@@ -327,46 +877,43 @@ function makeGraphStorage(rootDatabase) {
     }
 
     /**
-     * Get inputs for a node.
-     * @param {NodeKeyString} node - Canonical node key
-     * @param {BatchBuilder} batch - Batch builder for consistent reads
+     * @param {NodeKeyString} node
+     * @param {BatchBuilder} batch
      * @returns {Promise<NodeKeyString[] | null>}
      */
     async function getInputs(node, batch) {
         const record = await batch.inputs.get(node);
-        if (!record) return null;
-        // Convert string[] from DB to NodeKeyString[]
+        if (!record) {
+            return null;
+        }
         return record.inputs.map(stringToNodeKeyString);
     }
 
     /**
-     * List all materialized nodes.
      * @returns {Promise<NodeKeyString[]>}
      */
     async function listMaterializedNodes() {
-        const keys = [];
-        for await (const key of schemaStorage.inputs.keys()) {
-            if (typeof key !== "string") {
-                throw new Error("Invalid key type in inputs database");
-            }
-            keys.push(stringToNodeKeyString(key));
+        const nodes = [];
+        const identifierLookup = rootDatabase.cloneActiveIdentifierLookup();
+        for await (const rawKey of schemaStorage.inputs.keys()) {
+            nodes.push(
+                requireNodeKeyForIdentifier(
+                    identifierLookup,
+                    nodeIdentifierFromString(nodeKeyStringToString(rawKey))
+                )
+            );
         }
-        return keys;
+        return nodes;
     }
 
     return {
-        // Expose all databases as fields
-        values: schemaStorage.values,
-        freshness: schemaStorage.freshness,
-        inputs: schemaStorage.inputs,
-        revdeps: schemaStorage.revdeps,
-        counters: schemaStorage.counters,
-        timestamps: schemaStorage.timestamps,
-
-        // Batch builder for atomic operations
-        withBatch: makeBatchBuilder(schemaStorage),
-
-        // Helper methods
+        values: makeSemanticDatabase(rootDatabase, schemaStorage, schemaStorage.values, 'values'),
+        freshness: makeSemanticDatabase(rootDatabase, schemaStorage, schemaStorage.freshness, 'freshness'),
+        inputs: makeSemanticDatabase(rootDatabase, schemaStorage, schemaStorage.inputs, 'inputs'),
+        revdeps: makeSemanticDatabase(rootDatabase, schemaStorage, schemaStorage.revdeps, 'revdeps'),
+        counters: makeSemanticDatabase(rootDatabase, schemaStorage, schemaStorage.counters, 'counters'),
+        timestamps: makeSemanticDatabase(rootDatabase, schemaStorage, schemaStorage.timestamps, 'timestamps'),
+        withBatch,
         ensureMaterialized,
         ensureReverseDepsIndexed,
         listDependents,

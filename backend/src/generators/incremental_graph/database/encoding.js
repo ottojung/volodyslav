@@ -48,22 +48,11 @@
  *   relativePathToKey(keyToRelativePath(key)) === key
  */
 
-const { serializeNodeKey, deserializeNodeKey, nodeNameToString, stringToNodeName, stringToNodeKeyString, nodeKeyStringToString } = require('./node_key');
-
-/** @typedef {import('../types').ConstValue} ConstValue */
-
 /**
  * Sublevel names that store plain string keys rather than NodeKey JSON keys.
  * @type {Set<string>}
  */
 const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'global']);
-
-/**
- * Prefix used to distinguish non-string arguments from plain strings.
- * A path segment starting with '~' holds a JSON-encoded non-string value.
- */
-const NON_STRING_ARG_PREFIX = '~';
-const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
 
 // Use uppercase sentinels as the canonical on-disk form for special segments so
 // renderToFilesystem() is deterministic; decode accepts lowercase too so
@@ -187,48 +176,6 @@ function decodeSegment(s) {
 }
 
 /**
- * Encodes a single key argument value as a filesystem path segment.
- *
- * String arguments are percent-encoded directly.
- * Non-string arguments (number, boolean, null, array, object) are
- * JSON-serialized and prefixed with NON_STRING_ARG_PREFIX (`~`) so they
- * can be distinguished from plain strings during decoding.
- *
- * @param {unknown} arg - A key argument value.
- * @returns {string}
- */
-function encodeArg(arg) {
-    if (typeof arg === 'string') {
-        if (arg.startsWith(NON_STRING_ARG_PREFIX)) {
-            // Escape a leading '~' in string args so "~42" stays distinct from
-            // the encoded non-string number 42, which is also prefixed with '~'.
-            return ESCAPED_STRING_ARG_PREFIX + encodeSegment(arg.slice(1));
-        }
-        return encodeSegment(arg);
-    }
-    return NON_STRING_ARG_PREFIX + encodeSegment(JSON.stringify(arg));
-}
-
-/**
- * Decodes a path segment back to a key argument value.
- * Inverse of encodeArg().
- *
- * @param {string} segment
- * @returns {ConstValue}
- */
-function decodeArg(segment) {
-    if (segment.startsWith(ESCAPED_STRING_ARG_PREFIX)) {
-        return NON_STRING_ARG_PREFIX + decodeSegment(
-            segment.slice(ESCAPED_STRING_ARG_PREFIX.length)
-        );
-    }
-    if (segment.startsWith(NON_STRING_ARG_PREFIX)) {
-        return JSON.parse(decodeSegment(segment.slice(NON_STRING_ARG_PREFIX.length)));
-    }
-    return decodeSegment(segment);
-}
-
-/**
  * Converts a raw LevelDB key to a relative filesystem path.
  *
  * For NodeKey JSON keys stored in data sublevels (values, freshness,
@@ -252,18 +199,7 @@ function keyToRelativePath(rawKey) {
         return [...sublevels, encodeSegment(keyContent)].join('/');
     }
 
-    const nodeKey = (() => {
-        try {
-            return deserializeNodeKey(stringToNodeKeyString(keyContent));
-        } catch (_err) {
-            throw new Error(
-                `Invalid database key: expected NodeKey JSON for sublevel '${lastSublevel}', got '${keyContent}'`
-            );
-        }
-    })();
-    const headStr = nodeNameToString(nodeKey.head);
-    const argSegments = nodeKey.args.map(encodeArg);
-    return [...sublevels, headStr, ...argSegments].join('/');
+    return [...sublevels, encodeSegment(keyContent)].join('/');
 }
 
 /**
@@ -312,10 +248,12 @@ function relativePathToKey(relPath) {
         }
         keyContent = decodeSegment(keyComponents[0] ?? '');
     } else {
-        const headStr = keyComponents[0] ?? '';
-        const args = keyComponents.slice(1).map(decodeArg);
-        const nodeKey = { head: stringToNodeName(headStr), args };
-        keyContent = nodeKeyStringToString(serializeNodeKey(nodeKey));
+        if (keyComponents.length !== 1) {
+            throw new Error(
+                `Invalid database path '${relPath}': identifier-key sublevels require exactly one key segment`
+            );
+        }
+        keyContent = decodeSegment(keyComponents[0] ?? '');
     }
 
     return buildRawKey(sublevels, keyContent);

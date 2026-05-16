@@ -45,10 +45,9 @@ const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
-    internalPullByNodeKeyStringWithStatusDuringPull,
-    internalPullByNodeKeyStringWithStatus,
     internalSafePullWithStatus,
     internalUnsafePull,
+    internalPullByNodeKeyStringWithStatusDuringPull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
 
@@ -183,15 +182,7 @@ class IncrementalGraphClass {
      * @param {NodeKeyString} nodeKeyStr
      * @returns {Promise<RecomputeResult>}
      */
-    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
-        return await internalPullByNodeKeyStringWithStatus(this, nodeKeyStr);
-    }
-
-    /**
-     * @param {NodeKeyString} nodeKeyStr
-     * @returns {Promise<RecomputeResult>}
-     */
-    async pullByNodeKeyStringWithStatusDuringPull(nodeKeyStr) {
+    async _pullDuringPull(nodeKeyStr) {
         return await internalPullByNodeKeyStringWithStatusDuringPull(
             this,
             nodeKeyStr

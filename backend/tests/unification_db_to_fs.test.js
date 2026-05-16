@@ -80,13 +80,13 @@ function collectFiles(dir) {
  * Raw DB key for a zero-arg node in the 'x' namespace values sublevel.
  * @type {string}
  */
-const X_VALUES_KEY = '!x!!values!{"head":"all_events","args":[]}';
+const X_VALUES_KEY = '!x!!values!nodecachex';
 
 /**
  * Relative file path for the same key within the 'x' outputDir.
  * @type {string}
  */
-const X_VALUES_REL = 'values/all_events';
+const X_VALUES_REL = 'values/nodecachex';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -269,7 +269,7 @@ describe('makeDbToFsAdapter', () => {
         const db2 = await getRootDatabase(capabilities);
         try {
             await scanFromFilesystem(capabilities, db2, outputDir, 'x');
-            const rawVal = await db2._rawGetInSublevel('x', '!values!{"head":"all_events","args":[]}');
+            const rawVal = await db2._rawGetInSublevel('x', '!values!nodecachex');
             expect(rawVal).toEqual({ items: [10] });
         } finally {
             await db2.close();

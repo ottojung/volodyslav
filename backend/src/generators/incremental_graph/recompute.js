@@ -10,7 +10,7 @@
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} pullByNodeKeyStringWithStatusDuringPull
+ * @property {(nodeKeyStr: import('./types').NodeKeyString) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -37,7 +37,7 @@ async function internalMaybeRecalculate(
 
     for (const inputKey of nodeDefinition.inputs) {
         const { value: inputValue } =
-            await incrementalGraph.pullByNodeKeyStringWithStatusDuringPull(
+            await incrementalGraph._pullDuringPull(
                 inputKey
             );
         inputValues.push(inputValue);
