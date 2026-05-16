@@ -11,7 +11,7 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToNodeKeyString, stringToVersion } = require('./types');
+const { stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -67,7 +67,7 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').InputsRecord} InputsRecord */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 
@@ -95,7 +95,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<InputsRecord>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeKeyString[]>} */
+    /** @type {SimpleSublevel<NodeIdentifier[]>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
@@ -169,10 +169,10 @@ async function clearHostnameStorage(db, hostname) {
  * @param {string} hostname
  * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
  * @param {string} subkey
- * @returns {NodeKeyString}
+ * @returns {string}
  */
 function hostnameRawKey(hostname, sublevelName, subkey) {
-    return stringToNodeKeyString(`!_h_${hostname}!!${sublevelName}!${subkey}`);
+    return `!_h_${hostname}!!${sublevelName}!${subkey}`;
 }
 
 /**

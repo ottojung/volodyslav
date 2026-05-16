@@ -87,14 +87,14 @@ function assertNeverReplicaName(name) {
  * Database for storing node output values.
  * Key: persisted node identifier (e.g., "nodecachex")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<ComputedValue, NodeKeyString>} ValuesDatabase
+ * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: persisted node identifier (e.g., "nodecachex")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase<Freshness, NodeKeyString>} FreshnessDatabase
+ * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */
 
 /**
@@ -108,28 +108,28 @@ function assertNeverReplicaName(name) {
  * Database for storing node input dependencies.
  * Key: persisted node identifier
  * Value: inputs record with identifier-addressed dependencies
- * @typedef {GenericDatabase<InputsRecord, NodeKeyString>} InputsDatabase
+ * @typedef {GenericDatabase<InputsRecord, NodeIdentifier>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
  * Key: persisted input identifier
  * Value: array of dependent identifiers sorted lexicographically by identifier
- * @typedef {GenericDatabase<NodeKeyString[], NodeKeyString>} RevdepsDatabase
+ * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} RevdepsDatabase
  */
 
 /**
  * Database for storing node counters.
  * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)
- * @typedef {GenericDatabase<Counter, NodeKeyString>} CountersDatabase
+ * @typedef {GenericDatabase<Counter, NodeIdentifier>} CountersDatabase
  */
 
 /**
  * Database for storing node timestamps (creation and modification times).
  * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
- * @typedef {GenericDatabase<TimestampRecord, NodeKeyString>} TimestampsDatabase
+ * @typedef {GenericDatabase<TimestampRecord, NodeIdentifier>} TimestampsDatabase
  */
 
 /**
@@ -194,7 +194,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<InputsRecord>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeKeyString[]>} */
+    /** @type {SimpleSublevel<NodeIdentifier[]>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
