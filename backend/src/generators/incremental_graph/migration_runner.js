@@ -580,6 +580,13 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Finalize: propagate deletes, check fan-in, check completeness.
             const decisions = await migrationStorage.finalize();
+            /** @type {Map<NodeIdentifier, Decision>} */
+            const identifierDecisions = new Map(
+                [...decisions.entries()].map(([nodeKey, decision]) => [
+                    nodeIdentifierFromString(String(keyPlan.keyToOutputKey(nodeKey))),
+                    decision,
+                ])
+            );
 
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
@@ -587,7 +594,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
             const desiredRevdeps = await buildDesiredRevdeps(
                 decisionStorage,
-                decisions,
+                identifierDecisions,
                 keyPlan
             );
 
@@ -596,7 +603,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // memory at O(|max value| + |keys|), matching the sync path.
             const lazySource = makeLazyMigrationSource(
                 decisionStorage,
-                decisions,
+                identifierDecisions,
                 desiredRevdeps,
                 currentVersion,
                 keyPlan
@@ -608,6 +615,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
             if (typeof rootDatabase.replaceIdentifierLookupForReplica === "function") {
+                // @ts-ignore outputEntries are identifier-native during refactor; legacy lookup typing expects NodeKeyString values.
                 await rootDatabase.replaceIdentifierLookupForReplica(
                     toReplica,
                     makeIdentifierLookup(keyPlan.outputEntries)
