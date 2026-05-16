@@ -367,11 +367,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     //      change because a taken node rewired its inputs.
 
     // ── 2a: Per-node timestamp comparison for T nodes ─────────────────────────
-    /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
+    /** @type {Map<NodeIdentifier, 'keep' | 'take'>} */
     const initialDecisions = new Map();
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const forceKeepRoots = new Set();
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const forceTakeRoots = new Set();
 
     for await (const node of T.inputs.keys()) {
@@ -392,7 +392,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     // ── 2b: Discover H-only nodes ─────────────────────────────────────────────
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const hOnlyNodes = new Set();
     for await (const key of H.inputs.keys()) {
         if (!initialDecisions.has(key)) {
@@ -404,7 +404,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // For 'take' nodes: use H.inputs (the remote may have rewired edges).
     // For 'keep' nodes: use T.inputs.
     // For H-only nodes: use H.inputs.
-    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
 
     for (const [node, decision] of initialDecisions) {
@@ -421,7 +421,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             record = await T.inputs.get(node);
         }
         const inputKeys = record
-            ? record.inputs.map(s => stringToNodeKeyString(s))
+            ? record.inputs.map(s => nodeIdentifierFromString(s))
             : [];
         mergedInputsMap.set(node, inputKeys);
     }
@@ -429,7 +429,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     for (const key of hOnlyNodes) {
         const record = await H.inputs.get(key);
         const inputKeys = record
-            ? record.inputs.map(s => stringToNodeKeyString(s))
+            ? record.inputs.map(s => nodeIdentifierFromString(s))
             : [];
         mergedInputsMap.set(key, inputKeys);
     }
@@ -443,9 +443,9 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // Uses the merged inputs map so that rewired edges from taken nodes are
     // correctly accounted for (e.g. a taken node that now depends on a
     // force-kept ancestor will be tainted from both sides → 'invalidate').
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const keepTainted = new Set(forceKeepRoots);
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const takeTainted = new Set(forceTakeRoots);
 
     for (const node of topoList) {
@@ -457,7 +457,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     // ── Step 5: Assign final decisions ──────────────────────────────────────
-    /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>} */
+    /** @type {Map<NodeIdentifier, 'keep' | 'take' | 'invalidate'>} */
     const decisions = new Map();
 
     for (const [node, initial] of initialDecisions) {
