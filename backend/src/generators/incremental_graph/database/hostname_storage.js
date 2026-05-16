@@ -108,6 +108,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
         if (operations.length > 0) {
+            // @ts-ignore batch operations are produced by typed sublevels in this schema.
             await namespaceSublevel.batch(operations);
         }
     };
@@ -188,6 +189,7 @@ function hostnameRawKey(hostname, sublevelName, subkey) {
 async function getHostnameGlobalVersion(db, hostname) {
     validateHostname(hostname);
     const rawKey = hostnameRawKey(hostname, 'global', 'version');
+    // @ts-ignore raw hostname key is a root-level raw key string.
     const raw = await db.get(rawKey);
     if (raw === undefined) {
         return undefined;
@@ -211,6 +213,7 @@ async function getHostnameGlobalVersion(db, hostname) {
 async function setHostnameGlobal(db, hostname, key, value) {
     validateHostname(hostname);
     const rawKey = hostnameRawKey(hostname, 'global', key);
+    // @ts-ignore raw hostname key is a root-level raw key string.
     await db.put(rawKey, value);
 }
 
@@ -228,7 +231,7 @@ async function rawPutAllToHostname(db, hostname, entries) {
     validateHostname(hostname);
     /**
      * @param {{ sublevelName: string, subkey: string, value: * }} entry
-     * @returns {{ type: 'put', key: NodeIdentifier, value: * }}
+     * @returns {{ type: 'put', key: string, value: * }}
      */
     function makePutOp(entry) {
         return {
@@ -241,6 +244,7 @@ async function rawPutAllToHostname(db, hostname, entries) {
     for (let i = 0; i < entries.length; i += RAW_BATCH_CHUNK_SIZE) {
         const chunk = entries.slice(i, i + RAW_BATCH_CHUNK_SIZE);
         const ops = chunk.map(makePutOp);
+        // @ts-ignore raw hostname keys are root-level raw key strings.
         await db.batch(ops);
     }
 }

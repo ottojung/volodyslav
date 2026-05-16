@@ -223,6 +223,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
             }
             touchedSchema = true;
         }
+        // @ts-ignore batch operations are produced by typed sublevels in this schema.
         await namespaceSublevel.batch(operations);
     };
 
