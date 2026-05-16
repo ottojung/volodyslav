@@ -90,6 +90,10 @@ The semantic `NodeKey` should remain recoverable through explicit lookup tables.
   - [ ] Abort merge if the same semantic `NodeKey` appears under two different identifiers across T/H inputs, instead of mechanically treating them as distinct nodes.
   - [ ] Abort merge if two identifiers in one side resolve to the same semantic `NodeKey`.
   - [ ] Ensure merged-input-map construction, topo ordering, and revdeps rebuild run only after the above validation succeeds.
+- [ ] Update sync-merge apply phase to mutate lookup metadata atomically with graph-state writes.
+  - [ ] In `database/sync_merge.js`, when a node decision writes or deletes identifier-keyed graph records in `T` (`values|freshness|inputs|revdeps|counters|timestamps`), apply the matching `identifiers_keys_map` mutation in the same batch.
+  - [ ] Enforce post-merge bijection closure in `T`: no id-key entry without materialized graph-state presence, and no materialized graph-state id without an id-key entry.
+  - [ ] Add a regression test that performs a host merge containing at least one H-only node and one deleted node, then asserts `T` after merge has (1) graph-state ids and `identifiers_keys_map` in one-to-one correspondence and (2) no orphaned/stale lookup entries.
 - [ ] Update invalidation and recompute paths to reuse existing identifiers and never allocate duplicates
 - [ ] Update deletion paths so deleting a node removes both lookup entries and all identifier-keyed state
 - [ ] Remove legacy key-based concrete-node storage internals after boundary conversion is in place. Outside public API entrypoints and semantic-schema helpers, concrete-node operations must not be `NodeKey`-addressed.
