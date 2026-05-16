@@ -5,6 +5,7 @@
 
 const { stringToNodeKeyString } = require("./database");
 const { deserializeNodeKey } = require("./database");
+const { stringToNodeName } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -33,13 +34,25 @@ const {
  */
 
 /**
+ * @param {NodeKeyString} nodeKey
+ * @returns {{ head: NodeName, args: Array<*> }}
+ */
+function parseMigrationNodeKey(nodeKey) {
+    const nodeKeyString = String(nodeKey);
+    if (nodeKeyString.startsWith("{")) {
+        return deserializeNodeKey(nodeKey);
+    }
+    return { head: stringToNodeName(nodeKeyString), args: [] };
+}
+
+/**
  * Checks whether a node is compatible with the new schema.
  * @param {NodeKeyString} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @returns {void}
  */
 function checkSchemaCompatibility(nodeKey, newHeadIndex) {
-    const { head, args } = deserializeNodeKey(nodeKey);
+    const { head, args } = parseMigrationNodeKey(nodeKey);
     const arity = args.length;
     const compiled = newHeadIndex.get(head);
     if (!compiled) {

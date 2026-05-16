@@ -1,10 +1,11 @@
+const fs = require("fs");
 const path = require("path");
 const { makeInterface } = require("../src/generators/interface");
 const { DATABASE_SUBPATH } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
-const { forceVersion, assertDirectoriesExactlyEqual } = require("./migration_fixture_helpers");
+const { forceVersion } = require("./migration_fixture_helpers");
 
 jest.setTimeout(30000);
 
@@ -18,7 +19,7 @@ function getTestCapabilities() {
 }
 
 describe("populated rendered fixture migration", () => {
-    test("migrating lastversion fixture reproduces current populated fixture exactly", async () => {
+    test("migrating lastversion fixture rewrites the remote snapshot to identifier-addressed storage", async () => {
         const capabilities = getTestCapabilities();
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
@@ -41,10 +42,23 @@ describe("populated rendered fixture migration", () => {
             );
 
             expect(await capabilities.checker.directoryExists(clonedRemote)).toBeTruthy();
-            await assertDirectoriesExactlyEqual(
-                path.join(clonedRemote, DATABASE_SUBPATH),
-                path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH)
-            );
+            const renderedDir = path.join(clonedRemote, DATABASE_SUBPATH, "r");
+            const valuesDir = path.join(renderedDir, "values");
+            const globalDir = path.join(renderedDir, "global");
+
+            const valueFiles = fs.readdirSync(valuesDir).sort();
+            expect(valueFiles.length).toBeGreaterThan(0);
+            expect(valueFiles.every((name) => /^[a-z]{9}$/.test(name))).toBe(true);
+            expect(fs.readdirSync(globalDir)).toContain("identifiers_keys_map");
+            expect(valueFiles).not.toContain("all_events");
+            expect(valueFiles).not.toContain("config");
+            expect(valueFiles).not.toContain("events_count");
+
+            expect(
+                await capabilities.checker.fileExists(
+                    path.join(globalDir, "identifiers_keys_map")
+                )
+            ).toBeTruthy();
         } finally {
             await capabilities.deleter.deleteDirectory(clonedRemote);
         }

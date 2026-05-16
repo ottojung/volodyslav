@@ -6,6 +6,10 @@
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
+const {
+    deterministicNodeIdentifierFromNodeKey,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
 const { serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { compareNodeKeyStringByNodeKey } = require("../src/generators/incremental_graph/database/node_key");
 const { stringToNodeName } = require("../src/generators/incremental_graph/database");
@@ -23,12 +27,18 @@ const { checkpointMigration: mockCheckpointMigration } = require('../src/generat
 // ---------------------------------------------------------------------------
 function makeInMemoryDb(table) {
     const store = new Map();
+    function resolveKey(key) {
+        if (store.has(key) || typeof key !== "string" || !key.startsWith("{")) {
+            return key;
+        }
+        return nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(key));
+    }
     return {
-        async get(key) { return store.get(key); },
+        async get(key) { return store.get(resolveKey(key)); },
         async put(key, value) { store.set(key, value); },
         async rawPut(key, value) { store.set(key, value); },
-        async del(key) { store.delete(key); },
-        async rawDel(key) { store.delete(key); },
+        async del(key) { store.delete(resolveKey(key)); },
+        async rawDel(key) { store.delete(resolveKey(key)); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
@@ -129,6 +139,14 @@ function isSorted(arr) {
     return true;
 }
 
+/**
+ * @param {string} nodeKey
+ * @returns {string}
+ */
+function migrated(nodeKey) {
+    return nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(nodeKey));
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -208,7 +226,9 @@ describe("migration revdeps ordering", () => {
         const resultRevdeps = await yStorage.revdeps.get(inputKey);
         expect(resultRevdeps).toBeDefined();
         expect(isSorted(resultRevdeps)).toBe(true);
-        expect(resultRevdeps).toEqual([depA, depB, depC]);
+        expect(resultRevdeps).toEqual(
+            [migrated(depA), migrated(depB), migrated(depC)].sort()
+        );
     });
 
     test("migration result is stable across repeated identical runs", async () => {
@@ -358,10 +378,12 @@ describe("migration revdeps ordering", () => {
 
         // sharedInput is depended on by depA, depB, depC
         expect(sharedRevdeps).toHaveLength(3);
-        expect(sharedRevdeps).toEqual([depA, depB, depC]);
+        expect(sharedRevdeps).toEqual(
+            [migrated(depA), migrated(depB), migrated(depC)].sort()
+        );
 
         // anotherInput is depended on by depA, depB
         expect(anotherRevdeps).toHaveLength(2);
-        expect(anotherRevdeps).toEqual([depA, depB]);
+        expect(anotherRevdeps).toEqual([migrated(depA), migrated(depB)].sort());
     });
 });

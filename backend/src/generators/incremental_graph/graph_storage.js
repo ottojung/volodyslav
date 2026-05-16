@@ -65,6 +65,7 @@ const { nodeKeyStringToString } = require("./database");
  * @property {BatchDatabaseOps<Counter>} counters
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps
  * @property {IdentifierLookup} identifierLookup
+ * @property {() => void} markIdentifiersDirty
  */
 
 /**
@@ -384,7 +385,7 @@ function makeBatchBuilder(schemaStorage, rootDatabase) {
                     const translatedInputs = translateNodeKeysToStoredIdentifiers(
                         identifierLookup,
                         value.inputs.map(stringToNodeKeyString),
-                        false,
+                        true,
                         rootDatabase
                     );
                     inputsPuts.set(semanticKey, value);
@@ -431,7 +432,7 @@ function makeBatchBuilder(schemaStorage, rootDatabase) {
             revdeps: {
                 put: (key, value) => {
                     const semanticKey = nodeKeyStringKey(key);
-                    const nodeIdentifier = resolveIdentifier(key, false);
+                    const nodeIdentifier = resolveIdentifier(key, true);
                     if (nodeIdentifier === undefined) {
                         throw new Error(`Missing input node identifier for ${semanticKey}`);
                     }
@@ -672,25 +673,30 @@ function makeLegacyGraphStorage(schemaStorage) {
 
         /**
          * @template TValue
+         * @param {string} tag
          * @param {ValuesDatabase | FreshnessDatabase | InputsDatabase | RevdepsDatabase | CountersDatabase | TimestampsDatabase} database
          * @returns {BatchDatabaseOps<TValue>}
          */
-        function tx(database) {
+        function tx(tag, database) {
             return {
                 put(key, value) {
                     const semanticKey = nodeKeyStringKey(key);
-                    puts.set(`${database}:${semanticKey}`, value);
-                    dels.delete(`${database}:${semanticKey}`);
-                    operations.push(database.putOp(key, value));
+                    puts.set(`${tag}:${semanticKey}`, value);
+                    dels.delete(`${tag}:${semanticKey}`);
+                    operations.push(
+                        typeof database.rawPutOp === "function"
+                            ? database.rawPutOp(key, value)
+                            : database.putOp(key, value)
+                    );
                 },
                 del(key) {
                     const semanticKey = nodeKeyStringKey(key);
-                    dels.add(`${database}:${semanticKey}`);
-                    puts.delete(`${database}:${semanticKey}`);
+                    dels.add(`${tag}:${semanticKey}`);
+                    puts.delete(`${tag}:${semanticKey}`);
                     operations.push(database.delOp(key));
                 },
                 async get(key) {
-                    const semanticKey = `${database}:${nodeKeyStringKey(key)}`;
+                    const semanticKey = `${tag}:${nodeKeyStringKey(key)}`;
                     if (dels.has(semanticKey)) {
                         return undefined;
                     }
@@ -704,19 +710,26 @@ function makeLegacyGraphStorage(schemaStorage) {
 
         /** @type {BatchBuilder} */
         const batch = {
-            values: tx(schemaStorage.values),
-            freshness: tx(schemaStorage.freshness),
-            inputs: tx(schemaStorage.inputs),
-            revdeps: tx(schemaStorage.revdeps),
-            counters: tx(schemaStorage.counters),
-            timestamps: tx(schemaStorage.timestamps),
+            values: tx('values', schemaStorage.values),
+            freshness: tx('freshness', schemaStorage.freshness),
+            inputs: tx('inputs', schemaStorage.inputs),
+            revdeps: tx('revdeps', schemaStorage.revdeps),
+            counters: tx('counters', schemaStorage.counters),
+            timestamps: tx('timestamps', schemaStorage.timestamps),
             identifierLookup: makeEmptyIdentifierLookup(),
+            markIdentifiersDirty: () => {},
         };
         const result = await fn(batch);
         await schemaStorage.batch(operations);
         return result;
     };
 
+    /**
+     * @param {NodeKeyString} node
+     * @param {NodeKeyString[]} inputs
+     * @param {number[]} inputCounters
+     * @param {BatchBuilder} batch
+     */
     async function ensureMaterialized(node, inputs, inputCounters, batch) {
         batch.inputs.put(node, {
             inputs: inputs.map(nodeKeyStringToString),
@@ -724,6 +737,11 @@ function makeLegacyGraphStorage(schemaStorage) {
         });
     }
 
+    /**
+     * @param {NodeKeyString} node
+     * @param {NodeKeyString[]} inputs
+     * @param {BatchBuilder} batch
+     */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
         for (const input of inputs) {
             const existingDependents = await batch.revdeps.get(input);
@@ -746,10 +764,18 @@ function makeLegacyGraphStorage(schemaStorage) {
         }
     }
 
+    /**
+     * @param {NodeKeyString} input
+     * @param {BatchBuilder} batch
+     */
     async function listDependents(input, batch) {
         return (await batch.revdeps.get(input)) ?? [];
     }
 
+    /**
+     * @param {NodeKeyString} node
+     * @param {BatchBuilder} batch
+     */
     async function getInputs(node, batch) {
         const record = await batch.inputs.get(node);
         if (!record) {
@@ -836,8 +862,9 @@ function makeGraphStorage(rootDatabase) {
         }
 
         for (const input of inputs) {
-            if (rootDatabase.nodeKeyToId(input) === undefined) {
-                throw new Error(`Missing node identifier for input ${nodeKeyStringKey(input)}`);
+            if (lookupNodeIdentifier(identifierLookup, input) === undefined) {
+                batch.markIdentifiersDirty();
+                getOrAllocateNodeIdentifier(rootDatabase, identifierLookup, input);
             }
             const existingDependents = await batch.revdeps.get(input);
             if (existingDependents !== undefined) {
