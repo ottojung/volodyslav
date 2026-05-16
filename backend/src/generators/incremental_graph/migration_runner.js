@@ -22,6 +22,7 @@ const {
     serializeNodeKey,
     serializeIdentifierLookup,
     stringToNodeName,
+    stringToNodeKeyString,
 } = require("./database");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -615,10 +616,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
             if (typeof rootDatabase.replaceIdentifierLookupForReplica === "function") {
-                // @ts-ignore outputEntries are identifier-native during refactor; legacy lookup typing expects NodeKeyString values.
+                const identifierLookupEntries = keyPlan.outputEntries.map(
+                    ([nodeIdentifier, nodeKey]) => [nodeIdentifier, stringToNodeKeyString(String(nodeKey))]
+                );
                 await rootDatabase.replaceIdentifierLookupForReplica(
                     toReplica,
-                    makeIdentifierLookup(keyPlan.outputEntries)
+                    makeIdentifierLookup(identifierLookupEntries)
                 );
             }
 
