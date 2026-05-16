@@ -420,19 +420,21 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
  * A database put operation.
  * @template T
- * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey, value: T }} DatabasePutOperation
+ * @template [K=DatabaseKey]
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, K>, key: K, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey }} DatabaseDelOperation
+ * @template [K=DatabaseKey]
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, K>, key: K }} DatabaseDelOperation
  */
 
 /**
@@ -447,7 +449,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue, NodeIdentifier> | DatabasePutOperation<Freshness, NodeIdentifier> | DatabasePutOperation<InputsRecord, NodeIdentifier> | DatabasePutOperation<NodeIdentifier[], NodeIdentifier> | DatabasePutOperation<Counter, NodeIdentifier> | DatabasePutOperation<TimestampRecord, NodeIdentifier> | DatabasePutOperation<Version, 'version' | 'identifiers_keys_map'> | DatabasePutOperation<IdentifiersKeysMap, 'version' | 'identifiers_keys_map'> | DatabaseDelOperation<ComputedValue, NodeIdentifier> | DatabaseDelOperation<Freshness, NodeIdentifier> | DatabaseDelOperation<InputsRecord, NodeIdentifier> | DatabaseDelOperation<NodeIdentifier[], NodeIdentifier> | DatabaseDelOperation<Counter, NodeIdentifier> | DatabaseDelOperation<TimestampRecord, NodeIdentifier> | DatabaseDelOperation<Version, 'version' | 'identifiers_keys_map'> | DatabaseDelOperation<IdentifiersKeysMap, 'version' | 'identifiers_keys_map'>} DatabaseBatchOperation
  */
 
 /**
