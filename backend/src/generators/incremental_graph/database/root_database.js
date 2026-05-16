@@ -8,7 +8,7 @@
 const { getVersion } = require('../../../version');
 const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const { stringToVersion, stringToNodeIdentifier, versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -701,7 +701,7 @@ class RootDatabaseClass {
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(stringToNodeKeyString(innerKey));
+        return await sublevel.get(stringToNodeIdentifier(innerKey));
     }
 
     /**
@@ -742,7 +742,7 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(stringToNodeKeyString(key), value, opts);
+        await this.db.put(stringToNodeIdentifier(key), value, opts);
     }
 
     /**
@@ -761,7 +761,7 @@ class RootDatabaseClass {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.del(stringToNodeKeyString(key), opts);
+        await this.db.del(stringToNodeIdentifier(key), opts);
     }
 
     /**
@@ -799,12 +799,12 @@ class RootDatabaseClass {
          * Converts a plain raw-entry object into a LevelDB batch put operation,
          * applying the JSDoc-level NodeKeyString wrapper expected by this.db.
          * @param {{ key: string, value: * }} entry
-         * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+         * @returns {{ type: 'put', key: DatabaseKey, value: * }}
          */
         function makePutOp(entry) {
             return {
                 type: 'put',
-                key: stringToNodeKeyString(entry.key),
+                key: stringToNodeIdentifier(entry.key),
                 value: entry.value,
             };
         }
@@ -825,7 +825,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDeleteKeys(keys) {
-        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeKeyString(k) })));
+        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeIdentifier(k) })));
     }
 
     /**
