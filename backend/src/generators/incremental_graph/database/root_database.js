@@ -170,7 +170,8 @@ async function loadIdentifierLookupFromGlobal(globalSublevel) {
 
 /**
  * @template T
- * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ * @template [K=DatabaseKey]
+ * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 /**
@@ -188,17 +189,17 @@ async function loadIdentifierLookupFromGlobal(globalSublevel) {
  * @returns {SchemaStorage}
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
-    /** @type {SimpleSublevel<ComputedValue>} */
+    /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Freshness>} */
+    /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord>} */
+    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeIdentifier[]>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter>} */
+    /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<TimestampRecord>} */
+    /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
     // True once this closure's first batch() verifies/writes global/version.
