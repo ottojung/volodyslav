@@ -11,7 +11,7 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToNodeKeyString, stringToVersion } = require('./types');
+const { stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -169,10 +169,10 @@ async function clearHostnameStorage(db, hostname) {
  * @param {string} hostname
  * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
  * @param {string} subkey
- * @returns {NodeKeyString}
+ * @returns {string}
  */
 function hostnameRawKey(hostname, sublevelName, subkey) {
-    return stringToNodeKeyString(`!_h_${hostname}!!${sublevelName}!${subkey}`);
+    return `!_h_${hostname}!!${sublevelName}!${subkey}`;
 }
 
 /**
@@ -227,7 +227,7 @@ async function rawPutAllToHostname(db, hostname, entries) {
     validateHostname(hostname);
     /**
      * @param {{ sublevelName: string, subkey: string, value: * }} entry
-     * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+     * @returns {{ type: 'put', key: string, value: * }}
      */
     function makePutOp(entry) {
         return {

@@ -426,13 +426,15 @@ function versionToString(Version) {
 /**
  * A database put operation.
  * @template T
- * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey, value: T }} DatabasePutOperation
+ * @template [K=DatabaseKey]
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T, K>, key: K, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, DatabaseKey>, key: DatabaseKey }} DatabaseDelOperation
+ * @template [K=DatabaseKey]
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T, K>, key: K }} DatabaseDelOperation
  */
 
 /**
@@ -447,7 +449,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue, any> | DatabasePutOperation<Freshness, any> | DatabasePutOperation<InputsRecord, any> | DatabasePutOperation<NodeKeyString[], any> | DatabasePutOperation<Counter, any> | DatabasePutOperation<TimestampRecord, any> | DatabasePutOperation<Version, any> | DatabasePutOperation<IdentifiersKeysMap, any> | DatabaseDelOperation<ComputedValue, any> | DatabaseDelOperation<Freshness, any> | DatabaseDelOperation<InputsRecord, any> | DatabaseDelOperation<NodeKeyString[], any> | DatabaseDelOperation<Counter, any> | DatabaseDelOperation<TimestampRecord, any> | DatabaseDelOperation<Version, any> | DatabaseDelOperation<IdentifiersKeysMap, any>} DatabaseBatchOperation
  */
 
 /**
@@ -521,8 +523,8 @@ function schemaPatternToString(schemaPattern) {
  * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
  */
 
-/** 
- * @typedef {NodeKeyString} DatabaseKey
+/**
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**
@@ -530,11 +532,11 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {Level<DatabaseKey, DatabaseStoredValue>} RootLevelType
+ * @typedef {Level<string, DatabaseStoredValue>} RootLevelType
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>} SchemaSublevelType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>} SchemaSublevelType
  */
 
 /**
