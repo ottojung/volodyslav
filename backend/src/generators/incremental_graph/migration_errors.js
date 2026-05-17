@@ -2,14 +2,14 @@
  * Error classes for MigrationStorage operations.
  */
 
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /**
  * Thrown when two different decisions are assigned to the same node.
  */
 class DecisionConflict extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @param {string} existingKind
      * @param {string} newKind
      */
@@ -25,7 +25,7 @@ class DecisionConflict extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {string} existingKind
  * @param {string} newKind
  * @returns {DecisionConflict}
@@ -47,7 +47,7 @@ function isDecisionConflict(object) {
  */
 class OverrideConflict extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -59,7 +59,7 @@ class OverrideConflict extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {OverrideConflict}
  */
 function makeOverrideConflictError(nodeKey) {
@@ -79,7 +79,7 @@ function isOverrideConflict(object) {
  */
 class UndecidedNodes extends Error {
     /**
-     * @param {NodeKeyString[]} undecidedNodes
+     * @param {NodeIdentifier[]} undecidedNodes
      */
     constructor(undecidedNodes) {
         super(
@@ -92,7 +92,7 @@ class UndecidedNodes extends Error {
 }
 
 /**
- * @param {NodeKeyString[]} undecidedNodes
+ * @param {NodeIdentifier[]} undecidedNodes
  * @returns {UndecidedNodes}
  */
 function makeUndecidedNodesError(undecidedNodes) {
@@ -112,8 +112,8 @@ function isUndecidedNodes(object) {
  */
 class PartialDeleteFanIn extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
-     * @param {readonly NodeKeyString[]} inputs
+     * @param {NodeIdentifier} nodeKey
+     * @param {readonly NodeIdentifier[]} inputs
      */
     constructor(nodeKey, inputs) {
         super(
@@ -127,8 +127,8 @@ class PartialDeleteFanIn extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
- * @param {readonly NodeKeyString[]} inputs
+ * @param {NodeIdentifier} nodeKey
+ * @param {readonly NodeIdentifier[]} inputs
  * @returns {PartialDeleteFanIn}
  */
 function makePartialDeleteFanInError(nodeKey, inputs) {
@@ -148,7 +148,7 @@ function isPartialDeleteFanIn(object) {
  */
 class SchemaCompatibility extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @param {string} reason
      */
     constructor(nodeKey, reason) {
@@ -163,7 +163,7 @@ class SchemaCompatibility extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {string} reason
  * @returns {SchemaCompatibility}
  */
@@ -184,7 +184,7 @@ function isSchemaCompatibility(object) {
  */
 class GetMissingNode extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(`Node not found in previous version: ${nodeKey}`);
@@ -194,7 +194,7 @@ class GetMissingNode extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {GetMissingNode}
  */
 function makeGetMissingNodeError(nodeKey) {
@@ -214,7 +214,7 @@ function isGetMissingNode(object) {
  */
 class GetMissingValue extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -226,7 +226,7 @@ class GetMissingValue extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {GetMissingValue}
  */
 function makeGetMissingValueError(nodeKey) {
@@ -246,7 +246,7 @@ function isGetMissingValue(object) {
  */
 class MissingDependencyMetadata extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -258,7 +258,7 @@ class MissingDependencyMetadata extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {MissingDependencyMetadata}
  */
 function makeMissingDependencyMetadataError(nodeKey) {
@@ -278,7 +278,7 @@ function isMissingDependencyMetadata(object) {
  */
 class CreateExistingNode extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -291,7 +291,7 @@ class CreateExistingNode extends Error {
 }
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {CreateExistingNode}
  */
 function makeCreateExistingNodeError(nodeKey) {

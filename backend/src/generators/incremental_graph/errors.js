@@ -2,6 +2,7 @@
 /** @typedef {import('./database/types').NodeName} NodeName */
 /** @typedef {import('./database/types').SchemaPattern} SchemaPattern */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /**
  * Base error class for database operations.
@@ -285,28 +286,28 @@ function isSchemaOverlap(object) {
  */
 class InvalidComputorReturnValue extends Error {
     /**
-     * @param {NodeName} nodeName
+     * @param {NodeIdentifier} nodeIdentifier
      * @param {unknown} value
      */
-    constructor(nodeName, value) {
+    constructor(nodeIdentifier, value) {
         super(
-            `Computor for node '${nodeName}' returned an invalid value: ${value}. ` +
+            `Computor for node '${nodeIdentifier}' returned an invalid value: ${value}. ` +
                 `Computors must return a valid ComputedValue or Unchanged, not null or undefined.`
         );
         this.name = "InvalidComputorReturnValueError";
-        this.nodeName = nodeName;
+        this.nodeName = nodeIdentifier;
         this.value = value;
     }
 }
 
 /**
  * Constructs an InvalidComputorReturnValue error.
- * @param {NodeName} nodeName
+ * @param {NodeIdentifier} nodeIdentifier
  * @param {unknown} value
  * @returns {InvalidComputorReturnValue}
  */
-function makeInvalidComputorReturnValueError(nodeName, value) {
-    return new InvalidComputorReturnValue(nodeName, value);
+function makeInvalidComputorReturnValueError(nodeIdentifier, value) {
+    return new InvalidComputorReturnValue(nodeIdentifier, value);
 }
 
 /**
@@ -323,7 +324,7 @@ function isInvalidComputorReturnValue(object) {
  */
 class InvalidUnchanged extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -337,7 +338,7 @@ class InvalidUnchanged extends Error {
 
 /**
  * Constructs an InvalidUnchanged error.
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {InvalidUnchanged}
  */
 function makeInvalidUnchangedError(nodeKey) {

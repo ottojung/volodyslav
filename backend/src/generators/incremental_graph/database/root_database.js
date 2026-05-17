@@ -49,6 +49,7 @@ const {
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
+/** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 /**
@@ -633,7 +634,7 @@ class RootDatabaseClass {
      * Write a key/value pair into a hostname's staging global sublevel.
      * @param {string} hostname
      * @param {string} key - The key to write (e.g. 'version').
-     * @param {unknown} value - The value to store.
+     * @param {DatabaseStoredValue} value - The value to store.
      * @returns {Promise<void>}
      */
     async setHostnameGlobal(hostname, key, value) {

@@ -21,8 +21,8 @@
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} maybeRecalculate
  */
 
-const { nodeKeyStringToString, stringToNodeName } = require("./database");
-const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database/types");
+const { stringToNodeName, nodeKeyStringToString } = require("./database");
+const { stringToNodeIdentifier, stringToNodeKeyString, nodeIdentifierToString } = require("./database/types");
 const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
@@ -102,7 +102,7 @@ async function internalPullWithStatus(
     const concreteKey = serializeNodeKey(nodeKey);
     return await internalPullByNodeIdentifierWithStatusDuringPull(
         incrementalGraph,
-        stringToNodeIdentifier(String(concreteKey)),
+        stringToNodeIdentifier(nodeKeyStringToString(concreteKey)),
         incrementalGraph.makeIdentifierResolver()
     );
 }
@@ -157,7 +157,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
      */
     const run = async (batch) => {
         const outputIdentifier = identifierResolver.getOrAllocateNodeIdentifier(
-            stringToNodeIdentifier(String(concreteNode.output))
+            concreteNode.output
         );
         const nodeFreshness = await batch.freshness.get(
             outputIdentifier
@@ -167,7 +167,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             const result = await batch.values.get(outputIdentifier);
             if (result === undefined) {
                 throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${nodeKeyStringToString(nodeKeyStr)}`
+                    `Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeKeyStr)}`
                 );
             }
             return { value: result, status: "cached" };

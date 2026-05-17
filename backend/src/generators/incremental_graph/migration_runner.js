@@ -17,6 +17,7 @@ const {
     makeIdentifierLookup,
     nodeIdentifierFromString,
     nodeIdentifierToString,
+    nodeKeyStringToString,
     requireNodeIdentifierForKey,
     requireNodeKeyForIdentifier,
     serializeNodeKey,
@@ -98,6 +99,18 @@ async function loadMaterializedNodes(storage) {
 }
 
 /**
+ * Converts a plain zero-argument node name string to its canonical NodeIdentifier
+ * form (i.e. the serialized `{"head":"<name>","args":[]}` representation wrapped
+ * as a NodeIdentifier).  Used in migration backwards-compatibility paths where
+ * old database entries stored nodes by bare name rather than by serialized key.
+ * @param {string} nodeName
+ * @returns {NodeIdentifier}
+ */
+function zeroArgNodeNameToIdentifier(nodeName) {
+    return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey({ head: stringToNodeName(nodeName), args: [] })));
+}
+
+/**
  * @param {NodeIdentifier} nodeKey
  * @returns {NodeIdentifier}
  */
@@ -106,7 +119,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
     if (nodeKeyString.startsWith("{")) {
         return stringToNodeIdentifier(nodeKeyString);
     }
-    return serializeNodeKey({ head: stringToNodeName(nodeKeyString), args: [] });
+    return zeroArgNodeNameToIdentifier(nodeKeyString);
 }
 
 /**
