@@ -630,21 +630,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             await rootDatabase._rawSync();
 
             // Persist the new active replica pointer after all writes succeed.
-            if (typeof rootDatabase.setCurrentReplicaPointer === 'function') {
-                await rootDatabase.setCurrentReplicaPointer(toReplica);
-            } else {
-                const legacySwitch = Reflect.get(rootDatabase, 'switchToReplica');
-                if (typeof legacySwitch === 'function') {
-                    await legacySwitch.call(rootDatabase, toReplica);
-                } else {
-                    throw new Error('Replica cutover is unsupported by the provided root database');
-                }
-            }
+            await rootDatabase.setCurrentReplicaPointer(toReplica);
             switchedReplica = true;
         }
     );
 
-    if (switchedReplica && typeof rootDatabase.setCurrentReplicaPointer === 'function') {
+    if (switchedReplica && typeof rootDatabase.close === 'function') {
         await rootDatabase.close();
         const rebuiltDatabase = await getRootDatabase(capabilities);
         capabilities.logger.logDebug(

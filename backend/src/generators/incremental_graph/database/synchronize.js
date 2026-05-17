@@ -69,10 +69,11 @@ const {
 
 /**
  * @param {Capabilities} capabilities
- * @param {RootDatabase} rootDatabase
- * @returns {Promise<RootDatabase>}
+ * @param {{ rootDatabase: RootDatabase }} state
+ * @returns {Promise<void>}
  */
-async function mergeRemoteHostBranches(capabilities, rootDatabase) {
+async function mergeRemoteHostBranches(capabilities, state) {
+    let rootDatabase = state.rootDatabase;
     const workDir = path.join(
         capabilities.environment.workingDirectory(),
         CHECKPOINT_WORKING_PATH
@@ -140,6 +141,7 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
             if (switchedReplica) {
                 await rootDatabase.close();
                 rootDatabase = await getRootDatabase(capabilities);
+                state.rootDatabase = rootDatabase;
             }
 
             capabilities.logger.logInfo(
@@ -200,11 +202,8 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
 
     const failures = [...failuresByHost.values()];
     if (failures.length > 0) {
-        const error = new SyncMergeAggregateError(failures);
-        Reflect.set(error, 'currentRootDatabase', rootDatabase);
-        throw error;
+        throw new SyncMergeAggregateError(failures);
     }
-    return rootDatabase;
 }
 
 /**
@@ -259,16 +258,11 @@ async function synchronizeNoLock(capabilities, options) {
             { ...options, mergeHostBranches: false }
         );
 
+        const state = { rootDatabase };
         try {
-            rootDatabase = await mergeRemoteHostBranches(capabilities, rootDatabase);
-        } catch (error) {
-            if (error !== null && typeof error === 'object') {
-                const currentRootDatabase = Reflect.get(error, 'currentRootDatabase');
-                if (currentRootDatabase !== undefined) {
-                    rootDatabase = currentRootDatabase;
-                }
-            }
-            throw error;
+            await mergeRemoteHostBranches(capabilities, state);
+        } finally {
+            rootDatabase = state.rootDatabase;
         }
     } finally {
         if (rootDatabase !== undefined) {

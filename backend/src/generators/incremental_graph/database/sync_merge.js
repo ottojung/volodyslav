@@ -578,16 +578,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         await unifyRevdeps(T, mergedInputsMap);
 
         // ── Step 8: Persist active replica pointer ───────────────────────────
-        if (typeof rootDatabase.setCurrentReplicaPointer === 'function') {
-            await rootDatabase.setCurrentReplicaPointer(toReplica);
-        } else {
-            const legacySwitch = Reflect.get(rootDatabase, 'switchToReplica');
-            if (typeof legacySwitch === 'function') {
-                await legacySwitch.call(rootDatabase, toReplica);
-            } else {
-                throw new Error('Replica cutover is unsupported by the provided root database');
-            }
-        }
+        await rootDatabase.setCurrentReplicaPointer(toReplica);
     }
 
     logger.logInfo(
