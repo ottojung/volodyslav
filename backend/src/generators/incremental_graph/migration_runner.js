@@ -17,6 +17,7 @@ const {
     makeIdentifierLookup,
     nodeIdentifierFromString,
     nodeIdentifierToString,
+    nodeKeyStringToString,
     requireNodeIdentifierForKey,
     requireNodeKeyForIdentifier,
     serializeNodeKey,
@@ -106,7 +107,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
     if (nodeKeyString.startsWith("{")) {
         return stringToNodeIdentifier(nodeKeyString);
     }
-    return serializeNodeKey({ head: stringToNodeName(nodeKeyString), args: [] });
+    return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey({ head: stringToNodeName(nodeKeyString), args: [] })));
 }
 
 /**

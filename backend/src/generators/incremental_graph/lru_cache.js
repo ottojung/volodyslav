@@ -6,7 +6,7 @@
 const { LRUCache } = require('lru-cache');
 
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 
 /**
  * Default maximum number of cached concrete instantiations.
@@ -17,8 +17,8 @@ const DEFAULT_MAX_SIZE = 10000;
 /**
  * LRU cache for concrete node instantiations.
  * @typedef {Object} ConcreteNodeCache
- * @property {(key: NodeKeyString) => ConcreteNode | undefined} get - Get a cached node
- * @property {(key: NodeKeyString, value: ConcreteNode) => void} set - Cache a node
+ * @property {(key: NodeIdentifier) => ConcreteNode | undefined} get - Get a cached node
+ * @property {(key: NodeIdentifier, value: ConcreteNode) => void} set - Cache a node
  * @property {() => number} size - Get current cache size
  * @property {() => void} clear - Clear the cache
  */
@@ -30,7 +30,7 @@ const DEFAULT_MAX_SIZE = 10000;
 class ConcreteNodeCacheClass {
     /**
      * @private
-     * @type {LRUCache<NodeKeyString, ConcreteNode>}
+     * @type {LRUCache<NodeIdentifier, ConcreteNode>}
      */
     cache;
 
@@ -45,7 +45,7 @@ class ConcreteNodeCacheClass {
 
     /**
      * Get a cached concrete node.
-     * @param {NodeKeyString} key - Node key
+     * @param {NodeIdentifier} key - Node identifier
      * @returns {ConcreteNode | undefined}
      */
     get(key) {
@@ -54,7 +54,7 @@ class ConcreteNodeCacheClass {
 
     /**
      * Cache a concrete node.
-     * @param {NodeKeyString} key - Node key
+     * @param {NodeIdentifier} key - Node identifier
      * @param {ConcreteNode} value - Concrete node to cache
      */
     set(key, value) {

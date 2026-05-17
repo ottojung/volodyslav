@@ -416,7 +416,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {Array<[NodeIdentifier, NodeKeyString]>} IdentifiersKeysMap
+ * @typedef {Array<[NodeIdentifier, NodeIdentifier]>} IdentifiersKeysMap
  */
 
 /**

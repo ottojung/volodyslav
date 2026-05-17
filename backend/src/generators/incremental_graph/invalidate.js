@@ -17,8 +17,8 @@
  * @property {(nodeKeyStr: NodeIdentifier, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
-const { stringToNodeName } = require("./database");
-const { nodeIdentifierToString } = require("./database");
+const { stringToNodeName, nodeKeyStringToString } = require("./database");
+const { nodeIdentifierToString, stringToNodeIdentifier } = require("./database/types");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
 const { serializeNodeKey } = require("./database");
@@ -95,7 +95,7 @@ async function internalUnsafeInvalidate(
     checkArity(compiledNode, bindings);
 
     const nodeKey = { head: nodeNameTyped, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
+    const concreteKey = stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey(nodeKey)));
     const concreteNode = incrementalGraph.getOrCreateConcreteNode(
         concreteKey,
         compiledNode,

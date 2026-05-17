@@ -29,7 +29,6 @@ const {
 } = require("./compiled_node");
 const { makeGraphStorage } = require("./graph_storage");
 const { makeIdentifierResolver } = require("./identifier_resolver");
-const { stringToNodeIdentifier } = require("./database/types");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -182,10 +181,10 @@ class IncrementalGraphClass {
             outputKey: concreteNode.output,
             inputKeys: concreteNode.inputs,
             outputIdentifier: identifierResolver.getOrAllocateNodeIdentifier(
-                stringToNodeIdentifier(String(concreteNode.output))
+                concreteNode.output
             ),
             inputIdentifiers: concreteNode.inputs.map((inputKey) =>
-                identifierResolver.getOrAllocateNodeIdentifier(stringToNodeIdentifier(String(inputKey)))
+                identifierResolver.getOrAllocateNodeIdentifier(inputKey)
             ),
             computor: concreteNode.computor,
         };

@@ -2,6 +2,7 @@
 /** @typedef {import('./database/types').NodeName} NodeName */
 /** @typedef {import('./database/types').SchemaPattern} SchemaPattern */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /**
  * Base error class for database operations.
@@ -323,7 +324,7 @@ function isInvalidComputorReturnValue(object) {
  */
 class InvalidUnchanged extends Error {
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -337,7 +338,7 @@ class InvalidUnchanged extends Error {
 
 /**
  * Constructs an InvalidUnchanged error.
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {InvalidUnchanged}
  */
 function makeInvalidUnchangedError(nodeKey) {

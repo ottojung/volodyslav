@@ -7,13 +7,14 @@ const {
     extractInputBindings,
 } = require("./compiled_node");
 const { renderExpr } = require("./expr");
-const { createNodeKeyFromPattern, serializeNodeKey } = require("./database");
+const { createNodeKeyFromPattern, serializeNodeKey, nodeKeyStringToString } = require("./database");
+const { stringToNodeIdentifier } = require("./database/types");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').ConcreteNodeComputor} ConcreteNodeComputor */
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /**
  * @typedef {object} IncrementalGraphInstantiationAccess
  * @property {import('./lru_cache').ConcreteNodeCache} concreteInstantiations
@@ -24,7 +25,7 @@ const { createNodeKeyFromPattern, serializeNodeKey } = require("./database");
  * Dynamic edges are persisted to DB when the node is computed/set, not here.
  * This is a runtime-only function that operates on instance data, not schema patterns.
  * @param {IncrementalGraphInstantiationAccess} incrementalGraph
- * @param {NodeKeyString} concreteKeyCanonical
+ * @param {NodeIdentifier} concreteKeyCanonical
  * @param {CompiledNode} compiledNode
  * @param {Array<ConstValue>} bindings
  * @returns {ConcreteNode}
@@ -35,8 +36,8 @@ function internalGetOrCreateConcreteNode(
     compiledNode,
     bindings
 ) {
-    const concreteKeyString = concreteKeyCanonical;
-    const cached = incrementalGraph.concreteInstantiations.get(concreteKeyString);
+    const concreteKeyIdentifier = concreteKeyCanonical;
+    const cached = incrementalGraph.concreteInstantiations.get(concreteKeyIdentifier);
     if (cached) {
         return cached;
     }
@@ -44,18 +45,18 @@ function internalGetOrCreateConcreteNode(
     if (!compiledNode.isPattern) {
         const jsonInputs = compiledNode.canonicalInputs.map((input) => {
             const inputKey = createNodeKeyFromPattern(input, []);
-            return serializeNodeKey(inputKey);
+            return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey(inputKey)));
         });
 
         const concreteNode = {
-            output: concreteKeyString,
+            output: concreteKeyIdentifier,
             inputs: jsonInputs,
             /** @type {ConcreteNodeComputor} */
             computor: (inputs, oldValue) =>
                 compiledNode.source.computor(inputs, oldValue, []),
         };
         incrementalGraph.concreteInstantiations.set(
-            concreteKeyString,
+            concreteKeyIdentifier,
             concreteNode
         );
         return concreteNode;
@@ -70,18 +71,18 @@ function internalGetOrCreateConcreteNode(
         );
         const inputPattern = renderExpr(inputExpr);
         const inputKey = createNodeKeyFromPattern(inputPattern, inputBindings);
-        return serializeNodeKey(inputKey);
+        return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey(inputKey)));
     });
 
     const concreteNode = {
-        output: concreteKeyString,
+        output: concreteKeyIdentifier,
         inputs: concreteInputs,
         /** @type {ConcreteNodeComputor} */
         computor: (inputValues, oldValue) =>
             compiledNode.source.computor(inputValues, oldValue, bindings),
     };
 
-    incrementalGraph.concreteInstantiations.set(concreteKeyString, concreteNode);
+    incrementalGraph.concreteInstantiations.set(concreteKeyIdentifier, concreteNode);
     return concreteNode;
 }
 
