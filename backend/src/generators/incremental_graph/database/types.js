@@ -420,7 +420,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -447,7 +447,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 /**
@@ -522,7 +522,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /** 
- * @typedef {NodeKeyString} DatabaseKey
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**
@@ -543,7 +543,7 @@ function schemaPatternToString(schemaPattern) {
 
 /**
  * @template T
- * @template [K=NodeKeyString]
+ * @template [K=DatabaseKey]
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
  */
 

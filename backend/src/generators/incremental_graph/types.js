@@ -49,7 +49,7 @@
 
 /**
  * Stable identifier used for persisted IncrementalGraph state.
- * @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier
+ * @typedef {import('./database/types').NodeIdentifier} NodeIdentifier
  */
 
 /**

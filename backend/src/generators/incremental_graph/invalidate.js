@@ -4,7 +4,7 @@
 
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 /**
  * @typedef {object} IncrementalGraphInvalidateAccess
@@ -14,7 +14,7 @@
  * @property {() => IdentifierResolver} makeIdentifierResolver
  * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<void>) => Promise<void>} withIdentifierBatch
  * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
- * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {(nodeKeyStr: NodeIdentifier, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
 const { stringToNodeName } = require("./database");
@@ -26,7 +26,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
- * @param {import('./database/node_identifier').NodeIdentifier} changedIdentifier
+ * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
  * @param {Set<string>} [nodesBecomingOutdated]
  * @returns {Promise<void>}

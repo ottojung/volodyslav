@@ -20,7 +20,7 @@ const {
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').GlobalVersionDatabase} GlobalVersionDatabase */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/node_identifier').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 
@@ -33,9 +33,9 @@ const fallbackIdentifierLookups = new WeakMap();
  * translated at most once during the operation.
  * @typedef {object} IdentifierResolver
  * @property {IdentifierLookup} lookup - Mutable lookup snapshot for the current operation.
- * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
- * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
- * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
+ * @property {(nodeKey: NodeIdentifier) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
+ * @property {(nodeKey: NodeIdentifier) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
+ * @property {(nodeIdentifier: NodeIdentifier) => NodeIdentifier} requireNodeKey - Convert an identifier back to its semantic node key.
  * @property {(batch: BatchBuilder, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append the lookup write to the current batch when allocations happened.
  * @property {(rootDatabase: RootDatabase) => void} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
@@ -65,7 +65,7 @@ function getActiveLookup(rootDatabase) {
  * Compatibility test doubles fall back to deterministic identifiers derived from the key.
  * @param {RootDatabase} rootDatabase
  * @param {IdentifierLookup} lookup
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {NodeIdentifier}
  */
 function allocateIdentifier(rootDatabase, lookup, nodeKey) {
@@ -86,12 +86,12 @@ function makeIdentifierResolver(rootDatabase) {
     const lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
     /** @type {Map<string, NodeIdentifier>} */
     const identifiersByNodeKey = new Map();
-    /** @type {Map<string, NodeKeyString>} */
+    /** @type {Map<string, NodeIdentifier>} */
     const nodeKeysByIdentifier = new Map();
     let hasPendingLookupWrite = false;
 
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @param {NodeIdentifier} nodeIdentifier
      * @returns {NodeIdentifier}
      */
@@ -102,7 +102,7 @@ function makeIdentifierResolver(rootDatabase) {
     }
 
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {NodeIdentifier | undefined}
      */
     function lookupNodeIdentifier(nodeKey) {
@@ -118,7 +118,7 @@ function makeIdentifierResolver(rootDatabase) {
     }
 
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {NodeIdentifier}
      */
     function getOrAllocateNodeIdentifier(nodeKey) {
@@ -135,7 +135,7 @@ function makeIdentifierResolver(rootDatabase) {
 
     /**
      * @param {NodeIdentifier} nodeIdentifier
-     * @returns {NodeKeyString}
+     * @returns {NodeIdentifier}
      */
     function requireNodeKey(nodeIdentifier) {
         const identifierString = nodeIdentifierToString(nodeIdentifier);

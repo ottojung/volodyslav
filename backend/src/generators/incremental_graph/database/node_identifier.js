@@ -1,5 +1,8 @@
 const random = require("../../../random");
-const { nodeKeyStringToString, stringToNodeKeyString } = require("./types");
+const {
+    nodeIdentifierToString: nodeIdentifierToRawString,
+    stringToNodeIdentifier,
+} = require("./types");
 
 /**
  * Persisted node identifiers are exactly 9 lowercase ASCII letters.
@@ -30,32 +33,8 @@ function isInvalidNodeIdentifierError(object) {
     return object instanceof InvalidNodeIdentifierError;
 }
 
-class NodeIdentifierClass {
-    /** @type {string} */
-    identifier;
-
-    /**
-     * @private
-     * @type {undefined}
-     */
-    __brand;
-
-    /**
-     * @param {string} identifier
-     */
-    constructor(identifier) {
-        this.identifier = identifier;
-        if (this.__brand !== undefined) {
-            throw new Error("NodeIdentifier is a nominal type and should not be instantiated directly");
-        }
-    }
-}
-
-/**
- * Opaque random identifier for a materialized incremental-graph node.
- * The string format is intentionally restricted to nine lowercase letters.
- * @typedef {NodeIdentifierClass} NodeIdentifier
- */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').DatabaseKey} DatabaseKey */
 
 /**
  * @typedef {object} Capabilities
@@ -89,7 +68,7 @@ function nodeIdentifierFromString(identifier) {
     if (!isValidNodeIdentifier(identifier)) {
         throw new InvalidNodeIdentifierError(identifier);
     }
-    return new NodeIdentifierClass(identifier);
+    return stringToNodeIdentifier(identifier);
 }
 
 /**
@@ -98,26 +77,26 @@ function nodeIdentifierFromString(identifier) {
  * @returns {string}
  */
 function nodeIdentifierToString(identifier) {
-    return identifier.identifier;
+    return nodeIdentifierToRawString(identifier);
 }
 
 /**
  * Convert an identifier to the branded database-key type used by typed sublevels.
  * This hides the NodeKeyString storage-brand detail from identifier-native callers.
  * @param {NodeIdentifier} identifier
- * @returns {import('./types').NodeKeyString}
+ * @returns {DatabaseKey}
  */
 function nodeIdentifierToDatabaseKey(identifier) {
-    return stringToNodeKeyString(nodeIdentifierToString(identifier));
+    return identifier;
 }
 
 /**
  * Convert a typed database key that is known to hold an identifier back into a NodeIdentifier.
- * @param {import('./types').NodeKeyString} key
+ * @param {DatabaseKey} key
  * @returns {NodeIdentifier}
  */
 function databaseKeyToNodeIdentifier(key) {
-    return nodeIdentifierFromString(nodeKeyStringToString(key));
+    return nodeIdentifierFromString(String(key));
 }
 
 /**

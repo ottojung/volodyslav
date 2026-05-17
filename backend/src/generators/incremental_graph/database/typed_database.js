@@ -35,11 +35,11 @@
  * @typedef {object} GenericDatabase
  * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: TKey, value: *) => Promise<void>} rawPut - Store a value with sync:false (for unification adapters where runtime type is guaranteed by schema invariant)
+ * @property {(key: TKey, value: TValue) => Promise<void>} rawPut - Store a value with sync:false (for unification adapters where runtime type is guaranteed by schema invariant)
  * @property {(key: TKey) => Promise<void>} del - Delete a value
  * @property {(key: TKey) => Promise<void>} rawDel - Delete a value with sync:false (for unification adapters; mirrors rawPut)
  * @property {(key: TKey, value: TValue) => DatabasePutOperation<TValue, TKey>} putOp - Store a value operation
- * @property {(key: TKey, value: *) => DatabasePutOperation<TValue, TKey>} rawPutOp - Store a value operation accepting an untyped value (for unification adapters where runtime type is guaranteed by schema invariant)
+ * @property {(key: TKey, value: TValue) => DatabasePutOperation<TValue, TKey>} rawPutOp - Store a value operation accepting a value guaranteed by the caller's schema invariant
  * @property {(key: TKey) => DatabaseDelOperation<TValue, TKey>} delOp - Delete a value operation
  * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
@@ -100,7 +100,7 @@ class TypedDatabaseClass {
      * Callers must invoke rootDatabase._rawSync() once after all unification
      * writes are complete to ensure durability.
      * @param {TKey} key - The key to store
-     * @param {*} value - The value to store (must be TValue at runtime)
+     * @param {TValue} value - The value to store
      * @returns {Promise<void>}
      */
     async rawPut(key, value) {
@@ -156,7 +156,7 @@ class TypedDatabaseClass {
      * unknown at the call site.  Keeping this separate from putOp preserves
      * the typed boundary for normal callers.
      * @param {TKey} key - The key to store
-     * @param {*} value - The value to store (must be TValue at runtime)
+     * @param {TValue} value - The value to store
      * @returns {DatabasePutOperation<TValue, TKey>}
      */
     rawPutOp(key, value) {

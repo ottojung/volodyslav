@@ -45,17 +45,16 @@
  */
 
 const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
-const { stringToNodeKeyString, versionToString } = require('./types');
-const { compareNodeKeyStringByNodeKey } = require('./node_key');
+const { stringToNodeIdentifier, versionToString } = require('./types');
+const { compareNodeIdentifier } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
-/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 
 /**
  * @typedef {import('../../../logger').Logger} Logger
@@ -175,11 +174,11 @@ async function copyReplicaGently(rootDatabase, from, to) {
  *
  * @param {SchemaStorage} T - Target (inactive) replica storage.
  * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeKeyString} key
- * @returns {Promise<DatabaseBatchOperation[]>}
+ * @param {NodeIdentifier} key
+ * @returns {Promise<Array<*>>}
  */
 async function buildTakeOps(T, H, key) {
-    /** @type {DatabaseBatchOperation[]} */
+    /** @type {Array<*>} */
     const ops = [];
 
     const hValue = await H.values.get(key);
@@ -225,7 +224,7 @@ async function buildTakeOps(T, H, key) {
  * typed revdeps to avoid unsafe value coercions.
  *
  * @param {SchemaStorage} T
- * @param {Map<NodeKeyString, NodeKeyString[]>} mergedInputsMap
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @returns {Promise<void>}
  */
 async function unifyRevdeps(T, mergedInputsMap) {
@@ -238,7 +237,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
     // writing.  This is bounded by the number of nodes+edges in the graph,
     // not by value sizes, so it fits within the O(n) target where
     // n = max(max_value_size, num_nodes + num_edges).
-    /** @type {Map<string, Set<NodeKeyString>>} */
+    /** @type {Map<string, Set<NodeIdentifier>>} */
     const desiredSets = new Map();
 
     for (const [node, inputKeys] of mergedInputsMap) {
@@ -254,10 +253,10 @@ async function unifyRevdeps(T, mergedInputsMap) {
     }
 
     // Convert to sorted arrays for determinism and stable serialisation.
-    /** @type {Map<string, NodeKeyString[]>} */
+    /** @type {Map<string, NodeIdentifier[]>} */
     const desired = new Map();
     for (const [key, depSet] of desiredSets) {
-        desired.set(key, [...depSet].sort(compareNodeKeyStringByNodeKey));
+        desired.set(key, [...depSet].sort(compareNodeIdentifier));
     }
 
     // Materialise the current target key set.
@@ -270,10 +269,10 @@ async function unifyRevdeps(T, mergedInputsMap) {
     // Accumulate ops for batch writes chunked by RAW_BATCH_CHUNK_SIZE.
     // Memory: O(RAW_BATCH_CHUNK_SIZE × avg_revdep_size) per chunk — revdep
     // values are small (arrays of node-key strings), so each chunk is bounded.
-    /** @type {DatabaseBatchOperation[]} */
+    /** @type {Array<*>} */
     const ops = [];
     for (const [inputStr, dependents] of desired) {
-        const inputKey = stringToNodeKeyString(inputStr);
+        const inputKey = stringToNodeIdentifier(inputStr);
         if (!targetKeys.has(inputStr)) {
             ops.push(T.revdeps.putOp(inputKey, dependents));
         } else {
@@ -290,7 +289,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
     // Delete stale entries.
     for (const existingKey of targetKeys) {
         if (!desired.has(existingKey)) {
-            ops.push(T.revdeps.delOp(stringToNodeKeyString(existingKey)));
+            ops.push(T.revdeps.delOp(stringToNodeIdentifier(existingKey)));
         }
         if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
             await T.batch(ops.splice(0, ops.length));
@@ -364,11 +363,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     //      change because a taken node rewired its inputs.
 
     // ── 2a: Per-node timestamp comparison for T nodes ─────────────────────────
-    /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
+    /** @type {Map<NodeIdentifier, 'keep' | 'take'>} */
     const initialDecisions = new Map();
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const forceKeepRoots = new Set();
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const forceTakeRoots = new Set();
 
     for await (const node of T.inputs.keys()) {
@@ -389,7 +388,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     // ── 2b: Discover H-only nodes ─────────────────────────────────────────────
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const hOnlyNodes = new Set();
     for await (const key of H.inputs.keys()) {
         if (!initialDecisions.has(key)) {
@@ -401,7 +400,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // For 'take' nodes: use H.inputs (the remote may have rewired edges).
     // For 'keep' nodes: use T.inputs.
     // For H-only nodes: use H.inputs.
-    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
 
     for (const [node, decision] of initialDecisions) {
@@ -418,7 +417,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             record = await T.inputs.get(node);
         }
         const inputKeys = record
-            ? record.inputs.map(s => stringToNodeKeyString(s))
+            ? record.inputs.map(s => stringToNodeIdentifier(s))
             : [];
         mergedInputsMap.set(node, inputKeys);
     }
@@ -426,7 +425,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     for (const key of hOnlyNodes) {
         const record = await H.inputs.get(key);
         const inputKeys = record
-            ? record.inputs.map(s => stringToNodeKeyString(s))
+            ? record.inputs.map(s => stringToNodeIdentifier(s))
             : [];
         mergedInputsMap.set(key, inputKeys);
     }
@@ -440,9 +439,9 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // Uses the merged inputs map so that rewired edges from taken nodes are
     // correctly accounted for (e.g. a taken node that now depends on a
     // force-kept ancestor will be tainted from both sides → 'invalidate').
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const keepTainted = new Set(forceKeepRoots);
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const takeTainted = new Set(forceTakeRoots);
 
     for (const node of topoList) {
@@ -454,7 +453,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     // ── Step 5: Assign final decisions ──────────────────────────────────────
-    /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>} */
+    /** @type {Map<NodeIdentifier, 'keep' | 'take' | 'invalidate'>} */
     const decisions = new Map();
 
     for (const [node, initial] of initialDecisions) {
@@ -475,7 +474,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // ── Step 6: Finalize H-only nodes ────────────────────────────────────────
     // H-only nodes are always taken, but their cached value may be stale if
     // any of their (merged-graph) ancestors were force-kept from T.
-    /** @type {Set<NodeKeyString>} */
+    /** @type {Set<NodeIdentifier>} */
     const hOnlyNeedsInvalidate = new Set();
 
     for (const key of hOnlyNodes) {
@@ -486,7 +485,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     // ── Step 7: Apply decisions to T in chunks ──────────────────────────────
-    /** @type {DatabaseBatchOperation[]} */
+    /** @type {Array<*>} */
     let pendingOps = [];
 
     /**

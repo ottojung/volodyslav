@@ -5,11 +5,8 @@ const {
     nodeIdentifierFromString,
     nodeIdentifierToString,
 } = require("./node_identifier");
-const {
-    nodeKeyStringToString,
-} = require("./types");
 
-/** @typedef {import("./node_identifier").NodeIdentifier} NodeIdentifier */
+/** @typedef {import("./types").NodeIdentifier} NodeIdentifier */
 /** @typedef {import("./types").NodeKeyString} NodeKeyString */
 
 /**
@@ -61,7 +58,7 @@ function isIdentifierAllocationError(object) {
 /**
  * @typedef {object} IdentifierLookup
  * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
- * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key.
+ * @property {Map<string, NodeIdentifier>} idToKey - Opaque identifier string -> semantic node key.
  */
 
 /**
@@ -77,14 +74,14 @@ function makeEmptyIdentifierLookup() {
 /**
  * Build a validated in-memory lookup from persisted `[id, key]` entries.
  * The input must already be a strict bijection.
- * @param {Array<[NodeIdentifier, NodeKeyString]>} entries
+ * @param {Array<[NodeIdentifier, NodeIdentifier]>} entries
  * @returns {IdentifierLookup}
  */
 function makeIdentifierLookup(entries) {
     const lookup = makeEmptyIdentifierLookup();
     for (const [nodeIdentifier, nodeKey] of entries) {
         const identifierString = nodeIdentifierToString(nodeIdentifier);
-        const nodeKeyString = nodeKeyStringToString(nodeKey);
+        const nodeKeyString = nodeIdentifierToString(nodeKey);
         if (lookup.idToKey.has(identifierString)) {
             throw new IdentifierLookupError(`Duplicate node identifier in lookup map: ${identifierString}`);
         }
@@ -109,10 +106,10 @@ function cloneIdentifierLookup(lookup) {
 /**
  * Convert the lookup back into its persisted form, sorted by identifier string.
  * @param {IdentifierLookup} lookup
- * @returns {Array<[NodeIdentifier, NodeKeyString]>}
+ * @returns {Array<[NodeIdentifier, NodeIdentifier]>}
  */
 function serializeIdentifierLookup(lookup) {
-    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    /** @type {Array<[NodeIdentifier, NodeIdentifier]>} */
     const entries = [];
     for (const [identifierString, nodeKey] of lookup.idToKey.entries()) {
         entries.push([
@@ -129,18 +126,18 @@ function serializeIdentifierLookup(lookup) {
 /**
  * Read the identifier currently assigned to a semantic node key.
  * @param {IdentifierLookup} lookup
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {NodeIdentifier | undefined}
  */
 function nodeKeyToIdFromLookup(lookup, nodeKey) {
-    return lookup.keyToId.get(nodeKeyStringToString(nodeKey));
+    return lookup.keyToId.get(nodeIdentifierToString(nodeKey));
 }
 
 /**
  * Read the semantic node key currently assigned to an identifier.
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} nodeIdentifier
- * @returns {NodeKeyString | undefined}
+ * @returns {NodeIdentifier | undefined}
  */
 function nodeIdToKeyFromLookup(lookup, nodeIdentifier) {
     return lookup.idToKey.get(nodeIdentifierToString(nodeIdentifier));
@@ -151,16 +148,16 @@ function nodeIdToKeyFromLookup(lookup, nodeIdentifier) {
  * This throws if either side is already associated with a different counterpart.
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} nodeIdentifier
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {void}
  */
 function setIdentifierMapping(lookup, nodeIdentifier, nodeKey) {
     const identifierString = nodeIdentifierToString(nodeIdentifier);
-    const nodeKeyString = nodeKeyStringToString(nodeKey);
+    const nodeKeyString = nodeIdentifierToString(nodeKey);
     const existingKey = lookup.idToKey.get(identifierString);
     if (existingKey !== undefined && existingKey !== nodeKey) {
         throw new IdentifierLookupError(
-            `Node identifier ${identifierString} is already assigned to ${nodeKeyStringToString(existingKey)}`
+            `Node identifier ${identifierString} is already assigned to ${nodeIdentifierToString(existingKey)}`
         );
     }
     const existingIdentifier = lookup.keyToId.get(nodeKeyString);
@@ -176,11 +173,11 @@ function setIdentifierMapping(lookup, nodeIdentifier, nodeKey) {
 /**
  * Remove the mapping for a semantic node key if one exists.
  * @param {IdentifierLookup} lookup
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {void}
  */
 function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
-    const nodeKeyString = nodeKeyStringToString(nodeKey);
+    const nodeKeyString = nodeIdentifierToString(nodeKey);
     const existingIdentifier = lookup.keyToId.get(nodeKeyString);
     if (existingIdentifier === undefined) {
         return;
@@ -192,12 +189,12 @@ function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
 /**
  * Deterministically derive the legacy-migration identifier candidate for a node key.
  * Retry attempts perturb the hash input so collision handling is deterministic.
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {number} attempt
  * @returns {NodeIdentifier}
  */
 function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
-    const nodeKeyString = nodeKeyStringToString(nodeKey);
+    const nodeKeyString = nodeIdentifierToString(nodeKey);
     const digest = crypto
         .createHash("sha256")
         .update(`${nodeKeyString}:${String(attempt)}`)
@@ -218,7 +215,7 @@ function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
  * Allocate a fresh identifier for a node key, retrying on collisions.
  * If the key already has an identifier, the existing identifier is reused.
  * @param {IdentifierLookup} lookup
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
  * @param {number} [maxAttempts=64]
  * @returns {NodeIdentifier}
@@ -238,14 +235,14 @@ function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = 6
         }
     }
 
-    throw new IdentifierAllocationError(nodeKeyStringToString(nodeKey));
+    throw new IdentifierAllocationError(nodeIdentifierToString(nodeKey));
 }
 
 /**
  * Require the semantic node key for an identifier.
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} nodeIdentifier
- * @returns {NodeKeyString}
+ * @returns {NodeIdentifier}
  */
 function requireNodeKeyForIdentifier(lookup, nodeIdentifier) {
     const nodeKey = nodeIdToKeyFromLookup(lookup, nodeIdentifier);
@@ -260,14 +257,14 @@ function requireNodeKeyForIdentifier(lookup, nodeIdentifier) {
 /**
  * Require the identifier for a semantic node key.
  * @param {IdentifierLookup} lookup
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {NodeIdentifier}
  */
 function requireNodeIdentifierForKey(lookup, nodeKey) {
     const nodeIdentifier = nodeKeyToIdFromLookup(lookup, nodeKey);
     if (nodeIdentifier === undefined) {
         throw new IdentifierLookupError(
-            `Missing node identifier for key ${nodeKeyStringToString(nodeKey)}`
+            `Missing node identifier for key ${nodeIdentifierToString(nodeKey)}`
         );
     }
     return nodeIdentifier;

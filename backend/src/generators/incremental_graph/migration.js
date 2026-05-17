@@ -3,6 +3,7 @@
 
 const { stringToNodeName } = require("./database");
 const { deserializeNodeKey } = require("./database");
+const { stringToNodeKeyString } = require("./database/types");
 
 /**
  * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities
@@ -13,17 +14,17 @@ const { deserializeNodeKey } = require("./database");
  */
 
 /**
- * @typedef {import('./errors').NodeKeyString} NodeKeyString
+ * @typedef {import('./database/types').NodeIdentifier} NodeIdentifier
  */
 
 /**
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @returns {import('./types').NodeName}
  */
 function nodeHeadForMigrationNode(nodeKey) {
     const nodeKeyString = String(nodeKey);
     if (nodeKeyString.startsWith("{")) {
-        return deserializeNodeKey(nodeKey).head;
+        return deserializeNodeKey(stringToNodeKeyString(nodeKeyString)).head;
     }
     return stringToNodeName(nodeKeyString);
 }
