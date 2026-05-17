@@ -169,7 +169,7 @@ function nodeNameToString(nodeName) {
  * @property {Logger} logger - A logger instance
  * @property {LevelDatabase} levelDatabase - A level database instance
  * @property {Command} git - A command instance for Git operations.
- * @property {import('../../../random/seed').NonDeterministicSeed} [seed] - Random seed capability.
+ * @property {import('../../../random/seed').NonDeterministicSeed} seed - Random seed capability.
  */
 
 class VersionClass {

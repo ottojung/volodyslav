@@ -3,7 +3,17 @@
  * Provides a LevelDB key-value store for storing generated values and event log mirrors.
  */
 
-const { schemaPatternToString, stringToSchemaPattern, stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString, versionToString, stringToVersion } = require('./types');
+const {
+    schemaPatternToString,
+    stringToSchemaPattern,
+    stringToNodeKeyString,
+    stringToNodeIdentifier,
+    nodeNameToString,
+    stringToNodeName,
+    nodeKeyStringToString,
+    versionToString,
+    stringToVersion,
+} = require('./types');
 const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const {
@@ -85,6 +95,7 @@ module.exports = {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
     stringToNodeKeyString,
+    stringToNodeIdentifier,
     nodeNameToString,
     stringToNodeName,
     nodeKeyStringToString,

@@ -19,7 +19,7 @@ const {
     stringToNodeName,
     versionToString,
 } = require("./database");
-const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database/types");
+const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError, makeMissingTimestampError } = require("./errors");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");

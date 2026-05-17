@@ -195,7 +195,7 @@ async function internalInitCheckpointRepoForFallback(capabilities) {
 
 /**
  * @param {InterfaceLifecycleAccess} interfaceInstance
- * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<void>} runMigrationProcedure
+ * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<RootDatabase>} runMigrationProcedure
  * @returns {Promise<void>}
  */
 async function internalEnsureInitializedWithMigration(
@@ -208,7 +208,7 @@ async function internalEnsureInitializedWithMigration(
 
     const capabilities = interfaceInstance._getCapabilities();
     capabilities.logger.logDebug({}, 'Initialization: opening root database for graph lifecycle');
-    const database = await getRootDatabase(capabilities);
+    let database = await getRootDatabase(capabilities);
     const configBox = config.makeBox();
     const allEventsBox = allEvents.makeBox();
     const diarySummaryBox = diarySummary.makeBox();
@@ -222,7 +222,7 @@ async function internalEnsureInitializedWithMigration(
     );
     try {
         capabilities.logger.logDebug({}, 'Initialization: running migration gate before graph construction');
-        await runMigrationProcedure(
+        database = await runMigrationProcedure(
             capabilities,
             database,
             nodeDefs,

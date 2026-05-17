@@ -63,6 +63,7 @@ const { renderToFilesystem } = require('./render');
  * @property {Datetime} datetime
  * @property {Interface} interface
  * @property {LevelDatabase} levelDatabase
+ * @property {import('../../../random/seed').NonDeterministicSeed} seed
  */
 
 /**

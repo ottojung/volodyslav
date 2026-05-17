@@ -1,20 +1,14 @@
 [
   [
-    {
-      "identifier": "athsapppb"
-    },
+    "athsapppb",
     "{\"head\":\"events_count\",\"args\":[]}"
   ],
   [
-    {
-      "identifier": "usyrdnere"
-    },
+    "usyrdnere",
     "{\"head\":\"config\",\"args\":[]}"
   ],
   [
-    {
-      "identifier": "zhzcceopd"
-    },
+    "zhzcceopd",
     "{\"head\":\"all_events\",\"args\":[]}"
   ]
 ]

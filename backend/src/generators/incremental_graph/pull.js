@@ -22,7 +22,7 @@
  */
 
 const { stringToNodeName, nodeKeyStringToString } = require("./database");
-const { stringToNodeIdentifier, stringToNodeKeyString, nodeIdentifierToString } = require("./database/types");
+const { stringToNodeIdentifier, stringToNodeKeyString, nodeIdentifierToString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");

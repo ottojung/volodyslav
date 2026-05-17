@@ -1,5 +1,5 @@
 const { makeUniqueFunctor } = require("../../unique_functor");
-const { nodeIdentifierToString } = require("./database/types");
+const { nodeIdentifierToString } = require("./database");
 
 /**
  * Mutex key for serializing *exclusive* incremental-graph operations with

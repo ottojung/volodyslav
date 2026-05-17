@@ -1,4 +1,3 @@
-const random = require("../../../random");
 const {
     nodeIdentifierToString: nodeIdentifierToRawString,
     stringToNodeIdentifier,
@@ -56,7 +55,14 @@ function isValidNodeIdentifier(identifier) {
  * @returns {NodeIdentifier}
  */
 function makeNodeIdentifier(capabilities) {
-    return nodeIdentifierFromString(random.basicString(capabilities, 9));
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+    let state = capabilities.seed.generate() >>> 0;
+    let identifier = '';
+    for (let i = 0; i < 9; i += 1) {
+        state = (state * 1664525 + 1013904223) >>> 0;
+        identifier += alphabet[state % alphabet.length];
+    }
+    return nodeIdentifierFromString(identifier);
 }
 
 /**

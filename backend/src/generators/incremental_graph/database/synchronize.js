@@ -64,12 +64,13 @@ const {
  * @property {Datetime} datetime
  * @property {Interface} interface
  * @property {LevelDatabase} levelDatabase
+ * @property {import('../../../random/seed').NonDeterministicSeed} seed
  */
 
 /**
  * @param {Capabilities} capabilities
  * @param {RootDatabase} rootDatabase
- * @returns {Promise<void>}
+ * @returns {Promise<RootDatabase>}
  */
 async function mergeRemoteHostBranches(capabilities, rootDatabase) {
     const workDir = path.join(
@@ -131,7 +132,15 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
                 remoteRDir,
                 '_h_' + hostname
             );
-            await mergeHostIntoReplica(capabilities.logger, rootDatabase, hostname);
+            const switchedReplica = await mergeHostIntoReplica(
+                capabilities.logger,
+                rootDatabase,
+                hostname
+            );
+            if (switchedReplica) {
+                await rootDatabase.close();
+                rootDatabase = await getRootDatabase(capabilities);
+            }
 
             capabilities.logger.logInfo(
                 { hostname },
@@ -191,8 +200,11 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
 
     const failures = [...failuresByHost.values()];
     if (failures.length > 0) {
-        throw new SyncMergeAggregateError(failures);
+        const error = new SyncMergeAggregateError(failures);
+        Reflect.set(error, 'currentRootDatabase', rootDatabase);
+        throw error;
     }
+    return rootDatabase;
 }
 
 /**
@@ -247,7 +259,17 @@ async function synchronizeNoLock(capabilities, options) {
             { ...options, mergeHostBranches: false }
         );
 
-        await mergeRemoteHostBranches(capabilities, rootDatabase);
+        try {
+            rootDatabase = await mergeRemoteHostBranches(capabilities, rootDatabase);
+        } catch (error) {
+            if (error !== null && typeof error === 'object') {
+                const currentRootDatabase = Reflect.get(error, 'currentRootDatabase');
+                if (currentRootDatabase !== undefined) {
+                    rootDatabase = currentRootDatabase;
+                }
+            }
+            throw error;
+        }
     } finally {
         if (rootDatabase !== undefined) {
             await rootDatabase.close();
