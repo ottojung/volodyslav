@@ -112,7 +112,7 @@ class TypedDatabaseClass {
         // "use default encoding") and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.sublevel.put(key, value, opts);
+        await this.sublevel.put(key, passthrough(value), opts);
     }
 
     /**

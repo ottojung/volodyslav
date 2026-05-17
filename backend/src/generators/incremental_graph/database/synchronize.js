@@ -73,7 +73,6 @@ const {
  * @returns {Promise<void>}
  */
 async function mergeRemoteHostBranches(capabilities, state) {
-    let rootDatabase = state.rootDatabase;
     const workDir = path.join(
         capabilities.environment.workingDirectory(),
         CHECKPOINT_WORKING_PATH
@@ -129,19 +128,18 @@ async function mergeRemoteHostBranches(capabilities, state) {
             const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
             await scanFromFilesystem(
                 capabilities,
-                rootDatabase,
+                state.rootDatabase,
                 remoteRDir,
                 '_h_' + hostname
             );
             const switchedReplica = await mergeHostIntoReplica(
                 capabilities.logger,
-                rootDatabase,
+                state.rootDatabase,
                 hostname
             );
             if (switchedReplica) {
-                await rootDatabase.close();
-                rootDatabase = await getRootDatabase(capabilities);
-                state.rootDatabase = rootDatabase;
+                await state.rootDatabase.close();
+                state.rootDatabase = await getRootDatabase(capabilities);
             }
 
             capabilities.logger.logInfo(
@@ -185,7 +183,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
             }
 
             try {
-                await rootDatabase.clearHostnameStorage(hostname);
+                await state.rootDatabase.clearHostnameStorage(hostname);
             } catch (cleanupErr) {
                 recordHostFailure(
                     hostname,
