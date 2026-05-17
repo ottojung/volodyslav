@@ -15,9 +15,8 @@
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
-const { deserializeNodeKey } = require("./database");
 const { isUnchanged } = require("./unchanged");
-const { nodeIdentifierToString, stringToNodeKeyString } = require("./database/types");
+const { nodeIdentifierToString } = require("./database/types");
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition
@@ -131,7 +130,7 @@ async function internalMaybeRecalculate(
         }
     } else if (computedValue === null || computedValue === undefined) {
         throw makeInvalidComputorReturnValueError(
-            deserializeNodeKey(stringToNodeKeyString(nodeIdentifierToString(nodeDefinition.outputKey))).head,
+            nodeDefinition.outputKey,
             computedValue
         );
     }
