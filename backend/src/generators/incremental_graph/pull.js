@@ -6,7 +6,7 @@
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeName} NodeName */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 /**
@@ -17,11 +17,12 @@
  * @property {() => IdentifierResolver} makeIdentifierResolver
  * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<RecomputeResult>) => Promise<RecomputeResult>} withIdentifierBatch
  * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
- * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {(nodeKeyStr: NodeIdentifier, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} maybeRecalculate
  */
 
 const { nodeKeyStringToString, stringToNodeName } = require("./database");
+const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database/types");
 const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
@@ -99,24 +100,24 @@ async function internalPullWithStatus(
 ) {
     const nodeKey = { head: nodeName, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    return await internalPullByNodeKeyStringWithStatusDuringPull(
+    return await internalPullByNodeIdentifierWithStatusDuringPull(
         incrementalGraph,
-        concreteKey,
+        stringToNodeIdentifier(String(concreteKey)),
         incrementalGraph.makeIdentifierResolver()
     );
 }
 
 /**
  * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeKeyString} nodeKeyStr
+ * @param {NodeIdentifier} nodeKeyStr
  * @returns {Promise<RecomputeResult>}
  */
-async function internalPullByNodeKeyStringWithStatus(
+async function internalPullByNodeIdentifierWithStatus(
     incrementalGraph,
     nodeKeyStr
 ) {
     return withPullMode(incrementalGraph.sleeper, () =>
-        internalPullByNodeKeyStringWithStatusDuringPull(
+        internalPullByNodeIdentifierWithStatusDuringPull(
             incrementalGraph,
             nodeKeyStr
         )
@@ -125,16 +126,16 @@ async function internalPullByNodeKeyStringWithStatus(
 
 /**
  * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeKeyString} nodeKeyStr
+ * @param {NodeIdentifier} nodeKeyStr
  * @param {IdentifierResolver} [identifierResolver=incrementalGraph.makeIdentifierResolver()]
  * @returns {Promise<RecomputeResult>}
  */
-async function internalPullByNodeKeyStringWithStatusDuringPull(
+async function internalPullByNodeIdentifierWithStatusDuringPull(
     incrementalGraph,
     nodeKeyStr,
     identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
-    const nodeKey = deserializeNodeKey(nodeKeyStr);
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
     const nodeName = nodeKey.head;
     const bindings = nodeKey.args;
     const compiledNode = incrementalGraph.headIndex.get(nodeName);
@@ -156,7 +157,7 @@ async function internalPullByNodeKeyStringWithStatusDuringPull(
      */
     const run = async (batch) => {
         const outputIdentifier = identifierResolver.getOrAllocateNodeIdentifier(
-            concreteNode.output
+            stringToNodeIdentifier(String(concreteNode.output))
         );
         const nodeFreshness = await batch.freshness.get(
             outputIdentifier
@@ -189,8 +190,8 @@ async function internalPullByNodeKeyStringWithStatusDuringPull(
 
 module.exports = {
     internalPull,
-    internalPullByNodeKeyStringWithStatusDuringPull,
-    internalPullByNodeKeyStringWithStatus,
+    internalPullByNodeIdentifierWithStatusDuringPull,
+    internalPullByNodeIdentifierWithStatus,
     internalSafePullWithStatus,
     internalPullWithStatus,
     internalUnsafePull,

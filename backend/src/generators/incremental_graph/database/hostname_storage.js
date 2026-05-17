@@ -11,7 +11,7 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToNodeKeyString, stringToVersion } = require('./types');
+const { stringToNodeIdentifier, stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -67,13 +67,16 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').InputsRecord} InputsRecord */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').DatabaseKey} DatabaseKey */
+/** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 
 /**
  * @template T
- * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ * @template [K=DatabaseKey]
+ * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 /**
@@ -89,17 +92,17 @@ function validateHostname(hostname) {
  * @returns {SchemaStorage}
  */
 function buildBareSchemaStorage(namespaceSublevel) {
-    /** @type {SimpleSublevel<ComputedValue>} */
+    /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Freshness>} */
+    /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord>} */
+    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeKeyString[]>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter>} */
+    /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<TimestampRecord>} */
+    /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
     /** @type {GlobalSublevelType} */
     const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
@@ -169,10 +172,10 @@ async function clearHostnameStorage(db, hostname) {
  * @param {string} hostname
  * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
  * @param {string} subkey
- * @returns {NodeKeyString}
+ * @returns {DatabaseKey}
  */
 function hostnameRawKey(hostname, sublevelName, subkey) {
-    return stringToNodeKeyString(`!_h_${hostname}!!${sublevelName}!${subkey}`);
+    return stringToNodeIdentifier(`!_h_${hostname}!!${sublevelName}!${subkey}`);
 }
 
 /**
@@ -203,7 +206,7 @@ async function getHostnameGlobalVersion(db, hostname) {
  * @param {RootLevelType} db - The root LevelDB instance.
  * @param {string} hostname
  * @param {string} key - The key to write (e.g. 'version').
- * @param {*} value - The value to store.
+ * @param {DatabaseStoredValue} value - The value to store.
  * @returns {Promise<void>}
  * @throws {InvalidHostnameError} If the hostname is invalid.
  */
@@ -227,7 +230,7 @@ async function rawPutAllToHostname(db, hostname, entries) {
     validateHostname(hostname);
     /**
      * @param {{ sublevelName: string, subkey: string, value: * }} entry
-     * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+     * @returns {{ type: 'put', key: DatabaseKey, value: * }}
      */
     function makePutOp(entry) {
         return {

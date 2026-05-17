@@ -8,7 +8,7 @@
 const { getVersion } = require('../../../version');
 const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const { stringToVersion, stringToNodeIdentifier, versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -47,8 +47,7 @@ const {
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./node_identifier').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
@@ -87,14 +86,14 @@ function assertNeverReplicaName(name) {
  * Database for storing node output values.
  * Key: persisted node identifier (e.g., "nodecachex")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<ComputedValue, NodeKeyString>} ValuesDatabase
+ * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: persisted node identifier (e.g., "nodecachex")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase<Freshness, NodeKeyString>} FreshnessDatabase
+ * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */
 
 /**
@@ -108,28 +107,28 @@ function assertNeverReplicaName(name) {
  * Database for storing node input dependencies.
  * Key: persisted node identifier
  * Value: inputs record with identifier-addressed dependencies
- * @typedef {GenericDatabase<InputsRecord, NodeKeyString>} InputsDatabase
+ * @typedef {GenericDatabase<InputsRecord, NodeIdentifier>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
  * Key: persisted input identifier
  * Value: array of dependent identifiers sorted lexicographically by identifier
- * @typedef {GenericDatabase<NodeKeyString[], NodeKeyString>} RevdepsDatabase
+ * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} RevdepsDatabase
  */
 
 /**
  * Database for storing node counters.
  * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)
- * @typedef {GenericDatabase<Counter, NodeKeyString>} CountersDatabase
+ * @typedef {GenericDatabase<Counter, NodeIdentifier>} CountersDatabase
  */
 
 /**
  * Database for storing node timestamps (creation and modification times).
  * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
- * @typedef {GenericDatabase<TimestampRecord, NodeKeyString>} TimestampsDatabase
+ * @typedef {GenericDatabase<TimestampRecord, NodeIdentifier>} TimestampsDatabase
  */
 
 /**
@@ -170,7 +169,8 @@ async function loadIdentifierLookupFromGlobal(globalSublevel) {
 
 /**
  * @template T
- * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ * @template [K=DatabaseKey]
+ * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 /**
@@ -188,17 +188,17 @@ async function loadIdentifierLookupFromGlobal(globalSublevel) {
  * @returns {SchemaStorage}
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
-    /** @type {SimpleSublevel<ComputedValue>} */
+    /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Freshness>} */
+    /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord>} */
+    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeKeyString[]>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter>} */
+    /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<TimestampRecord>} */
+    /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
     // True once this closure's first batch() verifies/writes global/version.
@@ -427,7 +427,7 @@ class RootDatabaseClass {
     }
 
     /**
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {NodeIdentifier | undefined}
      */
     nodeKeyToId(nodeKey) {
@@ -439,7 +439,7 @@ class RootDatabaseClass {
 
     /**
      * @param {NodeIdentifier} nodeIdentifier
-     * @returns {NodeKeyString | undefined}
+     * @returns {NodeIdentifier | undefined}
      */
     nodeIdToKey(nodeIdentifier) {
         return nodeIdToKeyFromLookup(
@@ -633,7 +633,7 @@ class RootDatabaseClass {
      * Write a key/value pair into a hostname's staging global sublevel.
      * @param {string} hostname
      * @param {string} key - The key to write (e.g. 'version').
-     * @param {*} value - The value to store.
+     * @param {unknown} value - The value to store.
      * @returns {Promise<void>}
      */
     async setHostnameGlobal(hostname, key, value) {
@@ -700,7 +700,7 @@ class RootDatabaseClass {
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(stringToNodeKeyString(innerKey));
+        return await sublevel.get(stringToNodeIdentifier(innerKey));
     }
 
     /**
@@ -723,14 +723,14 @@ class RootDatabaseClass {
      * Call _rawSync() once after all bulk unification writes are done to
      * ensure the writes are flushed to durable storage.
      *
-     * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
+     * The `stringToNodeIdentifier` conversion is required to satisfy the JSDoc
      * static typing expectations: `this.db` is documented as using
-     * `NodeKeyString` keys, so its `put` method is typed to require a
-     * `NodeKeyString`. At runtime `stringToNodeKeyString` is effectively a
+     * `NodeIdentifier` keys, so its `put` method is typed to require a
+     * `NodeIdentifier`. At runtime `stringToNodeIdentifier` is effectively a
      * no-op, so the raw sublevel-prefixed key passes through unchanged.
      *
      * @param {string} key
-     * @param {*} value
+     * @param {unknown} value
      * @returns {Promise<void>}
      */
     async _rawPut(key, value) {
@@ -741,7 +741,7 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(stringToNodeKeyString(key), value, opts);
+        await this.db.put(stringToNodeIdentifier(key), value, opts);
     }
 
     /**
@@ -760,7 +760,7 @@ class RootDatabaseClass {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.del(stringToNodeKeyString(key), opts);
+        await this.db.del(stringToNodeIdentifier(key), opts);
     }
 
     /**
@@ -796,14 +796,14 @@ class RootDatabaseClass {
     async _rawPutAll(entries) {
         /**
          * Converts a plain raw-entry object into a LevelDB batch put operation,
-         * applying the JSDoc-level NodeKeyString wrapper expected by this.db.
+         * applying the JSDoc-level NodeIdentifier wrapper expected by this.db.
          * @param {{ key: string, value: * }} entry
-         * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+         * @returns {{ type: 'put', key: DatabaseKey, value: * }}
          */
         function makePutOp(entry) {
             return {
                 type: 'put',
-                key: stringToNodeKeyString(entry.key),
+                key: stringToNodeIdentifier(entry.key),
                 value: entry.value,
             };
         }
@@ -824,7 +824,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDeleteKeys(keys) {
-        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeKeyString(k) })));
+        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeIdentifier(k) })));
     }
 
     /**

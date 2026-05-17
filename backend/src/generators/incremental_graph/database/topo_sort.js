@@ -4,7 +4,7 @@
  * Provides topologicalSort(), which takes a SchemaStorage and returns the
  * nodes in topological order: root nodes (no inputs) first, leaf nodes (no
  * dependents) last.  Tie-breaking within the same depth level is
- * deterministic: nodes are sorted ascending by their NodeKeyString
+ * deterministic: nodes are sorted ascending by their NodeIdentifier
  * representation so the output is stable across runs.
  *
  * Uses Kahn's algorithm with a min-heap priority queue for O((N + E) log N)
@@ -12,10 +12,10 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { compareNodeKeyStringByNodeKey } = require('./node_key');
-const { stringToNodeKeyString } = require('./types');
+const { compareNodeIdentifier } = require('./node_identifier');
+const { stringToNodeIdentifier } = require('./types');
 
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 const CYCLE_MESSAGE_SAMPLE_LIMIT = 20;
 
@@ -135,7 +135,7 @@ class MinHeap {
  */
 class TopologicalSortCycleError extends Error {
     /**
-     * @param {NodeKeyString[]} cycle - A representative subset of nodes involved in the cycle.
+     * @param {NodeIdentifier[]} cycle - A representative subset of nodes involved in the cycle.
      */
     constructor(cycle) {
         const sample = cycle.slice(0, CYCLE_MESSAGE_SAMPLE_LIMIT);
@@ -164,10 +164,10 @@ function isTopologicalSortCycleError(object) {
  * sublevel as the canonical materialized-node registry).
  *
  * @param {SchemaStorage} storage
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {Promise<NodeIdentifier[]>}
  */
 async function collectAllNodes(storage) {
-    /** @type {NodeKeyString[]} */
+    /** @type {NodeIdentifier[]} */
     const nodes = [];
     for await (const key of storage.inputs.keys()) {
         nodes.push(key);
@@ -185,9 +185,9 @@ async function collectAllNodes(storage) {
  * `topologicalSort` (reads from SchemaStorage) and `topologicalSortFromMap`
  * (operates directly on an already-built map).
  *
- * @param {Map<NodeKeyString, NodeKeyString[]>} inputsMap
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} inputsMap
  *   A map from each node to the list of its input nodes.
- * @returns {NodeKeyString[]}
+ * @returns {NodeIdentifier[]}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
 function topologicalSortFromMap(inputsMap) {
@@ -198,9 +198,9 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Build: inDegree map and adjacency list (node → list of dependents).
-    /** @type {Map<NodeKeyString, number>} */
+    /** @type {Map<NodeIdentifier, number>} */
     const inDegree = new Map();
-    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const dependents = new Map();
 
     for (const node of allNodes) {
@@ -227,16 +227,16 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Initialize priority queue with all nodes having in-degree 0.
-    const heap = new MinHeap(compareNodeKeyStringByNodeKey);
+    const heap = new MinHeap(compareNodeIdentifier);
     for (const [node, degree] of inDegree) {
         if (degree === 0) {
             heap.push(node);
         }
     }
 
-    /** @type {NodeKeyString[]} */
+    /** @type {NodeIdentifier[]} */
     const sorted = [];
-    /** @type {Map<NodeKeyString, number>} */
+    /** @type {Map<NodeIdentifier, number>} */
     const remaining = new Map(inDegree);
 
     while (heap.size > 0) {
@@ -270,10 +270,10 @@ function topologicalSortFromMap(inputsMap) {
  *
  * The ordering satisfies: if node B depends on node A, then A appears before
  * B in the result.  Within the same topological depth, nodes are sorted
- * ascending by their NodeKeyString representation.
+ * ascending by their NodeIdentifier representation.
  *
  * @param {SchemaStorage} storage - Schema storage whose inputs/revdeps graph to sort.
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {Promise<NodeIdentifier[]>}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
 async function topologicalSort(storage) {
@@ -283,12 +283,12 @@ async function topologicalSort(storage) {
         return [];
     }
 
-    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const inputsMap = new Map();
     for (const node of allNodes) {
         const record = await storage.inputs.get(node);
         const inputs = record
-            ? record.inputs.map(s => stringToNodeKeyString(s))
+            ? record.inputs.map(s => stringToNodeIdentifier(s))
             : [];
         inputsMap.set(node, inputs);
     }

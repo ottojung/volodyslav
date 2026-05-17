@@ -9,7 +9,7 @@
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
@@ -29,6 +29,7 @@ const {
 } = require("./compiled_node");
 const { makeGraphStorage } = require("./graph_storage");
 const { makeIdentifierResolver } = require("./identifier_resolver");
+const { stringToNodeIdentifier } = require("./database/types");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -50,7 +51,7 @@ const {
     internalPull,
     internalSafePullWithStatus,
     internalUnsafePull,
-    internalPullByNodeKeyStringWithStatusDuringPull,
+    internalPullByNodeIdentifierWithStatusDuringPull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
 
@@ -135,7 +136,7 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {NodeKeyString} concreteKeyCanonical
+     * @param {NodeIdentifier} concreteKeyCanonical
      * @param {CompiledNode} compiledNode
      * @param {Array<ConstValue>} bindings
      * @returns {ConcreteNode}
@@ -156,8 +157,9 @@ class IncrementalGraphClass {
 
     /**
      * @param {IdentifierResolver} identifierResolver
-     * @param {(batch: BatchBuilder) => Promise<*>} procedure
-     * @returns {Promise<*>}
+     * @template T
+     * @param {(batch: BatchBuilder) => Promise<T>} procedure
+     * @returns {Promise<T>}
      */
     async withIdentifierBatch(identifierResolver, procedure) {
         const schemaStorage = this.rootDatabase.getSchemaStorage();
@@ -180,10 +182,10 @@ class IncrementalGraphClass {
             outputKey: concreteNode.output,
             inputKeys: concreteNode.inputs,
             outputIdentifier: identifierResolver.getOrAllocateNodeIdentifier(
-                concreteNode.output
+                stringToNodeIdentifier(String(concreteNode.output))
             ),
             inputIdentifiers: concreteNode.inputs.map((inputKey) =>
-                identifierResolver.getOrAllocateNodeIdentifier(inputKey)
+                identifierResolver.getOrAllocateNodeIdentifier(stringToNodeIdentifier(String(inputKey)))
             ),
             computor: concreteNode.computor,
         };
@@ -232,12 +234,12 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {NodeKeyString} nodeKeyStr
+     * @param {NodeIdentifier} nodeKeyStr
      * @param {IdentifierResolver} identifierResolver
      * @returns {Promise<RecomputeResult>}
      */
     async _pullDuringPull(nodeKeyStr, identifierResolver) {
-        return await internalPullByNodeKeyStringWithStatusDuringPull(
+        return await internalPullByNodeIdentifierWithStatusDuringPull(
             this,
             nodeKeyStr,
             identifierResolver

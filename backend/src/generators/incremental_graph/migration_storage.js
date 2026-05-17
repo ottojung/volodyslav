@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeKeyString } = require("./database");
+const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database/types");
 const { deserializeNodeKey } = require("./database");
 const { stringToNodeName } = require("./database");
 const {
@@ -19,7 +19,7 @@ const {
 } = require("./migration_errors");
 
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').NodeName} NodeName */
 
@@ -27,40 +27,40 @@ const {
  * Read-only database view used by migration decision logic.
  * Migration callbacks never write directly to the previous replica.
  * @typedef {object} ReadableMigrationStorage
- * @property {{ get(nodeKey: NodeKeyString): Promise<ComputedValue | undefined> }} values
- * @property {{ get(nodeKey: NodeKeyString): Promise<import('./database/types').Freshness | undefined> }} freshness
- * @property {{ get(nodeKey: NodeKeyString): Promise<import('./database/root_database').InputsRecord | undefined> }} inputs
- * @property {{ get(nodeKey: NodeKeyString): Promise<NodeKeyString[] | undefined> }} revdeps
- * @property {{ get(nodeKey: NodeKeyString): Promise<number | undefined> }} counters
- * @property {{ get(nodeKey: NodeKeyString): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<ComputedValue | undefined> }} values
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').Freshness | undefined> }} freshness
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/root_database').InputsRecord | undefined> }} inputs
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} revdeps
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
  * @property {{ get(key: string): Promise<unknown> }} [global]
- * @property {(operations: Array<*>) => Promise<void>} [batch]
+ * @property {(operations: import('./database/types').DatabaseBatchOperation[]) => Promise<void>} [batch]
  */
 
 /**
  * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: (nodeKey: NodeKeyString) => Promise<ComputedValue> }} OverrideDecision
+ * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
  * @typedef {{ kind: 'invalidate' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {{ kind: 'create', value: (nodeKey: NodeKeyString) => Promise<ComputedValue> }} CreateDecision
+ * @typedef {{ kind: 'create', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
  * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
 
 /**
- * @param {NodeKeyString} nodeKey
- * @returns {{ head: NodeName, args: Array<*> }}
+ * @param {NodeIdentifier} nodeKey
+ * @returns {{ head: NodeName, args: Array<unknown> }}
  */
 function parseMigrationNodeKey(nodeKey) {
     const nodeKeyString = String(nodeKey);
     if (nodeKeyString.startsWith("{")) {
-        return deserializeNodeKey(nodeKey);
+        return deserializeNodeKey(stringToNodeKeyString(nodeKeyString));
     }
     return { head: stringToNodeName(nodeKeyString), args: [] };
 }
 
 /**
  * Checks whether a node is compatible with the new schema.
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @returns {void}
  */
@@ -85,23 +85,23 @@ function checkSchemaCompatibility(nodeKey, newHeadIndex) {
 /**
  * Reads the inputs list for a node from the previous storage.
  * Throws MissingDependencyMetadataError if the record is absent or corrupted.
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {ReadableMigrationStorage} prevStorage
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {Promise<NodeIdentifier[]>}
  */
 async function readInputsRecord(nodeKey, prevStorage) {
     const record = await prevStorage.inputs.get(nodeKey);
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return record.inputs.map(stringToNodeKeyString);
+    return record.inputs.map(stringToNodeIdentifier);
 }
 
 /**
  * Reads the dependents list for a node from the previous storage.
- * @param {NodeKeyString} nodeKey
+ * @param {NodeIdentifier} nodeKey
  * @param {ReadableMigrationStorage} prevStorage
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {Promise<NodeIdentifier[]>}
  */
 async function readDependents(nodeKey, prevStorage) {
     const dependents = await prevStorage.revdeps.get(nodeKey);
@@ -128,21 +128,21 @@ class MigrationStorageClass {
     /**
      * The set of all nodes materialized in the previous version (scope S).
      * @private
-     * @type {Set<NodeKeyString>}
+     * @type {Set<NodeIdentifier>}
      */
     materializedNodes;
 
     /**
      * Accumulated per-node decisions.
      * @private
-     * @type {Map<NodeKeyString, Decision>}
+     * @type {Map<NodeIdentifier, Decision>}
      */
     decisions;
 
     /**
      * @param {ReadableMigrationStorage} prevStorage
      * @param {Map<NodeName, CompiledNode>} newHeadIndex
-     * @param {NodeKeyString[]} materializedNodes
+     * @param {NodeIdentifier[]} materializedNodes
      */
     constructor(prevStorage, newHeadIndex, materializedNodes) {
         this.prevStorage = prevStorage;
@@ -155,7 +155,7 @@ class MigrationStorageClass {
      * Read the previous-version value for a node.
      * The return type is not ComputedValue because the type may have changed in the new schema,
      * and it's up to the migration callback to handle it.
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {Promise<{}>}
      */
     async get(nodeKey) {
@@ -171,7 +171,7 @@ class MigrationStorageClass {
 
     /**
      * Check whether a node is in the previous-version materialized set S.
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {Promise<boolean>}
      */
     async has(nodeKey) {
@@ -181,7 +181,7 @@ class MigrationStorageClass {
     /**
      * Assign a KEEP decision to a node.
      * Idempotent if the same decision already exists.
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {Promise<void>}
      */
     async keep(nodeKey) {
@@ -199,8 +199,8 @@ class MigrationStorageClass {
 
     /**
      * Assign an OVERRIDE decision to a node with a new value.
-     * @param {NodeKeyString} nodeKey
-     * @param {(nodeKey: NodeKeyString) => Promise<ComputedValue>} value
+     * @param {NodeIdentifier} nodeKey
+     * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
     async override(nodeKey, value) {
@@ -222,7 +222,7 @@ class MigrationStorageClass {
     /**
      * Assign an INVALIDATE decision to a node.
      * Idempotent if the same decision already exists.
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {Promise<void>}
      */
     async invalidate(nodeKey) {
@@ -243,7 +243,7 @@ class MigrationStorageClass {
      * Assign a DELETE decision to a node.
      * Idempotent if the same decision already exists.
      * DELETE propagation to dependents is deferred to finalize().
-     * @param {NodeKeyString} nodeKey
+     * @param {NodeIdentifier} nodeKey
      * @returns {Promise<void>}
      */
     async delete(nodeKey) {
@@ -263,8 +263,8 @@ class MigrationStorageClass {
      * The node must NOT exist in the previous version (use override() instead).
      * The node must exist in the new schema.
      * The new node is created as up-to-date with the provided value and empty inputs.
-     * @param {NodeKeyString} nodeKey
-     * @param {(nodeKey: NodeKeyString) => Promise<ComputedValue>} value
+     * @param {NodeIdentifier} nodeKey
+     * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
     async create(nodeKey, value) {
@@ -281,7 +281,7 @@ class MigrationStorageClass {
 
     /**
      * Iterate over all nodes in S (previous-version materialized set).
-     * @returns {AsyncGenerator<NodeKeyString>}
+     * @returns {AsyncGenerator<NodeIdentifier>}
      */
     async *listMaterializedNodes() {
         for (const nodeKey of this.materializedNodes) {
@@ -291,8 +291,8 @@ class MigrationStorageClass {
 
     /**
      * Get the inputs of a node from the previous-version graph.
-     * @param {NodeKeyString} nodeKey
-     * @returns {Promise<readonly NodeKeyString[]>}
+     * @param {NodeIdentifier} nodeKey
+     * @returns {Promise<readonly NodeIdentifier[]>}
      */
     async getInputs(nodeKey) {
         if (!this.materializedNodes.has(nodeKey)) {
@@ -303,8 +303,8 @@ class MigrationStorageClass {
 
     /**
      * Get the dependents of a node from the previous-version graph.
-     * @param {NodeKeyString} nodeKey
-     * @returns {Promise<readonly NodeKeyString[]>}
+     * @param {NodeIdentifier} nodeKey
+     * @returns {Promise<readonly NodeIdentifier[]>}
      */
     async getDependents(nodeKey) {
         if (!this.materializedNodes.has(nodeKey)) {
@@ -318,8 +318,8 @@ class MigrationStorageClass {
      * Stops at already-invalidated or deleted nodes.
      * Throws on conflict with KEEP/OVERRIDE decisions.
      * @private
-     * @param {NodeKeyString} nodeKey
-     * @param {Set<NodeKeyString>} visited
+     * @param {NodeIdentifier} nodeKey
+     * @param {Set<NodeIdentifier>} visited
      * @returns {Promise<void>}
      */
     async _propagateInvalidate(nodeKey, visited) {
@@ -344,7 +344,7 @@ class MigrationStorageClass {
     /**
      * Finalize the migration: propagate DELETE decisions, check fan-in constraints,
      * and verify every node in S has exactly one decision.
-     * @returns {Promise<Map<NodeKeyString, Decision>>}
+     * @returns {Promise<Map<NodeIdentifier, Decision>>}
      */
     async finalize() {
         await this._propagateDeletesAndCheckFanIn();
@@ -359,7 +359,7 @@ class MigrationStorageClass {
      * @returns {Promise<void>}
      */
     async _propagateDeletesAndCheckFanIn() {
-        /** @type {NodeKeyString[]} */
+        /** @type {NodeIdentifier[]} */
         const queue = [];
         for (const [nodeKey, decision] of this.decisions) {
             if (decision.kind === "delete") {
@@ -409,7 +409,7 @@ class MigrationStorageClass {
      * @returns {void}
      */
     _checkCompleteness() {
-        /** @type {NodeKeyString[]} */
+        /** @type {NodeIdentifier[]} */
         const undecided = [];
         for (const nodeKey of this.materializedNodes) {
             if (!this.decisions.has(nodeKey)) {
@@ -426,7 +426,7 @@ class MigrationStorageClass {
  * Factory function to create a MigrationStorage instance.
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
- * @param {NodeKeyString[]} materializedNodes
+ * @param {NodeIdentifier[]} materializedNodes
  * @returns {MigrationStorageClass}
  */
 function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes) {

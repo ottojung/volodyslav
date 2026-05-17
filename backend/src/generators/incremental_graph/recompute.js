@@ -11,13 +11,14 @@
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(nodeKeyStr: import('./types').NodeIdentifier, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { deserializeNodeKey } = require("./database");
 const { isUnchanged } = require("./unchanged");
 const { nodeIdentifierToString } = require("./database");
+const { stringToNodeIdentifier } = require("./database/types");
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition
@@ -46,7 +47,7 @@ async function internalMaybeRecalculate(
         }
         const { value: inputValue } =
             await incrementalGraph._pullDuringPull(
-                inputKey,
+                stringToNodeIdentifier(String(inputKey)),
                 identifierResolver
             );
         inputValues.push(inputValue);

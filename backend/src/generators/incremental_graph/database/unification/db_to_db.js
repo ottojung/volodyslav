@@ -30,9 +30,9 @@
 
 /** @typedef {import('../root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
-/** @typedef {import('../types').NodeKeyString} NodeKeyString */
+/** @typedef {import('../types').NodeIdentifier} NodeIdentifier */
 
-const { stringToNodeKeyString } = require('../types');
+const { stringToNodeIdentifier } = require('../types');
 
 /**
  * Read-only view of a single sublevel — the minimum interface required by the
@@ -40,8 +40,8 @@ const { stringToNodeKeyString } = require('../types');
  * InMemorySchemaStorage sublevels satisfy this interface.
  *
  * @typedef {object} ReadableNodeSublevel
- * @property {(key: NodeKeyString) => Promise<unknown>} get
- * @property {() => AsyncIterable<NodeKeyString>} keys
+ * @property {(key: NodeIdentifier) => Promise<unknown>} get
+ * @property {() => AsyncIterable<NodeIdentifier>} keys
  */
 
 /**
@@ -184,12 +184,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') return await source.global.get(nodeKey);
             switch (sublevel) {
-                case 'values': return await source.values.get(stringToNodeKeyString(nodeKey));
-                case 'freshness': return await source.freshness.get(stringToNodeKeyString(nodeKey));
-                case 'inputs': return await source.inputs.get(stringToNodeKeyString(nodeKey));
-                case 'revdeps': return await source.revdeps.get(stringToNodeKeyString(nodeKey));
-                case 'counters': return await source.counters.get(stringToNodeKeyString(nodeKey));
-                case 'timestamps': return await source.timestamps.get(stringToNodeKeyString(nodeKey));
+                case 'values': return await source.values.get(stringToNodeIdentifier(nodeKey));
+                case 'freshness': return await source.freshness.get(stringToNodeIdentifier(nodeKey));
+                case 'inputs': return await source.inputs.get(stringToNodeIdentifier(nodeKey));
+                case 'revdeps': return await source.revdeps.get(stringToNodeIdentifier(nodeKey));
+                case 'counters': return await source.counters.get(stringToNodeIdentifier(nodeKey));
+                case 'timestamps': return await source.timestamps.get(stringToNodeIdentifier(nodeKey));
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -198,12 +198,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') return await target.global.get(nodeKey);
             switch (sublevel) {
-                case 'values': return await target.values.get(stringToNodeKeyString(nodeKey));
-                case 'freshness': return await target.freshness.get(stringToNodeKeyString(nodeKey));
-                case 'inputs': return await target.inputs.get(stringToNodeKeyString(nodeKey));
-                case 'revdeps': return await target.revdeps.get(stringToNodeKeyString(nodeKey));
-                case 'counters': return await target.counters.get(stringToNodeKeyString(nodeKey));
-                case 'timestamps': return await target.timestamps.get(stringToNodeKeyString(nodeKey));
+                case 'values': return await target.values.get(stringToNodeIdentifier(nodeKey));
+                case 'freshness': return await target.freshness.get(stringToNodeIdentifier(nodeKey));
+                case 'inputs': return await target.inputs.get(stringToNodeIdentifier(nodeKey));
+                case 'revdeps': return await target.revdeps.get(stringToNodeIdentifier(nodeKey));
+                case 'counters': return await target.counters.get(stringToNodeIdentifier(nodeKey));
+                case 'timestamps': return await target.timestamps.get(stringToNodeIdentifier(nodeKey));
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -219,12 +219,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
                 return;
             }
             switch (sublevel) {
-                case 'values': await target.values.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'freshness': await target.freshness.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'inputs': await target.inputs.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'revdeps': await target.revdeps.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'counters': await target.counters.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'timestamps': await target.timestamps.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'values': await target.values.rawPut(stringToNodeIdentifier(nodeKey), value); return;
+                case 'freshness': await target.freshness.rawPut(stringToNodeIdentifier(nodeKey), value); return;
+                case 'inputs': await target.inputs.rawPut(stringToNodeIdentifier(nodeKey), value); return;
+                case 'revdeps': await target.revdeps.rawPut(stringToNodeIdentifier(nodeKey), value); return;
+                case 'counters': await target.counters.rawPut(stringToNodeIdentifier(nodeKey), value); return;
+                case 'timestamps': await target.timestamps.rawPut(stringToNodeIdentifier(nodeKey), value); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -236,12 +236,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
                 return;
             }
             switch (sublevel) {
-                case 'values': await target.values.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'freshness': await target.freshness.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'inputs': await target.inputs.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'revdeps': await target.revdeps.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'counters': await target.counters.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'timestamps': await target.timestamps.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'values': await target.values.rawDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'freshness': await target.freshness.rawDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'inputs': await target.inputs.rawDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'revdeps': await target.revdeps.rawDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'counters': await target.counters.rawDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'timestamps': await target.timestamps.rawDel(stringToNodeIdentifier(nodeKey)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -317,7 +317,7 @@ function makeInMemorySchemaStorage() {
             // rawPut() is identical to put() at runtime — the distinction exists
             // only at the JSDoc/type level so unification adapters can call it
             // without the TValue constraint while normal callers keep the typed API.
-            async rawPut(/** @type {string} */ key, /** @type {*} */ value) {
+            async rawPut(/** @type {string} */ key, /** @type {unknown} */ value) {
                 store.set(String(key), value);
             },
             async del(/** @type {string} */ key) {
@@ -332,7 +332,7 @@ function makeInMemorySchemaStorage() {
                 return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
             },
             /** @returns {InMemoryPutOp} */
-            rawPutOp(/** @type {string} */ key, /** @type {*} */ value) {
+            rawPutOp(/** @type {string} */ key, /** @type {unknown} */ value) {
                 return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
             },
             /** @returns {InMemoryDelOp} */
@@ -345,7 +345,7 @@ function makeInMemorySchemaStorage() {
                 // JS default string comparison matches byte order.
                 const sorted = [...store.keys()].sort();
                 for (const k of sorted) {
-                    yield stringToNodeKeyString(k);
+                    yield stringToNodeIdentifier(k);
                 }
             },
             async clear() {
