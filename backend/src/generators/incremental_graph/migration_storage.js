@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database/types");
+const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database");
 const { deserializeNodeKey } = require("./database");
 const { stringToNodeName } = require("./database");
 const {

@@ -316,7 +316,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
  * @param {Logger} logger
  * @param {RootDatabase} rootDatabase
  * @param {string} hostname
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>} Whether the active replica pointer changed.
  * @throws {HostVersionMismatchError} If the remote's schema version differs from local.
  * @throws {import('./topo_sort').TopologicalSortCycleError} If the graph has a cycle.
  */
@@ -577,14 +577,15 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         // taint-propagated to 'invalidate' still use H.inputs for revdeps.
         await unifyRevdeps(T, mergedInputsMap);
 
-        // ── Step 8: Switch active replica pointer ────────────────────────────
-        await rootDatabase.switchToReplica(toReplica);
+        // ── Step 8: Persist active replica pointer ───────────────────────────
+        await rootDatabase.setCurrentReplicaPointer(toReplica);
     }
 
     logger.logInfo(
         { hostname, fromReplica, toReplica, kept, taken, invalidated, switchedReplica: hasChanges },
         'Graph merge completed for host'
     );
+    return hasChanges;
 }
 
 module.exports = {

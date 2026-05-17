@@ -112,9 +112,7 @@ class TypedDatabaseClass {
         // "use default encoding") and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        /** @type {TValue} */
-        const typedValue = /** @type {TValue} */ (value);
-        await this.sublevel.put(key, typedValue, opts);
+        await this.sublevel.put(key, passthrough(value), opts);
     }
 
     /**
@@ -162,9 +160,7 @@ class TypedDatabaseClass {
      * @returns {DatabasePutOperation<TValue, TKey>}
      */
     rawPutOp(key, value) {
-        /** @type {TValue} */
-        const typedValue = /** @type {TValue} */ (value);
-        return { sublevel: this.sublevel, type: "put", key, value: typedValue };
+        return { sublevel: this.sublevel, type: "put", key, value: passthrough(value) };
     }
 
     /**
@@ -197,6 +193,14 @@ class TypedDatabaseClass {
     async clear() {
         await this.sublevel.clear();
     }
+}
+
+/**
+ * @param {*} value
+ * @returns {*}
+ */
+function passthrough(value) {
+    return value;
 }
 
 /**

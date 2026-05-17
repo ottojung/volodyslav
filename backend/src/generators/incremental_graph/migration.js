@@ -3,7 +3,7 @@
 
 const { stringToNodeName } = require("./database");
 const { deserializeNodeKey } = require("./database");
-const { stringToNodeKeyString } = require("./database/types");
+const { stringToNodeKeyString } = require("./database");
 
 /**
  * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities

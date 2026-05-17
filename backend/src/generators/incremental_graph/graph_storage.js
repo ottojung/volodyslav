@@ -7,7 +7,7 @@
 const {
     nodeIdentifierToString,
     stringToNodeIdentifier,
-} = require('./database/types');
+} = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */

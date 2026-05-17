@@ -520,13 +520,12 @@ describe('generators/database', () => {
             }
         });
 
-        test('switchToReplica changes the active replica and persists across reopen', async () => {
+        test('setCurrentReplicaPointer persists active replica across reopen', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 expect(db.currentReplicaName()).toBe('x');
-                await db.switchToReplica('y');
-                expect(db.currentReplicaName()).toBe('y');
+                await db.setCurrentReplicaPointer('y');
                 await db.close();
 
                 // Reopen — pointer should be 'y'.

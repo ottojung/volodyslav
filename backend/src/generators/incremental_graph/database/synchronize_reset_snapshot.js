@@ -15,7 +15,7 @@ const { scanFromFilesystem } = require('./render');
  * @param {Capabilities} capabilities
  * @param {RootDatabase} database
  * @param {string} workTree
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>}
  */
 async function importResetSnapshotIntoDatabase(capabilities, database, workTree) {
     const snapshotRoot = path.join(workTree, DATABASE_SUBPATH);
@@ -38,7 +38,8 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree)
         nextReplica
     );
 
-    await database.switchToReplica(nextReplica);
+    await database.setCurrentReplicaPointer(nextReplica);
+    return nextReplica !== database.currentReplicaName();
 }
 
 /**
@@ -53,17 +54,21 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
         LIVE_DATABASE_WORKING_PATH
     );
 
-    const database = await makeRootDatabase(
+    let database = await makeRootDatabase(
         capabilities,
         liveDatabasePath
     );
 
     try {
-        await importResetSnapshotIntoDatabase(
+        const switchedReplica = await importResetSnapshotIntoDatabase(
             capabilities,
             database,
             workTree
         );
+        if (switchedReplica) {
+            await database.close();
+            database = await makeRootDatabase(capabilities, liveDatabasePath);
+        }
     } finally {
         await database.close();
     }

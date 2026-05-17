@@ -22,9 +22,10 @@ const {
     requireNodeKeyForIdentifier,
     serializeNodeKey,
     serializeIdentifierLookup,
+    stringToNodeIdentifier,
     stringToNodeName,
+    getRootDatabase,
 } = require("./database");
-const { stringToNodeIdentifier } = require("./database/types");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
@@ -82,6 +83,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @property {Environment} environment - An environment instance
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Interface} interface - An interface instance with an update() method.
+ * @property {import('../../random/seed').NonDeterministicSeed} seed - Random seed capability.
  */
 
 /**
@@ -491,11 +493,11 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
- * @returns {Promise<void>}
+ * @returns {Promise<RootDatabase>}
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
     return await withExclusiveMode(capabilities.sleeper, async () => {
-        await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
+        return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }
 
@@ -510,7 +512,7 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
- * @returns {Promise<void>}
+ * @returns {Promise<RootDatabase>}
  */
 async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
@@ -537,7 +539,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         );
         // No previous version recorded; fresh database: record current version, nothing to migrate.
         await rootDatabase.setGlobalVersion(rootDatabase.version);
-        return;
+        return rootDatabase;
     }
 
     if (prevVersion === currentVersion) {
@@ -546,7 +548,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             'Migration not required: stored version already matches current application version'
         );
         // Already on the current version.
-        return;
+        return rootDatabase;
     }
 
     capabilities.logger.logDebug(
@@ -558,6 +560,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         prevVersion, currentVersion
     }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
 
+    let switchedReplica = false;
     await checkpointMigration(
         capabilities,
         rootDatabase,
@@ -621,27 +624,31 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // The new version is included in the lazy source's global sublevel,
             // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
-            if (typeof rootDatabase.replaceIdentifierLookupForReplica === "function") {
-                await rootDatabase.replaceIdentifierLookupForReplica(
-                    toReplica,
-                    makeIdentifierLookup(keyPlan.outputEntries)
-                );
-            }
-
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
             await rootDatabase._rawSync();
 
-            // Switch the active replica pointer to the target replica.
-            // This is the atomic cutover: only runs after all writes succeed.
-            await rootDatabase.switchToReplica(toReplica);
+            // Persist the new active replica pointer after all writes succeed.
+            await rootDatabase.setCurrentReplicaPointer(toReplica);
+            switchedReplica = true;
         }
     );
+
+    if (switchedReplica && typeof rootDatabase.close === 'function') {
+        await rootDatabase.close();
+        const rebuiltDatabase = await getRootDatabase(capabilities);
+        capabilities.logger.logDebug(
+            { activeReplica: rebuiltDatabase.currentReplicaName() },
+            'Migration cutover completed with rebuilt root database'
+        );
+        return rebuiltDatabase;
+    }
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion
     }, `Migration from ${String(prevVersion)} to ${String(currentVersion)} completed successfully.`);
+    return rootDatabase;
 }
 
 module.exports = {

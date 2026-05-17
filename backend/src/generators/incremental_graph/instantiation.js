@@ -8,7 +8,7 @@ const {
 } = require("./compiled_node");
 const { renderExpr } = require("./expr");
 const { createNodeKeyFromPattern, serializeNodeKey, nodeKeyStringToString } = require("./database");
-const { stringToNodeIdentifier } = require("./database/types");
+const { stringToNodeIdentifier } = require("./database");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */

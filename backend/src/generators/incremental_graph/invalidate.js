@@ -18,7 +18,7 @@
  */
 
 const { stringToNodeName, nodeKeyStringToString } = require("./database");
-const { nodeIdentifierToString, stringToNodeIdentifier } = require("./database/types");
+const { nodeIdentifierToString, stringToNodeIdentifier } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
 const { serializeNodeKey } = require("./database");

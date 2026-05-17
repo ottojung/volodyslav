@@ -16,7 +16,7 @@
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { isUnchanged } = require("./unchanged");
-const { nodeIdentifierToString } = require("./database/types");
+const { nodeIdentifierToString } = require("./database");
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition

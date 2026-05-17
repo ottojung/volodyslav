@@ -68,6 +68,22 @@ async function writeNode(storage, nodeKey, modifiedAt, inputKeys, valuePayload) 
     }
 }
 
+/**
+ * @param {ReturnType<typeof getTestCapabilities>} capabilities
+ * @param {ReturnType<typeof makeLogger>} logger
+ * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} db
+ * @param {string} hostname
+ * @returns {Promise<import('../src/generators/incremental_graph/database/root_database').RootDatabase>}
+ */
+async function mergeAndReopenIfSwitched(capabilities, logger, db, hostname) {
+    const switched = await mergeHostIntoReplica(logger, db, hostname);
+    if (!switched) {
+        return db;
+    }
+    await db.close();
+    return await getRootDatabase(capabilities);
+}
+
 describe('mergeHostIntoReplica', () => {
     test('throws HostVersionMismatchError when remote version differs from local', async () => {
         const capabilities = getTestCapabilities();
@@ -114,7 +130,7 @@ describe('mergeHostIntoReplica', () => {
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS1, [], remoteValue);
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             expect(newActive).toBe('x');
@@ -148,7 +164,7 @@ describe('mergeHostIntoReplica', () => {
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS2, [], remoteValue);
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             expect(newActive).toBe('y');
@@ -178,7 +194,7 @@ describe('mergeHostIntoReplica', () => {
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS1, [], remoteValue);
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             expect(newActive).toBe('y');
@@ -222,7 +238,7 @@ describe('mergeHostIntoReplica', () => {
             // C is only in H; it depends on P (computed from H's stale P)
             await writeNode(H, nodeC, TS2, [nodeP], remoteCValue);
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
@@ -255,7 +271,7 @@ describe('mergeHostIntoReplica', () => {
             await H.inputs.put(hOnlyNode, { inputs: [], inputCounters: [] });
             await H.freshness.put(hOnlyNode, 'up-to-date');
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
@@ -282,7 +298,7 @@ describe('mergeHostIntoReplica', () => {
             const before = db.currentReplicaName();
             expect(before).toBe('x');
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const after = db.currentReplicaName();
             expect(after).toBe('x');
@@ -325,7 +341,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeB, TS2, [nodeA], remoteValueB);
             await H.counters.put(nodeB, 2);
 
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
@@ -387,7 +403,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeB, TS2, [nodeA], remoteValueB);
 
             // First merge: B is 'invalidate', modifiedAt advanced to TS2.
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             // Restore the same H staging data for the second merge
             // (simulates a re-sync against the same remote snapshot).
@@ -399,7 +415,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H2, nodeB, TS2, [nodeA], remoteValueB);
 
             // Second merge: T.B.modifiedAt == H.B.modifiedAt == TS2 → B is 'keep'.
-            await mergeHostIntoReplica(logger, db, hostname);
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
@@ -452,7 +468,7 @@ describe('mergeHostIntoReplica', () => {
             // merge left an empty 'y' replica with no version before this fix.
             await expect(
                 mergeHostIntoReplica(logger, db, hostname2)
-            ).resolves.toBeUndefined();
+            ).resolves.toBe(true);
         } finally {
             if (db) await db.close();
         }

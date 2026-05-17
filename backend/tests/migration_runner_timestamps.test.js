@@ -90,7 +90,7 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         otherReplicaName() { return 'y'; },
         schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
         async clearReplicaStorage(_name) {},
-        async switchToReplica(_name) {},
+        async setCurrentReplicaPointer(_name) {},
         async setGlobalVersion(_v) {},
         async _rawSync() {},
     };
