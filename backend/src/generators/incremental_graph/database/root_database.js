@@ -430,6 +430,8 @@ class RootDatabaseClass {
         }
         try {
             await this._rootMetaSublevel.put('current_replica', name);
+            this._cachedValueOfCurrentReplica = name;
+            await this.initializeActiveIdentifierLookup();
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }

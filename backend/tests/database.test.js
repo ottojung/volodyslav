@@ -537,6 +537,25 @@ describe('generators/database', () => {
             }
         });
 
+        test('setCurrentReplicaPointer updates in-memory active replica immediately', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                const xStorage = db.getSchemaStorage();
+
+                await db.setCurrentReplicaPointer('y');
+
+                expect(db.currentReplicaName()).toBe('y');
+                const activeStorage = db.getSchemaStorage();
+                const yStorage = db.schemaStorageForReplica('y');
+                expect(activeStorage).toBe(yStorage);
+                expect(activeStorage).not.toBe(xStorage);
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
         test('schemaStorageForReplica throws InvalidReplicaPointerError for invalid name', async () => {
             const capabilities = getTestCapabilities();
             try {
