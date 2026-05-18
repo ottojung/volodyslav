@@ -415,8 +415,10 @@ class RootDatabaseClass {
 
     /**
      * Persist a new active replica pointer in `_meta/current_replica`.
+     * On success, refreshes in-memory active replica and active identifier lookup
+     * so subsequent calls in the same process immediately observe the cutover.
      * Throws `InvalidReplicaPointerError` for unrecognised names.
-     * Throws `SwitchReplicaError` if the write fails.
+     * Throws `SwitchReplicaError` if persisting or refreshing active state fails.
      * @param {ReplicaName} name
      * @returns {Promise<void>}
      */
@@ -430,6 +432,8 @@ class RootDatabaseClass {
         }
         try {
             await this._rootMetaSublevel.put('current_replica', name);
+            this._cachedValueOfCurrentReplica = name;
+            await this.initializeActiveIdentifierLookup();
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }

@@ -520,6 +520,28 @@ describe('generators/database', () => {
             }
         });
 
+
+        test('setCurrentReplicaPointer updates in-memory active replica immediately', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                const xStorage = db.schemaStorageForReplica('x');
+                const yStorage = db.schemaStorageForReplica('y');
+
+                await db.setCurrentReplicaPointer('y');
+
+                expect(db.currentReplicaName()).toBe('y');
+                expect(db.getSchemaStorage()).toBe(yStorage);
+                expect(db.getSchemaStorage()).not.toBe(xStorage);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
         test('setCurrentReplicaPointer persists active replica across reopen', async () => {
             const capabilities = getTestCapabilities();
             try {
