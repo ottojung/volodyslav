@@ -571,10 +571,9 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         pendingOps = [];
     }
 
-    const kept = [...decisions.values()].filter(d => d === 'keep').length;
-    const taken = [...decisions.values()].filter(d => d === 'take').length;
-    const invalidated = [...decisions.values()].filter(d => d === 'invalidate').length;
-    const hasChanges = taken > 0 || invalidated > 0;
+    const decisionValues = [...decisions.values()];
+    const kept = decisionValues.filter(d => d === 'keep').length, taken = decisionValues.filter(d => d === 'take').length, invalidated = decisionValues.filter(d => d === 'invalidate').length;
+    const hasChanges = taken + invalidated > 0;
 
     if (hasChanges) {
         const hostIdentifierValue = await H.global.get('identifiers_keys_map');
@@ -594,6 +593,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
         pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
         await flushPendingOps();
+        await T.batch(pendingOps);
+        pendingOps = [];
 
         // Gently update revdeps using the merged inputs map.  Only changed entries
         // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
@@ -604,7 +605,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         // ── Step 8: Persist active replica pointer ───────────────────────────
         await rootDatabase.setCurrentReplicaPointer(toReplica);
     }
-
     logger.logInfo(
         { hostname, fromReplica, toReplica, kept, taken, invalidated, switchedReplica: hasChanges },
         'Graph merge completed for host'

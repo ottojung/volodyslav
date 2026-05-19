@@ -135,17 +135,14 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     nodeKeyStr,
     identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
-    let nodeKeyIdentifier = nodeKeyStr;
-    let nodeKeyString = String(nodeKeyStr);
+    let semanticNodeKeyIdentifier = nodeKeyStr;
     try {
-        nodeKeyIdentifier = identifierResolver.requireNodeKey(nodeKeyStr);
-        nodeKeyString = String(nodeKeyIdentifier);
+        semanticNodeKeyIdentifier = identifierResolver.requireNodeKey(nodeKeyStr);
     } catch (_error) {
-        nodeKeyIdentifier = nodeKeyStr;
-        nodeKeyString = String(nodeKeyStr);
+        semanticNodeKeyIdentifier = nodeKeyStr;
     }
 
-    const nodeKey = deserializeNodeKey(stringToNodeKeyString(nodeKeyString));
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKeyIdentifier)));
     const nodeName = nodeKey.head;
     const bindings = nodeKey.args;
     const compiledNode = incrementalGraph.headIndex.get(nodeName);
@@ -156,7 +153,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     checkArity(compiledNode, bindings);
 
     const concreteNode = incrementalGraph.getOrCreateConcreteNode(
-        nodeKeyStr,
+        semanticNodeKeyIdentifier,
         compiledNode,
         bindings
     );
@@ -177,7 +174,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             const result = await batch.values.get(outputIdentifier);
             if (result === undefined) {
                 throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeKeyStr)}`
+                    `Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(semanticNodeKeyIdentifier)}`
                 );
             }
             return { value: result, status: "cached" };
@@ -193,7 +190,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             identifierResolver
         );
     };
-    return withPullNodeMutex(incrementalGraph.sleeper, nodeKeyStr, () =>
+    return withPullNodeMutex(incrementalGraph.sleeper, semanticNodeKeyIdentifier, () =>
         incrementalGraph.withIdentifierBatch(identifierResolver, run)
     );
 }
