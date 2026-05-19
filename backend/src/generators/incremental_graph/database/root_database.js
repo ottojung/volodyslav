@@ -392,10 +392,21 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async initializeActiveIdentifierLookup() {
-        const globalSublevel = this.currentReplicaName() === 'x'
-            ? this._xGlobalSublevel
-            : this._yGlobalSublevel;
-        this._identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
+        this._identifierLookup = await this.loadIdentifierLookupForReplica(this.currentReplicaName());
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {Promise<IdentifierLookup>}
+     */
+    async loadIdentifierLookupForReplica(name) {
+        if (name === 'x') {
+            return loadIdentifierLookupFromGlobal(this._xGlobalSublevel);
+        } else if (name === 'y') {
+            return loadIdentifierLookupFromGlobal(this._yGlobalSublevel);
+        } else {
+            return assertNeverReplicaName(name);
+        }
     }
 
     /**
@@ -431,9 +442,10 @@ class RootDatabaseClass {
             assertNeverReplicaName(name);
         }
         try {
+            const nextIdentifierLookup = await this.loadIdentifierLookupForReplica(name);
             await this._rootMetaSublevel.put('current_replica', name);
             this._cachedValueOfCurrentReplica = name;
-            await this.initializeActiveIdentifierLookup();
+            this._identifierLookup = nextIdentifierLookup;
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
