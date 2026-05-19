@@ -212,6 +212,29 @@ function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
 }
 
 /**
+ * Merge two lookup snapshots by applying overlay mappings onto base.
+ * Conflicting assignments throw `IdentifierLookupError` via `setIdentifierMapping`.
+ *
+ * Note: we intentionally do not add extra per-entry NodeIdentifier validation here,
+ * because identifiers are already validated at construction boundaries and repeating
+ * it on every merge would be wasted compute in a hot path.
+ * @param {IdentifierLookup} base
+ * @param {IdentifierLookup} overlay
+ * @returns {IdentifierLookup}
+ */
+function mergeIdentifierLookups(base, overlay) {
+    const merged = cloneIdentifierLookup(base);
+    for (const [identifierString, nodeKey] of overlay.idToKey.entries()) {
+        setIdentifierMapping(
+            merged,
+            nodeIdentifierFromString(identifierString),
+            nodeKey
+        );
+    }
+    return merged;
+}
+
+/**
  * Allocate a fresh identifier for a node key, retrying on collisions.
  * If the key already has an identifier, the existing identifier is reused.
  * @param {IdentifierLookup} lookup
@@ -273,6 +296,7 @@ function requireNodeIdentifierForKey(lookup, nodeKey) {
 module.exports = {
     allocateNodeIdentifier,
     cloneIdentifierLookup,
+    mergeIdentifierLookups,
     deleteIdentifierMappingForNodeKey,
     deterministicNodeIdentifierFromNodeKey,
     IdentifierAllocationError,

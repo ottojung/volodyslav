@@ -11,6 +11,7 @@ const {
     cloneIdentifierLookup,
     deterministicNodeIdentifierFromNodeKey,
     makeEmptyIdentifierLookup,
+    mergeIdentifierLookups,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     nodeIdentifierToString,
@@ -36,7 +37,7 @@ const fallbackIdentifierLookups = new WeakMap();
  * @property {(nodeKey: NodeIdentifier) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
  * @property {(nodeKey: NodeIdentifier) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeIdentifier} requireNodeKey - Convert an identifier back to its semantic node key.
- * @property {(batch: BatchBuilder, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append the lookup write to the current batch when allocations happened.
+ * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append a merged lookup write to the current batch when allocations happened.
  * @property {(rootDatabase: RootDatabase) => void} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
 
@@ -89,6 +90,8 @@ function makeIdentifierResolver(rootDatabase) {
     /** @type {Map<string, NodeIdentifier>} */
     const nodeKeysByIdentifier = new Map();
     let hasPendingLookupWrite = false;
+    /** @type {IdentifierLookup | null} */
+    let committedLookup = null;
 
     /**
      * @param {NodeIdentifier} nodeKey
@@ -156,26 +159,30 @@ function makeIdentifierResolver(rootDatabase) {
         lookupNodeIdentifier,
         getOrAllocateNodeIdentifier,
         requireNodeKey,
-        queueLookupPersistence(batch, globalDatabase) {
+        queueLookupPersistence(batch, rootDatabaseToMerge, globalDatabase) {
             if (!hasPendingLookupWrite || globalDatabase === undefined) {
                 return;
             }
+            const activeLookup = getActiveLookup(rootDatabaseToMerge);
+            committedLookup = mergeIdentifierLookups(activeLookup, lookup);
             batch.appendOperation(
-                globalDatabase.rawPutOp(IDENTIFIERS_KEY, serializeIdentifierLookup(lookup))
+                globalDatabase.rawPutOp(
+                    IDENTIFIERS_KEY,
+                    serializeIdentifierLookup(committedLookup)
+                )
             );
         },
         commitPersistedLookup(rootDatabaseToUpdate) {
             if (!hasPendingLookupWrite) {
                 return;
             }
+            const lookupToCommit = cloneIdentifierLookup(committedLookup ?? lookup);
             if (typeof rootDatabaseToUpdate.replaceActiveIdentifierLookup === "function") {
-                rootDatabaseToUpdate.replaceActiveIdentifierLookup(lookup);
+                rootDatabaseToUpdate.replaceActiveIdentifierLookup(lookupToCommit);
             } else {
-                fallbackIdentifierLookups.set(
-                    rootDatabaseToUpdate,
-                    cloneIdentifierLookup(lookup)
-                );
+                fallbackIdentifierLookups.set(rootDatabaseToUpdate, lookupToCommit);
             }
+            committedLookup = null;
             hasPendingLookupWrite = false;
         },
     };
