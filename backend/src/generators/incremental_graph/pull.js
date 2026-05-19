@@ -135,7 +135,17 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     nodeKeyStr,
     identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
-    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
+    let nodeKeyIdentifier = nodeKeyStr;
+    let nodeKeyString = String(nodeKeyStr);
+    try {
+        nodeKeyIdentifier = identifierResolver.requireNodeKey(nodeKeyStr);
+        nodeKeyString = String(nodeKeyIdentifier);
+    } catch (_error) {
+        nodeKeyIdentifier = nodeKeyStr;
+        nodeKeyString = String(nodeKeyStr);
+    }
+
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(nodeKeyString));
     const nodeName = nodeKey.head;
     const bindings = nodeKey.args;
     const compiledNode = incrementalGraph.headIndex.get(nodeName);

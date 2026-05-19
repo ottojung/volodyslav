@@ -49,6 +49,12 @@ const { stringToNodeIdentifier, versionToString } = require('./types');
 const { compareNodeIdentifier } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
+const {
+    makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
+    mergeIdentifierLookups,
+    serializeIdentifierLookup,
+} = require('./identifier_lookup');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -571,6 +577,24 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const hasChanges = taken > 0 || invalidated > 0;
 
     if (hasChanges) {
+        const hostIdentifierValue = await H.global.get('identifiers_keys_map');
+        const targetIdentifierValue = await T.global.get('identifiers_keys_map');
+
+        const hostLookup = hostIdentifierValue === undefined
+            ? makeEmptyIdentifierLookup()
+            : Array.isArray(hostIdentifierValue)
+                ? makeIdentifierLookup(hostIdentifierValue)
+                : makeEmptyIdentifierLookup();
+        const targetLookup = targetIdentifierValue === undefined
+            ? makeEmptyIdentifierLookup()
+            : Array.isArray(targetIdentifierValue)
+                ? makeIdentifierLookup(targetIdentifierValue)
+                : makeEmptyIdentifierLookup();
+        const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
+
+        pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
+        await flushPendingOps();
+
         // Gently update revdeps using the merged inputs map.  Only changed entries
         // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
         // directly, ensuring nodes that were initially 'take' (H.inputs) but

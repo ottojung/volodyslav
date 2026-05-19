@@ -248,12 +248,12 @@ function relativePathToKey(relPath) {
         }
         keyContent = decodeSegment(keyComponents[0] ?? '');
     } else {
-        if (keyComponents.length !== 1) {
+        if (keyComponents.length === 0) {
             throw new Error(
-                `Invalid database path '${relPath}': identifier-key sublevels require exactly one key segment`
+                `Invalid database path '${relPath}': identifier-key sublevels require at least one key segment`
             );
         }
-        keyContent = decodeSegment(keyComponents[0] ?? '');
+        keyContent = keyComponents.map(component => decodeSegment(component)).join('/');
     }
 
     return buildRawKey(sublevels, keyContent);

@@ -142,7 +142,7 @@ function assertNeverReplicaName(name) {
  * Database for storing replica-level global state (e.g., version).
  * Key: plain string (e.g., 'version' or 'identifiers_keys_map')
  * Value: version string or identifier lookup metadata
- * @typedef {GenericDatabase<Version, string>} GlobalVersionDatabase
+ * @typedef {GenericDatabase<Version | import('./types').IdentifiersKeysMap, string>} GlobalVersionDatabase
  */
 
 /**
@@ -223,9 +223,12 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
             if (existing === undefined) {
                 // New or freshly-cleared namespace: write version to global to initialise.
                 await globalSublevel.put('version', version);
-            } else if (existing !== version) {
+            } else if (typeof existing !== 'string' || existing !== version) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
-                throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
+                const foundVersion = typeof existing === 'string'
+                    ? stringToVersion(existing)
+                    : stringToVersion('invalid-version-record');
+                throw new SchemaBatchVersionError(versionToString(version), versionToString(foundVersion));
             }
             touchedSchema = true;
         }
@@ -438,7 +441,8 @@ class RootDatabaseClass {
      * @returns {Promise<Version | undefined>}
      */
     async getGlobalVersion() {
-        return await this._computed.globalSublevel.get('version');
+        const value = await this._computed.globalSublevel.get('version');
+        return typeof value === 'string' ? stringToVersion(value) : undefined;
     }
 
     /**

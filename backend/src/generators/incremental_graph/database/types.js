@@ -538,7 +538,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version>} GlobalSublevelType
+ * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version | IdentifiersKeysMap>} GlobalSublevelType
  */
 
 /**

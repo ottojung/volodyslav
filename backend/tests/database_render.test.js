@@ -59,10 +59,8 @@ describe('identifier-based snapshot encoding', () => {
         expect(relativePathToKey('x/global/identifiers_keys_map')).toBe('!x!!global!identifiers_keys_map');
     });
 
-    test('identifier-addressed graph-state paths reject extra semantic segments', () => {
-        expect(() => relativePathToKey('x/values/event/abc123')).toThrow(
-            'identifier-key sublevels require exactly one key segment'
-        );
+    test('identifier-addressed graph-state paths support legacy multi-segment keys', () => {
+        expect(relativePathToKey('x/values/event/abc123')).toBe('!x!!values!event/abc123');
     });
 
     test('key/path conversion is bijective for current identifier-addressed keys', () => {
