@@ -164,7 +164,7 @@ class IncrementalGraphClass {
         const schemaStorage = this.rootDatabase.getSchemaStorage();
         const value = await this.storage.withBatch(async (batch) => {
             const result = await procedure(batch);
-            identifierResolver.queueLookupPersistence(batch, schemaStorage.global);
+            identifierResolver.queueLookupPersistence(batch, this.rootDatabase, schemaStorage.global);
             return result;
         });
         identifierResolver.commitPersistedLookup(this.rootDatabase);
