@@ -70,11 +70,11 @@ function getActiveLookup(rootDatabase) {
  * @returns {NodeIdentifier}
  */
 function allocateIdentifier(rootDatabase, lookup, nodeKey) {
-    return allocateNodeIdentifier(lookup, nodeKey, () => {
+    return allocateNodeIdentifier(lookup, nodeKey, (attempt) => {
         if (typeof rootDatabase.generateNodeIdentifier === "function") {
             return rootDatabase.generateNodeIdentifier();
         }
-        return deterministicNodeIdentifierFromNodeKey(nodeKey);
+        return deterministicNodeIdentifierFromNodeKey(nodeKey, attempt);
     });
 }
 
