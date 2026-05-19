@@ -542,6 +542,29 @@ describe('generators/database', () => {
             }
         });
 
+
+        test('setCurrentReplicaPointer keeps persisted pointer unchanged when target lookup init fails', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.global.put('identifiers_keys_map', [['aaaaaaaaa', 'bbbbbbbbb'], ['aaaaaaaaa', 'ccccccccc']]);
+
+                await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
+                expect(db.currentReplicaName()).toBe('x');
+
+                await db.close();
+
+                const reopened = await getRootDatabase(capabilities);
+                expect(reopened.currentReplicaName()).toBe('x');
+                await reopened.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
         test('setCurrentReplicaPointer persists active replica across reopen', async () => {
             const capabilities = getTestCapabilities();
             try {
