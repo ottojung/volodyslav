@@ -27,6 +27,7 @@ const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
+const { isValidNodeIdentifier } = require("./database");
 
 /**
  * Pull implementation that assumes the caller has already acquired the global
@@ -135,13 +136,11 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     nodeKeyStr,
     identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
-    let semanticNodeKeyIdentifier = nodeKeyStr;
-    try {
-        semanticNodeKeyIdentifier = identifierResolver.requireNodeKey(nodeKeyStr);
-    } catch (_error) {
-        semanticNodeKeyIdentifier = nodeKeyStr;
-    }
-
+    const rawKeyString = String(nodeKeyStr);
+    const isSerializedNodeKey = !isValidNodeIdentifier(rawKeyString);
+    const semanticNodeKeyIdentifier = isSerializedNodeKey
+        ? nodeKeyStr
+        : identifierResolver.requireNodeKey(nodeKeyStr);
     const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKeyIdentifier)));
     const nodeName = nodeKey.head;
     const bindings = nodeKey.args;
