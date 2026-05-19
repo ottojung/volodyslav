@@ -76,6 +76,8 @@ class NodeIdentifierClass {
  * @returns {_value is NodeIdentifier}
  */
 function castToNodeIdentifier(_value) {
+    // Intentionally no runtime validation here: NodeIdentifier conversions are
+    // internal/trusted and per-call validation would be wasted compute on a hot path.
     return true;
 }
 

@@ -12,6 +12,7 @@ const {
     deterministicNodeIdentifierFromNodeKey,
     makeEmptyIdentifierLookup,
     nodeIdToKeyFromLookup,
+    setIdentifierMapping,
     nodeKeyToIdFromLookup,
     nodeIdentifierToString,
     serializeIdentifierLookup,
@@ -83,12 +84,16 @@ function allocateIdentifier(rootDatabase, lookup, nodeKey) {
  * @returns {IdentifierResolver}
  */
 function makeIdentifierResolver(rootDatabase) {
-    const lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
+    let lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
     /** @type {Map<string, NodeIdentifier>} */
     const identifiersByNodeKey = new Map();
     /** @type {Map<string, NodeIdentifier>} */
     const nodeKeysByIdentifier = new Map();
     let hasPendingLookupWrite = false;
+    /** @type {Map<string, { nodeKey: NodeIdentifier, nodeIdentifier: NodeIdentifier }>} */
+    const allocatedMappings = new Map();
+    /** @type {IdentifierLookup | null} */
+    let committedLookupSnapshot = null;
 
     /**
      * @param {NodeIdentifier} nodeKey
@@ -127,10 +132,12 @@ function makeIdentifierResolver(rootDatabase) {
             return existing;
         }
         hasPendingLookupWrite = true;
-        return cacheMapping(
+        const allocatedNodeIdentifier = allocateIdentifier(rootDatabase, lookup, nodeKey);
+        allocatedMappings.set(String(nodeKey), {
             nodeKey,
-            allocateIdentifier(rootDatabase, lookup, nodeKey)
-        );
+            nodeIdentifier: allocatedNodeIdentifier,
+        });
+        return cacheMapping(nodeKey, allocatedNodeIdentifier);
     }
 
     /**
@@ -160,23 +167,33 @@ function makeIdentifierResolver(rootDatabase) {
             if (!hasPendingLookupWrite || globalDatabase === undefined) {
                 return;
             }
+            const mergedLookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
+            for (const mapping of allocatedMappings.values()) {
+                setIdentifierMapping(mergedLookup, mapping.nodeIdentifier, mapping.nodeKey);
+            }
+            lookup = mergedLookup;
+            committedLookupSnapshot = cloneIdentifierLookup(mergedLookup);
             batch.appendOperation(
-                globalDatabase.rawPutOp(IDENTIFIERS_KEY, serializeIdentifierLookup(lookup))
+                globalDatabase.rawPutOp(IDENTIFIERS_KEY, serializeIdentifierLookup(mergedLookup))
             );
         },
         commitPersistedLookup(rootDatabaseToUpdate) {
             if (!hasPendingLookupWrite) {
                 return;
             }
+            const committedLookupSource = committedLookupSnapshot ?? lookup;
+            const committedLookupClone = cloneIdentifierLookup(committedLookupSource);
             if (typeof rootDatabaseToUpdate.replaceActiveIdentifierLookup === "function") {
-                rootDatabaseToUpdate.replaceActiveIdentifierLookup(lookup);
+                rootDatabaseToUpdate.replaceActiveIdentifierLookup(committedLookupClone);
             } else {
                 fallbackIdentifierLookups.set(
                     rootDatabaseToUpdate,
-                    cloneIdentifierLookup(lookup)
+                    committedLookupClone
                 );
             }
             hasPendingLookupWrite = false;
+            allocatedMappings.clear();
+            committedLookupSnapshot = null;
         },
     };
 }

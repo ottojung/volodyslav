@@ -38,8 +38,9 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree)
         nextReplica
     );
 
+    const previousReplica = database.currentReplicaName();
     await database.setCurrentReplicaPointer(nextReplica);
-    return nextReplica !== database.currentReplicaName();
+    return previousReplica !== nextReplica;
 }
 
 /**
