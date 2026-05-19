@@ -49,6 +49,14 @@ const {
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
+/**
+ * @typedef {object} ActiveReplicaComputed
+ * @property {ReplicaName} replicaName
+ * @property {SchemaSublevelType} namespaceSublevel
+ * @property {GlobalSublevelType} globalSublevel
+ * @property {SchemaStorage} schemaStorage
+ * @property {IdentifierLookup} identifierLookup
+ */
 
 /**
  * Common base type for any abstract-level database instance at any nesting depth.
@@ -239,9 +247,8 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
 /**
  * Root database class with replica-pointer awareness.
  *
- * Maintains a cached `_meta/current_replica` pointer (always "x" or "y") and
- * exposes both schema storages so that migration can write to the inactive
- * replica without touching the active one.
+ * Maintains a cached `_meta/current_replica` pointer (always "x" or "y").
+ * All active, replica-derived runtime state is represented by `_computed`.
  */
 class RootDatabaseClass {
     /**
@@ -252,56 +259,10 @@ class RootDatabaseClass {
     db;
 
     /**
-     * Cached name of the currently active replica ("x" or "y").
-     * @private
-     * @type {ReplicaName}
-     */
-    _cachedValueOfCurrentReplica;
-
-    /**
      * Root-level `_meta` sublevel used to persist the replica pointer.
      * @private
      */
     _rootMetaSublevel;
-
-    /**
-     * Global sublevels for each replica (used by getGlobalVersion / setGlobalVersion).
-     * @private
-     * @type {GlobalSublevelType}
-     */
-    _xGlobalSublevel;
-
-    /**
-     * @private
-     * @type {GlobalSublevelType}
-     */
-    _yGlobalSublevel;
-
-    /**
-     * Top-level namespace sublevels for each replica (used by clearReplicaStorage).
-     * @private
-     * @type {SchemaSublevelType}
-     */
-    _xNamespaceSublevel;
-
-    /**
-     * @private
-     * @type {SchemaSublevelType}
-     */
-    _yNamespaceSublevel;
-
-    /**
-     * Pre-built schema storages for each replica.
-     * @private
-     * @type {SchemaStorage}
-     */
-    _xSchemaStorage;
-
-    /**
-     * @private
-     * @type {SchemaStorage}
-     */
-    _ySchemaStorage;
 
     /**
      * @private
@@ -311,9 +272,9 @@ class RootDatabaseClass {
 
     /**
      * @private
-     * @type {IdentifierLookup}
+     * @type {ActiveReplicaComputed}
      */
-    _identifierLookup;
+    _computed;
 
     /**
      * @constructor
@@ -325,20 +286,20 @@ class RootDatabaseClass {
     constructor(db, version, currentReplicaName, seed) {
         this.db = db;
         this.version = version;
-        this._cachedValueOfCurrentReplica = currentReplicaName;
         this._seed = seed;
 
         // Root-level _meta sublevel for the replica pointer.
         this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
 
-        // Build per-replica sublevels and schema storages.
-        this._xNamespaceSublevel = db.sublevel('x', { valueEncoding: 'json' });
-        this._yNamespaceSublevel = db.sublevel('y', { valueEncoding: 'json' });
-        this._xGlobalSublevel = this._xNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
-        this._yGlobalSublevel = this._yNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
-        this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, version);
-        this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, version);
-        this._identifierLookup = makeEmptyIdentifierLookup();
+        const namespaceSublevel = this.replicaNamespaceSublevel(currentReplicaName);
+        const globalSublevel = this.replicaGlobalSublevel(currentReplicaName);
+        this._computed = {
+            replicaName: currentReplicaName,
+            namespaceSublevel,
+            globalSublevel,
+            schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
+            identifierLookup: makeEmptyIdentifierLookup(),
+        };
     }
 
     /**
@@ -347,14 +308,14 @@ class RootDatabaseClass {
      * @returns {ReplicaName}
      */
     currentReplicaName() {
-        return this._cachedValueOfCurrentReplica;
+        return this._computed.replicaName;
     }
 
     /**
      * @returns {IdentifierLookup}
      */
     cloneActiveIdentifierLookup() {
-        return cloneIdentifierLookup(this._identifierLookup);
+        return cloneIdentifierLookup(this._computed.identifierLookup);
     }
 
     /**
@@ -362,7 +323,7 @@ class RootDatabaseClass {
      * @returns {void}
      */
     replaceActiveIdentifierLookup(lookup) {
-        this._identifierLookup = lookup;
+        this._computed.identifierLookup = lookup;
     }
 
     /**
@@ -370,7 +331,7 @@ class RootDatabaseClass {
      * @returns {NodeIdentifier | undefined}
      */
     nodeKeyToId(nodeKey) {
-        return nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+        return nodeKeyToIdFromLookup(this._computed.identifierLookup, nodeKey);
     }
 
     /**
@@ -378,7 +339,7 @@ class RootDatabaseClass {
      * @returns {NodeIdentifier | undefined}
      */
     nodeIdToKey(nodeIdentifier) {
-        return nodeIdToKeyFromLookup(this._identifierLookup, nodeIdentifier);
+        return nodeIdToKeyFromLookup(this._computed.identifierLookup, nodeIdentifier);
     }
 
     /**
@@ -392,7 +353,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async initializeActiveIdentifierLookup() {
-        this._identifierLookup = await this.loadIdentifierLookupForReplica(this.currentReplicaName());
+        this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(this._computed.globalSublevel);
     }
 
     /**
@@ -400,13 +361,7 @@ class RootDatabaseClass {
      * @returns {Promise<IdentifierLookup>}
      */
     async loadIdentifierLookupForReplica(name) {
-        if (name === 'x') {
-            return loadIdentifierLookupFromGlobal(this._xGlobalSublevel);
-        } else if (name === 'y') {
-            return loadIdentifierLookupFromGlobal(this._yGlobalSublevel);
-        } else {
-            return assertNeverReplicaName(name);
-        }
+        return loadIdentifierLookupFromGlobal(this.replicaGlobalSublevel(name));
     }
 
     /**
@@ -414,14 +369,14 @@ class RootDatabaseClass {
      * @returns {ReplicaName}
      */
     otherReplicaName() {
-        const current = this._cachedValueOfCurrentReplica;
+        const current = this._computed.replicaName;
         if (current === 'x') {
             return 'y';
-        } else if (current === 'y') {
-            return 'x';
-        } else {
-            return assertNeverReplicaName(current);
         }
+        if (current === 'y') {
+            return 'x';
+        }
+        return assertNeverReplicaName(current);
     }
 
     /**
@@ -442,10 +397,12 @@ class RootDatabaseClass {
             assertNeverReplicaName(name);
         }
         try {
-            const nextIdentifierLookup = await this.loadIdentifierLookupForReplica(name);
+            const namespaceSublevel = this.replicaNamespaceSublevel(name);
+            const globalSublevel = this.replicaGlobalSublevel(name);
+            const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
+            const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
             await this._rootMetaSublevel.put('current_replica', name);
-            this._cachedValueOfCurrentReplica = name;
-            this._identifierLookup = nextIdentifierLookup;
+            this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup };
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
@@ -457,14 +414,7 @@ class RootDatabaseClass {
      * @returns {SchemaStorage}
      */
     getSchemaStorage() {
-        const current = this._cachedValueOfCurrentReplica;
-        if (current === 'x') {
-            return this._xSchemaStorage;
-        } else if (current === 'y') {
-            return this._ySchemaStorage;
-        } else {
-            return assertNeverReplicaName(current);
-        }
+        return this._computed.schemaStorage;
     }
 
     /**
@@ -475,13 +425,11 @@ class RootDatabaseClass {
      * @returns {SchemaStorage}
      */
     schemaStorageForReplica(name) {
-        if (name === 'x') {
-            return this._xSchemaStorage;
-        } else if (name === 'y') {
-            return this._ySchemaStorage;
-        } else {
-            return assertNeverReplicaName(name);
-        }
+        return buildSchemaStorage(
+            this.replicaNamespaceSublevel(name),
+            this.replicaGlobalSublevel(name),
+            this.version
+        );
     }
 
     /**
@@ -490,16 +438,7 @@ class RootDatabaseClass {
      * @returns {Promise<Version | undefined>}
      */
     async getGlobalVersion() {
-        const current = this._cachedValueOfCurrentReplica;
-        let globalSublevel;
-        if (current === 'x') {
-            globalSublevel = this._xGlobalSublevel;
-        } else if (current === 'y') {
-            globalSublevel = this._yGlobalSublevel;
-        } else {
-            return assertNeverReplicaName(current);
-        }
-        return await globalSublevel.get('version');
+        return await this._computed.globalSublevel.get('version');
     }
 
     /**
@@ -508,16 +447,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async setGlobalVersion(version) {
-        const current = this._cachedValueOfCurrentReplica;
-        let globalSublevel;
-        if (current === 'x') {
-            globalSublevel = this._xGlobalSublevel;
-        } else if (current === 'y') {
-            globalSublevel = this._yGlobalSublevel;
-        } else {
-            return assertNeverReplicaName(current);
-        }
-        await globalSublevel.put('version', version);
+        await this._computed.globalSublevel.put('version', version);
     }
 
     /**
@@ -531,23 +461,37 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async clearReplicaStorage(name) {
-        if (name === 'x') {
-            await this._xNamespaceSublevel.clear();
-            // Rebuild to reset the version-initialisation cache in the new closure.
-            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, this.version);
-            if (this.currentReplicaName() === 'x') {
-                this._identifierLookup = await loadIdentifierLookupFromGlobal(this._xGlobalSublevel);
-            }
-        } else if (name === 'y') {
-            await this._yNamespaceSublevel.clear();
-            // Rebuild to reset the version-initialisation cache in the new closure.
-            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, this.version);
-            if (this.currentReplicaName() === 'y') {
-                this._identifierLookup = await loadIdentifierLookupFromGlobal(this._yGlobalSublevel);
-            }
-        } else {
-            return assertNeverReplicaName(name);
+        const namespaceSublevel = this.replicaNamespaceSublevel(name);
+        const globalSublevel = this.replicaGlobalSublevel(name);
+        await namespaceSublevel.clear();
+        if (this.currentReplicaName() === name) {
+            this._computed = {
+                replicaName: name,
+                namespaceSublevel,
+                globalSublevel,
+                schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
+                identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
+            };
         }
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {SchemaSublevelType}
+     */
+    replicaNamespaceSublevel(name) {
+        if (name === 'x' || name === 'y') {
+            return this.db.sublevel(name, { valueEncoding: 'json' });
+        }
+        return assertNeverReplicaName(name);
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {GlobalSublevelType}
+     */
+    replicaGlobalSublevel(name) {
+        return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: 'json' });
     }
 
     /**

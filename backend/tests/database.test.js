@@ -528,13 +528,11 @@ describe('generators/database', () => {
                 expect(db.currentReplicaName()).toBe('x');
 
                 const xStorage = db.schemaStorageForReplica('x');
-                const yStorage = db.schemaStorageForReplica('y');
-
                 await db.setCurrentReplicaPointer('y');
 
                 expect(db.currentReplicaName()).toBe('y');
-                expect(db.getSchemaStorage()).toBe(yStorage);
                 expect(db.getSchemaStorage()).not.toBe(xStorage);
+                expect(db.schemaStorageForReplica('y')).not.toBe(xStorage);
 
                 await db.close();
             } finally {
