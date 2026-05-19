@@ -12,6 +12,7 @@
 
 const { compileNodeDef } = require("./compiled_node");
 const {
+    allocateNodeIdentifier,
     deterministicNodeIdentifierFromNodeKey,
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
@@ -138,6 +139,11 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
     const persistedEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
     if (Array.isArray(persistedEntries)) {
         const lookup = makeIdentifierLookup(persistedEntries);
+        /** @type {Map<string, NodeIdentifier>} */
+        const decisionKeyByOutputKey = new Map();
+        for (const [nodeIdentifier, nodeKey] of persistedEntries) {
+            decisionKeyByOutputKey.set(String(nodeIdentifier), nodeKey);
+        }
         return {
             keyToSourceKey(nodeKey) {
                 return stringToNodeIdentifier(
@@ -145,17 +151,24 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
                 );
             },
             keyToOutputKey(nodeKey) {
-                return stringToNodeIdentifier(
-                    nodeIdentifierToString(requireNodeIdentifierForKey(lookup, nodeKey))
+                const allocatedIdentifier = allocateNodeIdentifier(
+                    lookup,
+                    nodeKey,
+                    (attempt) => deterministicNodeIdentifierFromNodeKey(nodeKey, attempt)
                 );
+                decisionKeyByOutputKey.set(String(allocatedIdentifier), nodeKey);
+                return stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
             },
             outputKeyToDecisionKey(outputKey) {
-                return requireNodeKeyForIdentifier(
-                    lookup,
-                    nodeIdentifierFromString(String(outputKey))
-                );
+                return decisionKeyByOutputKey.get(String(outputKey))
+                    ?? requireNodeKeyForIdentifier(
+                        lookup,
+                        nodeIdentifierFromString(String(outputKey))
+                    );
             },
-            outputEntries: serializeIdentifierLookup(lookup),
+            get outputEntries() {
+                return serializeIdentifierLookup(lookup);
+            },
         };
     }
 

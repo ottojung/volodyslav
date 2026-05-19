@@ -135,13 +135,20 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     nodeKeyStr,
     identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
-    let semanticNodeKeyIdentifier = nodeKeyStr;
-    try {
-        semanticNodeKeyIdentifier = identifierResolver.requireNodeKey(nodeKeyStr);
-    } catch (_error) {
-        semanticNodeKeyIdentifier = nodeKeyStr;
-    }
+    const rawKeyString = String(nodeKeyStr);
+    const isSerializedNodeKey = rawKeyString.startsWith("{");
+    const semanticNodeKeyIdentifier = isSerializedNodeKey
+        ? nodeKeyStr
+        : identifierResolver.requireNodeKey(nodeKeyStr);
 
+    if (!isSerializedNodeKey) {
+        const resolved = String(semanticNodeKeyIdentifier);
+        if (!resolved.startsWith("{")) {
+            throw new Error(
+                `Resolved node key ${resolved} is not a serialized NodeKey`
+            );
+        }
+    }
     const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKeyIdentifier)));
     const nodeName = nodeKey.head;
     const bindings = nodeKey.args;
