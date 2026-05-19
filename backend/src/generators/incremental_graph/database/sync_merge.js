@@ -50,7 +50,7 @@ const { compareNodeIdentifier } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
 const {
-        makeEmptyIdentifierLookup,
+    makeEmptyIdentifierLookup,
     makeIdentifierLookup,
     mergeIdentifierLookups,
     serializeIdentifierLookup,
@@ -576,21 +576,24 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const invalidated = [...decisions.values()].filter(d => d === 'invalidate').length;
     const hasChanges = taken > 0 || invalidated > 0;
 
-    if (hasChanges) {        const hostGlobal = rootDatabase._hostnameSublevel(hostname).sublevel('global', { valueEncoding: 'json' });
-        const targetGlobal = rootDatabase.replicaGlobalSublevel(toReplica);
+    if (hasChanges) {
+        const hostIdentifierValue = await H.global.get('identifiers_keys_map');
+        const targetIdentifierValue = await T.global.get('identifiers_keys_map');
 
-        const hostIdentifierEntries = await hostGlobal.get('identifiers_keys_map');
-        const targetIdentifierEntries = await targetGlobal.get('identifiers_keys_map');
-
-        const hostLookup = hostIdentifierEntries === undefined
+        const hostLookup = hostIdentifierValue === undefined
             ? makeEmptyIdentifierLookup()
-            : makeIdentifierLookup(hostIdentifierEntries);
-        const targetLookup = targetIdentifierEntries === undefined
+            : Array.isArray(hostIdentifierValue)
+                ? makeIdentifierLookup(hostIdentifierValue)
+                : makeEmptyIdentifierLookup();
+        const targetLookup = targetIdentifierValue === undefined
             ? makeEmptyIdentifierLookup()
-            : makeIdentifierLookup(targetIdentifierEntries);
+            : Array.isArray(targetIdentifierValue)
+                ? makeIdentifierLookup(targetIdentifierValue)
+                : makeEmptyIdentifierLookup();
         const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
 
-        await targetGlobal.put('identifiers_keys_map', serializeIdentifierLookup(mergedLookup));
+        pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
+        await flushPendingOps();
 
         // Gently update revdeps using the merged inputs map.  Only changed entries
         // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
