@@ -49,6 +49,12 @@ const { stringToNodeIdentifier, versionToString } = require('./types');
 const { compareNodeIdentifier } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
+const {
+        makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
+    mergeIdentifierLookups,
+    serializeIdentifierLookup,
+} = require('./identifier_lookup');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -570,7 +576,22 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const invalidated = [...decisions.values()].filter(d => d === 'invalidate').length;
     const hasChanges = taken > 0 || invalidated > 0;
 
-    if (hasChanges) {
+    if (hasChanges) {        const hostGlobal = rootDatabase._hostnameSublevel(hostname).sublevel('global', { valueEncoding: 'json' });
+        const targetGlobal = rootDatabase.replicaGlobalSublevel(toReplica);
+
+        const hostIdentifierEntries = await hostGlobal.get('identifiers_keys_map');
+        const targetIdentifierEntries = await targetGlobal.get('identifiers_keys_map');
+
+        const hostLookup = hostIdentifierEntries === undefined
+            ? makeEmptyIdentifierLookup()
+            : makeIdentifierLookup(hostIdentifierEntries);
+        const targetLookup = targetIdentifierEntries === undefined
+            ? makeEmptyIdentifierLookup()
+            : makeIdentifierLookup(targetIdentifierEntries);
+        const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
+
+        await targetGlobal.put('identifiers_keys_map', serializeIdentifierLookup(mergedLookup));
+
         // Gently update revdeps using the merged inputs map.  Only changed entries
         // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
         // directly, ensuring nodes that were initially 'take' (H.inputs) but
