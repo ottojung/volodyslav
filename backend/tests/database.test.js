@@ -533,8 +533,10 @@ describe('generators/database', () => {
                 await db.setCurrentReplicaPointer('y');
 
                 expect(db.currentReplicaName()).toBe('y');
-                expect(db.getSchemaStorage()).toBe(yStorage);
                 expect(db.getSchemaStorage()).not.toBe(xStorage);
+                const activeYStorage = db.getSchemaStorage();
+                await activeYStorage.global.put('switch_check', 'ok');
+                expect(await yStorage.global.get('switch_check')).toBe('ok');
 
                 await db.close();
             } finally {
