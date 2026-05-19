@@ -156,7 +156,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     checkArity(compiledNode, bindings);
 
     const concreteNode = incrementalGraph.getOrCreateConcreteNode(
-        nodeKeyStr,
+        nodeKeyIdentifier,
         compiledNode,
         bindings
     );
@@ -177,7 +177,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             const result = await batch.values.get(outputIdentifier);
             if (result === undefined) {
                 throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeKeyStr)}`
+                    `Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeKeyIdentifier)}`
                 );
             }
             return { value: result, status: "cached" };
@@ -193,7 +193,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             identifierResolver
         );
     };
-    return withPullNodeMutex(incrementalGraph.sleeper, nodeKeyStr, () =>
+    return withPullNodeMutex(incrementalGraph.sleeper, nodeKeyIdentifier, () =>
         incrementalGraph.withIdentifierBatch(identifierResolver, run)
     );
 }

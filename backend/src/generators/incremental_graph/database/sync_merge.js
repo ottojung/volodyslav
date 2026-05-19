@@ -592,8 +592,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
                 : makeEmptyIdentifierLookup();
         const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
 
-        pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
-        await flushPendingOps();
+        await T.global.put('identifiers_keys_map', serializeIdentifierLookup(mergedLookup));
 
         // Gently update revdeps using the merged inputs map.  Only changed entries
         // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
