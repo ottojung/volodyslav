@@ -295,7 +295,7 @@ class InvalidComputorReturnValue extends Error {
                 `Computors must return a valid ComputedValue or Unchanged, not null or undefined.`
         );
         this.name = "InvalidComputorReturnValueError";
-        this.nodeName = nodeIdentifier;
+        this.nodeKey = nodeIdentifier;
         this.value = value;
     }
 }

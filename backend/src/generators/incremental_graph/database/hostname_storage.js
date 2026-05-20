@@ -11,7 +11,7 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToNodeIdentifier, stringToVersion } = require('./types');
+const { unsafeStringToNodeIdentifier, stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -172,10 +172,10 @@ async function clearHostnameStorage(db, hostname) {
  * @param {string} hostname
  * @param {string} sublevelName - e.g. 'meta', 'values', 'freshness', etc.
  * @param {string} subkey
- * @returns {DatabaseKey}
+ * @returns {string}
  */
 function hostnameRawKey(hostname, sublevelName, subkey) {
-    return stringToNodeIdentifier(`!_h_${hostname}!!${sublevelName}!${subkey}`);
+    return `!_h_${hostname}!!${sublevelName}!${subkey}`;
 }
 
 /**
@@ -190,7 +190,7 @@ function hostnameRawKey(hostname, sublevelName, subkey) {
 async function getHostnameGlobalVersion(db, hostname) {
     validateHostname(hostname);
     const rawKey = hostnameRawKey(hostname, 'global', 'version');
-    const raw = await db.get(rawKey);
+    const raw = await db.get(unsafeStringToNodeIdentifier(rawKey));
     if (raw === undefined) {
         return undefined;
     }
@@ -213,7 +213,7 @@ async function getHostnameGlobalVersion(db, hostname) {
 async function setHostnameGlobal(db, hostname, key, value) {
     validateHostname(hostname);
     const rawKey = hostnameRawKey(hostname, 'global', key);
-    await db.put(rawKey, value);
+    await db.put(unsafeStringToNodeIdentifier(rawKey), value);
 }
 
 /**
@@ -235,7 +235,9 @@ async function rawPutAllToHostname(db, hostname, entries) {
     function makePutOp(entry) {
         return {
             type: 'put',
-            key: hostnameRawKey(hostname, entry.sublevelName, entry.subkey),
+            key: unsafeStringToNodeIdentifier(
+                hostnameRawKey(hostname, entry.sublevelName, entry.subkey)
+            ),
             value: entry.value,
         };
     }

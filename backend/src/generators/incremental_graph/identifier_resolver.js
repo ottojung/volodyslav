@@ -11,6 +11,7 @@ const {
     cloneIdentifierLookup,
     deterministicNodeIdentifierFromNodeKey,
     makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
     mergeIdentifierLookups,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
@@ -38,7 +39,7 @@ const fallbackIdentifierLookups = new WeakMap();
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
  * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append a merged lookup write to the current batch when allocations happened.
- * @property {(rootDatabase: RootDatabase) => void} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
+ * @property {(rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => Promise<void>} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
 
 /**
@@ -172,11 +173,28 @@ function makeIdentifierResolver(rootDatabase) {
                 )
             );
         },
-        commitPersistedLookup(rootDatabaseToUpdate) {
+        async commitPersistedLookup(rootDatabaseToUpdate, globalDatabase) {
             if (!hasPendingLookupWrite) {
                 return;
             }
-            const lookupToCommit = cloneIdentifierLookup(committedLookup ?? lookup);
+            let lookupToCommit = cloneIdentifierLookup(committedLookup ?? lookup);
+            if (globalDatabase !== undefined) {
+                const persistedEntries = await globalDatabase.get(IDENTIFIERS_KEY);
+                const persistedLookup = Array.isArray(persistedEntries)
+                    ? makeIdentifierLookup(persistedEntries)
+                    : makeEmptyIdentifierLookup();
+                lookupToCommit = mergeIdentifierLookups(
+                    mergeIdentifierLookups(
+                        getActiveLookup(rootDatabaseToUpdate),
+                        persistedLookup
+                    ),
+                    lookup
+                );
+                await globalDatabase.put(
+                    IDENTIFIERS_KEY,
+                    serializeIdentifierLookup(lookupToCommit)
+                );
+            }
             if (typeof rootDatabaseToUpdate.replaceActiveIdentifierLookup === "function") {
                 rootDatabaseToUpdate.replaceActiveIdentifierLookup(lookupToCommit);
             } else {

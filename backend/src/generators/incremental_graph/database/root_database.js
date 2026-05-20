@@ -7,7 +7,11 @@
 
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeIdentifier, versionToString } = require('./types');
+const {
+    stringToVersion,
+    unsafeStringToNodeIdentifier,
+    versionToString,
+} = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -601,7 +605,7 @@ class RootDatabaseClass {
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(stringToNodeIdentifier(innerKey));
+        return await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
     }
 
     /**
@@ -624,10 +628,10 @@ class RootDatabaseClass {
      * Call _rawSync() once after all bulk unification writes are done to
      * ensure the writes are flushed to durable storage.
      *
-     * The `stringToNodeIdentifier` conversion is required to satisfy the JSDoc
+     * The `unsafeStringToNodeIdentifier` conversion is required to satisfy the JSDoc
      * static typing expectations: `this.db` is documented as using
      * `NodeIdentifier` keys, so its `put` method is typed to require a
-     * `NodeIdentifier`. At runtime `stringToNodeIdentifier` is effectively a
+     * `NodeIdentifier`. At runtime `unsafeStringToNodeIdentifier` is effectively a
      * no-op, so the raw sublevel-prefixed key passes through unchanged.
      *
      * @param {string} key
@@ -642,7 +646,7 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(stringToNodeIdentifier(key), value, opts);
+        await this.db.put(unsafeStringToNodeIdentifier(key), value, opts);
     }
 
     /**
@@ -661,7 +665,7 @@ class RootDatabaseClass {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.del(stringToNodeIdentifier(key), opts);
+        await this.db.del(unsafeStringToNodeIdentifier(key), opts);
     }
 
     /**
@@ -704,7 +708,7 @@ class RootDatabaseClass {
         function makePutOp(entry) {
             return {
                 type: 'put',
-                key: stringToNodeIdentifier(entry.key),
+                key: unsafeStringToNodeIdentifier(entry.key),
                 value: entry.value,
             };
         }
@@ -725,7 +729,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDeleteKeys(keys) {
-        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeIdentifier(k) })));
+        await this.db.batch(keys.map(k => ({ type: 'del', key: unsafeStringToNodeIdentifier(k) })));
     }
 
     /**

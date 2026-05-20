@@ -79,6 +79,30 @@ function castToNodeIdentifierUnsafe(value) {
     return typeof value === "string";
 }
 
+const NODE_IDENTIFIER_REGEX = /^[a-z]{9}$/;
+const LEGACY_ZERO_ARG_NODE_KEY_REGEX = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isLegacySerializedNodeKey(value) {
+    if (!value.startsWith("{") || !value.endsWith("}")) {
+        return false;
+    }
+    try {
+        const parsed = JSON.parse(value);
+        return (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            typeof parsed.head === "string" &&
+            Array.isArray(parsed.args)
+        );
+    } catch (_err) {
+        return false;
+    }
+}
+
 /**
  * Unsafe nominal cast from string to NodeIdentifier.
  * Callers that parse persisted identifier text should use nodeIdentifierFromString()
@@ -95,11 +119,20 @@ function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
 }
 
 /**
- * Backward-compatible alias for unsafeStringToNodeIdentifier().
+ * Parse and validate persisted node identifier text.
  * @param {string} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
 function stringToNodeIdentifier(nodeIdentifierStr) {
+    if (
+        !NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr) &&
+        !isLegacySerializedNodeKey(nodeIdentifierStr) &&
+        !LEGACY_ZERO_ARG_NODE_KEY_REGEX.test(nodeIdentifierStr)
+    ) {
+        throw new Error(
+            `Invalid node identifier string: ${nodeIdentifierStr}`
+        );
+    }
     return unsafeStringToNodeIdentifier(nodeIdentifierStr);
 }
 
@@ -566,6 +599,7 @@ module.exports = {
     VersionClass,
     nodeIdentifierToString,
     stringToNodeIdentifier,
+    unsafeStringToNodeIdentifier,
     NodeIdentifierClass,
     nodeNameToString,
     stringToNodeName,

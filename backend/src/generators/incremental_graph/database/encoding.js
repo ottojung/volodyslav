@@ -187,13 +187,6 @@ function decodeSegment(s) {
  */
 function keyToRelativePath(rawKey) {
     const { sublevels, keyContent } = parseRawKey(rawKey);
-    const lastSublevel = sublevels[sublevels.length - 1] ?? '';
-    const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
-
-    if (isPlainKey) {
-        return [...sublevels, encodeSegment(keyContent)].join('/');
-    }
-
     return [...sublevels, encodeSegment(keyContent)].join('/');
 }
 
