@@ -1,6 +1,4 @@
 const { makeUniqueFunctor } = require("../../unique_functor");
-const { nodeIdentifierToString } = require("./database");
-
 /**
  * Mutex key for serializing *exclusive* incremental-graph operations with
  * respect to each other (for example, database opens or migrations).
@@ -20,6 +18,7 @@ const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 
 /**
  * Executes a procedure while holding the global incremental-graph mutex
@@ -63,13 +62,13 @@ function withPullMode(sleeper, procedure) {
 /**
  * @template T
  * @param {SleepCapability} sleeper
- * @param {NodeIdentifier} nodeKeyStr
+ * @param {NodeIdentifier | NodeKeyString} nodeKeyStr
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
 function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
     return sleeper.withMutex(
-        PULL_NODE_KEY.instantiate([nodeIdentifierToString(nodeKeyStr)]),
+        PULL_NODE_KEY.instantiate([String(nodeKeyStr)]),
         procedure
     );
 }

@@ -5,6 +5,7 @@
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 /**
  * @typedef {object} IncrementalGraphInvalidateAccess
@@ -14,11 +15,11 @@
  * @property {() => IdentifierResolver} makeIdentifierResolver
  * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<void>) => Promise<void>} withIdentifierBatch
  * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
- * @property {(nodeKeyStr: NodeIdentifier, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
-const { stringToNodeName, nodeKeyStringToString } = require("./database");
-const { nodeIdentifierToString, stringToNodeIdentifier } = require("./database");
+const { stringToNodeName } = require("./database");
+const { nodeIdentifierToString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
 const { serializeNodeKey } = require("./database");
@@ -95,7 +96,7 @@ async function internalUnsafeInvalidate(
     checkArity(compiledNode, bindings);
 
     const nodeKey = { head: nodeNameTyped, args: bindings };
-    const concreteKey = stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey(nodeKey)));
+    const concreteKey = serializeNodeKey(nodeKey);
     const concreteNode = incrementalGraph.getOrCreateConcreteNode(
         concreteKey,
         compiledNode,

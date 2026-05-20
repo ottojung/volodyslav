@@ -11,7 +11,7 @@
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: import('./types').NodeIdentifier, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");

@@ -286,7 +286,7 @@ function isSchemaOverlap(object) {
  */
 class InvalidComputorReturnValue extends Error {
     /**
-     * @param {NodeIdentifier} nodeIdentifier
+     * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentifier
      * @param {unknown} value
      */
     constructor(nodeIdentifier, value) {
@@ -302,7 +302,7 @@ class InvalidComputorReturnValue extends Error {
 
 /**
  * Constructs an InvalidComputorReturnValue error.
- * @param {NodeIdentifier} nodeIdentifier
+ * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentifier
  * @param {unknown} value
  * @returns {InvalidComputorReturnValue}
  */
@@ -324,7 +324,7 @@ function isInvalidComputorReturnValue(object) {
  */
 class InvalidUnchanged extends Error {
     /**
-     * @param {NodeIdentifier} nodeKey
+     * @param {NodeIdentifier | import('./types').NodeKeyString} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -338,7 +338,7 @@ class InvalidUnchanged extends Error {
 
 /**
  * Constructs an InvalidUnchanged error.
- * @param {NodeIdentifier} nodeKey
+ * @param {NodeIdentifier | import('./types').NodeKeyString} nodeKey
  * @returns {InvalidUnchanged}
  */
 function makeInvalidUnchangedError(nodeKey) {

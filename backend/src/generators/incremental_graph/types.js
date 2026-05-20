@@ -61,16 +61,16 @@
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
  * @typedef {object} ConcreteNode
- * @property {NodeIdentifier} output - Concrete output node identifier
- * @property {Array<NodeIdentifier>} inputs - Array of concrete input node identifiers
+ * @property {NodeKeyString} output - Concrete output semantic node key
+ * @property {Array<NodeKeyString>} inputs - Array of concrete input semantic node keys
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value
  */
 
 /**
  * A concrete node definition enriched with identifier translations for one operation.
  * @typedef {object} ResolvedConcreteNode
- * @property {NodeIdentifier} outputKey - Concrete output node identifier (used for messages).
- * @property {Array<NodeIdentifier>} inputKeys - Concrete input node identifiers used for recursive pulls.
+ * @property {NodeKeyString} outputKey - Concrete output semantic node key (used for messages).
+ * @property {Array<NodeKeyString>} inputKeys - Concrete input semantic node keys used for recursive pulls.
  * @property {NodeIdentifier} outputIdentifier - Persisted identifier of the output node.
  * @property {Array<NodeIdentifier>} inputIdentifiers - Persisted identifiers of the input nodes.
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value.

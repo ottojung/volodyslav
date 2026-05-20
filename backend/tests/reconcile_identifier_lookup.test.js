@@ -1,12 +1,13 @@
 const {
     makeIdentifierLookup,
     nodeIdentifierFromString,
+    stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
 const { reconcileHostLookupWithTargetLookup } = require("../src/generators/incremental_graph/database/reconcile_identifier_lookup");
 
 describe("reconcile identifier lookup", () => {
     test("reconciles conflicting identifier assignments for one semantic key", () => {
-        const semanticNodeKey = nodeIdentifierFromString("keyaaaaaa");
+        const semanticNodeKey = stringToNodeKeyString('{"head":"key","args":[]}');
         const hostIdentifier = nodeIdentifierFromString("hostidaaa");
         const targetIdentifier = nodeIdentifierFromString("targetaaa");
 
@@ -21,7 +22,7 @@ describe("reconcile identifier lookup", () => {
     });
 
     test("keeps identical assignments unchanged", () => {
-        const semanticNodeKey = nodeIdentifierFromString("keybbbbbb");
+        const semanticNodeKey = stringToNodeKeyString('{"head":"key","args":["b"]}');
         const identifier = nodeIdentifierFromString("sameidaaa");
 
         const hostLookup = makeIdentifierLookup([[identifier, semanticNodeKey]]);

@@ -5,6 +5,7 @@
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
@@ -17,17 +18,16 @@
  * @property {() => IdentifierResolver} makeIdentifierResolver
  * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<RecomputeResult>) => Promise<RecomputeResult>} withIdentifierBatch
  * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
- * @property {(nodeKeyStr: NodeIdentifier, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} maybeRecalculate
  */
 
-const { stringToNodeName, nodeKeyStringToString } = require("./database");
-const { stringToNodeIdentifier, stringToNodeKeyString, nodeIdentifierToString } = require("./database");
+const { stringToNodeName } = require("./database");
+const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
-const { isValidNodeIdentifier } = require("./database");
 
 /**
  * Pull implementation that assumes the caller has already acquired the global
@@ -101,10 +101,28 @@ async function internalPullWithStatus(
 ) {
     const nodeKey = { head: nodeName, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    return await internalPullByNodeIdentifierWithStatusDuringPull(
+    return await internalPullByNodeKeyWithStatusDuringPull(
         incrementalGraph,
-        stringToNodeIdentifier(nodeKeyStringToString(concreteKey)),
+        concreteKey,
         incrementalGraph.makeIdentifierResolver()
+    );
+}
+
+/**
+ * @param {IncrementalGraphPullAccess} incrementalGraph
+ * @param {NodeKeyString} nodeKeyStr
+ * @param {IdentifierResolver} [identifierResolver=incrementalGraph.makeIdentifierResolver()]
+ * @returns {Promise<RecomputeResult>}
+ */
+async function internalPullByNodeKeyWithStatusDuringPull(
+    incrementalGraph,
+    nodeKeyStr,
+    identifierResolver = incrementalGraph.makeIdentifierResolver()
+) {
+    return runPullForSemanticNodeKey(
+        incrementalGraph,
+        nodeKeyStr,
+        identifierResolver
     );
 }
 
@@ -136,12 +154,25 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     nodeKeyStr,
     identifierResolver = incrementalGraph.makeIdentifierResolver()
 ) {
-    const rawKeyString = String(nodeKeyStr);
-    const isSerializedNodeKey = !isValidNodeIdentifier(rawKeyString);
-    const semanticNodeKeyIdentifier = isSerializedNodeKey
-        ? nodeKeyStr
-        : identifierResolver.requireNodeKey(nodeKeyStr);
-    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKeyIdentifier)));
+    return runPullForSemanticNodeKey(
+        incrementalGraph,
+        identifierResolver.requireNodeKey(nodeKeyStr),
+        identifierResolver
+    );
+}
+
+/**
+ * @param {IncrementalGraphPullAccess} incrementalGraph
+ * @param {NodeKeyString} semanticNodeKey
+ * @param {IdentifierResolver} identifierResolver
+ * @returns {Promise<RecomputeResult>}
+ */
+async function runPullForSemanticNodeKey(
+    incrementalGraph,
+    semanticNodeKey,
+    identifierResolver
+) {
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKey)));
     const nodeName = nodeKey.head;
     const bindings = nodeKey.args;
     const compiledNode = incrementalGraph.headIndex.get(nodeName);
@@ -152,7 +183,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     checkArity(compiledNode, bindings);
 
     const concreteNode = incrementalGraph.getOrCreateConcreteNode(
-        semanticNodeKeyIdentifier,
+        semanticNodeKey,
         compiledNode,
         bindings
     );
@@ -173,7 +204,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             const result = await batch.values.get(outputIdentifier);
             if (result === undefined) {
                 throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(semanticNodeKeyIdentifier)}`
+                    `Impossible: up-to-date node has no stored value: ${String(semanticNodeKey)}`
                 );
             }
             return { value: result, status: "cached" };
@@ -189,13 +220,14 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
             identifierResolver
         );
     };
-    return withPullNodeMutex(incrementalGraph.sleeper, semanticNodeKeyIdentifier, () =>
+    return withPullNodeMutex(incrementalGraph.sleeper, semanticNodeKey, () =>
         incrementalGraph.withIdentifierBatch(identifierResolver, run)
     );
 }
 
 module.exports = {
     internalPull,
+    internalPullByNodeKeyWithStatusDuringPull,
     internalPullByNodeIdentifierWithStatusDuringPull,
     internalPullByNodeIdentifierWithStatus,
     internalSafePullWithStatus,
