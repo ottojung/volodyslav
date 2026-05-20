@@ -164,16 +164,12 @@ class IncrementalGraphClass {
      */
     async withIdentifierBatch(identifierResolver, procedure) {
         const schemaStorage = this.rootDatabase.getSchemaStorage();
-        const value = await this.storage.withBatch(async (batch) => {
-            const result = await procedure(batch);
-            identifierResolver.queueLookupPersistence(batch, this.rootDatabase, schemaStorage.global);
-            return result;
-        });
+        const { batch, commit } = this.storage.startBatch();
+        const value = await procedure(batch);
         await withIdentifierLookupMutex(this.sleeper, async () => {
-            await identifierResolver.commitPersistedLookup(
-                this.rootDatabase,
-                schemaStorage.global
-            );
+            identifierResolver.queueLookupPersistence(batch, this.rootDatabase, schemaStorage.global);
+            await commit();
+            identifierResolver.commitPersistedLookup(this.rootDatabase);
         });
         return value;
     }

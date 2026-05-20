@@ -582,16 +582,22 @@ describe("IncrementalGraph concurrency", () => {
             const releaseBoth = makeDeferred();
             let active = 0;
             let maxActive = 0;
-            const originalWithBatch = graph.storage.withBatch.bind(graph.storage);
-            graph.storage.withBatch = async (run) => {
+            const originalStartBatch = graph.storage.startBatch.bind(graph.storage);
+            graph.storage.startBatch = () => {
                 active += 1;
                 maxActive = Math.max(maxActive, active);
-                await releaseBoth.promise;
-                try {
-                    return await originalWithBatch(run);
-                } finally {
-                    active -= 1;
-                }
+                const handle = originalStartBatch();
+                return {
+                    batch: handle.batch,
+                    async commit() {
+                        await releaseBoth.promise;
+                        try {
+                            return await handle.commit();
+                        } finally {
+                            active -= 1;
+                        }
+                    },
+                };
             };
 
             const invalidate1 = graph.invalidate("source1");
@@ -620,11 +626,17 @@ describe("IncrementalGraph concurrency", () => {
 
             const releaseInvalidate = makeDeferred();
             const enteredInvalidate = makeDeferred();
-            const originalWithBatch = graph.storage.withBatch.bind(graph.storage);
-            graph.storage.withBatch = async (run) => {
-                enteredInvalidate.resolve(undefined);
-                await releaseInvalidate.promise;
-                return await originalWithBatch(run);
+            const originalStartBatch = graph.storage.startBatch.bind(graph.storage);
+            graph.storage.startBatch = () => {
+                const handle = originalStartBatch();
+                return {
+                    batch: handle.batch,
+                    async commit() {
+                        enteredInvalidate.resolve(undefined);
+                        await releaseInvalidate.promise;
+                        return await handle.commit();
+                    },
+                };
             };
 
             const invalidatePromise = graph.invalidate("source");

@@ -57,6 +57,13 @@ const {
  */
 
 /**
+ * A batch that has been built but not yet committed.
+ * @typedef {object} PendingBatch
+ * @property {BatchBuilder} batch - The batch builder to collect operations into.
+ * @property {() => Promise<void>} commit - Atomically commit all collected operations.
+ */
+
+/**
  * @typedef {object} GraphStorage
  * @property {IdentifierDatabase<ComputedValue>} values - Identifier-keyed value storage.
  * @property {IdentifierDatabase<Freshness>} freshness - Identifier-keyed freshness storage.
@@ -65,6 +72,7 @@ const {
  * @property {IdentifierDatabase<Counter>} counters - Identifier-keyed counters.
  * @property {IdentifierDatabase<TimestampRecord>} timestamps - Identifier-keyed timestamps.
  * @property {BatchFunction} withBatch - Run atomically against all graph sublevels.
+ * @property {() => PendingBatch} startBatch - Create a batch that can be committed at a chosen point.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
@@ -136,192 +144,213 @@ function readPendingValue(pendingPuts, pendingDels, key) {
 }
 
 /**
+ * Create a single pending batch (batch builder + operations array) without committing.
+ * @param {SchemaStorage} schemaStorage
+ * @returns {{ batch: BatchBuilder, operations: Array<*> }}
+ */
+function createBatch(schemaStorage) {
+    /** @type {Array<*>} */
+    const operations = [];
+
+    /** @type {Map<string, ComputedValue>} */
+    const valuesPuts = new Map();
+    /** @type {Set<string>} */
+    const valuesDels = new Set();
+    /** @type {Map<string, Freshness>} */
+    const freshnessPuts = new Map();
+    /** @type {Set<string>} */
+    const freshnessDels = new Set();
+    /** @type {Map<string, InputsRecord>} */
+    const inputsPuts = new Map();
+    /** @type {Set<string>} */
+    const inputsDels = new Set();
+    /** @type {Map<string, NodeIdentifier[]>} */
+    const revdepsPuts = new Map();
+    /** @type {Set<string>} */
+    const revdepsDels = new Set();
+    /** @type {Map<string, Counter>} */
+    const countersPuts = new Map();
+    /** @type {Set<string>} */
+    const countersDels = new Set();
+    /** @type {Map<string, TimestampRecord>} */
+    const timestampsPuts = new Map();
+    /** @type {Set<string>} */
+    const timestampsDels = new Set();
+
+    /** @type {BatchBuilder} */
+    const batch = {
+        values: {
+            put(key, value) {
+                const overlayKey = pendingKey(key);
+                valuesPuts.set(overlayKey, value);
+                valuesDels.delete(overlayKey);
+                operations.push(schemaStorage.values.putOp(toDatabaseKey(key), value));
+            },
+            del(key) {
+                const overlayKey = pendingKey(key);
+                valuesDels.add(overlayKey);
+                valuesPuts.delete(overlayKey);
+                operations.push(schemaStorage.values.delOp(toDatabaseKey(key)));
+            },
+            async get(key) {
+                const pending = readPendingValue(valuesPuts, valuesDels, key);
+                if (pending !== undefined || valuesDels.has(pendingKey(key))) {
+                    return pending;
+                }
+                return await schemaStorage.values.get(toDatabaseKey(key));
+            },
+        },
+        freshness: {
+            put(key, value) {
+                const overlayKey = pendingKey(key);
+                freshnessPuts.set(overlayKey, value);
+                freshnessDels.delete(overlayKey);
+                operations.push(schemaStorage.freshness.putOp(toDatabaseKey(key), value));
+            },
+            del(key) {
+                const overlayKey = pendingKey(key);
+                freshnessDels.add(overlayKey);
+                freshnessPuts.delete(overlayKey);
+                operations.push(schemaStorage.freshness.delOp(toDatabaseKey(key)));
+            },
+            async get(key) {
+                const pending = readPendingValue(freshnessPuts, freshnessDels, key);
+                if (pending !== undefined || freshnessDels.has(pendingKey(key))) {
+                    return pending;
+                }
+                return await schemaStorage.freshness.get(toDatabaseKey(key));
+            },
+        },
+        inputs: {
+            put(key, value) {
+                const overlayKey = pendingKey(key);
+                inputsPuts.set(overlayKey, value);
+                inputsDels.delete(overlayKey);
+                operations.push(schemaStorage.inputs.putOp(toDatabaseKey(key), {
+                    inputs: value.inputs,
+                    inputCounters: value.inputCounters,
+                }));
+            },
+            del(key) {
+                const overlayKey = pendingKey(key);
+                inputsDels.add(overlayKey);
+                inputsPuts.delete(overlayKey);
+                operations.push(schemaStorage.inputs.delOp(toDatabaseKey(key)));
+            },
+            async get(key) {
+                const pending = readPendingValue(inputsPuts, inputsDels, key);
+                if (pending !== undefined || inputsDels.has(pendingKey(key))) {
+                    return pending;
+                }
+                return await schemaStorage.inputs.get(toDatabaseKey(key));
+            },
+        },
+        revdeps: {
+            put(key, value) {
+                const overlayKey = pendingKey(key);
+                revdepsPuts.set(overlayKey, value);
+                revdepsDels.delete(overlayKey);
+                operations.push(
+                    schemaStorage.revdeps.putOp(
+                        toDatabaseKey(key),
+                        value.map(toDatabaseKey)
+                    )
+                );
+            },
+            del(key) {
+                const overlayKey = pendingKey(key);
+                revdepsDels.add(overlayKey);
+                revdepsPuts.delete(overlayKey);
+                operations.push(schemaStorage.revdeps.delOp(toDatabaseKey(key)));
+            },
+            async get(key) {
+                const pending = readPendingValue(revdepsPuts, revdepsDels, key);
+                if (pending !== undefined || revdepsDels.has(pendingKey(key))) {
+                    return pending;
+                }
+                const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
+                if (stored === undefined) {
+                    return undefined;
+                }
+                return stored;
+            },
+        },
+        counters: {
+            put(key, value) {
+                const overlayKey = pendingKey(key);
+                countersPuts.set(overlayKey, value);
+                countersDels.delete(overlayKey);
+                operations.push(schemaStorage.counters.putOp(toDatabaseKey(key), value));
+            },
+            del(key) {
+                const overlayKey = pendingKey(key);
+                countersDels.add(overlayKey);
+                countersPuts.delete(overlayKey);
+                operations.push(schemaStorage.counters.delOp(toDatabaseKey(key)));
+            },
+            async get(key) {
+                const pending = readPendingValue(countersPuts, countersDels, key);
+                if (pending !== undefined || countersDels.has(pendingKey(key))) {
+                    return pending;
+                }
+                return await schemaStorage.counters.get(toDatabaseKey(key));
+            },
+        },
+        timestamps: {
+            put(key, value) {
+                const overlayKey = pendingKey(key);
+                timestampsPuts.set(overlayKey, value);
+                timestampsDels.delete(overlayKey);
+                operations.push(schemaStorage.timestamps.putOp(toDatabaseKey(key), value));
+            },
+            del(key) {
+                const overlayKey = pendingKey(key);
+                timestampsDels.add(overlayKey);
+                timestampsPuts.delete(overlayKey);
+                operations.push(schemaStorage.timestamps.delOp(toDatabaseKey(key)));
+            },
+            async get(key) {
+                const pending = readPendingValue(timestampsPuts, timestampsDels, key);
+                if (pending !== undefined || timestampsDels.has(pendingKey(key))) {
+                    return pending;
+                }
+                return await schemaStorage.timestamps.get(toDatabaseKey(key));
+            },
+        },
+        appendOperation(operation) {
+            operations.push(operation);
+        },
+    };
+
+    return { batch, operations };
+}
+
+/**
  * Create the identifier-native batch builder used by the low-level storage API.
  * @param {SchemaStorage} schemaStorage
- * @returns {BatchFunction}
+ * @returns {{ withBatch: BatchFunction, startBatch: () => PendingBatch }}
  */
 function makeBatchBuilder(schemaStorage) {
     /** @type {BatchFunction} */
     const withBatch = async (fn) => {
-        /** @type {Array<*>} */
-        const operations = [];
-
-        /** @type {Map<string, ComputedValue>} */
-        const valuesPuts = new Map();
-        /** @type {Set<string>} */
-        const valuesDels = new Set();
-        /** @type {Map<string, Freshness>} */
-        const freshnessPuts = new Map();
-        /** @type {Set<string>} */
-        const freshnessDels = new Set();
-        /** @type {Map<string, InputsRecord>} */
-        const inputsPuts = new Map();
-        /** @type {Set<string>} */
-        const inputsDels = new Set();
-        /** @type {Map<string, NodeIdentifier[]>} */
-        const revdepsPuts = new Map();
-        /** @type {Set<string>} */
-        const revdepsDels = new Set();
-        /** @type {Map<string, Counter>} */
-        const countersPuts = new Map();
-        /** @type {Set<string>} */
-        const countersDels = new Set();
-        /** @type {Map<string, TimestampRecord>} */
-        const timestampsPuts = new Map();
-        /** @type {Set<string>} */
-        const timestampsDels = new Set();
-
-        /** @type {BatchBuilder} */
-        const batch = {
-            values: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    valuesPuts.set(overlayKey, value);
-                    valuesDels.delete(overlayKey);
-                    operations.push(schemaStorage.values.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    valuesDels.add(overlayKey);
-                    valuesPuts.delete(overlayKey);
-                    operations.push(schemaStorage.values.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(valuesPuts, valuesDels, key);
-                    if (pending !== undefined || valuesDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.values.get(toDatabaseKey(key));
-                },
-            },
-            freshness: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    freshnessPuts.set(overlayKey, value);
-                    freshnessDels.delete(overlayKey);
-                    operations.push(schemaStorage.freshness.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    freshnessDels.add(overlayKey);
-                    freshnessPuts.delete(overlayKey);
-                    operations.push(schemaStorage.freshness.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(freshnessPuts, freshnessDels, key);
-                    if (pending !== undefined || freshnessDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.freshness.get(toDatabaseKey(key));
-                },
-            },
-            inputs: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    inputsPuts.set(overlayKey, value);
-                    inputsDels.delete(overlayKey);
-                    operations.push(schemaStorage.inputs.putOp(toDatabaseKey(key), {
-                        inputs: value.inputs,
-                        inputCounters: value.inputCounters,
-                    }));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    inputsDels.add(overlayKey);
-                    inputsPuts.delete(overlayKey);
-                    operations.push(schemaStorage.inputs.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(inputsPuts, inputsDels, key);
-                    if (pending !== undefined || inputsDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.inputs.get(toDatabaseKey(key));
-                },
-            },
-            revdeps: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    revdepsPuts.set(overlayKey, value);
-                    revdepsDels.delete(overlayKey);
-                    operations.push(
-                        schemaStorage.revdeps.putOp(
-                            toDatabaseKey(key),
-                            value.map(toDatabaseKey)
-                        )
-                    );
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    revdepsDels.add(overlayKey);
-                    revdepsPuts.delete(overlayKey);
-                    operations.push(schemaStorage.revdeps.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(revdepsPuts, revdepsDels, key);
-                    if (pending !== undefined || revdepsDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
-                    if (stored === undefined) {
-                        return undefined;
-                    }
-                    return stored;
-                },
-            },
-            counters: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    countersPuts.set(overlayKey, value);
-                    countersDels.delete(overlayKey);
-                    operations.push(schemaStorage.counters.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    countersDels.add(overlayKey);
-                    countersPuts.delete(overlayKey);
-                    operations.push(schemaStorage.counters.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(countersPuts, countersDels, key);
-                    if (pending !== undefined || countersDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.counters.get(toDatabaseKey(key));
-                },
-            },
-            timestamps: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    timestampsPuts.set(overlayKey, value);
-                    timestampsDels.delete(overlayKey);
-                    operations.push(schemaStorage.timestamps.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    timestampsDels.add(overlayKey);
-                    timestampsPuts.delete(overlayKey);
-                    operations.push(schemaStorage.timestamps.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(timestampsPuts, timestampsDels, key);
-                    if (pending !== undefined || timestampsDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.timestamps.get(toDatabaseKey(key));
-                },
-            },
-            appendOperation(operation) {
-                operations.push(operation);
-            },
-        };
-
+        const { batch, operations } = createBatch(schemaStorage);
         const value = await fn(batch);
         await schemaStorage.batch(operations);
         return value;
     };
 
-    return withBatch;
+    /** @returns {PendingBatch} */
+    const startBatch = () => {
+        const { batch, operations } = createBatch(schemaStorage);
+        return {
+            batch,
+            async commit() {
+                await schemaStorage.batch(operations);
+            },
+        };
+    };
+
+    return { withBatch, startBatch };
 }
 
 /**
@@ -331,7 +360,7 @@ function makeBatchBuilder(schemaStorage) {
  */
 function makeGraphStorage(rootDatabase) {
     const schemaStorage = rootDatabase.getSchemaStorage();
-    const withBatch = makeBatchBuilder(schemaStorage);
+    const { withBatch, startBatch } = makeBatchBuilder(schemaStorage);
 
     /**
      * @param {IdentifierDatabase<*>} database
@@ -476,6 +505,7 @@ function makeGraphStorage(rootDatabase) {
             async *keys() { for await (const key of schemaStorage.timestamps.keys()) { yield key; } },
         }),
         withBatch,
+        startBatch,
         ensureMaterialized,
         ensureReverseDepsIndexed,
         listDependents,
