@@ -55,6 +55,7 @@ const {
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
+const { reconcileHostLookupWithTargetLookup } = require('./reconcile_identifier_lookup');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -579,17 +580,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         const hostIdentifierValue = await H.global.get('identifiers_keys_map');
         const targetIdentifierValue = await T.global.get('identifiers_keys_map');
 
-        const hostLookup = hostIdentifierValue === undefined
-            ? makeEmptyIdentifierLookup()
-            : Array.isArray(hostIdentifierValue)
-                ? makeIdentifierLookup(hostIdentifierValue)
-                : makeEmptyIdentifierLookup();
-        const targetLookup = targetIdentifierValue === undefined
-            ? makeEmptyIdentifierLookup()
-            : Array.isArray(targetIdentifierValue)
-                ? makeIdentifierLookup(targetIdentifierValue)
-                : makeEmptyIdentifierLookup();
-        const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
+        const hostLookup = hostIdentifierValue !== undefined && Array.isArray(hostIdentifierValue) ? makeIdentifierLookup(hostIdentifierValue) : makeEmptyIdentifierLookup();
+        const targetLookup = targetIdentifierValue !== undefined && Array.isArray(targetIdentifierValue) ? makeIdentifierLookup(targetIdentifierValue) : makeEmptyIdentifierLookup();
+        const reconciledHostLookup = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
+        const mergedLookup = mergeIdentifierLookups(targetLookup, reconciledHostLookup);
 
         pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
         await flushPendingOps();
