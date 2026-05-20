@@ -19,7 +19,7 @@ const {
     stringToNodeName,
     versionToString,
 } = require("./database");
-const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database");
+const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError, makeMissingTimestampError } = require("./errors");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");
@@ -49,7 +49,7 @@ async function internalGetFreshness(
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         const identifierResolver = incrementalGraph.makeIdentifierResolver();
-        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(stringToNodeIdentifier(String(concreteKey)));
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
         if (nodeIdentifier === undefined) {
             return "missing";
         }
@@ -80,7 +80,7 @@ async function internalGetValue(incrementalGraph, head, bindings = []) {
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         const identifierResolver = incrementalGraph.makeIdentifierResolver();
-        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(stringToNodeIdentifier(String(concreteKey)));
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
         if (nodeIdentifier === undefined) {
             return undefined;
         }
@@ -154,7 +154,7 @@ async function internalGetCreationTime(
         const nodeKey = { head: nodeNameTyped, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         const identifierResolver = incrementalGraph.makeIdentifierResolver();
-        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(stringToNodeIdentifier(String(concreteKey)));
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
         if (nodeIdentifier === undefined) {
             throw makeMissingTimestampError(concreteKey);
         }
@@ -190,7 +190,7 @@ async function internalGetModificationTime(
         const nodeKey = { head: nodeNameTyped, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         const identifierResolver = incrementalGraph.makeIdentifierResolver();
-        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(stringToNodeIdentifier(String(concreteKey)));
+        const nodeIdentifier = identifierResolver.lookupNodeIdentifier(concreteKey);
         if (nodeIdentifier === undefined) {
             throw makeMissingTimestampError(concreteKey);
         }

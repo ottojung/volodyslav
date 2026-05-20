@@ -9,6 +9,7 @@
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
@@ -48,9 +49,9 @@ const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
+    internalPullByNodeKeyWithStatusDuringPull,
     internalSafePullWithStatus,
     internalUnsafePull,
-    internalPullByNodeIdentifierWithStatusDuringPull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
 
@@ -135,7 +136,7 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {NodeIdentifier} concreteKeyCanonical
+     * @param {import('./types').NodeKeyString} concreteKeyCanonical
      * @param {CompiledNode} compiledNode
      * @param {Array<ConstValue>} bindings
      * @returns {ConcreteNode}
@@ -233,12 +234,12 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {NodeIdentifier} nodeKeyStr
+     * @param {NodeKeyString} nodeKeyStr
      * @param {IdentifierResolver} identifierResolver
      * @returns {Promise<RecomputeResult>}
      */
     async _pullDuringPull(nodeKeyStr, identifierResolver) {
-        return await internalPullByNodeIdentifierWithStatusDuringPull(
+        return await internalPullByNodeKeyWithStatusDuringPull(
             this,
             nodeKeyStr,
             identifierResolver

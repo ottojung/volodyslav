@@ -330,7 +330,7 @@ class RootDatabaseClass {
     }
 
     /**
-     * @param {NodeIdentifier} nodeKey
+     * @param {import('./types').NodeKeyString} nodeKey
      * @returns {NodeIdentifier | undefined}
      */
     nodeKeyToId(nodeKey) {
@@ -339,7 +339,7 @@ class RootDatabaseClass {
 
     /**
      * @param {NodeIdentifier} nodeIdentifier
-     * @returns {NodeIdentifier | undefined}
+     * @returns {import('./types').NodeKeyString | undefined}
      */
     nodeIdToKey(nodeIdentifier) {
         return nodeIdToKeyFromLookup(this._computed.identifierLookup, nodeIdentifier);

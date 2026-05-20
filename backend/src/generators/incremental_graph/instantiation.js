@@ -7,14 +7,13 @@ const {
     extractInputBindings,
 } = require("./compiled_node");
 const { renderExpr } = require("./expr");
-const { createNodeKeyFromPattern, serializeNodeKey, nodeKeyStringToString } = require("./database");
-const { stringToNodeIdentifier } = require("./database");
+const { createNodeKeyFromPattern, serializeNodeKey } = require("./database");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').ConcreteNodeComputor} ConcreteNodeComputor */
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /**
  * @typedef {object} IncrementalGraphInstantiationAccess
  * @property {import('./lru_cache').ConcreteNodeCache} concreteInstantiations
@@ -25,7 +24,7 @@ const { stringToNodeIdentifier } = require("./database");
  * Dynamic edges are persisted to DB when the node is computed/set, not here.
  * This is a runtime-only function that operates on instance data, not schema patterns.
  * @param {IncrementalGraphInstantiationAccess} incrementalGraph
- * @param {NodeIdentifier} concreteKeyCanonical
+ * @param {NodeKeyString} concreteKeyCanonical
  * @param {CompiledNode} compiledNode
  * @param {Array<ConstValue>} bindings
  * @returns {ConcreteNode}
@@ -45,7 +44,7 @@ function internalGetOrCreateConcreteNode(
     if (!compiledNode.isPattern) {
         const jsonInputs = compiledNode.canonicalInputs.map((input) => {
             const inputKey = createNodeKeyFromPattern(input, []);
-            return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey(inputKey)));
+            return serializeNodeKey(inputKey);
         });
 
         const concreteNode = {
@@ -71,7 +70,7 @@ function internalGetOrCreateConcreteNode(
         );
         const inputPattern = renderExpr(inputExpr);
         const inputKey = createNodeKeyFromPattern(inputPattern, inputBindings);
-        return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey(inputKey)));
+        return serializeNodeKey(inputKey);
     });
 
     const concreteNode = {

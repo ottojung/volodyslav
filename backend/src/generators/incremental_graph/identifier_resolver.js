@@ -34,9 +34,9 @@ const fallbackIdentifierLookups = new WeakMap();
  * translated at most once during the operation.
  * @typedef {object} IdentifierResolver
  * @property {IdentifierLookup} lookup - Mutable lookup snapshot for the current operation.
- * @property {(nodeKey: NodeIdentifier) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
- * @property {(nodeKey: NodeIdentifier) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
- * @property {(nodeIdentifier: NodeIdentifier) => NodeIdentifier} requireNodeKey - Convert an identifier back to its semantic node key.
+ * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
+ * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
+ * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
  * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append a merged lookup write to the current batch when allocations happened.
  * @property {(rootDatabase: RootDatabase) => void} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
@@ -66,7 +66,7 @@ function getActiveLookup(rootDatabase) {
  * Compatibility test doubles fall back to deterministic identifiers derived from the key.
  * @param {RootDatabase} rootDatabase
  * @param {IdentifierLookup} lookup
- * @param {NodeIdentifier} nodeKey
+ * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier}
  */
 function allocateIdentifier(rootDatabase, lookup, nodeKey) {
@@ -87,14 +87,14 @@ function makeIdentifierResolver(rootDatabase) {
     const lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
     /** @type {Map<string, NodeIdentifier>} */
     const identifiersByNodeKey = new Map();
-    /** @type {Map<string, NodeIdentifier>} */
+    /** @type {Map<string, NodeKeyString>} */
     const nodeKeysByIdentifier = new Map();
     let hasPendingLookupWrite = false;
     /** @type {IdentifierLookup | null} */
     let committedLookup = null;
 
     /**
-     * @param {NodeIdentifier} nodeKey
+     * @param {NodeKeyString} nodeKey
      * @param {NodeIdentifier} nodeIdentifier
      * @returns {NodeIdentifier}
      */
@@ -105,7 +105,7 @@ function makeIdentifierResolver(rootDatabase) {
     }
 
     /**
-     * @param {NodeIdentifier} nodeKey
+     * @param {NodeKeyString} nodeKey
      * @returns {NodeIdentifier | undefined}
      */
     function lookupNodeIdentifier(nodeKey) {
@@ -121,7 +121,7 @@ function makeIdentifierResolver(rootDatabase) {
     }
 
     /**
-     * @param {NodeIdentifier} nodeKey
+     * @param {NodeKeyString} nodeKey
      * @returns {NodeIdentifier}
      */
     function getOrAllocateNodeIdentifier(nodeKey) {
@@ -138,7 +138,7 @@ function makeIdentifierResolver(rootDatabase) {
 
     /**
      * @param {NodeIdentifier} nodeIdentifier
-     * @returns {NodeIdentifier}
+     * @returns {NodeKeyString}
      */
     function requireNodeKey(nodeIdentifier) {
         const identifierString = nodeIdentifierToString(nodeIdentifier);

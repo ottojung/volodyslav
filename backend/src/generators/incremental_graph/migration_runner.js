@@ -18,12 +18,12 @@ const {
     makeIdentifierLookup,
     nodeIdentifierFromString,
     nodeIdentifierToString,
-    nodeKeyStringToString,
     requireNodeIdentifierForKey,
     requireNodeKeyForIdentifier,
     serializeNodeKey,
     serializeIdentifierLookup,
     stringToNodeIdentifier,
+    stringToNodeKeyString,
     stringToNodeName,
     getRootDatabase,
 } = require("./database");
@@ -35,6 +35,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */
@@ -102,25 +103,25 @@ async function loadMaterializedNodes(storage) {
 }
 
 /**
- * Converts a plain zero-argument node name string to its canonical NodeIdentifier
- * form (i.e. the serialized `{"head":"<name>","args":[]}` representation wrapped
- * as a NodeIdentifier).  Used in migration backwards-compatibility paths where
+ * Converts a plain zero-argument node name string to its canonical serialized node-key
+ * form (i.e. the serialized `{"head":"<name>","args":[]}` representation). Used in
+ * migration backwards-compatibility paths where
  * old database entries stored nodes by bare name rather than by serialized key.
  * @param {string} nodeName
- * @returns {NodeIdentifier}
+ * @returns {NodeKeyString}
  */
 function zeroArgNodeNameToIdentifier(nodeName) {
-    return stringToNodeIdentifier(nodeKeyStringToString(serializeNodeKey({ head: stringToNodeName(nodeName), args: [] })));
+    return serializeNodeKey({ head: stringToNodeName(nodeName), args: [] });
 }
 
 /**
  * @param {NodeIdentifier} nodeKey
- * @returns {NodeIdentifier}
+ * @returns {NodeKeyString}
  */
 function canonicalizeMigrationNodeKey(nodeKey) {
     const nodeKeyString = String(nodeKey);
     if (nodeKeyString.startsWith("{")) {
-        return stringToNodeIdentifier(nodeKeyString);
+        return stringToNodeKeyString(nodeKeyString);
     }
     return zeroArgNodeNameToIdentifier(nodeKeyString);
 }
@@ -132,7 +133,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
  *   keyToSourceKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
  *   keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
  *   outputKeyToDecisionKey: (outputKey: NodeIdentifier) => NodeIdentifier,
- *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeIdentifier]>,
+ *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeKeyString]>,
  * }>}
  */
 async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
@@ -142,28 +143,39 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         /** @type {Map<string, NodeIdentifier>} */
         const decisionKeyByOutputKey = new Map();
         for (const [nodeIdentifier, nodeKey] of persistedEntries) {
-            decisionKeyByOutputKey.set(String(nodeIdentifier), nodeKey);
+            decisionKeyByOutputKey.set(
+                String(nodeIdentifier),
+                stringToNodeIdentifier(String(nodeKey))
+            );
         }
         return {
             keyToSourceKey(nodeKey) {
                 return stringToNodeIdentifier(
-                    nodeIdentifierToString(requireNodeIdentifierForKey(lookup, nodeKey))
+                    nodeIdentifierToString(
+                        requireNodeIdentifierForKey(
+                            lookup,
+                            stringToNodeKeyString(String(nodeKey))
+                        )
+                    )
                 );
             },
             keyToOutputKey(nodeKey) {
+                const semanticNodeKey = stringToNodeKeyString(String(nodeKey));
                 const allocatedIdentifier = allocateNodeIdentifier(
                     lookup,
-                    nodeKey,
-                    (attempt) => deterministicNodeIdentifierFromNodeKey(nodeKey, attempt)
+                    semanticNodeKey,
+                    (attempt) => deterministicNodeIdentifierFromNodeKey(semanticNodeKey, attempt)
                 );
                 decisionKeyByOutputKey.set(String(allocatedIdentifier), nodeKey);
                 return stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
             },
             outputKeyToDecisionKey(outputKey) {
                 return decisionKeyByOutputKey.get(String(outputKey))
-                    ?? requireNodeKeyForIdentifier(
-                        lookup,
-                        nodeIdentifierFromString(String(outputKey))
+                    ?? stringToNodeIdentifier(
+                        String(requireNodeKeyForIdentifier(
+                            lookup,
+                            nodeIdentifierFromString(String(outputKey))
+                        ))
                     );
             },
             get outputEntries() {
@@ -172,7 +184,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         };
     }
 
-    /** @type {Array<[import('./database/types').NodeIdentifier, NodeIdentifier]>} */
+    /** @type {Array<[import('./database/types').NodeIdentifier, NodeKeyString]>} */
     const initialOutputEntries = [];
     /** @type {Map<string, NodeIdentifier>} */
     const decisionKeyByOutputKey = new Map();
@@ -335,7 +347,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
  * @param {{
  *   keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
  *   outputKeyToDecisionKey: (outputKey: NodeIdentifier) => NodeIdentifier,
- *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeIdentifier]>,
+ *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeKeyString]>,
  * }} keyPlan
  * @returns {ReadableSchemaStorage}
  */

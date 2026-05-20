@@ -3,6 +3,7 @@ const {
     mergeIdentifierLookups,
     nodeIdentifierFromString,
     serializeIdentifierLookup,
+    stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
 const { makeIdentifierResolver } = require("../src/generators/incremental_graph/identifier_resolver");
 
@@ -48,14 +49,14 @@ function makeGlobalDatabase() {
 describe("identifier resolver persistence", () => {
     test("merges with latest committed lookup when persisting", () => {
         const rootDatabase = makeRootDatabase([
-            [nodeIdentifierFromString("baseidaaa"), nodeIdentifierFromString("basekeyaa")],
+            [nodeIdentifierFromString("baseidaaa"), stringToNodeKeyString('{"head":"base","args":[]}')],
         ]);
 
         const resolverA = makeIdentifierResolver(rootDatabase);
         const resolverB = makeIdentifierResolver(rootDatabase);
 
-        resolverA.getOrAllocateNodeIdentifier(nodeIdentifierFromString("keyaaaaaa"));
-        resolverB.getOrAllocateNodeIdentifier(nodeIdentifierFromString("keybbbbbb"));
+        resolverA.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["a"]}'));
+        resolverB.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["b"]}'));
 
         const globalDatabase = makeGlobalDatabase();
 
@@ -83,14 +84,14 @@ describe("identifier resolver persistence", () => {
         const rootDatabase = makeRootDatabase([]);
         const resolver = makeIdentifierResolver(rootDatabase);
 
-        const nodeKey = nodeIdentifierFromString("keyclonea");
+        const nodeKey = stringToNodeKeyString('{"head":"key","args":["clone"]}');
         const allocated = resolver.getOrAllocateNodeIdentifier(nodeKey);
 
         const batch = makeBatch();
         resolver.queueLookupPersistence(batch, rootDatabase, makeGlobalDatabase());
         resolver.commitPersistedLookup(rootDatabase);
 
-        resolver.lookup.idToKey.set("mutatedxx", nodeIdentifierFromString("mutkeyaaa"));
+        resolver.lookup.idToKey.set("mutatedxx", stringToNodeKeyString('{"head":"mut","args":["key"]}'));
 
         const persisted = rootDatabase.readActiveLookup().idToKey.get("mutatedxx");
         expect(persisted).toBeUndefined();
