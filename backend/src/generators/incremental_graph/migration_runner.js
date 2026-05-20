@@ -13,6 +13,7 @@
 const { compileNodeDef } = require("./compiled_node");
 const {
     allocateNodeIdentifier,
+    compareNodeIdentifier,
     deterministicNodeIdentifierFromNodeKey,
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
@@ -321,10 +322,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
     const result = new Map();
     for (const [inputStr, depSet] of revdepSets) {
         const inputKey = stringToNodeIdentifier(inputStr);
-        result.set(
-            inputKey,
-            [...depSet].sort((left, right) => String(left).localeCompare(String(right)))
-        );
+        result.set(inputKey, [...depSet].sort(compareNodeIdentifier));
     }
     return result;
 }
@@ -352,27 +350,28 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
  * @returns {ReadableSchemaStorage}
  */
 function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, keyPlan) {
-    // Sort decision keys once so every sublevel's keys() yields in the same
-    // order as LevelDB.  Keys are latin1 strings (no "!!" substring), so JS
-    // default string sort matches LevelDB byte order.
-    // TODO: ConstValue arguments may contain non-latin1 characters; that case
-    // is tracked separately and will be addressed in a future change.
-    const sortedDecisionKeys = [...decisions.keys()].sort();
+    const sortedDecisionEntriesByOutputKey = [...decisions.entries()]
+        .filter(([, decision]) => decision.kind !== "delete")
+        .map(([nodeKey, decision]) => ({
+            nodeKey,
+            decision,
+            outputKey: keyPlan.keyToOutputKey(nodeKey),
+        }))
+        .sort((left, right) =>
+            compareNodeIdentifier(left.outputKey, right.outputKey)
+        );
 
     const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
 
     return {
         values: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const { nodeKey, decision, outputKey } of sortedDecisionEntriesByOutputKey) {
                     if (decision.kind === "create" || decision.kind === "override") {
-                        yield keyPlan.keyToOutputKey(nodeKey);
+                        yield outputKey;
                     } else if (decision.kind === "keep") {
                         const v = await prevStorage.values.get(nodeKey);
-                        if (v !== undefined) yield keyPlan.keyToOutputKey(nodeKey);
+                        if (v !== undefined) yield outputKey;
                     }
                     // 'invalidate': no value in values sublevel
                 }
@@ -389,15 +388,12 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         freshness: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const { nodeKey, decision, outputKey } of sortedDecisionEntriesByOutputKey) {
                     if (decision.kind === "create" || decision.kind === "override" || decision.kind === "invalidate") {
-                        yield keyPlan.keyToOutputKey(nodeKey);
+                        yield outputKey;
                     } else if (decision.kind === "keep") {
                         const f = await prevStorage.freshness.get(nodeKey);
-                        if (f !== undefined) yield keyPlan.keyToOutputKey(nodeKey);
+                        if (f !== undefined) yield outputKey;
                     }
                 }
             },
@@ -412,15 +408,12 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         inputs: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const { nodeKey, decision, outputKey } of sortedDecisionEntriesByOutputKey) {
                     if (decision.kind === "create") {
-                        yield keyPlan.keyToOutputKey(nodeKey);
+                        yield outputKey;
                     } else {
                         const ir = await prevStorage.inputs.get(nodeKey);
-                        if (ir !== undefined) yield keyPlan.keyToOutputKey(nodeKey);
+                        if (ir !== undefined) yield outputKey;
                     }
                 }
             },
@@ -453,15 +446,12 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         counters: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const { nodeKey, decision, outputKey } of sortedDecisionEntriesByOutputKey) {
                     if (decision.kind === "create" || decision.kind === "override") {
-                        yield keyPlan.keyToOutputKey(nodeKey);
+                        yield outputKey;
                     } else {
                         const c = await prevStorage.counters.get(nodeKey);
-                        if (c !== undefined) yield keyPlan.keyToOutputKey(nodeKey);
+                        if (c !== undefined) yield outputKey;
                     }
                 }
             },
@@ -479,12 +469,10 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         timestamps: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete" || decision.kind === "create") continue;
+                for (const { nodeKey, decision, outputKey } of sortedDecisionEntriesByOutputKey) {
+                    if (decision.kind === "create") continue;
                     const ts = await prevStorage.timestamps.get(nodeKey);
-                    if (ts !== undefined) yield keyPlan.keyToOutputKey(nodeKey);
+                    if (ts !== undefined) yield outputKey;
                 }
             },
             async get(/** @type {NodeIdentifier} */ key) {

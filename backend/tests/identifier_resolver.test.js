@@ -1,6 +1,5 @@
 const {
     makeIdentifierLookup,
-    mergeIdentifierLookups,
     nodeIdentifierFromString,
     serializeIdentifierLookup,
     stringToNodeKeyString,
@@ -47,16 +46,13 @@ function makeGlobalDatabase() {
 }
 
 describe("identifier resolver persistence", () => {
-    test("merges with latest committed lookup when persisting", () => {
+    test("persists current resolver lookup snapshot", () => {
         const rootDatabase = makeRootDatabase([
             [nodeIdentifierFromString("baseidaaa"), stringToNodeKeyString('{"head":"base","args":[]}')],
         ]);
 
         const resolverA = makeIdentifierResolver(rootDatabase);
-        const resolverB = makeIdentifierResolver(rootDatabase);
-
         resolverA.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["a"]}'));
-        resolverB.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["b"]}'));
 
         const globalDatabase = makeGlobalDatabase();
 
@@ -64,19 +60,16 @@ describe("identifier resolver persistence", () => {
         resolverA.queueLookupPersistence(batchA, rootDatabase, globalDatabase);
         resolverA.commitPersistedLookup(rootDatabase);
 
+        const resolverB = makeIdentifierResolver(rootDatabase);
+        resolverB.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["b"]}'));
         const batchB = makeBatch();
         resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
 
         const persistedEntries = batchB.operations[0].value;
         const persistedLookup = makeIdentifierLookup(persistedEntries);
 
-        const merged = mergeIdentifierLookups(
-            rootDatabase.cloneActiveIdentifierLookup(),
-            resolverB.lookup
-        );
-
         expect(serializeIdentifierLookup(persistedLookup)).toEqual(
-            serializeIdentifierLookup(merged)
+            serializeIdentifierLookup(resolverB.lookup)
         );
     });
 

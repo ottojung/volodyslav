@@ -15,7 +15,7 @@ const { makeUniqueFunctor } = require("../../unique_functor");
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
 const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
-const IDENTIFIER_LOOKUP_KEY = makeUniqueFunctor("incremental-graph-identifier-lookup").instantiate([]);
+const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
@@ -75,16 +75,19 @@ function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
 }
 
 /**
- * Serialize identifier lookup persistence so concurrent pulls for different
- * semantic node keys cannot overwrite each other's identifier allocations.
+ * Serialize writes to the active replica computed state.
  *
  * @template T
  * @param {SleepCapability} sleeper
+ * @param {string} computedStateIdentifier
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withIdentifierLookupMutex(sleeper, procedure) {
-    return sleeper.withMutex(IDENTIFIER_LOOKUP_KEY, procedure);
+function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
+    return sleeper.withMutex(
+        COMPUTED_STATE_KEY.instantiate([computedStateIdentifier]),
+        procedure
+    );
 }
 
 /**
@@ -117,5 +120,5 @@ module.exports = {
     withObserveMode,
     withPullMode,
     withPullNodeMutex,
-    withIdentifierLookupMutex,
+    withComputedStateMutex,
 };
