@@ -37,7 +37,7 @@ const fallbackIdentifierLookups = new WeakMap();
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
- * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Mark that the current operation needs lookup persistence when allocations happened.
+ * @property {() => void} queueLookupPersistence - Mark that the current operation needs lookup persistence when allocations happened.
  * @property {(rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => Promise<void>} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
 
@@ -174,7 +174,7 @@ function makeIdentifierResolver(rootDatabase) {
         lookupNodeIdentifier,
         getOrAllocateNodeIdentifier,
         requireNodeKey,
-        queueLookupPersistence(_batch, _rootDatabase, _globalDatabase) {
+        queueLookupPersistence() {
             if (!hasPendingLookupWrite) {
                 return;
             }
