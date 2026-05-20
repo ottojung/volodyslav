@@ -15,6 +15,7 @@ const {
     nodeKeyToIdFromLookup,
     nodeIdentifierToString,
     serializeIdentifierLookup,
+    setIdentifierMapping,
 } = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -36,7 +37,7 @@ const fallbackIdentifierLookups = new WeakMap();
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
- * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append a merged lookup write to the current batch when allocations happened.
+ * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Mark that the current operation needs lookup persistence when allocations happened.
  * @property {(rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => Promise<void>} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
 
@@ -83,14 +84,25 @@ function allocateIdentifier(rootDatabase, lookup, nodeKey) {
  * @returns {IdentifierResolver}
  */
 function makeIdentifierResolver(rootDatabase) {
-    const lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
+    /** @type {IdentifierLookup | null} */
+    let lookup = null;
     /** @type {Map<string, NodeIdentifier>} */
     const identifiersByNodeKey = new Map();
     /** @type {Map<string, NodeKeyString>} */
     const nodeKeysByIdentifier = new Map();
     let hasPendingLookupWrite = false;
-    /** @type {IdentifierLookup | null} */
-    let committedLookup = null;
+    /** @type {Map<string, { nodeKey: NodeKeyString, nodeIdentifier: NodeIdentifier }>} */
+    const pendingIdentifierMappings = new Map();
+
+    /**
+     * @returns {IdentifierLookup}
+     */
+    function ensureLookup() {
+        if (lookup === null) {
+            lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
+        }
+        return lookup;
+    }
 
     /**
      * @param {NodeKeyString} nodeKey
@@ -112,7 +124,7 @@ function makeIdentifierResolver(rootDatabase) {
         if (cached !== undefined) {
             return cached;
         }
-        const nodeIdentifier = nodeKeyToIdFromLookup(lookup, nodeKey);
+        const nodeIdentifier = nodeKeyToIdFromLookup(ensureLookup(), nodeKey);
         if (nodeIdentifier === undefined) {
             return undefined;
         }
@@ -129,10 +141,12 @@ function makeIdentifierResolver(rootDatabase) {
             return existing;
         }
         hasPendingLookupWrite = true;
-        return cacheMapping(
+        const nodeIdentifier = cacheMapping(
             nodeKey,
-            allocateIdentifier(rootDatabase, lookup, nodeKey)
+            allocateIdentifier(rootDatabase, ensureLookup(), nodeKey)
         );
+        pendingIdentifierMappings.set(String(nodeKey), { nodeKey, nodeIdentifier });
+        return nodeIdentifier;
     }
 
     /**
@@ -145,7 +159,7 @@ function makeIdentifierResolver(rootDatabase) {
         if (cached !== undefined) {
             return cached;
         }
-        const nodeKey = nodeIdToKeyFromLookup(lookup, nodeIdentifier);
+        const nodeKey = nodeIdToKeyFromLookup(ensureLookup(), nodeIdentifier);
         if (nodeKey === undefined) {
             throw new Error(`Missing semantic node key for identifier ${identifierString}`);
         }
@@ -154,33 +168,39 @@ function makeIdentifierResolver(rootDatabase) {
     }
 
     return {
-        lookup,
+        get lookup() {
+            return ensureLookup();
+        },
         lookupNodeIdentifier,
         getOrAllocateNodeIdentifier,
         requireNodeKey,
-        queueLookupPersistence(batch, _rootDatabase, globalDatabase) {
-            if (!hasPendingLookupWrite || globalDatabase === undefined) {
-                return;
-            }
-            committedLookup = cloneIdentifierLookup(lookup);
-            batch.appendOperation(
-                globalDatabase.rawPutOp(
-                    IDENTIFIERS_KEY,
-                    serializeIdentifierLookup(committedLookup)
-                )
-            );
-        },
-        async commitPersistedLookup(rootDatabaseToUpdate, _globalDatabase) {
+        queueLookupPersistence(_batch, _rootDatabase, _globalDatabase) {
             if (!hasPendingLookupWrite) {
                 return;
             }
-            const lookupToCommit = cloneIdentifierLookup(committedLookup ?? lookup);
+        },
+        async commitPersistedLookup(rootDatabaseToUpdate, globalDatabase) {
+            if (!hasPendingLookupWrite) {
+                return;
+            }
+            const activeLookup = getActiveLookup(rootDatabaseToUpdate);
+            for (const { nodeKey, nodeIdentifier } of pendingIdentifierMappings.values()) {
+                setIdentifierMapping(activeLookup, nodeIdentifier, nodeKey);
+            }
+            const lookupToCommit = cloneIdentifierLookup(activeLookup);
+            if (globalDatabase !== undefined) {
+                await globalDatabase.put(
+                    IDENTIFIERS_KEY,
+                    serializeIdentifierLookup(lookupToCommit)
+                );
+            }
             if (typeof rootDatabaseToUpdate.replaceActiveIdentifierLookup === "function") {
                 rootDatabaseToUpdate.replaceActiveIdentifierLookup(lookupToCommit);
             } else {
                 fallbackIdentifierLookups.set(rootDatabaseToUpdate, lookupToCommit);
             }
-            committedLookup = null;
+            lookup = cloneIdentifierLookup(lookupToCommit);
+            pendingIdentifierMappings.clear();
             hasPendingLookupWrite = false;
         },
     };

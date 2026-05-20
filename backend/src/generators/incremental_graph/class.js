@@ -173,15 +173,15 @@ class IncrementalGraphClass {
             ? this.rootDatabase.currentReplicaName()
             : "__default__";
         await withComputedStateMutex(
-                this.sleeper,
-                computedStateIdentifier,
-                async () => {
-                    await identifierResolver.commitPersistedLookup(
-                        this.rootDatabase,
-                        schemaStorage.global
-                    );
-                }
-            );
+            this.sleeper,
+            computedStateIdentifier,
+            async () => {
+                await identifierResolver.commitPersistedLookup(
+                    this.rootDatabase,
+                    schemaStorage.global
+                );
+            }
+        );
         return value;
     }
 
