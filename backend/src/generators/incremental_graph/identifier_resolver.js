@@ -158,7 +158,7 @@ function makeIdentifierResolver(rootDatabase) {
         lookupNodeIdentifier,
         getOrAllocateNodeIdentifier,
         requireNodeKey,
-        queueLookupPersistence(batch, _rootDatabaseToMerge, globalDatabase) {
+        queueLookupPersistence(batch, _rootDatabase, globalDatabase) {
             if (!hasPendingLookupWrite || globalDatabase === undefined) {
                 return;
             }

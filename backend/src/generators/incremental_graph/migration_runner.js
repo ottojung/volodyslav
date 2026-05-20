@@ -367,6 +367,8 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
     /**
      * Resolve migration output key back to the corresponding decision key.
      * Prefers the locally built map to preserve decision-key identity.
+     * Falls back to keyPlan mapping for keys that are not represented in the
+     * non-delete decision map.
      * @param {NodeIdentifier} outputKey
      * @returns {NodeIdentifier}
      */
