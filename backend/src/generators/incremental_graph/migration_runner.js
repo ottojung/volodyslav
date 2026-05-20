@@ -173,30 +173,38 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
     }
 
     /** @type {Array<[import('./database/types').NodeIdentifier, NodeIdentifier]>} */
-    const outputEntries = [];
+    const initialOutputEntries = [];
     /** @type {Map<string, NodeIdentifier>} */
     const decisionKeyByOutputKey = new Map();
     for (const nodeKey of materializedNodes) {
         const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
         const nodeIdentifier = deterministicNodeIdentifierFromNodeKey(canonicalKey);
         const outputKey = stringToNodeIdentifier(nodeIdentifierToString(nodeIdentifier));
-        outputEntries.push([nodeIdentifier, canonicalKey]);
+        initialOutputEntries.push([nodeIdentifier, canonicalKey]);
         decisionKeyByOutputKey.set(String(outputKey), nodeKey);
     }
+    const legacyLookup = makeIdentifierLookup(initialOutputEntries);
     return {
         keyToSourceKey(nodeKey) {
             return nodeKey;
         },
         keyToOutputKey(nodeKey) {
             const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
-            return stringToNodeIdentifier(
-                nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(canonicalKey))
+            const allocatedIdentifier = allocateNodeIdentifier(
+                legacyLookup,
+                canonicalKey,
+                (attempt) => deterministicNodeIdentifierFromNodeKey(canonicalKey, attempt)
             );
+            const outputKey = stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
+            decisionKeyByOutputKey.set(String(outputKey), nodeKey);
+            return outputKey;
         },
         outputKeyToDecisionKey(outputKey) {
             return decisionKeyByOutputKey.get(String(outputKey)) ?? stringToNodeIdentifier(String(outputKey));
         },
-        outputEntries: serializeIdentifierLookup(makeIdentifierLookup(outputEntries)),
+        get outputEntries() {
+            return serializeIdentifierLookup(legacyLookup);
+        },
     };
 }
 
