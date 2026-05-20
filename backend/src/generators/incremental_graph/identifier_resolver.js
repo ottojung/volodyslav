@@ -36,8 +36,6 @@ const fallbackIdentifierLookups = new WeakMap();
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
- * @property {() => boolean} beginComputedEdit - Enter a computed-state edit scope and return true only for the outermost scope.
- * @property {() => void} endComputedEdit - Exit a computed-state edit scope.
  * @property {(batch: BatchBuilder, rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => void} queueLookupPersistence - Append a merged lookup write to the current batch when allocations happened.
  * @property {(rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => Promise<void>} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
  */
@@ -93,7 +91,6 @@ function makeIdentifierResolver(rootDatabase) {
     let hasPendingLookupWrite = false;
     /** @type {IdentifierLookup | null} */
     let committedLookup = null;
-    let computedEditDepth = 0;
 
     /**
      * @param {NodeKeyString} nodeKey
@@ -156,32 +153,11 @@ function makeIdentifierResolver(rootDatabase) {
         return nodeKey;
     }
 
-    /**
-     * @returns {boolean}
-     */
-    function beginComputedEdit() {
-        computedEditDepth += 1;
-        return computedEditDepth === 1;
-    }
-
-    /**
-     * @returns {void}
-     */
-    function endComputedEdit() {
-        computedEditDepth -= 1;
-        if (computedEditDepth < 0) {
-            computedEditDepth = 0;
-            throw new Error("IdentifierResolver computed edit depth underflow");
-        }
-    }
-
     return {
         lookup,
         lookupNodeIdentifier,
         getOrAllocateNodeIdentifier,
         requireNodeKey,
-        beginComputedEdit,
-        endComputedEdit,
         queueLookupPersistence(batch, _rootDatabaseToMerge, globalDatabase) {
             if (!hasPendingLookupWrite || globalDatabase === undefined) {
                 return;

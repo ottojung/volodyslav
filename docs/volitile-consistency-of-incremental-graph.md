@@ -1,4 +1,4 @@
-# Volitile consistency of incremental graph flows
+# Volatile consistency of incremental graph flows
 
 ## Current state
 

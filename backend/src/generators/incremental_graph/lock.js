@@ -79,7 +79,7 @@ function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
  *
  * @template T
  * @param {SleepCapability} sleeper
- * @param {string} computedStateIdentifier
+ * @param {string} computedStateIdentifier - Active replica/computed-state identifier.
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */

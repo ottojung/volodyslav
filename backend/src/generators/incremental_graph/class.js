@@ -163,41 +163,26 @@ class IncrementalGraphClass {
      * @returns {Promise<T>}
      */
     async withIdentifierBatch(identifierResolver, procedure) {
-        const isOutermostComputedEdit = identifierResolver.beginComputedEdit();
         const schemaStorage = this.rootDatabase.getSchemaStorage();
-
-        const runBatch = async () => {
-            const value = await this.storage.withBatch(async (batch) => {
-                const result = await procedure(batch);
-                if (isOutermostComputedEdit) {
-                    identifierResolver.queueLookupPersistence(batch, this.rootDatabase, schemaStorage.global);
-                }
-                return result;
-            });
-            if (isOutermostComputedEdit) {
-                await identifierResolver.commitPersistedLookup(
-                    this.rootDatabase,
-                    schemaStorage.global
-                );
-            }
-            return value;
-        };
-
-        try {
-            if (!isOutermostComputedEdit) {
-                return await runBatch();
-            }
-            const computedStateIdentifier = typeof this.rootDatabase.currentReplicaName === "function"
-                ? this.rootDatabase.currentReplicaName()
-                : "__default__";
-            return await withComputedStateMutex(
+        const value = await this.storage.withBatch(async (batch) => {
+            const result = await procedure(batch);
+            identifierResolver.queueLookupPersistence(batch, this.rootDatabase, schemaStorage.global);
+            return result;
+        });
+        const computedStateIdentifier = typeof this.rootDatabase.currentReplicaName === "function"
+            ? this.rootDatabase.currentReplicaName()
+            : "__default__";
+        await withComputedStateMutex(
                 this.sleeper,
                 computedStateIdentifier,
-                runBatch
+                async () => {
+                    await identifierResolver.commitPersistedLookup(
+                        this.rootDatabase,
+                        schemaStorage.global
+                    );
+                }
             );
-        } finally {
-            identifierResolver.endComputedEdit();
-        }
+        return value;
     }
 
     /**
