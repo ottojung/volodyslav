@@ -1,4 +1,4 @@
-const { nodeIdentifierFromString, nodeIdentifierToString } = require('./node_identifier');
+const { nodeIdentifierToString } = require('./node_identifier');
 const {
     makeIdentifierLookup,
     serializeIdentifierLookup,
@@ -18,9 +18,15 @@ function reconcileHostLookupWithTargetLookup(targetLookup, hostLookup) {
     for (const [nodeKeyString, targetIdentifier] of targetLookup.keyToId.entries()) {
         const hostIdentifier = reconciledHostLookup.keyToId.get(nodeKeyString);
         if (hostIdentifier !== undefined && hostIdentifier !== targetIdentifier) {
-            const nodeKey = reconciledHostLookup.idToKey.get(nodeIdentifierToString(hostIdentifier));
-            if (nodeKey !== undefined) deleteIdentifierMappingForNodeKey(reconciledHostLookup, nodeKey);
-            setIdentifierMapping(reconciledHostLookup, targetIdentifier, nodeIdentifierFromString(nodeKeyString));
+            const hostNodeKey = reconciledHostLookup.idToKey.get(nodeIdentifierToString(hostIdentifier));
+            if (hostNodeKey !== undefined) {
+                deleteIdentifierMappingForNodeKey(reconciledHostLookup, hostNodeKey);
+            }
+
+            const targetNodeKey = targetLookup.idToKey.get(nodeIdentifierToString(targetIdentifier));
+            if (targetNodeKey !== undefined) {
+                setIdentifierMapping(reconciledHostLookup, targetIdentifier, targetNodeKey);
+            }
         }
     }
     return reconciledHostLookup;
