@@ -72,18 +72,19 @@ class NodeIdentifierClass {
 }
 
 /**
- * @param {string} _value
- * @returns {_value is NodeIdentifier}
+ * @param {unknown} value
+ * @returns {value is NodeIdentifier}
  */
-function castToNodeIdentifierUnsafe(_value) {
-    return true;
+function castToNodeIdentifierUnsafe(value) {
+    return typeof value === "string";
 }
 
 /**
  * Unsafe nominal cast from string to NodeIdentifier.
  * Callers that parse persisted identifier text should use nodeIdentifierFromString()
- * from node_identifier.js instead.
- * @param {string} nodeIdentifierStr
+ * from node_identifier.js instead, because that constructor validates the
+ * persisted identifier format before returning a NodeIdentifier.
+ * @param {unknown} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
 function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
@@ -94,6 +95,7 @@ function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
 }
 
 /**
+ * Backward-compatible alias for unsafeStringToNodeIdentifier().
  * @param {string} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
