@@ -11,30 +11,30 @@
  * ------------
  * LevelDB sublevel keys are structured as:
  *
- *   !namespace!!sublevel!{"head":"all_events","args":[]}
+ *   !namespace!!sublevel!keyContent
  *
  * The `!!` separator marks the boundary between nested sublevel names.
  * The actual stored key follows after the last `!` in the prefix chain.
  *
- * Two types of stored key exist in this database:
+ * Two key-shape conventions exist in this database:
  *
- *   1. NodeKey JSON keys (data sublevels: values, freshness, inputs, revdeps,
+ *   1. Plain-string sublevels (`_meta`, `global`):
+ *      - Expected path shape on disk: namespace/sublevel/key
+ *      - Exactly one key segment is allowed.
+ *
+ *   2. Identifier-key sublevels (e.g. values, freshness, inputs, revdeps,
  *      counters, timestamps):
- *        {"head":"event","args":["abc"]}
- *      Encoded as: namespace/sublevel/event/abc
+ *      - The key is treated as an opaque identifier string.
+ *      - keyToRelativePath() writes it as one encoded segment.
+ *      - relativePathToKey() accepts either one segment or legacy multi-segment
+ *        paths and joins decoded segments using `/`.
  *
- *   2. Plain string keys (meta sublevels: _meta, meta):
- *        format, version
- *      Encoded as: namespace/sublevel/format
- *
- * Argument encoding
- * -----------------
- * String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`,
- * `!` → `%21` (critical for bijection since `!` is the LevelDB separator).
- * Non-string arguments (numbers, booleans, arrays, objects) are JSON-encoded
- * and prefixed with `~` to distinguish them from plain strings.
- * Literal dot-segment path components `.` and `..` are encoded as `%2E` and
- * `%2E%2E` to prevent directory traversal.
+ * Segment encoding
+ * ----------------
+ * Path segments use percent-like escaping for key round-tripping:
+ * `/` → `%2F`, `%` → `%25`, `!` → `%21`.
+ * Literal `.` and `..` segments are encoded as `%2E` / `%2E%2E` sentinels
+ * to prevent directory traversal semantics in snapshot paths.
  *
  * Value serialisation
  * -------------------
@@ -178,13 +178,8 @@ function decodeSegment(s) {
 /**
  * Converts a raw LevelDB key to a relative filesystem path.
  *
- * For NodeKey JSON keys stored in data sublevels (values, freshness,
- * inputs, revdeps, counters, timestamps), the stored key is decomposed into
- * human-readable path segments using serializeNodeKey/deserializeNodeKey:
- *   namespace/sublevel/head/arg1/arg2/...
- *
- * For plain string keys stored in meta sublevels (_meta, meta), the key
- * is used as a single percent-encoded segment:
+ * For both identifier-key sublevels and plain-key sublevels, keyContent is
+ * emitted as one encoded path segment:
  *   namespace/sublevel/key
  *
  * @param {string} rawKey - Raw LevelDB key.
@@ -211,8 +206,9 @@ function keyToRelativePath(rawKey) {
  *   - Otherwise → depth 2 (2-level nesting: namespace + sublevel)
  *
  * Key type convention (determined by the last sublevel name):
- *   - `_meta` or `meta` → plain string key
- *   - All other sublevels → NodeKey JSON key
+ *   - `_meta` or `global` → plain string key (exactly one key segment)
+ *   - All other sublevels → identifier key (one or more key segments accepted
+ *     on read, joined with '/')
  *
  * @param {string} relPath - Relative path from keyToRelativePath().
  * @returns {string} Raw LevelDB key.

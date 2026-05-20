@@ -75,8 +75,22 @@ class NodeIdentifierClass {
  * @param {string} _value
  * @returns {_value is NodeIdentifier}
  */
-function castToNodeIdentifier(_value) {
+function castToNodeIdentifierUnsafe(_value) {
     return true;
+}
+
+/**
+ * Unsafe nominal cast from string to NodeIdentifier.
+ * Callers that parse persisted identifier text should use nodeIdentifierFromString()
+ * from node_identifier.js instead.
+ * @param {string} nodeIdentifierStr
+ * @returns {NodeIdentifier}
+ */
+function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
+    if (castToNodeIdentifierUnsafe(nodeIdentifierStr)) {
+        return nodeIdentifierStr;
+    }
+    throw new Error("Invalid node identifier string");
 }
 
 /**
@@ -84,10 +98,7 @@ function castToNodeIdentifier(_value) {
  * @returns {NodeIdentifier}
  */
 function stringToNodeIdentifier(nodeIdentifierStr) {
-    if (castToNodeIdentifier(nodeIdentifierStr)) {
-        return nodeIdentifierStr;
-    }
-    throw new Error("Invalid node identifier string");
+    return unsafeStringToNodeIdentifier(nodeIdentifierStr);
 }
 
 /**

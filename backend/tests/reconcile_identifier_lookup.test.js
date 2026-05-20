@@ -33,4 +33,23 @@ describe("reconcile identifier lookup", () => {
         expect(reconciled.keyToId.get(String(semanticNodeKey))).toEqual(identifier);
         expect(reconciled.idToKey.get(String(identifier))).toEqual(semanticNodeKey);
     });
+
+    test("evicts host mapping that conflicts with target identifier during reconcile", () => {
+        const semanticNodeKey = stringToNodeKeyString('{"head":"key","args":[]}');
+        const conflictingNodeKey = stringToNodeKeyString('{"head":"other","args":[]}');
+        const hostIdentifier = nodeIdentifierFromString("hostidaaa");
+        const targetIdentifier = nodeIdentifierFromString("targetaaa");
+
+        const hostLookup = makeIdentifierLookup([
+            [hostIdentifier, semanticNodeKey],
+            [targetIdentifier, conflictingNodeKey],
+        ]);
+        const targetLookup = makeIdentifierLookup([[targetIdentifier, semanticNodeKey]]);
+
+        const reconciled = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
+
+        expect(reconciled.keyToId.get(String(semanticNodeKey))).toEqual(targetIdentifier);
+        expect(reconciled.idToKey.get(String(targetIdentifier))).toEqual(semanticNodeKey);
+        expect(reconciled.keyToId.get(String(conflictingNodeKey))).toBeUndefined();
+    });
 });
