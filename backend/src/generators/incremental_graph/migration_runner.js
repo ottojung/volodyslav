@@ -110,7 +110,7 @@ async function loadMaterializedNodes(storage) {
  * @param {string} nodeName
  * @returns {NodeKeyString}
  */
-function zeroArgNodeNameToIdentifier(nodeName) {
+function zeroArgNodeNameToNodeKeyString(nodeName) {
     return serializeNodeKey({ head: stringToNodeName(nodeName), args: [] });
 }
 
@@ -123,7 +123,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
     if (nodeKeyString.startsWith("{")) {
         return stringToNodeKeyString(nodeKeyString);
     }
-    return zeroArgNodeNameToIdentifier(nodeKeyString);
+    return zeroArgNodeNameToNodeKeyString(nodeKeyString);
 }
 
 /**

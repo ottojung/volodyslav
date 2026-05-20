@@ -25,6 +25,15 @@ function reconcileHostLookupWithTargetLookup(targetLookup, hostLookup) {
 
             const targetNodeKey = targetLookup.idToKey.get(nodeIdentifierToString(targetIdentifier));
             if (targetNodeKey !== undefined) {
+                const conflictingHostNodeKey = reconciledHostLookup.idToKey.get(
+                    nodeIdentifierToString(targetIdentifier)
+                );
+                if (
+                    conflictingHostNodeKey !== undefined
+                    && conflictingHostNodeKey !== targetNodeKey
+                ) {
+                    deleteIdentifierMappingForNodeKey(reconciledHostLookup, conflictingHostNodeKey);
+                }
                 setIdentifierMapping(reconciledHostLookup, targetIdentifier, targetNodeKey);
             }
         }

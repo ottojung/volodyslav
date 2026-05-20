@@ -101,7 +101,7 @@ async function collectRawEntries(db) {
 }
 
 // ---------------------------------------------------------------------------
-// keyToRelativePath() — unit tests for the new head/arg1/arg2 encoding
+// keyToRelativePath() — unit tests for identifier-native key encoding
 // ---------------------------------------------------------------------------
 
 describe('keyToRelativePath()', () => {
