@@ -5,9 +5,14 @@
  */
 
 const {
+    IDENTIFIERS_KEY,
+    cloneIdentifierLookup,
     nodeIdentifierToString,
+    serializeIdentifierLookup,
     stringToNodeIdentifier,
 } = require('./database');
+const { withComputedStateMutex } = require('./lock');
+const { getActiveLookup, setActiveLookup } = require('./identifier_resolver');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -23,6 +28,8 @@ const {
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
+/** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
  * @template TValue
@@ -64,7 +71,8 @@ const {
  * @property {IdentifierDatabase<NodeIdentifier[]>} revdeps - Identifier-keyed reverse dependency index.
  * @property {IdentifierDatabase<Counter>} counters - Identifier-keyed counters.
  * @property {IdentifierDatabase<TimestampRecord>} timestamps - Identifier-keyed timestamps.
- * @property {BatchFunction} withBatch - Run atomically against all graph sublevels.
+ * @property {BatchFunction} withBatch - Run atomically against all graph sublevels (no identifier tracking).
+ * @property {<T>(identifierResolver: IdentifierResolver, fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withIdentifierBatch - Run atomically: commits node writes and identifier map in one batch under the computed-state mutex.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
@@ -138,11 +146,9 @@ function readPendingValue(pendingPuts, pendingDels, key) {
 /**
  * Create the identifier-native batch builder used by the low-level storage API.
  * @param {SchemaStorage} schemaStorage
- * @returns {BatchFunction}
+ * @returns {{ batch: BatchBuilder, operations: Array<*> }}
  */
-function makeBatchBuilder(schemaStorage) {
-    /** @type {BatchFunction} */
-    const withBatch = async (fn) => {
+function createBatch(schemaStorage) {
         /** @type {Array<*>} */
         const operations = [];
 
@@ -316,6 +322,18 @@ function makeBatchBuilder(schemaStorage) {
             },
         };
 
+        return { batch, operations };
+}
+
+/**
+ * Create a BatchFunction that creates a batch, runs a callback, and commits.
+ * @param {SchemaStorage} schemaStorage
+ * @returns {BatchFunction}
+ */
+function makeBatchBuilder(schemaStorage) {
+    /** @type {BatchFunction} */
+    const withBatch = async (fn) => {
+        const { batch, operations } = createBatch(schemaStorage);
         const value = await fn(batch);
         await schemaStorage.batch(operations);
         return value;
@@ -327,9 +345,10 @@ function makeBatchBuilder(schemaStorage) {
 /**
  * Create the identifier-native graph storage facade for one schema namespace.
  * @param {RootDatabase} rootDatabase
+ * @param {SleepCapability} sleeper
  * @returns {GraphStorage}
  */
-function makeGraphStorage(rootDatabase) {
+function makeGraphStorage(rootDatabase, sleeper) {
     const schemaStorage = rootDatabase.getSchemaStorage();
     const withBatch = makeBatchBuilder(schemaStorage);
 
@@ -476,6 +495,52 @@ function makeGraphStorage(rootDatabase) {
             async *keys() { for await (const key of schemaStorage.timestamps.keys()) { yield key; } },
         }),
         withBatch,
+        /**
+         * Run a batch that atomically commits node writes together with any new
+         * identifier allocations made by `identifierResolver`.
+         *
+         * Correctness guarantee: the read of the current active lookup, the merge of
+         * pending allocations, the DB commit of both node operations and the updated
+         * identifier map, and the in-memory update of `_computed` all happen inside a
+         * single `withComputedStateMutex` acquisition.  Concurrent callers are fully
+         * serialised at the commit phase, so no two batches can ever produce
+         * conflicting identifier-map writes.
+         *
+         * @template T
+         * @param {IdentifierResolver} identifierResolver
+         * @param {(batch: BatchBuilder) => Promise<T>} fn
+         * @returns {Promise<T>}
+         */
+        async withIdentifierBatch(identifierResolver, fn) {
+            const computedStateIdentifier = typeof rootDatabase.currentReplicaName === "function"
+                ? rootDatabase.currentReplicaName()
+                : "__default__";
+
+            const { batch, operations } = createBatch(schemaStorage);
+            const value = await fn(batch);
+
+            await withComputedStateMutex(sleeper, computedStateIdentifier, async () => {
+                if (identifierResolver.hasPendingAllocations) {
+                    const activeLookup = getActiveLookup(rootDatabase);
+                    identifierResolver.applyPendingTo(activeLookup);
+                    const lookupToCommit = cloneIdentifierLookup(activeLookup);
+                    if (schemaStorage.global !== undefined) {
+                        operations.push(
+                            schemaStorage.global.rawPutOp(
+                                IDENTIFIERS_KEY,
+                                serializeIdentifierLookup(lookupToCommit)
+                            )
+                        );
+                    }
+                    await schemaStorage.batch(operations);
+                    setActiveLookup(rootDatabase, lookupToCommit);
+                } else {
+                    await schemaStorage.batch(operations);
+                }
+            });
+
+            return value;
+        },
         ensureMaterialized,
         ensureReverseDepsIndexed,
         listDependents,

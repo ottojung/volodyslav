@@ -54,7 +54,6 @@ const {
     internalUnsafePull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
-const { withComputedStateMutex } = require("./lock");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -90,7 +89,7 @@ class IncrementalGraphClass {
         validateSingleArityPerHead(compiledNodes);
         validateInputArities(compiledNodes);
 
-        this.storage = makeGraphStorage(rootDatabase);
+        this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.version;
         this.headIndex = new Map();
@@ -163,29 +162,7 @@ class IncrementalGraphClass {
      * @returns {Promise<T>}
      */
     async withIdentifierBatch(identifierResolver, procedure) {
-        const schemaStorage = this.rootDatabase.getSchemaStorage();
-        const computedStateIdentifier = typeof this.rootDatabase.currentReplicaName === "function"
-            ? this.rootDatabase.currentReplicaName()
-            : "__default__";
-        const value = await this.storage.withBatch(async (batch) => {
-            const result = await procedure(batch);
-            await withComputedStateMutex(
-                this.sleeper,
-                computedStateIdentifier,
-                async () => {
-                    identifierResolver.queueLookupPersistence(batch, this.rootDatabase, schemaStorage.global);
-                }
-            );
-            return result;
-        });
-        await withComputedStateMutex(
-            this.sleeper,
-            computedStateIdentifier,
-            async () => {
-                await identifierResolver.commitPersistedLookup(this.rootDatabase);
-            }
-        );
-        return value;
+        return this.storage.withIdentifierBatch(identifierResolver, procedure);
     }
 
     /**
