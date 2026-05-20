@@ -1,4 +1,5 @@
 const {
+    IDENTIFIERS_KEY,
     makeIdentifierLookup,
     nodeIdentifierFromString,
     serializeIdentifierLookup,
@@ -70,6 +71,11 @@ describe("identifier resolver persistence", () => {
         resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
         await resolverB.commitPersistedLookup(rootDatabase, globalDatabase);
 
+        expect(globalDatabase.writes).toHaveLength(2);
+        expect(globalDatabase.writes.map((write) => write.key)).toEqual([
+            IDENTIFIERS_KEY,
+            IDENTIFIERS_KEY,
+        ]);
         const persistedEntries = globalDatabase.writes[1].value;
         const persistedLookup = makeIdentifierLookup(persistedEntries);
 
@@ -99,6 +105,11 @@ describe("identifier resolver persistence", () => {
         resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
         await resolverB.commitPersistedLookup(rootDatabase, globalDatabase);
 
+        expect(globalDatabase.writes).toHaveLength(2);
+        expect(globalDatabase.writes.map((write) => write.key)).toEqual([
+            IDENTIFIERS_KEY,
+            IDENTIFIERS_KEY,
+        ]);
         const finalLookup = rootDatabase.readActiveLookup();
         const persistedLookup = makeIdentifierLookup(globalDatabase.writes[1].value);
 
