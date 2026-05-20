@@ -42,7 +42,9 @@ function makeGlobalDatabase() {
     return {
         writes: [],
         rawPutOp(key, value) {
-            return { type: "put", table: "global", key, value };
+            const operation = { type: "put", table: "global", key, value };
+            this.writes.push(operation);
+            return operation;
         },
         async put(key, value) {
             this.writes.push({ type: "put", table: "global", key, value });
@@ -63,13 +65,13 @@ describe("identifier resolver persistence", () => {
 
         const batchA = makeBatch();
         resolverA.queueLookupPersistence(batchA, rootDatabase, globalDatabase);
-        await resolverA.commitPersistedLookup(rootDatabase, globalDatabase);
+        await resolverA.commitPersistedLookup(rootDatabase);
 
         const resolverB = makeIdentifierResolver(rootDatabase);
         resolverB.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["b"]}'));
         const batchB = makeBatch();
         resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
-        await resolverB.commitPersistedLookup(rootDatabase, globalDatabase);
+        await resolverB.commitPersistedLookup(rootDatabase);
 
         expect(globalDatabase.writes).toHaveLength(2);
         expect(globalDatabase.writes.map((write) => write.key)).toEqual([
@@ -98,12 +100,12 @@ describe("identifier resolver persistence", () => {
         resolverA.getOrAllocateNodeIdentifier(nodeKeyA);
         const batchA = makeBatch();
         resolverA.queueLookupPersistence(batchA, rootDatabase, globalDatabase);
-        await resolverA.commitPersistedLookup(rootDatabase, globalDatabase);
+        await resolverA.commitPersistedLookup(rootDatabase);
 
         resolverB.getOrAllocateNodeIdentifier(nodeKeyB);
         const batchB = makeBatch();
         resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
-        await resolverB.commitPersistedLookup(rootDatabase, globalDatabase);
+        await resolverB.commitPersistedLookup(rootDatabase);
 
         expect(globalDatabase.writes).toHaveLength(2);
         expect(globalDatabase.writes.map((write) => write.key)).toEqual([
