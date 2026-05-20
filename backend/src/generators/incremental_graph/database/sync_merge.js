@@ -53,6 +53,7 @@ const {
     makeEmptyIdentifierLookup,
     makeIdentifierLookup,
     mergeIdentifierLookups,
+    reconcileLookupKeysToBase,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
 
@@ -572,8 +573,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     }
 
     const decisionValues = [...decisions.values()];
-    const kept = decisionValues.filter(d => d === 'keep').length, taken = decisionValues.filter(d => d === 'take').length, invalidated = decisionValues.filter(d => d === 'invalidate').length;
-    const hasChanges = taken + invalidated > 0;
+    const kept = decisionValues.filter(d => d === 'keep').length, taken = decisionValues.filter(d => d === 'take').length, invalidated = decisionValues.filter(d => d === 'invalidate').length, hasChanges = taken + invalidated > 0;
 
     if (hasChanges) {
         const hostIdentifierValue = await H.global.get('identifiers_keys_map');
@@ -589,7 +589,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             : Array.isArray(targetIdentifierValue)
                 ? makeIdentifierLookup(targetIdentifierValue)
                 : makeEmptyIdentifierLookup();
-        const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
+        const mergedLookup = mergeIdentifierLookups(targetLookup, reconcileLookupKeysToBase(targetLookup, hostLookup));
 
         pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
         await flushPendingOps();

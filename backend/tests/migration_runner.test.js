@@ -1493,4 +1493,40 @@ describe("retry after failure", () => {
 
         expect(mock.setCurrentReplicaPointerCalled).toBe(true);
     });
+
+    test("legacy migration persists identifier mappings for nodes created during callback", async () => {
+        const capabilities = await getTestCapabilities();
+        const previousStorage = makeSchemaStorage();
+        const currentStorage = makeSchemaStorage();
+        const nodeA = toJsonKey("A");
+        const nodeB = toJsonKey("B");
+
+        await previousStorage.inputs.put(nodeA, { inputs: [], inputCounters: [] });
+        await previousStorage.values.put(nodeA, { type: "all_events", events: [] });
+        await previousStorage.freshness.put(nodeA, "up-to-date");
+
+        const { yStorage } = makeYDb(currentStorage);
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "previous",
+            currentVersion: "current",
+            xStorage: previousStorage,
+            yStorage,
+        });
+
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            { output: "B", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+        ];
+
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+            await storage.create(nodeB, async () => ({ type: "all_events", events: [] }));
+            await storage.keep(nodeA);
+        });
+
+        const keyMap = await currentStorage.global.get('identifiers_keys_map');
+        const persistedKeys = new Set((keyMap ?? []).map((entry) => entry[1]));
+        expect(persistedKeys.has(nodeA)).toBe(true);
+        expect(persistedKeys.has(nodeB)).toBe(true);
+    });
+
 });

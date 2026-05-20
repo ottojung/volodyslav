@@ -234,6 +234,25 @@ function mergeIdentifierLookups(base, overlay) {
     return merged;
 }
 
+
+/**
+ * Reconcile overlay lookup so semantic keys present in base reuse base identifiers.
+ * @param {IdentifierLookup} base
+ * @param {IdentifierLookup} overlay
+ * @returns {IdentifierLookup}
+ */
+function reconcileLookupKeysToBase(base, overlay) {
+    const reconciled = cloneIdentifierLookup(overlay);
+    for (const [, nodeKey] of base.idToKey.entries()) {
+        const baseIdentifier = nodeKeyToIdFromLookup(base, nodeKey);
+        const overlayIdentifier = nodeKeyToIdFromLookup(reconciled, nodeKey);
+        if (baseIdentifier !== undefined && overlayIdentifier !== undefined && baseIdentifier !== overlayIdentifier) {
+            deleteIdentifierMappingForNodeKey(reconciled, nodeKey);
+            setIdentifierMapping(reconciled, baseIdentifier, nodeKey);
+        }
+    }
+    return reconciled;
+}
 /**
  * Allocate a fresh identifier for a node key, retrying on collisions.
  * If the key already has an identifier, the existing identifier is reused.
@@ -308,6 +327,7 @@ module.exports = {
     makeIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
+    reconcileLookupKeysToBase,
     requireNodeIdentifierForKey,
     requireNodeKeyForIdentifier,
     serializeIdentifierLookup,

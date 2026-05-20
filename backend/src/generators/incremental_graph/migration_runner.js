@@ -15,6 +15,7 @@ const {
     allocateNodeIdentifier,
     deterministicNodeIdentifierFromNodeKey,
     IDENTIFIERS_KEY,
+    makeEmptyIdentifierLookup,
     makeIdentifierLookup,
     nodeIdentifierFromString,
     nodeIdentifierToString,
@@ -23,6 +24,7 @@ const {
     requireNodeKeyForIdentifier,
     serializeNodeKey,
     serializeIdentifierLookup,
+    setIdentifierMapping,
     stringToNodeIdentifier,
     stringToNodeName,
     getRootDatabase,
@@ -172,15 +174,14 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         };
     }
 
-    /** @type {Array<[import('./database/types').NodeIdentifier, NodeIdentifier]>} */
-    const outputEntries = [];
+    const lookup = makeEmptyIdentifierLookup();
     /** @type {Map<string, NodeIdentifier>} */
     const decisionKeyByOutputKey = new Map();
     for (const nodeKey of materializedNodes) {
         const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
         const nodeIdentifier = deterministicNodeIdentifierFromNodeKey(canonicalKey);
+        setIdentifierMapping(lookup, nodeIdentifier, canonicalKey);
         const outputKey = stringToNodeIdentifier(nodeIdentifierToString(nodeIdentifier));
-        outputEntries.push([nodeIdentifier, canonicalKey]);
         decisionKeyByOutputKey.set(String(outputKey), nodeKey);
     }
     return {
@@ -189,14 +190,21 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         },
         keyToOutputKey(nodeKey) {
             const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
-            return stringToNodeIdentifier(
-                nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(canonicalKey))
+            const nodeIdentifier = allocateNodeIdentifier(
+                lookup,
+                canonicalKey,
+                (attempt) => deterministicNodeIdentifierFromNodeKey(canonicalKey, attempt)
             );
+            const outputKey = stringToNodeIdentifier(nodeIdentifierToString(nodeIdentifier));
+            decisionKeyByOutputKey.set(String(outputKey), nodeKey);
+            return outputKey;
         },
         outputKeyToDecisionKey(outputKey) {
             return decisionKeyByOutputKey.get(String(outputKey)) ?? stringToNodeIdentifier(String(outputKey));
         },
-        outputEntries: serializeIdentifierLookup(makeIdentifierLookup(outputEntries)),
+        get outputEntries() {
+            return serializeIdentifierLookup(lookup);
+        },
     };
 }
 

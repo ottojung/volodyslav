@@ -473,4 +473,38 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('reconciles identifier collisions for same semantic key before lookup merge', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = nk('same-key');
+            const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, [], localValue);
+            await L.global.put('identifiers_keys_map', [['aaaaaaaaa', nodeA]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS2, [], remoteValue);
+            await H.global.put('identifiers_keys_map', [['bbbbbbbbb', nodeA]]);
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const active = db.schemaStorageForReplica(db.currentReplicaName());
+            await expect(active.global.get('identifiers_keys_map')).resolves.toEqual([['aaaaaaaaa', nodeA]]);
+            await expect(active.values.get(nodeA)).resolves.toEqual(remoteValue);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
 });
