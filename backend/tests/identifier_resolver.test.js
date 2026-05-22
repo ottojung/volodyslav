@@ -1,6 +1,6 @@
 const {
-    IDENTIFIERS_KEY,
     makeIdentifierLookup,
+    makeEmptyIdentifierLookup,
     nodeIdentifierFromString,
     serializeIdentifierLookup,
     stringToNodeKeyString,
@@ -29,112 +29,134 @@ function makeRootDatabase(initialLookupEntries) {
     };
 }
 
-function makeBatch() {
-    return {
-        operations: [],
-        appendOperation(operation) {
-            this.operations.push(operation);
-        },
-    };
-}
-
-function makeGlobalDatabase() {
-    return {
-        writes: [],
-        rawPutOp(key, value) {
-            return { type: "put", table: "global", key, value };
-        },
-        async put(key, value) {
-            this.writes.push({ type: "put", table: "global", key, value });
-        },
-    };
-}
-
-describe("identifier resolver persistence", () => {
-    test("persists current resolver lookup snapshot", async () => {
-        const rootDatabase = makeRootDatabase([
-            [nodeIdentifierFromString("baseidaaa"), stringToNodeKeyString('{"head":"base","args":[]}')],
-        ]);
-
-        const resolverA = makeIdentifierResolver(rootDatabase);
-        resolverA.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["a"]}'));
-
-        const globalDatabase = makeGlobalDatabase();
-
-        const batchA = makeBatch();
-        resolverA.queueLookupPersistence(batchA, rootDatabase, globalDatabase);
-        await resolverA.commitPersistedLookup(rootDatabase, globalDatabase);
-
-        const resolverB = makeIdentifierResolver(rootDatabase);
-        resolverB.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"key","args":["b"]}'));
-        const batchB = makeBatch();
-        resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
-        await resolverB.commitPersistedLookup(rootDatabase, globalDatabase);
-
-        expect(globalDatabase.writes).toHaveLength(2);
-        expect(globalDatabase.writes.map((write) => write.key)).toEqual([
-            IDENTIFIERS_KEY,
-            IDENTIFIERS_KEY,
-        ]);
-        const persistedEntries = globalDatabase.writes[1].value;
-        const persistedLookup = makeIdentifierLookup(persistedEntries);
-
-        expect(serializeIdentifierLookup(persistedLookup)).toEqual(
-            serializeIdentifierLookup(resolverB.lookup)
-        );
+describe("IdentifierResolver allocation", () => {
+    test("hasPendingAllocations is false before any allocation", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        expect(resolver.hasPendingAllocations).toBe(false);
     });
 
-    test("resolvers created before another commit still persist the latest lookup snapshot", async () => {
-        const rootDatabase = makeRootDatabase([
-            [nodeIdentifierFromString("baseidaaa"), stringToNodeKeyString('{"head":"base","args":[]}')],
-        ]);
-        const resolverA = makeIdentifierResolver(rootDatabase);
-        const resolverB = makeIdentifierResolver(rootDatabase);
-        const globalDatabase = makeGlobalDatabase();
-
-        const nodeKeyA = stringToNodeKeyString('{"head":"key","args":["a"]}');
-        const nodeKeyB = stringToNodeKeyString('{"head":"key","args":["b"]}');
-
-        resolverA.getOrAllocateNodeIdentifier(nodeKeyA);
-        const batchA = makeBatch();
-        resolverA.queueLookupPersistence(batchA, rootDatabase, globalDatabase);
-        await resolverA.commitPersistedLookup(rootDatabase, globalDatabase);
-
-        resolverB.getOrAllocateNodeIdentifier(nodeKeyB);
-        const batchB = makeBatch();
-        resolverB.queueLookupPersistence(batchB, rootDatabase, globalDatabase);
-        await resolverB.commitPersistedLookup(rootDatabase, globalDatabase);
-
-        expect(globalDatabase.writes).toHaveLength(2);
-        expect(globalDatabase.writes.map((write) => write.key)).toEqual([
-            IDENTIFIERS_KEY,
-            IDENTIFIERS_KEY,
-        ]);
-        const finalLookup = rootDatabase.readActiveLookup();
-        const persistedLookup = makeIdentifierLookup(globalDatabase.writes[1].value);
-
-        expect(finalLookup.keyToId.get(String(nodeKeyA))).toBeDefined();
-        expect(finalLookup.keyToId.get(String(nodeKeyB))).toBeDefined();
-        expect(serializeIdentifierLookup(persistedLookup)).toEqual(
-            serializeIdentifierLookup(finalLookup)
-        );
+    test("hasPendingAllocations is true after a new allocation", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        resolver.getOrAllocateNodeIdentifier(stringToNodeKeyString('{"head":"node","args":[]}'));
+        expect(resolver.hasPendingAllocations).toBe(true);
     });
 
-    test("commits defensive clones into root database", async () => {
-        const rootDatabase = makeRootDatabase([]);
-        const resolver = makeIdentifierResolver(rootDatabase);
+    test("hasPendingAllocations stays false when key already exists in active lookup", () => {
+        const existingIdentifier = nodeIdentifierFromString("existinga");
+        const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
+        const db = makeRootDatabase([[existingIdentifier, existingKey]]);
+        const resolver = makeIdentifierResolver(db);
+        resolver.getOrAllocateNodeIdentifier(existingKey);
+        expect(resolver.hasPendingAllocations).toBe(false);
+    });
 
-        const nodeKey = stringToNodeKeyString('{"head":"key","args":["clone"]}');
-        const allocated = resolver.getOrAllocateNodeIdentifier(nodeKey);
+    test("getOrAllocateNodeIdentifier returns the same identifier on repeated calls", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const key = stringToNodeKeyString('{"head":"node","args":[]}');
+        const first = resolver.getOrAllocateNodeIdentifier(key);
+        const second = resolver.getOrAllocateNodeIdentifier(key);
+        expect(first).toBe(second);
+    });
 
-        const batch = makeBatch();
-        resolver.queueLookupPersistence(batch, rootDatabase, makeGlobalDatabase());
-        await resolver.commitPersistedLookup(rootDatabase);
+    test("lookupNodeIdentifier returns undefined for unknown key", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const key = stringToNodeKeyString('{"head":"unknown","args":[]}');
+        expect(resolver.lookupNodeIdentifier(key)).toBeUndefined();
+    });
 
-        resolver.lookup.idToKey.set("mutatedxx", stringToNodeKeyString('{"head":"mut","args":["key"]}'));
+    test("lookupNodeIdentifier finds existing mapping without allocating", () => {
+        const existingIdentifier = nodeIdentifierFromString("existinga");
+        const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
+        const db = makeRootDatabase([[existingIdentifier, existingKey]]);
+        const resolver = makeIdentifierResolver(db);
+        const found = resolver.lookupNodeIdentifier(existingKey);
+        expect(found).toEqual(existingIdentifier);
+        expect(resolver.hasPendingAllocations).toBe(false);
+    });
 
-        const persisted = rootDatabase.readActiveLookup().idToKey.get("mutatedxx");
-        expect(persisted).toBeUndefined();
-        expect(rootDatabase.readActiveLookup().keyToId.get(String(nodeKey))).toEqual(allocated);
+    test("requireNodeKey retrieves the key for an existing identifier", () => {
+        const id = nodeIdentifierFromString("existinga");
+        const key = stringToNodeKeyString('{"head":"existing","args":[]}');
+        const db = makeRootDatabase([[id, key]]);
+        const resolver = makeIdentifierResolver(db);
+        expect(resolver.requireNodeKey(id)).toEqual(key);
+    });
+
+    test("requireNodeKey throws for an unknown identifier", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const id = nodeIdentifierFromString("unknownxx");
+        expect(() => resolver.requireNodeKey(id)).toThrow();
     });
 });
+
+describe("IdentifierResolver applyPendingTo", () => {
+    test("applyPendingTo adds pending allocations to the given lookup", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const key = stringToNodeKeyString('{"head":"node","args":[]}');
+        const allocated = resolver.getOrAllocateNodeIdentifier(key);
+
+        const target = makeEmptyIdentifierLookup();
+        resolver.applyPendingTo(target);
+
+        expect(target.keyToId.get(String(key))).toEqual(allocated);
+    });
+
+    test("applyPendingTo does nothing when no allocations have been made", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const target = makeEmptyIdentifierLookup();
+        resolver.applyPendingTo(target);
+        expect(target.keyToId.size).toBe(0);
+    });
+
+    test("applyPendingTo accumulates all allocations, not just the latest", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const keyA = stringToNodeKeyString('{"head":"a","args":[]}');
+        const keyB = stringToNodeKeyString('{"head":"b","args":[]}');
+        const idA = resolver.getOrAllocateNodeIdentifier(keyA);
+        const idB = resolver.getOrAllocateNodeIdentifier(keyB);
+
+        const target = makeEmptyIdentifierLookup();
+        resolver.applyPendingTo(target);
+
+        expect(target.keyToId.get(String(keyA))).toEqual(idA);
+        expect(target.keyToId.get(String(keyB))).toEqual(idB);
+    });
+
+    test("applyPendingTo is idempotent when called multiple times", () => {
+        const db = makeRootDatabase([]);
+        const resolver = makeIdentifierResolver(db);
+        const key = stringToNodeKeyString('{"head":"node","args":[]}');
+        resolver.getOrAllocateNodeIdentifier(key);
+
+        const target = makeEmptyIdentifierLookup();
+        resolver.applyPendingTo(target);
+        resolver.applyPendingTo(target);
+
+        expect(target.keyToId.size).toBe(1);
+    });
+
+    test("applyPendingTo does not carry over pre-existing base lookup mappings", () => {
+        const baseId = nodeIdentifierFromString("baseidaaa");
+        const baseKey = stringToNodeKeyString('{"head":"base","args":[]}');
+        const db = makeRootDatabase([[baseId, baseKey]]);
+        const resolver = makeIdentifierResolver(db);
+
+        const newKey = stringToNodeKeyString('{"head":"new","args":[]}');
+        const newId = resolver.getOrAllocateNodeIdentifier(newKey);
+
+        const target = makeEmptyIdentifierLookup();
+        resolver.applyPendingTo(target);
+
+        expect(target.keyToId.get(String(newKey))).toEqual(newId);
+        expect(target.keyToId.get(String(baseKey))).toBeUndefined();
+    });
+});
+

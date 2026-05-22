@@ -6,7 +6,6 @@
  */
 
 const {
-    IDENTIFIERS_KEY,
     allocateNodeIdentifier,
     cloneIdentifierLookup,
     deterministicNodeIdentifierFromNodeKey,
@@ -14,19 +13,51 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     nodeIdentifierToString,
-    serializeIdentifierLookup,
     setIdentifierMapping,
 } = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('./database/root_database').GlobalVersionDatabase} GlobalVersionDatabase */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 /** @type {WeakMap<object, IdentifierLookup>} */
 const fallbackIdentifierLookups = new WeakMap();
+
+/**
+ * Get the active identifier lookup for the current root database implementation.
+ * Real RootDatabase instances expose cloneActiveIdentifierLookup(); test doubles
+ * that don't implement this API fall back to a per-instance in-memory lookup.
+ * @param {RootDatabase} rootDatabase
+ * @returns {IdentifierLookup}
+ */
+function getActiveLookup(rootDatabase) {
+    if (typeof rootDatabase.cloneActiveIdentifierLookup === "function") {
+        return rootDatabase.cloneActiveIdentifierLookup();
+    }
+    const cached = fallbackIdentifierLookups.get(rootDatabase);
+    if (cached !== undefined) {
+        return cloneIdentifierLookup(cached);
+    }
+    const empty = makeEmptyIdentifierLookup();
+    const clonedEmpty = cloneIdentifierLookup(empty);
+    fallbackIdentifierLookups.set(rootDatabase, clonedEmpty);
+    return cloneIdentifierLookup(clonedEmpty);
+}
+
+/**
+ * Replace the active identifier lookup for the given root database.
+ * @param {RootDatabase} rootDatabase
+ * @param {IdentifierLookup} lookup
+ * @returns {void}
+ */
+function setActiveLookup(rootDatabase, lookup) {
+    if (typeof rootDatabase.replaceActiveIdentifierLookup === "function") {
+        rootDatabase.replaceActiveIdentifierLookup(lookup);
+    } else {
+        fallbackIdentifierLookups.set(rootDatabase, lookup);
+    }
+}
 
 /**
  * Resolve node identifiers for one IncrementalGraph operation.
@@ -37,46 +68,9 @@ const fallbackIdentifierLookups = new WeakMap();
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
- * @property {() => void} queueLookupPersistence - Mark that the current operation needs lookup persistence when allocations happened.
- * @property {(rootDatabase: RootDatabase, globalDatabase?: GlobalVersionDatabase) => Promise<void>} commitPersistedLookup - Publish the committed lookup snapshot back into the open RootDatabase.
+ * @property {boolean} hasPendingAllocations - True if this resolver has allocated at least one new identifier that has not yet been committed to the database.
+ * @property {(activeLookup: IdentifierLookup) => void} applyPendingTo - Merge all pending identifier allocations into the given lookup (mutates it in place).
  */
-
-/**
- * Get the active identifier lookup for the current root database implementation.
- * Compatibility test doubles do not implement the identifier-lookup API, so they
- * fall back to a hidden in-memory lookup owned by the test database instance.
- * @param {RootDatabase} rootDatabase
- * @returns {IdentifierLookup}
- */
-function getActiveLookup(rootDatabase) {
-    if (typeof rootDatabase.cloneActiveIdentifierLookup === "function") {
-        return rootDatabase.cloneActiveIdentifierLookup();
-    }
-    const cachedLookup = fallbackIdentifierLookups.get(rootDatabase);
-    if (cachedLookup !== undefined) {
-        return cloneIdentifierLookup(cachedLookup);
-    }
-    const emptyLookup = makeEmptyIdentifierLookup();
-    fallbackIdentifierLookups.set(rootDatabase, emptyLookup);
-    return cloneIdentifierLookup(emptyLookup);
-}
-
-/**
- * Allocate a new identifier for a semantic node key.
- * Compatibility test doubles fall back to deterministic identifiers derived from the key.
- * @param {RootDatabase} rootDatabase
- * @param {IdentifierLookup} lookup
- * @param {NodeKeyString} nodeKey
- * @returns {NodeIdentifier}
- */
-function allocateIdentifier(rootDatabase, lookup, nodeKey) {
-    return allocateNodeIdentifier(lookup, nodeKey, (attempt) => {
-        if (typeof rootDatabase.generateNodeIdentifier === "function") {
-            return rootDatabase.generateNodeIdentifier();
-        }
-        return deterministicNodeIdentifierFromNodeKey(nodeKey, attempt);
-    });
-}
 
 /**
  * Create a per-operation identifier resolver.
@@ -99,7 +93,7 @@ function makeIdentifierResolver(rootDatabase) {
      */
     function ensureLookup() {
         if (lookup === null) {
-            lookup = cloneIdentifierLookup(getActiveLookup(rootDatabase));
+            lookup = getActiveLookup(rootDatabase);
         }
         return lookup;
     }
@@ -143,7 +137,12 @@ function makeIdentifierResolver(rootDatabase) {
         hasPendingLookupWrite = true;
         const nodeIdentifier = cacheMapping(
             nodeKey,
-            allocateIdentifier(rootDatabase, ensureLookup(), nodeKey)
+            allocateNodeIdentifier(ensureLookup(), nodeKey, (attempt) => {
+                if (typeof rootDatabase.generateNodeIdentifier === "function") {
+                    return rootDatabase.generateNodeIdentifier();
+                }
+                return deterministicNodeIdentifierFromNodeKey(nodeKey, attempt);
+            })
         );
         pendingIdentifierMappings.set(String(nodeKey), { nodeKey, nodeIdentifier });
         return nodeIdentifier;
@@ -174,38 +173,19 @@ function makeIdentifierResolver(rootDatabase) {
         lookupNodeIdentifier,
         getOrAllocateNodeIdentifier,
         requireNodeKey,
-        queueLookupPersistence() {
-            if (!hasPendingLookupWrite) {
-                return;
-            }
+        get hasPendingAllocations() {
+            return hasPendingLookupWrite;
         },
-        async commitPersistedLookup(rootDatabaseToUpdate, globalDatabase) {
-            if (!hasPendingLookupWrite) {
-                return;
-            }
-            const activeLookup = getActiveLookup(rootDatabaseToUpdate);
+        applyPendingTo(activeLookup) {
             for (const { nodeKey, nodeIdentifier } of pendingIdentifierMappings.values()) {
                 setIdentifierMapping(activeLookup, nodeIdentifier, nodeKey);
             }
-            const lookupToCommit = cloneIdentifierLookup(activeLookup);
-            if (globalDatabase !== undefined) {
-                await globalDatabase.put(
-                    IDENTIFIERS_KEY,
-                    serializeIdentifierLookup(lookupToCommit)
-                );
-            }
-            if (typeof rootDatabaseToUpdate.replaceActiveIdentifierLookup === "function") {
-                rootDatabaseToUpdate.replaceActiveIdentifierLookup(lookupToCommit);
-            } else {
-                fallbackIdentifierLookups.set(rootDatabaseToUpdate, lookupToCommit);
-            }
-            lookup = cloneIdentifierLookup(lookupToCommit);
-            pendingIdentifierMappings.clear();
-            hasPendingLookupWrite = false;
         },
     };
 }
 
 module.exports = {
     makeIdentifierResolver,
+    getActiveLookup,
+    setActiveLookup,
 };
