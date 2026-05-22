@@ -10,24 +10,27 @@ The IncrementalGraph system maintains its state in two layers:
    (the bijection between semantic node keys and opaque node identifiers).
 
 2. **Volatile layer** (`_computed`) — in-memory fields of `RootDatabase`.  The volatile layer
-   provides fast access to the runtime state that is derived from the persisted layer.  It is
-   populated when the database is first opened and is kept up-to-date as operations proceed.
+   provides fast, in-process access to the runtime state that mirrors the persisted layer.  It is
+   populated lazily from the persisted layer and kept in exact correspondence with it as operations
+   proceed.
 
 The consistency guarantee the system provides is:
 
-> **Every value that any caller can read from the volatile layer corresponds to a state that has
-> been durably committed to the persisted layer.**
+> **At every observable point, the volatile layer is exactly isomorphic to the persisted layer.**
 
-In other words, the volatile layer must never expose data that was never persisted.  The converse
-— that the volatile layer is always *exactly* equal to the persisted layer — is not required.  The
-volatile layer may be a superset of the persisted layer (it may contain entries that have been
-committed to disk but not yet reloaded, or entries that were committed in the current session and
-are still held in memory), but it must never be a subset (it must not forget entries that have been
-committed).
+"Observable point" means any moment when code outside `withComputedStateMutex` can read from
+`_computed`.  Inside a mutex-held section, `_computed` may temporarily hold intermediate local
+working state, but by the time the mutex is released, `_computed` must again exactly reflect
+whatever is on disk.
 
-The synchronisation between the two layers need not be eager.  The volatile layer is allowed to
-"catch up" lazily — loading state from the persisted layer only when it is first needed — provided
-that the invariants below are maintained at all times.
+"Exactly isomorphic" means neither more nor less: the volatile layer must not expose data that is
+not yet on disk, and it must not omit data that is on disk.
+
+The synchronisation between the two layers need not be eager in one specific sense: the volatile
+layer is allowed to start in an uninitialised state and load its contents from disk lazily — on
+first need — rather than at construction time.  This lazy loading must happen inside the mutex so
+the loaded state is exactly the persisted state at the moment of loading.  After the first load, the
+invariant of exact isomorphism must be maintained for the rest of the session.
 
 ---
 
@@ -88,54 +91,62 @@ sorted lexicographically by identifier string.
 The following invariants must hold at all times.  They define the correctness contract for the
 synchronisation mechanism.
 
-### Invariant 1 — Superset
+### Invariant 1 — Exact isomorphism
 
-At any observable point (any point at which a caller reads from `_computed`),
-`_computed.identifierLookup` contains at least every entry that is present in the most recently
-committed `identifiers_keys_map` on disk.
+At every observable point, `_computed.identifierLookup` contains **exactly** the same entries as
+the most recently committed `identifiers_keys_map` on disk.
 
-Formally: if `(id, key)` is in the committed `identifiers_keys_map`, then `(id, key)` is in
-`_computed.identifierLookup`.
+Formally:
+- If `(id, key)` is in the committed `identifiers_keys_map`, then `(id, key)` is in
+  `_computed.identifierLookup`.
+- If `(id, key)` is in `_computed.identifierLookup`, then `(id, key)` is in the committed
+  `identifiers_keys_map`.
 
-The converse is not required: `_computed.identifierLookup` may contain entries that have not yet
-been committed to disk, as long as they are committed before any observable read occurs that would
-expose them.
+Both directions are required.  The volatile layer must neither lag behind disk (missing committed
+entries) nor run ahead of disk (holding entries that have not yet been committed).
 
-### Invariant 2 — Monotonicity
+### Invariant 2 — Monotonicity of the persisted layer
 
-No entry is ever removed from `_computed.identifierLookup`.  Entries may only be added.
+The persisted `identifiers_keys_map` only ever grows: entries are never deleted.  Because the
+volatile layer is exactly isomorphic to the persisted layer (Invariant 1), the visible content of
+`_computed.identifierLookup` also only ever grows between observable points within a single replica
+session.
 
-Identifiers are permanent: once a `NodeIdentifier` is assigned to a `NodeKeyString`, that mapping
-is valid for the lifetime of the replica.
+This is a consequence of Invariant 1 combined with the append-only nature of the persisted layer;
+it is not an independent invariant of the volatile layer itself.
 
 ### Invariant 3 — Serialisation
 
 All mutations of `_computed.identifierLookup` happen inside a single acquisition of
 `withComputedStateMutex`.  Two mutations cannot run concurrently.
 
-Reading `_computed.identifierLookup` for a key that is known to already be present (i.e., the
-caller is certain the entry was committed in a prior operation) does not require the mutex.
+Reading `_computed.identifierLookup` outside the mutex is safe only for entries that are known to
+already be committed on disk (i.e., have been written in a prior, fully completed mutex section).
+Any code that might read an entry that could have been newly allocated since the last full mutex
+section must re-acquire the mutex.
 
-### Invariant 4 — Atomic commit
+### Invariant 4 — Disk-first commit ordering
 
-A new identifier mapping becomes visible in `_computed.identifierLookup` only after the
-corresponding `identifiers_keys_map` entry has been durably written to disk.  Specifically:
+The persisted layer is always updated **before** `_computed` is updated.  Specifically, for any
+operation that allocates a new identifier:
 
 1. Inside `withComputedStateMutex`:
-   a. Allocate the new identifier and add it to `_computed.identifierLookup`.
+   a. Compute the new identifier mapping into a **temporary local variable** (not yet in `_computed`).
    b. Include the updated `identifiers_keys_map` in the current LevelDB batch.
    c. Flush the batch to disk.
-   d. Only after the flush succeeds is the new entry considered committed.
-2. If the flush fails, the new entry must be removed from `_computed.identifierLookup` (rollback).
+   d. **Only after the flush succeeds**: update `_computed.identifierLookup` to add the new mapping.
+   e. If the flush fails: do **not** update `_computed.identifierLookup`.  Discard the temporary
+      allocation.  Surface the error to the caller.
 
-This ensures that `_computed.identifierLookup` never contains entries that failed to reach disk.
+This ordering ensures that after the mutex is released, `_computed.identifierLookup` is always
+exactly isomorphic to the disk state (Invariant 1).
 
 ### Invariant 5 — Replica scope
 
 All entries in `_computed.identifierLookup` belong to the active replica (`_computed.replicaName`).
 After a replica cutover, `_computed.identifierLookup` is replaced entirely with the new replica's
-identifier lookup.  No entry from the old replica's lookup persists in `_computed` after the
-cutover completes.
+identifier lookup loaded from disk.  No entry from the old replica's lookup persists in `_computed`
+after the cutover completes.
 
 ---
 
@@ -173,8 +184,8 @@ This function is called inside `withComputedStateMutex`.  It is idempotent.
    c. Deserialize and validate the lookup.
    d. Assign the result to `_computed.identifierLookup`.
 
-After this function returns, `_computed.identifierLookup` satisfies Invariant 1 (it is a superset
-of the persisted lookup as of the moment the read occurred).
+After this function returns, `_computed.identifierLookup` satisfies Invariant 1 (it is exactly
+isomorphic to the persisted `identifiers_keys_map` as of the moment the read occurred).
 
 ---
 
@@ -194,35 +205,41 @@ identifier mappings (e.g., a pull that resolves a previously unseen node).
    b. For each node key that the operation touches:
       - Look up the key in `_computed.identifierLookup`.
       - If found, use the existing identifier.  No disk write is needed for this key.
-      - If not found, allocate a new identifier:
+      - If not found, allocate a new identifier **into a temporary local variable** (do not write to
+        `_computed.identifierLookup` yet):
         1. Generate a candidate identifier (random or deterministic).
         2. Verify the candidate is not already in `_computed.identifierLookup`.
         3. If it is (collision), generate another candidate and retry.
-        4. Add the mapping `(candidate, key)` to `_computed.identifierLookup`.
-        5. Record the new mapping in the current batch's pending-lookup list.
+        4. Record the `(candidate, key)` mapping in a local pending list for this operation.
 
-   c. Include the pending-lookup list as an update to `identifiers_keys_map` in the LevelDB batch.
+   c. Include the pending list as an update to `identifiers_keys_map` in the LevelDB batch.
 
    d. Add all node-data operations (values, freshness, inputs, revdeps, counters, timestamps) to
       the LevelDB batch, keyed by the resolved identifiers.
 
    e. Flush the batch to disk.
 
-   f. If the flush fails, undo the additions made to `_computed.identifierLookup` in step (b).
-      Surface the error to the caller.
+   f. **Only after a successful flush**: add every entry from the pending list to
+      `_computed.identifierLookup`.
+
+   g. If the flush fails: do **not** modify `_computed.identifierLookup`.  Discard the pending
+      list.  Surface the error to the caller.
 
 3. `withComputedStateMutex` releases.
+
+At step 3 release time, `_computed.identifierLookup` is exactly isomorphic to the disk state,
+satisfying Invariant 1.
 
 ### Sequence with no new allocation
 
 If the operation only touches nodes whose identifiers are already in `_computed.identifierLookup`
 (all keys are known), steps 2b–2c simplify to:
 
-- Look up all keys in `_computed.identifierLookup` (no allocation, no pending-lookup list).
-- Build and flush the batch without a `identifiers_keys_map` update.
+- Look up all keys in `_computed.identifierLookup` (no allocation, no pending list).
+- Build and flush the batch without an `identifiers_keys_map` update.
 
-The mutex is still required so that the read of `_computed.identifierLookup` is consistent with
-ongoing allocations by concurrent operations.
+The mutex is still required while reading `_computed.identifierLookup` so that reads are consistent
+with any concurrent mutations (which are also performed under the mutex).
 
 ### Batch context
 
@@ -317,54 +334,71 @@ to disk, then after the database is closed and reopened, a lookup of K returns I
 *Verification approach:* open DB, pull a node (forcing identifier allocation), close DB, reopen DB,
 assert the same identifier is returned for the same key.
 
-### Property 4 — Monotonicity (no entries disappear)
+### Property 4 — Monotonicity (no entries disappear between observable points)
 
-The number of entries in `_computed.identifierLookup` is non-decreasing.  An entry that is present
-at time T₁ is also present at every later time T₂ > T₁ within the same replica session.
+An entry that is present in `_computed.identifierLookup` at one observable point is also present at
+every later observable point within the same replica session.
+
+This follows from the append-only nature of the persisted `identifiers_keys_map` combined with
+Invariant 1.
 
 *Verification approach:* snapshot the lookup before and after a sequence of operations; assert the
-after-snapshot is a superset of the before-snapshot.
+after-snapshot contains every entry from the before-snapshot.
 
-### Property 5 — Superset of disk
+### Property 5 — Exact equality with disk at every observable point
 
-At any point, `_computed.identifierLookup` contains at least every entry present in the persisted
-`identifiers_keys_map`.
+At every observable point, `_computed.identifierLookup` contains **exactly** the same entries as
+the persisted `identifiers_keys_map` — no more and no fewer.
 
-*Verification approach:* read the persisted map directly from LevelDB; assert every entry is also
-in `_computed.identifierLookup`.
+*Verification approach:* after any operation completes (mutex released), read the persisted map
+directly from LevelDB.  Assert that the two sets of entries are equal in both directions (disk ⊆
+volatile AND volatile ⊆ disk).
 
-### Property 6 — Rollback on failed commit
+### Property 6 — No volatile entry before disk commit
+
+An entry is never present in `_computed.identifierLookup` unless it has already been committed to
+the persisted `identifiers_keys_map`.  There is no "optimistic" or "ahead-of-disk" volatile state.
+
+*Verification approach:* during a flush (using a test hook), pause after writing to disk but before
+returning from the flush call.  At that moment, `_computed.identifierLookup` must not yet contain
+the new entry.  After the flush returns successfully, the entry must be present.
+
+### Property 7 — Rollback on failed commit
 
 If the LevelDB batch flush fails (simulated by injecting a failure), no new identifier mappings
 from that operation are visible in `_computed.identifierLookup` after the failure.
 
 *Verification approach:* inject a flush failure; assert that keys that were being allocated during
-the failing operation are not in `_computed.identifierLookup` afterwards.
+the failing operation are not in `_computed.identifierLookup` afterwards, and that the on-disk map
+is also unchanged.
 
-### Property 7 — Replica cutover replaces the lookup entirely
+### Property 8 — Replica cutover replaces the lookup entirely and exactly
 
 After a replica cutover, `_computed.identifierLookup` contains exactly the entries from the new
 replica's `identifiers_keys_map`, and no entries from the old replica's lookup.
 
 *Verification approach:* populate replica A with identifiers, perform a cutover to replica B
 (which has a different set of identifiers), assert that `_computed.identifierLookup` matches
-replica B's lookup and contains no replica A entries.
+replica B's lookup exactly (equal in both directions) and contains no replica A entries.
 
-### Property 8 — Nested pull shares allocation context
+### Property 9 — Nested pull shares allocation context
 
 If an outer pull for node X causes an inner pull for node Y (a dependency), and Y was previously
 unseen, then after both pulls complete, the identifier allocated for Y is present in the same
-committed batch as the data for X (i.e., they appear in the same atomic write).
+committed batch as the data for X (i.e., they appear in the same atomic write), and both appear
+on disk before either appears in `_computed.identifierLookup`.
 
 *Verification approach:* use a test graph where X depends on Y (both unseen); instrument the
 LevelDB batch to capture which keys are written in each batch; assert that Y's identifier entry and
-X's node data appear in the same batch.
+X's node data appear in the same batch, and that the volatile lookup is updated only after the
+flush.
 
-### Property 9 — Read-only lookups do not conflict with allocations
+### Property 10 — Read-only lookups do not interfere with allocations
 
 A concurrent operation that only reads existing identifiers (no new allocations) does not interfere
 with an operation that is simultaneously allocating new identifiers.  Both operations complete
-successfully and see consistent results.
+successfully and the reader sees a consistent, fully-committed state.
 
-*Verification approach:* run a reader and an allocator concurrently; assert neither fails and the
-reader sees a consistent state.
+*Verification approach:* run a reader and an allocator concurrently; assert neither fails, the
+reader sees a state that is exactly some committed version of the disk, and the allocator's new
+entries are only visible after its batch is flushed.

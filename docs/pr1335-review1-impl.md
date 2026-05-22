@@ -26,13 +26,13 @@ This is the primary deliverable requested by the feedback.  The document must:
      `identifiers_keys_map`.
 
 3. **State the invariants** in a testable form:
-   - Superset invariant: `_computed.identifierLookup` always contains at least every entry in the
-     most recently committed `identifiers_keys_map`.
-   - Monotonicity invariant: no entry is ever removed from `_computed.identifierLookup`.
+   - Exact isomorphism invariant: `_computed.identifierLookup` always equals the persisted
+     `identifiers_keys_map` at every observable point (no more and no fewer entries).
+   - Disk-first commit ordering: the disk write must complete before `_computed` is updated.
    - Serialisation invariant: all mutations of `_computed.identifierLookup` (and the concurrent DB
      commit) happen inside a single acquisition of `withComputedStateMutex`.
-   - Atomic commit invariant: a new identifier mapping is visible in `_computed` only after the
-     corresponding DB record has been durably written.
+   - No-optimistic-write invariant: `_computed` must never contain an entry that has not been
+     durably written to disk.
 
 4. **Describe the initialisation protocol** (startup and replica cutover):
    - Steps to populate `_computed` from disk.
@@ -54,12 +54,12 @@ This is the primary deliverable requested by the feedback.  The document must:
 
 ### Checklist for the specification document
 
-- [ ] High-level overview (≤ 1 page): two-layer model, `_computed` role, consistency guarantee.
+- [ ] High-level overview (≤ 1 page): two-layer model, `_computed` role, exact isomorphism guarantee.
 - [ ] Data model section: `_computed` fields, `IdentifierLookup` definition, relationship to disk.
-- [ ] Invariants section: superset, monotonicity, serialisation, atomic commit.
+- [ ] Invariants section: exact isomorphism, disk-first ordering, serialisation, no-optimistic-write.
 - [ ] Initialisation protocol: steps, mutex requirements, lazy loading.
-- [ ] Operation protocol: step-by-step with mutex boundaries marked.
-- [ ] Replica cutover protocol: `withExclusiveMode`, `_computed` rebuild.
+- [ ] Operation protocol: step-by-step with disk flush before volatile update.
+- [ ] Replica cutover protocol: `withExclusiveMode`, `_computed` rebuild from new replica's disk state.
 - [ ] Testable properties: at least 7 numbered properties, each independently verifiable.
 
 ---

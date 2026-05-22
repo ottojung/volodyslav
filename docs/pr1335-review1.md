@@ -16,9 +16,12 @@ The IncrementalGraph system maintains two state layers:
   `_computed.identifierLookup` is the authoritative live bijection between semantic node keys and
   opaque node identifiers.
 
-For correctness, every entry that is committed to disk must eventually be reflected in `_computed`,
-and every entry visible via `_computed` must correspond to something that is or will be committed
-to disk.
+For correctness, the volatile layer must at all times be **exactly isomorphic** to the persisted
+layer: it must not be missing any entry that is on disk, and it must not contain any entry that is
+not yet on disk.  Both directions of this isomorphism are required.
+
+The second direction is the one that is difficult and currently violated: the volatile layer must
+not expose data that has not yet been committed to disk.
 
 ---
 
@@ -106,20 +109,21 @@ without this analysis.
 
 ---
 
-## Problem 4: The `_computed` / disk consistency boundary is implicit
+## Problem 4: The `_computed` / disk consistency boundary is implicit and violated
 
 After a successful commit inside `withComputedStateMutex`, `_computed.identifierLookup` is updated.
-If a future operation reads `_computed.identifierLookup` directly (bypassing a resolver snapshot),
-it sees the updated state.  But if a concurrent operation already has a resolver snapshot from
-before the commit, it sees the old state.
+However, the current implementation adds new identifier entries to `_computed.identifierLookup`
+**before** flushing to disk (step 4 in the old `withIdentifierBatch`: `applyPendingTo` is called on
+the active lookup, then the batch is flushed).  This violates the isomorphism requirement: there is
+a window during which `_computed` contains entries that are not yet on disk.
 
-There is no documented invariant specifying:
-- At what point is `_computed.identifierLookup` guaranteed to be consistent with disk?
-- What is the set of permitted divergence states between disk and `_computed`?
+Furthermore there is no documented invariant specifying:
+- At what point is `_computed.identifierLookup` guaranteed to be exactly isomorphic to disk?
+- Is it valid for `_computed` to be ahead of disk?  (It is not.)
 - Under what conditions is it safe to read from `_computed` without taking the mutex?
 
 Without these invariants documented, it is impossible for a reader to be confident the system is
-correct.
+correct, and the ordering bug described above goes unnoticed.
 
 ---
 
@@ -130,4 +134,4 @@ correct.
 | 1 | Computed state (resolver snapshots, pending allocations) lives outside `_computed` | Harder to reason about consistency; violates design requirement |
 | 2 | Identifier allocation happens outside the mutex; concurrent resolvers can conflict | `IdentifierLookupError` at commit time; orphaned node data |
 | 3 | Correctness argument requires multi-level non-obvious reasoning | Bugs are hard to detect; maintenance is risky |
-| 4 | No explicit invariant on the `_computed` / disk consistency boundary | Impossible to verify correctness without re-deriving the design |
+| 4 | `_computed` is updated before the disk flush; no invariant documents the required isomorphism | `_computed` can be ahead of disk; correctness is impossible to verify from the code |

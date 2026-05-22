@@ -38,23 +38,25 @@ understanding the interleaving of concurrent operations or the age of cached sna
 `_computed`, do X, write `_computed`, and commit to disk.  No other concurrent code can observe an
 intermediate state."
 
-### Principle 4 — Laziness is acceptable; divergence is not
+### Principle 4 — Laziness is acceptable; running ahead of disk is not
 
-`_computed` does not need to be initialised eagerly or maintained in perfect sync with disk at every
-instruction boundary.  The system may defer loading state from disk until it is actually needed
-("lazy loading").  However, once an operation reads or writes `_computed`, it must observe a state
-that is consistent with some past committed disk state, and it must leave `_computed` consistent
-with whatever was just committed.
+`_computed` does not need to be initialised eagerly.  The system may defer loading state from disk
+until it is actually needed ("lazy loading").  However, `_computed` must never expose data that has
+not yet been committed to disk.  The disk write must always precede the update to `_computed`.
 
 *Consequence:* lazy loading of `_computed.identifierLookup` is fine, but the load must happen
-inside the mutex so no two operations can load-and-modify concurrently.
+inside the mutex so no two operations can load-and-modify concurrently.  When a new identifier is
+allocated, the disk flush must complete before `_computed.identifierLookup` is updated.
 
-### Principle 5 — Observable behaviour, not internal state at every instant
+### Principle 5 — Exact isomorphism, not approximate consistency
 
-The required invariant is freedom from *observable divergence*: any value that a caller can read
-from the system must correspond to a committed state.  Internal intermediate states (e.g., `_computed`
-after loading but before committing new entries) do not need to be identical to the disk state, as
-long as they are never *less* complete than the disk state (monotonicity).
+The required invariant is **exact isomorphism** between the volatile layer and the persisted layer
+at every observable point (i.e., at any point outside a mutex-held section).  This means:
+
+- The volatile layer must not lag behind disk (missing committed entries).
+- The volatile layer must not run ahead of disk (holding entries not yet committed).
+
+Both directions are required.  "Observable divergence" in either direction violates the invariant.
 
 ---
 
@@ -82,20 +84,25 @@ Replace it with a design in which:
 ### Decision C — Define explicit invariants for `_computed`
 
 Write a specification document that states, for `_computed.identifierLookup`:
-- Its relationship to the persisted `identifiers_keys_map` (superset invariant).
-- Under what conditions it is safe to read it without the mutex (read-only lookups of already
-  committed entries).
+- Its relationship to the persisted `identifiers_keys_map` (exact isomorphism invariant).
+- The required commit ordering: disk write precedes volatile update.
+- Under what conditions it is safe to read it without the mutex.
 - What operations may mutate it and under what synchronisation.
 
 This addresses Problem 4.
 
-### Decision D — Lazy-load under the mutex
+### Decision D — Lazy-load under the mutex; disk-first commit ordering
 
 `_computed.identifierLookup` is loaded from disk on first need.  The load must be performed inside
-the mutex so no two concurrent operations can both observe an empty lookup and both try to build it
-from disk independently.
+the mutex so no two concurrent operations can both observe an uninitialised lookup and both try to
+build it from disk independently.
 
-After the load, the lookup is cached in `_computed` and subsequent operations use the cached copy.
+When committing new identifier allocations, the LevelDB batch must be flushed to disk **before**
+`_computed.identifierLookup` is updated.  This ensures that the volatile layer can never be ahead
+of disk.
+
+After the flush succeeds, `_computed.identifierLookup` is updated to match the newly committed disk
+state, restoring exact isomorphism.
 
 ### Decision E — Use re-entrant logical sections, not recursive mutex acquisition
 
@@ -115,7 +122,7 @@ separate mutex acquisitions for sub-operations.
 | Keeping the snapshot-and-merge pattern but making it more careful | Does not make correctness obvious; still requires non-local reasoning |
 | Using a second mutex specifically for identifier allocation | Adds complexity; introduces risk of lock-ordering bugs |
 | Removing the mutex and using copy-on-write | Does not work with LevelDB's synchronous batch semantics |
-| Eager synchronisation (always keeping `_computed` identical to disk) | Overly constraining; makes lazy loading impossible and complicates startup |
+| Updating `_computed` before the disk flush (optimistic write) | Violates the isomorphism invariant; creates a window where volatile is ahead of disk |
 
 ---
 
