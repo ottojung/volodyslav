@@ -35,8 +35,8 @@ function internalGetOrCreateConcreteNode(
     compiledNode,
     bindings
 ) {
-    const concreteKeyIdentifier = concreteKeyCanonical;
-    const cached = incrementalGraph.concreteInstantiations.get(concreteKeyIdentifier);
+    const concreteKeyString = concreteKeyCanonical;
+    const cached = incrementalGraph.concreteInstantiations.get(concreteKeyString);
     if (cached) {
         return cached;
     }
@@ -48,14 +48,14 @@ function internalGetOrCreateConcreteNode(
         });
 
         const concreteNode = {
-            output: concreteKeyIdentifier,
+            output: concreteKeyString,
             inputs: jsonInputs,
             /** @type {ConcreteNodeComputor} */
             computor: (inputs, oldValue) =>
                 compiledNode.source.computor(inputs, oldValue, []),
         };
         incrementalGraph.concreteInstantiations.set(
-            concreteKeyIdentifier,
+            concreteKeyString,
             concreteNode
         );
         return concreteNode;
@@ -74,14 +74,14 @@ function internalGetOrCreateConcreteNode(
     });
 
     const concreteNode = {
-        output: concreteKeyIdentifier,
+        output: concreteKeyString,
         inputs: concreteInputs,
         /** @type {ConcreteNodeComputor} */
         computor: (inputValues, oldValue) =>
             compiledNode.source.computor(inputValues, oldValue, bindings),
     };
 
-    incrementalGraph.concreteInstantiations.set(concreteKeyIdentifier, concreteNode);
+    incrementalGraph.concreteInstantiations.set(concreteKeyString, concreteNode);
     return concreteNode;
 }
 
