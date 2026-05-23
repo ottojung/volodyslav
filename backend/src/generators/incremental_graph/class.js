@@ -229,13 +229,15 @@ class IncrementalGraphClass {
     /**
      * @param {NodeKeyString} nodeKeyStr
      * @param {IdentifierResolver} identifierResolver
+     * @param {BatchBuilder | null} [outerBatch=null]
      * @returns {Promise<RecomputeResult>}
      */
-    async _pullDuringPull(nodeKeyStr, identifierResolver) {
+    async _pullDuringPull(nodeKeyStr, identifierResolver, outerBatch = null) {
         return await internalPullByNodeKeyWithStatusDuringPull(
             this,
             nodeKeyStr,
-            identifierResolver
+            identifierResolver,
+            outerBatch
         );
     }
 

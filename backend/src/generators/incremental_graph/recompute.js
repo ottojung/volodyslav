@@ -11,7 +11,7 @@
  * @property {import('./graph_storage').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver, outerBatch: BatchBuilder) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -46,7 +46,8 @@ async function internalMaybeRecalculate(
         const { value: inputValue } =
             await incrementalGraph._pullDuringPull(
                 inputKey,
-                identifierResolver
+                identifierResolver,
+                batch
             );
         inputValues.push(inputValue);
 

@@ -499,12 +499,16 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * Run a batch that atomically commits node writes together with any new
          * identifier allocations made by `identifierResolver`.
          *
-         * Correctness guarantee: the read of the current active lookup, the merge of
-         * pending allocations, the DB commit of both node operations and the updated
-         * identifier map, and the in-memory update of `_computed` all happen inside a
-         * single `withComputedStateMutex` acquisition.  Concurrent callers are fully
-         * serialised at the commit phase, so no two batches can ever produce
-         * conflicting identifier-map writes.
+         * Correctness guarantee: the entire operation — lazy-loading the identifier
+         * lookup, running `fn(batch)` (which resolves and allocates identifiers), the
+         * DB flush of both node operations and the updated identifier map, and the
+         * in-memory update of `_computed` — all happen inside a single
+         * `withComputedStateMutex` acquisition.  This serialises all concurrent
+         * callers end-to-end, eliminating identifier allocation races.
+         *
+         * Callers that are already inside the mutex (nested dependency pulls) must
+         * NOT call this method again; they must instead receive the outer batch and
+         * resolver as arguments and operate on them directly.
          *
          * @template T
          * @param {IdentifierResolver} identifierResolver
@@ -516,10 +520,18 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 ? rootDatabase.currentReplicaName()
                 : "__default__";
 
-            const { batch, operations } = createBatch(schemaStorage);
-            const value = await fn(batch);
+            return await withComputedStateMutex(sleeper, computedStateIdentifier, async () => {
+                // Step 1: ensure the identifier lookup is loaded from disk (lazy init).
+                if (typeof rootDatabase.ensureActiveIdentifierLookupLoaded === "function") {
+                    await rootDatabase.ensureActiveIdentifierLookupLoaded();
+                }
 
-            await withComputedStateMutex(sleeper, computedStateIdentifier, async () => {
+                // Step 2: run the operation (identifier allocation + node-data writes)
+                // entirely inside the mutex so all allocations see the committed state.
+                const { batch, operations } = createBatch(schemaStorage);
+                const value = await fn(batch);
+
+                // Step 3: flush to disk first, then update _computed (disk-first ordering).
                 if (identifierResolver.hasPendingAllocations) {
                     const activeLookup = getActiveLookup(rootDatabase);
                     identifierResolver.applyPendingTo(activeLookup);
@@ -532,14 +544,16 @@ function makeGraphStorage(rootDatabase, sleeper) {
                             )
                         );
                     }
+                    // Flush to disk first.
                     await schemaStorage.batch(operations);
+                    // Only after a successful flush: update the volatile layer.
                     setActiveLookup(rootDatabase, lookupToCommit);
                 } else {
                     await schemaStorage.batch(operations);
                 }
-            });
 
-            return value;
+                return value;
+            });
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,

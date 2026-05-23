@@ -1,4 +1,15 @@
+const { AsyncLocalStorage } = require("async_hooks");
 const { makeUniqueFunctor } = require("../../unique_functor");
+
+/**
+ * Tracks which computed-state mutex identifiers are currently held on the
+ * active async call chain, enabling re-entrant behaviour for
+ * {@link withComputedStateMutex}.  A Set is stored per chain; absence of a
+ * store means no mutex is held on the current chain.
+ *
+ * @type {AsyncLocalStorage<Set<string>>}
+ */
+const computedStateLockStorage = new AsyncLocalStorage();
 /**
  * Mutex key for serializing *exclusive* incremental-graph operations with
  * respect to each other (for example, database opens or migrations).
@@ -77,6 +88,18 @@ function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
 /**
  * Serialize writes to the active replica computed state.
  *
+ * This lock is **re-entrant per async call chain**: if the current chain
+ * already holds the mutex for `computedStateIdentifier` (detected via
+ * {@link AsyncLocalStorage}), `procedure` is executed immediately without
+ * attempting to acquire the underlying mutex again.  Re-entrancy is needed
+ * because node computors may call back into the graph (e.g. to read
+ * `getOntology()`), which internally calls `pull()` → `withIdentifierBatch()`
+ * → `withComputedStateMutex()`.  Without re-entrancy such calls would
+ * deadlock.
+ *
+ * Concurrent callers on *different* async chains still wait for exclusive
+ * access, preserving the serialisation guarantee.
+ *
  * @template T
  * @param {SleepCapability} sleeper
  * @param {string} computedStateIdentifier - Active replica/computed-state identifier.
@@ -84,9 +107,19 @@ function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
  * @returns {Promise<T>}
  */
 function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
+    const held = computedStateLockStorage.getStore();
+    if (held !== undefined && held.has(computedStateIdentifier)) {
+        // Re-entrant: already inside this mutex on this async call chain.
+        return procedure();
+    }
     return sleeper.withMutex(
         COMPUTED_STATE_KEY.instantiate([computedStateIdentifier]),
-        procedure
+        () => {
+            const parent = held ?? new Set();
+            const next = new Set(parent);
+            next.add(computedStateIdentifier);
+            return computedStateLockStorage.run(next, procedure);
+        }
     );
 }
 

@@ -15,7 +15,7 @@ function getTestCapabilities() {
 }
 
 describe("incremental_graph atomicity without external batches", () => {
-    test("dependency writes remain committed when derived recomputation fails", async () => {
+    test("dependency writes are rolled back when derived computation fails (all-or-nothing atomicity)", async () => {
         let sourceComputations = 0;
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -42,13 +42,17 @@ describe("incremental_graph atomicity without external batches", () => {
         ]);
 
         await expect(graph.pull("derived")).rejects.toThrow("derived-fails");
+        // source WAS computed (as a dependency of derived)
         expect(sourceComputations).toBe(1);
-        expect(await graph.getFreshness("source")).toBe("up-to-date");
+        // source's write is rolled back because it shares the batch with derived;
+        // all-or-nothing atomicity means if derived fails, source is not committed either
+        expect(await graph.getFreshness("source")).toBe("missing");
+        // pulling source directly causes it to be recomputed and committed
         expect(await graph.pull("source")).toEqual({
             type: "all_events",
             events: [],
         });
-        expect(sourceComputations).toBe(1);
+        expect(sourceComputations).toBe(2);
 
         await db.close();
     });

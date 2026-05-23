@@ -20,6 +20,7 @@
  * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {(nodeKeyStr: NodeKeyString, identifierResolver: IdentifierResolver, outerBatch: BatchBuilder | null) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { stringToNodeName } = require("./database");
@@ -112,17 +113,20 @@ async function internalPullWithStatus(
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeKeyString} nodeKeyStr
  * @param {IdentifierResolver} [identifierResolver=incrementalGraph.makeIdentifierResolver()]
+ * @param {BatchBuilder | null} [outerBatch=null]
  * @returns {Promise<RecomputeResult>}
  */
 async function internalPullByNodeKeyWithStatusDuringPull(
     incrementalGraph,
     nodeKeyStr,
-    identifierResolver = incrementalGraph.makeIdentifierResolver()
+    identifierResolver = incrementalGraph.makeIdentifierResolver(),
+    outerBatch = null
 ) {
     return runPullForSemanticNodeKey(
         incrementalGraph,
         nodeKeyStr,
-        identifierResolver
+        identifierResolver,
+        outerBatch
     );
 }
 
@@ -165,12 +169,14 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
  * @param {IncrementalGraphPullAccess} incrementalGraph
  * @param {NodeKeyString} semanticNodeKey
  * @param {IdentifierResolver} identifierResolver
+ * @param {BatchBuilder | null} [outerBatch=null]
  * @returns {Promise<RecomputeResult>}
  */
 async function runPullForSemanticNodeKey(
     incrementalGraph,
     semanticNodeKey,
-    identifierResolver
+    identifierResolver,
+    outerBatch = null
 ) {
     const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKey)));
     const nodeName = nodeKey.head;
@@ -220,6 +226,17 @@ async function runPullForSemanticNodeKey(
             identifierResolver
         );
     };
+
+    if (outerBatch !== null) {
+        // Nested call: the outer pull already holds withComputedStateMutex and has
+        // created the shared batch.  Running withIdentifierBatch here would deadlock
+        // (same mutex) and withPullNodeMutex would deadlock with a concurrent outer
+        // pull that holds it while waiting for withComputedStateMutex.
+        // Instead, execute directly with the shared batch — the outer pull's commit
+        // covers all identifier allocations and node-data writes for the entire tree.
+        return run(outerBatch);
+    }
+
     return withPullNodeMutex(incrementalGraph.sleeper, semanticNodeKey, () =>
         incrementalGraph.withIdentifierBatch(identifierResolver, run)
     );
