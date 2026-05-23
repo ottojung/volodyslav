@@ -37,23 +37,53 @@ const { createHook, executionAsyncId } = require("async_hooks");
  * @type {Set<PullContextFrame>}
  */
 const activePullContextFrames = new Set();
+/** @type {Map<number, Set<PullContextFrame>>} */
+const pullContextFramesByAsyncId = new Map();
+
+/**
+ * @param {number} asyncId
+ * @param {PullContextFrame} frame
+ * @returns {void}
+ */
+function addFrameAsyncOwnership(asyncId, frame) {
+    frame.ownerAsyncIds.add(asyncId);
+    const existing = pullContextFramesByAsyncId.get(asyncId);
+    if (existing !== undefined) {
+        existing.add(frame);
+        return;
+    }
+    pullContextFramesByAsyncId.set(asyncId, new Set([frame]));
+}
+
+/**
+ * @param {number} asyncId
+ * @returns {void}
+ */
+function releaseAsyncOwnership(asyncId) {
+    const frames = pullContextFramesByAsyncId.get(asyncId);
+    if (frames === undefined) {
+        return;
+    }
+    for (const frame of frames) {
+        frame.ownerAsyncIds.delete(asyncId);
+    }
+    pullContextFramesByAsyncId.delete(asyncId);
+}
 createHook({
     init(asyncId, _type, triggerAsyncId) {
-        for (const frame of activePullContextFrames) {
-            if (frame.ownerAsyncIds.has(triggerAsyncId)) {
-                frame.ownerAsyncIds.add(asyncId);
-            }
+        const inheritedFrames = pullContextFramesByAsyncId.get(triggerAsyncId);
+        if (inheritedFrames === undefined) {
+            return;
+        }
+        for (const frame of inheritedFrames) {
+            addFrameAsyncOwnership(asyncId, frame);
         }
     },
     destroy(asyncId) {
-        for (const frame of activePullContextFrames) {
-            frame.ownerAsyncIds.delete(asyncId);
-        }
+        releaseAsyncOwnership(asyncId);
     },
     promiseResolve(asyncId) {
-        for (const frame of activePullContextFrames) {
-            frame.ownerAsyncIds.delete(asyncId);
-        }
+        releaseAsyncOwnership(asyncId);
     },
 }).enable();
 
@@ -210,10 +240,12 @@ class IncrementalGraphClass {
      * @returns {void}
      */
     pushActivePullContext(context) {
+        const ownerAsyncId = executionAsyncId();
         const frame = {
             ...context,
-            ownerAsyncIds: new Set([executionAsyncId()]),
+            ownerAsyncIds: new Set(),
         };
+        addFrameAsyncOwnership(ownerAsyncId, frame);
         this._activePullContexts.push(frame);
         activePullContextFrames.add(frame);
     }
@@ -223,9 +255,8 @@ class IncrementalGraphClass {
      */
     getActivePullContext() {
         const currentAsyncId = executionAsyncId();
-        for (let index = this._activePullContexts.length - 1; index >= 0; index--) {
-            const current = this._activePullContexts[index];
-            if (current !== undefined && current.ownerAsyncIds.has(currentAsyncId)) {
+        for (const current of [...this._activePullContexts].reverse()) {
+            if (current.ownerAsyncIds.has(currentAsyncId)) {
                 return {
                     identifierResolver: current.identifierResolver,
                     batch: current.batch,
@@ -247,6 +278,16 @@ class IncrementalGraphClass {
             current.batch !== context.batch
         ) {
             throw new Error("Invalid pull context stack");
+        }
+        for (const asyncId of current.ownerAsyncIds) {
+            const frames = pullContextFramesByAsyncId.get(asyncId);
+            if (frames === undefined) {
+                continue;
+            }
+            frames.delete(current);
+            if (frames.size === 0) {
+                pullContextFramesByAsyncId.delete(asyncId);
+            }
         }
         activePullContextFrames.delete(current);
         this._activePullContexts.pop();
