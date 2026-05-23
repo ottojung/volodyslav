@@ -2,6 +2,8 @@
  * IncrementalGraph class for propagating data through dependency edges.
  */
 
+const { createHook, executionAsyncId } = require("async_hooks");
+
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
@@ -20,6 +22,44 @@
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
+/**
+ * @typedef {object} PullContext
+ * @property {IdentifierResolver} identifierResolver
+ * @property {BatchBuilder} batch
+ */
+/**
+ * @typedef {PullContext & { ownerAsyncId: number }} PullContextFrame
+ */
+
+/** @type {Map<number, number>} */
+const asyncParentById = new Map();
+createHook({
+    init(asyncId, _type, triggerAsyncId) {
+        asyncParentById.set(asyncId, triggerAsyncId);
+    },
+}).enable();
+
+/**
+ * @param {number} asyncId
+ * @param {number} ancestorAsyncId
+ * @returns {boolean}
+ */
+function isAsyncDescendantOf(asyncId, ancestorAsyncId) {
+    let current = asyncId;
+    const visited = new Set();
+    while (!visited.has(current)) {
+        if (current === ancestorAsyncId) {
+            return true;
+        }
+        visited.add(current);
+        const parent = asyncParentById.get(current);
+        if (parent === undefined || parent === current) {
+            return false;
+        }
+        current = parent;
+    }
+    return false;
+}
 
 const {
     compileNodeDef,
@@ -77,6 +117,9 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
+    /** @type {Array<PullContextFrame>} */
+    _activePullContexts;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -100,6 +143,7 @@ class IncrementalGraphClass {
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
+        this._activePullContexts = [];
     }
 
     /**
@@ -163,6 +207,53 @@ class IncrementalGraphClass {
      */
     async withIdentifierBatch(identifierResolver, procedure) {
         return this.storage.withIdentifierBatch(identifierResolver, procedure);
+    }
+
+    /**
+     * @param {PullContext} context
+     * @returns {void}
+     */
+    pushActivePullContext(context) {
+        this._activePullContexts.push({
+            ...context,
+            ownerAsyncId: executionAsyncId(),
+        });
+    }
+
+    /**
+     * @returns {PullContext | null}
+     */
+    getActivePullContext() {
+        const currentAsyncId = executionAsyncId();
+        for (let index = this._activePullContexts.length - 1; index >= 0; index--) {
+            const current = this._activePullContexts[index];
+            if (
+                current !== undefined &&
+                isAsyncDescendantOf(currentAsyncId, current.ownerAsyncId)
+            ) {
+                return {
+                    identifierResolver: current.identifierResolver,
+                    batch: current.batch,
+                };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param {PullContext} context
+     * @returns {void}
+     */
+    popActivePullContext(context) {
+        const current = this._activePullContexts[this._activePullContexts.length - 1];
+        if (
+            current === undefined ||
+            current.identifierResolver !== context.identifierResolver ||
+            current.batch !== context.batch
+        ) {
+            throw new Error("Invalid pull context stack");
+        }
+        this._activePullContexts.pop();
     }
 
     /**

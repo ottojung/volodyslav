@@ -12,6 +12,8 @@
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver, outerBatch: BatchBuilder) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(context: { identifierResolver: IdentifierResolver, batch: BatchBuilder }) => void} pushActivePullContext
+ * @property {(context: { identifierResolver: IdentifierResolver, batch: BatchBuilder }) => void} popActivePullContext
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -124,7 +126,14 @@ async function internalMaybeRecalculate(
         }
     }
 
-    const computedValue = await nodeDefinition.computor(inputValues, oldValue);
+    const pullContext = { identifierResolver, batch };
+    incrementalGraph.pushActivePullContext(pullContext);
+    let computedValue;
+    try {
+        computedValue = await nodeDefinition.computor(inputValues, oldValue);
+    } finally {
+        incrementalGraph.popActivePullContext(pullContext);
+    }
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
             throw makeInvalidUnchangedError(nodeDefinition.outputKey);

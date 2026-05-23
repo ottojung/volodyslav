@@ -766,6 +766,59 @@ describe("IncrementalGraph concurrency", () => {
             // After both complete (sequentially), both have been computed.
             expect(started.sort()).toEqual(["source1", "source2"]);
         });
+
+        test("fire-and-forget callback pull reacquires computed-state mutex", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const releaseSlow = makeDeferred();
+            const callbackFinished = makeDeferred();
+            let activeSlowComputations = 0;
+            let maxActiveSlowComputations = 0;
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "slow",
+                    inputs: [],
+                    computor: async () => {
+                        activeSlowComputations += 1;
+                        maxActiveSlowComputations = Math.max(
+                            maxActiveSlowComputations,
+                            activeSlowComputations
+                        );
+                        await releaseSlow.promise;
+                        activeSlowComputations -= 1;
+                        return { type: "test", value: "slow-value" };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "trigger",
+                    inputs: [],
+                    computor: async () => {
+                        setTimeout(async () => {
+                            await graph.pull("slow");
+                            callbackFinished.resolve(undefined);
+                        }, 10);
+                        return { type: "test", value: "trigger-value" };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.pull("trigger");
+            const slowPull = graph.pull("slow");
+
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            expect(maxActiveSlowComputations).toBe(1);
+
+            releaseSlow.resolve(undefined);
+            await slowPull;
+            await callbackFinished.promise;
+
+            expect(maxActiveSlowComputations).toBe(1);
+        });
     });
 
     describe("exclusive mode locking semantics", () => {

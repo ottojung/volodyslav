@@ -2,13 +2,15 @@
  * Conformance tests for the volatile-consistency spec at
  * docs/specs/incremental-graph-volatile-consistency.md.
  *
- * These tests verify the ten testable properties described in the spec.
+ * These tests verify the implemented testable properties and invariants from
+ * the spec.
  * They use the public API of IncrementalGraph plus getRootDatabase for
  * persistence/restart tests and cloneActiveIdentifierLookup() to inspect
  * the volatile layer.
  */
 
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -102,6 +104,51 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
 
         await db2.close();
     });
+
+    test("volatile lookup is unchanged while disk batch flush is in flight", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const schemaStorage = db.getSchemaStorage();
+        const originalBatch = schemaStorage.batch.bind(schemaStorage);
+        const enteredBatch = makeDeferredPromise();
+        const releaseBatch = makeDeferredPromise();
+        schemaStorage.batch = async (operations) => {
+            enteredBatch.resolve(undefined);
+            await releaseBatch.promise;
+            await originalBatch(operations);
+        };
+
+        try {
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "node_paused",
+                    inputs: [],
+                    computor: async () => ({ value: 10 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            const pullPromise = graph.pull("node_paused");
+            await enteredBatch.promise;
+
+            const lookupDuringFlush = db.cloneActiveIdentifierLookup();
+            expect(
+                lookupDuringFlush.keyToId.get(nodeKeyString("node_paused"))
+            ).toBeUndefined();
+
+            releaseBatch.resolve(undefined);
+            await pullPromise;
+
+            const lookupAfterFlush = db.cloneActiveIdentifierLookup();
+            expect(
+                lookupAfterFlush.keyToId.get(nodeKeyString("node_paused"))
+            ).not.toBeUndefined();
+        } finally {
+            schemaStorage.batch = originalBatch;
+            await db.close();
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -194,6 +241,41 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         expect(zId).not.toBeUndefined();
 
         await db.close();
+    });
+
+    test("when batch flush fails, staged node data and identifier mapping are rolled back", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const schemaStorage = db.getSchemaStorage();
+        const originalBatch = schemaStorage.batch.bind(schemaStorage);
+        schemaStorage.batch = async () => {
+            throw new Error("batch-fails-intentionally");
+        };
+
+        try {
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "flush_fail_node",
+                    inputs: [],
+                    computor: async () => ({ value: "value" }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull("flush_fail_node")).rejects.toThrow(
+                "batch-fails-intentionally"
+            );
+            expect(await graph.getFreshness("flush_fail_node")).toBe("missing");
+
+            const lookup = db.cloneActiveIdentifierLookup();
+            expect(
+                lookup.keyToId.get(nodeKeyString("flush_fail_node"))
+            ).toBeUndefined();
+        } finally {
+            schemaStorage.batch = originalBatch;
+            await db.close();
+        }
     });
 });
 
@@ -409,6 +491,81 @@ describe("Property 9 — Nested pull shares allocation context", () => {
         expect(innerComputations).toBe(1);
 
         await db.close();
+    });
+
+    test("inner and outer writes plus identifiers update are flushed in one batch", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const schemaStorage = db.getSchemaStorage();
+        const originalBatch = schemaStorage.batch.bind(schemaStorage);
+        /** @type {Array<Array<{ type: string, key: unknown, value: unknown }>>} */
+        const capturedBatches = [];
+        schemaStorage.batch = async (operations) => {
+            capturedBatches.push(
+                operations.map((op) => ({
+                    type: op.type,
+                    key: op.key,
+                    value: op.value,
+                }))
+            );
+            await originalBatch(operations);
+        };
+
+        try {
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "inner_atomic",
+                    inputs: [],
+                    computor: async () => ({ value: "inner-data" }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "outer_atomic",
+                    inputs: ["inner_atomic"],
+                    computor: async ([innerVal]) => ({
+                        value: `outer(${innerVal.value})`,
+                    }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.pull("outer_atomic");
+
+            const relevantFlushes = capturedBatches.filter((batch) =>
+                batch.some(
+                    (op) =>
+                        op.type === "put" &&
+                        op.value !== null &&
+                        typeof op.value === "object" &&
+                        "value" in op.value &&
+                        (op.value.value === "inner-data" ||
+                            op.value.value === "outer(inner-data)")
+                )
+            );
+            expect(relevantFlushes).toHaveLength(1);
+            const flush = relevantFlushes[0];
+            expect(flush).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        type: "put",
+                        value: { value: "inner-data" },
+                    }),
+                    expect.objectContaining({
+                        type: "put",
+                        value: { value: "outer(inner-data)" },
+                    }),
+                    expect.objectContaining({
+                        type: "put",
+                        key: IDENTIFIERS_KEY,
+                    }),
+                ])
+            );
+        } finally {
+            schemaStorage.batch = originalBatch;
+            await db.close();
+        }
     });
 
     test("when outer pull fails, inner dependency data is also rolled back", async () => {
