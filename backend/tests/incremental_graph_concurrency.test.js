@@ -771,7 +771,7 @@ describe("IncrementalGraph concurrency", () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const releaseSlow = makeDeferred();
-            const callbackFinished = makeDeferred();
+            const callbackResult = makeDeferred();
             let activeSlowComputations = 0;
             let maxActiveSlowComputations = 0;
 
@@ -797,8 +797,8 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: [],
                     computor: async () => {
                         setTimeout(async () => {
-                            await graph.pull("slow");
-                            callbackFinished.resolve(undefined);
+                            const result = await graph.pull("slow");
+                            callbackResult.resolve(result);
                         }, 10);
                         return { type: "test", value: "trigger-value" };
                     },
@@ -815,7 +815,10 @@ describe("IncrementalGraph concurrency", () => {
 
             releaseSlow.resolve(undefined);
             await slowPull;
-            await callbackFinished.promise;
+            await expect(callbackResult.promise).resolves.toEqual({
+                type: "test",
+                value: "slow-value",
+            });
 
             expect(maxActiveSlowComputations).toBe(1);
         });

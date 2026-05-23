@@ -69,6 +69,13 @@ function releaseAsyncOwnership(asyncId) {
     }
     pullContextFramesByAsyncId.delete(asyncId);
 }
+/**
+ * Track async-resource lineage for active pull contexts.
+ *
+ * We register ownership on `init` by inheriting from the triggering async
+ * resource. Cleanup runs on both `destroy` and `promiseResolve` because not all
+ * async resources consistently emit only one lifecycle signal in practice.
+ */
 createHook({
     init(asyncId, _type, triggerAsyncId) {
         const inheritedFrames = pullContextFramesByAsyncId.get(triggerAsyncId);
@@ -255,7 +262,11 @@ class IncrementalGraphClass {
      */
     getActivePullContext() {
         const currentAsyncId = executionAsyncId();
-        for (const current of [...this._activePullContexts].reverse()) {
+        for (let index = this._activePullContexts.length - 1; index >= 0; index--) {
+            const current = this._activePullContexts[index];
+            if (current === undefined) {
+                continue;
+            }
             if (current.ownerAsyncIds.has(currentAsyncId)) {
                 return {
                     identifierResolver: current.identifierResolver,

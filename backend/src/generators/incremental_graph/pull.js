@@ -245,6 +245,8 @@ async function runPullForSemanticNodeKey(
         // Nested call: the outer pull already holds withComputedStateMutex and has
         // created the shared batch. Running withIdentifierBatch here would deadlock
         // on the same computed-state mutex.
+        // effectiveOuterBatch is only set when an ancestor pull operation already
+        // entered withComputedStateMutex for this computed state.
         // Instead, execute directly with the shared batch — the outer pull's commit
         // covers all identifier allocations and node-data writes for the entire tree.
         return run(effectiveOuterBatch);

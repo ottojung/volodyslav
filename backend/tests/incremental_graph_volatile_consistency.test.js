@@ -105,7 +105,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
         await db2.close();
     });
 
-    test("volatile lookup is unchanged while disk batch flush is in flight", async () => {
+    test("Property 6 — volatile lookup is unchanged while disk batch flush is in flight", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const schemaStorage = db.getSchemaStorage();
