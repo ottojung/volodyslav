@@ -285,7 +285,9 @@ class IncrementalGraphClass {
         // Locate the frame by identity rather than assuming LIFO order.
         // Nested pulls launched concurrently (e.g. via Promise.all inside a
         // computor) can complete in any order, so the frame to remove may not
-        // be at the top of the stack.
+        // be at the top of the stack. The search is O(n) in the number of
+        // active contexts, which is bounded by the nesting depth and is
+        // expected to remain very small in practice.
         const index = this._activePullContexts.findIndex(
             (frame) =>
                 frame.identifierResolver === context.identifierResolver &&
