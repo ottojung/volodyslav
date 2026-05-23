@@ -77,8 +77,11 @@ function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
 /**
  * Serialize writes to the active replica computed state.
  *
- * All callers always acquire the underlying mutex; no implicit async-context
- * re-entrancy is used.
+ * This mutex is **non-reentrant**: callers that already hold it must not
+ * attempt to re-acquire it. Nested operations (e.g. a pull triggered inside a
+ * computor) must share the outer batch and identifier resolver instead of
+ * calling withComputedStateMutex recursively; attempting to do so would
+ * deadlock.
  *
  * @template T
  * @param {SleepCapability} sleeper

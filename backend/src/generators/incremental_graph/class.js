@@ -282,26 +282,31 @@ class IncrementalGraphClass {
      * @returns {void}
      */
     popActivePullContext(context) {
-        const current = this._activePullContexts[this._activePullContexts.length - 1];
-        if (
-            current === undefined ||
-            current.identifierResolver !== context.identifierResolver ||
-            current.batch !== context.batch
-        ) {
+        // Locate the frame by identity rather than assuming LIFO order.
+        // Nested pulls launched concurrently (e.g. via Promise.all inside a
+        // computor) can complete in any order, so the frame to remove may not
+        // be at the top of the stack.
+        const index = this._activePullContexts.findIndex(
+            (frame) =>
+                frame.identifierResolver === context.identifierResolver &&
+                frame.batch === context.batch
+        );
+        if (index === -1) {
             throw new Error("Invalid pull context stack");
         }
-        for (const asyncId of current.ownerAsyncIds) {
+        const frame = this._activePullContexts[index];
+        for (const asyncId of frame.ownerAsyncIds) {
             const frames = pullContextFramesByAsyncId.get(asyncId);
             if (frames === undefined) {
                 continue;
             }
-            frames.delete(current);
+            frames.delete(frame);
             if (frames.size === 0) {
                 pullContextFramesByAsyncId.delete(asyncId);
             }
         }
-        activePullContextFrames.delete(current);
-        this._activePullContexts.pop();
+        activePullContextFrames.delete(frame);
+        this._activePullContexts.splice(index, 1);
     }
 
     /**
