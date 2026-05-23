@@ -28,38 +28,34 @@ const { createHook, executionAsyncId } = require("async_hooks");
  * @property {BatchBuilder} batch
  */
 /**
- * @typedef {PullContext & { ownerAsyncId: number }} PullContextFrame
+ * @typedef {PullContext & { ownerAsyncIds: Set<number> }} PullContextFrame
  */
-
-/** @type {Map<number, number>} */
-const asyncParentById = new Map();
+/**
+ * Active pull-context frames across all IncrementalGraph instances.
+ * Each frame tracks the async resources that belong to that context.
+ *
+ * @type {Set<PullContextFrame>}
+ */
+const activePullContextFrames = new Set();
 createHook({
     init(asyncId, _type, triggerAsyncId) {
-        asyncParentById.set(asyncId, triggerAsyncId);
+        for (const frame of activePullContextFrames) {
+            if (frame.ownerAsyncIds.has(triggerAsyncId)) {
+                frame.ownerAsyncIds.add(asyncId);
+            }
+        }
+    },
+    destroy(asyncId) {
+        for (const frame of activePullContextFrames) {
+            frame.ownerAsyncIds.delete(asyncId);
+        }
+    },
+    promiseResolve(asyncId) {
+        for (const frame of activePullContextFrames) {
+            frame.ownerAsyncIds.delete(asyncId);
+        }
     },
 }).enable();
-
-/**
- * @param {number} asyncId
- * @param {number} ancestorAsyncId
- * @returns {boolean}
- */
-function isAsyncDescendantOf(asyncId, ancestorAsyncId) {
-    let current = asyncId;
-    const visited = new Set();
-    while (!visited.has(current)) {
-        if (current === ancestorAsyncId) {
-            return true;
-        }
-        visited.add(current);
-        const parent = asyncParentById.get(current);
-        if (parent === undefined || parent === current) {
-            return false;
-        }
-        current = parent;
-    }
-    return false;
-}
 
 const {
     compileNodeDef,
@@ -214,10 +210,12 @@ class IncrementalGraphClass {
      * @returns {void}
      */
     pushActivePullContext(context) {
-        this._activePullContexts.push({
+        const frame = {
             ...context,
-            ownerAsyncId: executionAsyncId(),
-        });
+            ownerAsyncIds: new Set([executionAsyncId()]),
+        };
+        this._activePullContexts.push(frame);
+        activePullContextFrames.add(frame);
     }
 
     /**
@@ -227,10 +225,7 @@ class IncrementalGraphClass {
         const currentAsyncId = executionAsyncId();
         for (let index = this._activePullContexts.length - 1; index >= 0; index--) {
             const current = this._activePullContexts[index];
-            if (
-                current !== undefined &&
-                isAsyncDescendantOf(currentAsyncId, current.ownerAsyncId)
-            ) {
+            if (current !== undefined && current.ownerAsyncIds.has(currentAsyncId)) {
                 return {
                     identifierResolver: current.identifierResolver,
                     batch: current.batch,
@@ -253,6 +248,7 @@ class IncrementalGraphClass {
         ) {
             throw new Error("Invalid pull context stack");
         }
+        activePullContextFrames.delete(current);
         this._activePullContexts.pop();
     }
 
