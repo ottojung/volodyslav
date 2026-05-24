@@ -116,7 +116,7 @@ async function internalListMaterializedNodes(incrementalGraph) {
             const nodeKey = incrementalGraph.lookupNodeKey(nodeIdentifier);
             if (nodeKey === undefined) {
                 throw new Error(
-                    `Missing semantic node key for materialized identifier: cannot list nodes`
+                    `Missing semantic node key for materialized identifier ${String(nodeIdentifier)}: cannot list nodes`
                 );
             }
             const parsed = deserializeNodeKey(stringToNodeKeyString(String(nodeKey)));

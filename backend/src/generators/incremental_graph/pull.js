@@ -179,7 +179,7 @@ async function internalPullByNodeIdentifierWithStatusDuringPull(
     const nodeKey = incrementalGraph.lookupNodeKey(nodeIdentifier);
     if (nodeKey === undefined) {
         throw new Error(
-            `Missing semantic node key for identifier: cannot pull by unknown identifier`
+            `Missing semantic node key for identifier ${String(nodeIdentifier)}: cannot pull by unknown identifier`
         );
     }
     return runPullForSemanticNodeKey(

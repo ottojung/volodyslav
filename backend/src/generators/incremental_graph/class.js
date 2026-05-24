@@ -238,6 +238,9 @@ class IncrementalGraphClass {
      * @returns {import('./types').NodeKeyString | undefined}
      */
     lookupNodeKey(nodeIdentifier) {
+        if (typeof this.rootDatabase.nodeIdToKey === "function") {
+            return this.rootDatabase.nodeIdToKey(nodeIdentifier);
+        }
         return nodeIdToKeyFromLookup(getActiveLookup(this.rootDatabase), nodeIdentifier);
     }
 
@@ -248,6 +251,9 @@ class IncrementalGraphClass {
      * @returns {NodeIdentifier | undefined}
      */
     lookupNodeIdentifier(nodeKey) {
+        if (typeof this.rootDatabase.nodeKeyToId === "function") {
+            return this.rootDatabase.nodeKeyToId(nodeKey);
+        }
         return nodeKeyToIdFromLookup(getActiveLookup(this.rootDatabase), nodeKey);
     }
 
@@ -315,6 +321,9 @@ class IncrementalGraphClass {
             throw new Error("Invalid pull context stack");
         }
         const frame = this._activePullContexts[index];
+        if (frame === undefined) {
+            throw new Error("Invalid pull context stack");
+        }
         for (const asyncId of frame.ownerAsyncIds) {
             const frames = pullContextFramesByAsyncId.get(asyncId);
             if (frames === undefined) {
