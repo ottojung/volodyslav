@@ -154,8 +154,8 @@ async function internalGetCreationTime(
 
         checkArity(compiledNode, bindings);
 
-        const nodeKey2 = { head: nodeNameTyped, args: bindings };
-        const concreteKey = serializeNodeKey(nodeKey2);
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
         const nodeIdentifier = incrementalGraph.lookupNodeIdentifier(concreteKey);
         if (nodeIdentifier === undefined) {
             throw makeMissingTimestampError(concreteKey);
@@ -189,8 +189,8 @@ async function internalGetModificationTime(
 
         checkArity(compiledNode, bindings);
 
-        const nodeKey2 = { head: nodeNameTyped, args: bindings };
-        const concreteKey = serializeNodeKey(nodeKey2);
+        const nodeKey = { head: nodeNameTyped, args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
         const nodeIdentifier = incrementalGraph.lookupNodeIdentifier(concreteKey);
         if (nodeIdentifier === undefined) {
             throw makeMissingTimestampError(concreteKey);
