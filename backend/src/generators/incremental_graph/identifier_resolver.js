@@ -13,7 +13,6 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     nodeIdentifierToString,
-    setIdentifierMapping,
 } = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -64,12 +63,11 @@ function setActiveLookup(rootDatabase, lookup) {
  * The resolver caches every key/id mapping it touches so each semantic key is
  * translated at most once during the operation.
  * @typedef {object} IdentifierResolver
- * @property {IdentifierLookup} lookup - Mutable lookup snapshot for the current operation.
+ * @property {IdentifierLookup} lookup - Mutable lookup snapshot for the current operation. Contains the active base lookup plus all allocations made during this operation.
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier - Read an existing identifier without allocating a new one.
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier} getOrAllocateNodeIdentifier - Read an existing identifier or allocate one for the current operation.
  * @property {(nodeIdentifier: NodeIdentifier) => NodeKeyString} requireNodeKey - Convert an identifier back to its semantic node key.
  * @property {boolean} hasPendingAllocations - True if this resolver has allocated at least one new identifier that has not yet been committed to the database.
- * @property {(activeLookup: IdentifierLookup) => void} applyPendingTo - Merge all pending identifier allocations into the given lookup (mutates it in place).
  */
 
 /**
@@ -85,8 +83,6 @@ function makeIdentifierResolver(rootDatabase) {
     /** @type {Map<string, NodeKeyString>} */
     const nodeKeysByIdentifier = new Map();
     let hasPendingLookupWrite = false;
-    /** @type {Map<string, { nodeKey: NodeKeyString, nodeIdentifier: NodeIdentifier }>} */
-    const pendingIdentifierMappings = new Map();
 
     /**
      * @returns {IdentifierLookup}
@@ -144,7 +140,6 @@ function makeIdentifierResolver(rootDatabase) {
                 return deterministicNodeIdentifierFromNodeKey(nodeKey, attempt);
             })
         );
-        pendingIdentifierMappings.set(String(nodeKey), { nodeKey, nodeIdentifier });
         return nodeIdentifier;
     }
 
@@ -175,11 +170,6 @@ function makeIdentifierResolver(rootDatabase) {
         requireNodeKey,
         get hasPendingAllocations() {
             return hasPendingLookupWrite;
-        },
-        applyPendingTo(activeLookup) {
-            for (const { nodeKey, nodeIdentifier } of pendingIdentifierMappings.values()) {
-                setIdentifierMapping(activeLookup, nodeIdentifier, nodeKey);
-            }
         },
     };
 }

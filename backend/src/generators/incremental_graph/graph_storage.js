@@ -12,7 +12,7 @@ const {
     stringToNodeIdentifier,
 } = require('./database');
 const { withComputedStateMutex } = require('./lock');
-const { getActiveLookup, setActiveLookup } = require('./identifier_resolver');
+const { makeIdentifierResolver, setActiveLookup } = require('./identifier_resolver');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -72,7 +72,7 @@ const { getActiveLookup, setActiveLookup } = require('./identifier_resolver');
  * @property {IdentifierDatabase<Counter>} counters - Identifier-keyed counters.
  * @property {IdentifierDatabase<TimestampRecord>} timestamps - Identifier-keyed timestamps.
  * @property {BatchFunction} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(identifierResolver: IdentifierResolver, fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withIdentifierBatch - Run atomically: commits node writes and identifier map in one batch under the computed-state mutex.
+ * @property {<T>(fn: (batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>) => Promise<T>} withIdentifierBatch - Run atomically: creates the identifier resolver inside the computed-state mutex, commits node writes and identifier map in one batch under that mutex.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
@@ -497,25 +497,30 @@ function makeGraphStorage(rootDatabase, sleeper) {
         withBatch,
         /**
          * Run a batch that atomically commits node writes together with any new
-         * identifier allocations made by `identifierResolver`.
+         * identifier allocations made during the operation.
          *
-         * Correctness guarantee: the entire operation — lazy-loading the identifier
-         * lookup, running `fn(batch)` (which resolves and allocates identifiers), the
-         * DB flush of both node operations and the updated identifier map, and the
-         * in-memory update of `_computed` — all happen inside a single
-         * `withComputedStateMutex` acquisition.  This serialises all concurrent
-         * callers end-to-end, eliminating identifier allocation races.
+         * Correctness guarantee: the entire operation — loading the identifier lookup,
+         * creating the resolver (from the up-to-date active lookup), running `fn(batch,
+         * identifierResolver)`, the DB flush of both node operations and the updated
+         * identifier map, and the in-memory update of `_computed` — all happen inside a
+         * single `withComputedStateMutex` acquisition.  This serialises all concurrent
+         * callers end-to-end, eliminating identifier allocation races and the need for
+         * any merge recovery logic.
+         *
+         * The resolver is created inside the critical section so it always loads the
+         * correct, up-to-date active lookup.  At commit time `identifierResolver.lookup`
+         * is the authoritative snapshot (base lookup + new allocations) and is persisted
+         * directly — no merge step is required.
          *
          * Callers that are already inside the mutex (nested dependency pulls) must
          * NOT call this method again; they must instead receive the outer batch and
-         * resolver as arguments and operate on them directly.
+         * resolver via `getActivePullContext` and operate on them directly.
          *
          * @template T
-         * @param {IdentifierResolver} identifierResolver
-         * @param {(batch: BatchBuilder) => Promise<T>} fn
+         * @param {(batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>} fn
          * @returns {Promise<T>}
          */
-        async withIdentifierBatch(identifierResolver, fn) {
+        async withIdentifierBatch(fn) {
             const computedStateIdentifier = typeof rootDatabase.currentReplicaName === "function"
                 ? rootDatabase.currentReplicaName()
                 : "__default__";
@@ -526,16 +531,20 @@ function makeGraphStorage(rootDatabase, sleeper) {
                     await rootDatabase.ensureActiveIdentifierLookupLoaded();
                 }
 
-                // Step 2: run the operation (identifier allocation + node-data writes)
+                // Step 2: create the resolver inside the mutex so it loads the correct,
+                // up-to-date active lookup.
+                const identifierResolver = makeIdentifierResolver(rootDatabase);
+
+                // Step 3: run the operation (identifier allocation + node-data writes)
                 // entirely inside the mutex so all allocations see the committed state.
                 const { batch, operations } = createBatch(schemaStorage);
-                const value = await fn(batch);
+                const value = await fn(batch, identifierResolver);
 
-                // Step 3: flush to disk first, then update _computed (disk-first ordering).
+                // Step 4: flush to disk first, then update _computed (disk-first ordering).
                 if (identifierResolver.hasPendingAllocations) {
-                    const activeLookup = getActiveLookup(rootDatabase);
-                    identifierResolver.applyPendingTo(activeLookup);
-                    const lookupToCommit = cloneIdentifierLookup(activeLookup);
+                    // identifierResolver.lookup already contains base + new allocations.
+                    // Clone it for an immutable snapshot to persist and store.
+                    const lookupToCommit = cloneIdentifierLookup(identifierResolver.lookup);
                     if (schemaStorage.global !== undefined) {
                         operations.push(
                             schemaStorage.global.rawPutOp(

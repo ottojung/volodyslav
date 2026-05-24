@@ -102,7 +102,11 @@ const {
     validateSingleArityPerHead,
 } = require("./compiled_node");
 const { makeGraphStorage } = require("./graph_storage");
-const { makeIdentifierResolver } = require("./identifier_resolver");
+const { getActiveLookup } = require("./identifier_resolver");
+const {
+    nodeKeyToIdFromLookup,
+    nodeIdToKeyFromLookup,
+} = require("./database");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -227,19 +231,33 @@ class IncrementalGraphClass {
         );
     }
 
-    /** @returns {IdentifierResolver} */
-    makeIdentifierResolver() {
-        return makeIdentifierResolver(this.rootDatabase);
+    /**
+     * Look up the semantic node key for a given identifier.
+     * This is a lock-free read from the active in-memory lookup.
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {import('./types').NodeKeyString | undefined}
+     */
+    lookupNodeKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(getActiveLookup(this.rootDatabase), nodeIdentifier);
     }
 
     /**
-     * @param {IdentifierResolver} identifierResolver
+     * Look up the identifier for a given semantic node key.
+     * This is a lock-free read from the active in-memory lookup.
+     * @param {import('./types').NodeKeyString} nodeKey
+     * @returns {NodeIdentifier | undefined}
+     */
+    lookupNodeIdentifier(nodeKey) {
+        return nodeKeyToIdFromLookup(getActiveLookup(this.rootDatabase), nodeKey);
+    }
+
+    /**
      * @template T
-     * @param {(batch: BatchBuilder) => Promise<T>} procedure
+     * @param {(batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>} procedure
      * @returns {Promise<T>}
      */
-    async withIdentifierBatch(identifierResolver, procedure) {
-        return this.storage.withIdentifierBatch(identifierResolver, procedure);
+    async withIdentifierBatch(procedure) {
+        return this.storage.withIdentifierBatch(procedure);
     }
 
     /**

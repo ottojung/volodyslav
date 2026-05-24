@@ -583,12 +583,12 @@ describe("IncrementalGraph concurrency", () => {
             let active = 0;
             let maxActive = 0;
             const originalWithIdentifierBatch = graph.storage.withIdentifierBatch.bind(graph.storage);
-            graph.storage.withIdentifierBatch = async (resolver, run) => {
+            graph.storage.withIdentifierBatch = async (run) => {
                 active += 1;
                 maxActive = Math.max(maxActive, active);
                 await releaseBoth.promise;
                 try {
-                    return await originalWithIdentifierBatch(resolver, run);
+                    return await originalWithIdentifierBatch(run);
                 } finally {
                     active -= 1;
                 }
@@ -621,10 +621,10 @@ describe("IncrementalGraph concurrency", () => {
             const releaseInvalidate = makeDeferred();
             const enteredInvalidate = makeDeferred();
             const originalWithIdentifierBatch = graph.storage.withIdentifierBatch.bind(graph.storage);
-            graph.storage.withIdentifierBatch = async (resolver, run) => {
+            graph.storage.withIdentifierBatch = async (run) => {
                 enteredInvalidate.resolve(undefined);
                 await releaseInvalidate.promise;
-                return await originalWithIdentifierBatch(resolver, run);
+                return await originalWithIdentifierBatch(run);
             };
 
             const invalidatePromise = graph.invalidate("source");

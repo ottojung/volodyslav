@@ -12,8 +12,7 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_storage').GraphStorage} storage
- * @property {() => IdentifierResolver} makeIdentifierResolver
- * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<void>) => Promise<void>} withIdentifierBatch
+ * @property {(procedure: (batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<void>) => Promise<void>} withIdentifierBatch
  * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
@@ -102,13 +101,13 @@ async function internalUnsafeInvalidate(
         compiledNode,
         bindings
     );
-    const identifierResolver = incrementalGraph.makeIdentifierResolver();
 
     /**
      * @param {BatchBuilder} batch
+     * @param {IdentifierResolver} identifierResolver
      * @returns {Promise<void>}
      */
-    const run = async (batch) => {
+    const run = async (batch, identifierResolver) => {
         const nodeDefinition = incrementalGraph.resolveConcreteNode(
             concreteNode,
             identifierResolver
@@ -134,7 +133,7 @@ async function internalUnsafeInvalidate(
         );
     };
 
-    await incrementalGraph.withIdentifierBatch(identifierResolver, run);
+    await incrementalGraph.withIdentifierBatch(run);
 }
 
 /**
