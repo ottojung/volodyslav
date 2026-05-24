@@ -45,6 +45,11 @@ Node data is stored in typed sublevels keyed by `NodeIdentifier`:
 | `revdeps` | `NodeIdentifier` | reverse-dependency list |
 | `counters` | `NodeIdentifier` | monotonic integer counter |
 | `timestamps` | `NodeIdentifier` | creation and modification timestamps |
+
+Metadata is stored separately in sublevels keyed by fixed string keys:
+
+| Sublevel | Key | Value |
+|----------|-----|-------|
 | `global` | `'identifiers_keys_map'` | identifier ↔ key bijection |
 | `_meta` | `'current_replica'` | active replica name (`'x'` or `'y'`) |
 
