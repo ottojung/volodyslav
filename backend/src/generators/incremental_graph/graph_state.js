@@ -14,12 +14,14 @@
 
 const {
     IDENTIFIERS_KEY,
-    allocateNodeIdentifier,
-    cloneIdentifierLookup,
+    allocateNodeIdentifierWithOverlay,
+    getIdentifierLookupSize,
+    makeEmptyIdentifierLookup,
+    mergeIdentifierLookupInto,
     nodeIdToKeyFromLookup,
     nodeIdentifierToString,
     nodeKeyToIdFromLookup,
-    serializeIdentifierLookup,
+    serializeIdentifierLookupWithPending,
     stringToNodeIdentifier,
 } = require('./database');
 const { withComputedStateMutex } = require('./lock');
@@ -63,13 +65,19 @@ const { withComputedStateMutex } = require('./lock');
 /**
  * A Transaction groups all reads and writes for one top-level graph operation.
  * It contains:
- * - batch: LevelDB batch accumulator with read-your-writes overlay
- * - identifierLookup: working copy of the committed lookup, extended in-place
- *   with any new allocations made during this transaction
+ * - batch: LevelDB batch accumulator with a read-your-writes overlay
+ * - _committedLookup: shared reference to the live committed IdentifierLookup (not cloned)
+ * - _pendingAllocations: new identifier allocations made during this transaction only
+ *
+ * Reads check _pendingAllocations first, then fall through to _committedLookup.
+ * New allocations go into _pendingAllocations. At commit time, _pendingAllocations
+ * is merged into _committedLookup in-place (after a successful disk flush), so no
+ * new IdentifierLookup object is ever created in the hot path.
  *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
- * @property {IdentifierLookup} identifierLookup - Working copy of the identifier lookup.
+ * @property {IdentifierLookup} _committedLookup - Shared reference to committed lookup (not cloned, do not mutate).
+ * @property {IdentifierLookup} _pendingAllocations - New allocations for this transaction only.
  */
 
 /**
@@ -300,32 +308,35 @@ function makeGraphStorage(rootDatabase, sleeper) {
          */
         async withTransaction(fn) {
             return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // createTransaction(): reads _computed.identifierLookup, creates fresh batch.
+                // createTransaction(): reference committed lookup (no clone), create empty pending overlay.
                 const activeSchemaStorage = rootDatabase.getSchemaStorage();
-                const identifierLookup = rootDatabase.cloneActiveIdentifierLookup();
-                const initialLookupSize = identifierLookup.keyToId.size;
+                const pendingAllocations = makeEmptyIdentifierLookup();
                 const { batch, operations } = createBatch(activeSchemaStorage);
 
                 /** @type {Transaction} */
-                const tx = { batch, identifierLookup };
+                const tx = {
+                    batch,
+                    _committedLookup: rootDatabase.getActiveIdentifierLookup(),
+                    _pendingAllocations: pendingAllocations,
+                };
 
                 // Run the operation (identifier allocation + node-data writes).
                 const value = await fn(tx);
 
-                // commitTransaction(): disk-first — flush batch, then update volatile layer.
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > initialLookupSize;
+                // commitTransaction(): disk-first — flush batch, then update volatile layer in-place.
+                const hasPendingAllocations = getIdentifierLookupSize(pendingAllocations) > 0;
                 if (hasPendingAllocations) {
-                    const lookupToCommit = cloneIdentifierLookup(tx.identifierLookup);
                     if (activeSchemaStorage.global !== undefined) {
                         operations.push(
                             activeSchemaStorage.global.rawPutOp(
                                 IDENTIFIERS_KEY,
-                                serializeIdentifierLookup(lookupToCommit)
+                                serializeIdentifierLookupWithPending(tx._committedLookup, pendingAllocations)
                             )
                         );
                     }
                     await activeSchemaStorage.batch(operations);
-                    rootDatabase.replaceActiveIdentifierLookup(lookupToCommit);
+                    // Disk-first: update volatile only after successful flush.
+                    mergeIdentifierLookupInto(rootDatabase.getActiveIdentifierLookup(), pendingAllocations);
                 } else {
                     await activeSchemaStorage.batch(operations);
                 }
@@ -343,46 +354,75 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
 /**
  * Look up an existing identifier for a node key in the transaction's lookup.
- * Returns undefined if the node key is not in the lookup.
+ * Checks pending allocations first, then falls through to the committed lookup.
+ * Returns undefined if the node key is not in either layer.
  * @param {Transaction} tx
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier | undefined}
  */
 function lookupNodeIdentifier(tx, nodeKey) {
-    return nodeKeyToIdFromLookup(tx.identifierLookup, nodeKey);
+    const pending = nodeKeyToIdFromLookup(tx._pendingAllocations, nodeKey);
+    if (pending !== undefined) {
+        return pending;
+    }
+    return nodeKeyToIdFromLookup(tx._committedLookup, nodeKey);
 }
 
 /**
  * Look up an existing identifier or allocate a new one for a node key.
- * New allocations are added to the transaction's working lookup.
+ * Checks pending allocations first, then the committed lookup. If not found in
+ * either, allocates a new identifier into the pending allocations overlay.
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier}
  */
 function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
-    const existing = nodeKeyToIdFromLookup(tx.identifierLookup, nodeKey);
-    if (existing !== undefined) {
-        return existing;
+    const pending = nodeKeyToIdFromLookup(tx._pendingAllocations, nodeKey);
+    if (pending !== undefined) {
+        return pending;
     }
-    return allocateNodeIdentifier(tx.identifierLookup, nodeKey, () =>
-        rootDatabase.generateNodeIdentifier()
+    const committed = nodeKeyToIdFromLookup(tx._committedLookup, nodeKey);
+    if (committed !== undefined) {
+        return committed;
+    }
+    return allocateNodeIdentifierWithOverlay(
+        tx._committedLookup,
+        tx._pendingAllocations,
+        nodeKey,
+        () => rootDatabase.generateNodeIdentifier()
     );
 }
 
 /**
  * Convert an identifier back to its semantic node key.
- * Throws if the identifier is not in the transaction's lookup.
+ * Checks pending allocations first, then the committed lookup.
+ * Throws if the identifier is not found in either layer.
  * @param {Transaction} tx
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {NodeKeyString}
  */
 function requireNodeKey(tx, nodeIdentifier) {
-    const nodeKey = nodeIdToKeyFromLookup(tx.identifierLookup, nodeIdentifier);
+    const pendingKey = nodeIdToKeyFromLookup(tx._pendingAllocations, nodeIdentifier);
+    if (pendingKey !== undefined) {
+        return pendingKey;
+    }
+    const nodeKey = nodeIdToKeyFromLookup(tx._committedLookup, nodeIdentifier);
     if (nodeKey === undefined) {
         throw new Error(`Missing semantic node key for identifier ${nodeIdentifierToString(nodeIdentifier)}`);
     }
     return nodeKey;
+}
+
+/**
+ * Return the total number of identifier entries visible from a transaction:
+ * entries in the committed lookup plus entries in the pending allocations overlay.
+ * Used by tests to verify allocation counts without exposing internal Maps.
+ * @param {Transaction} tx
+ * @returns {number}
+ */
+function getTransactionLookupSize(tx) {
+    return getIdentifierLookupSize(tx._committedLookup) + getIdentifierLookupSize(tx._pendingAllocations);
 }
 
 module.exports = {
@@ -390,4 +430,5 @@ module.exports = {
     lookupNodeIdentifier,
     getOrAllocateNodeIdentifier,
     requireNodeKey,
+    getTransactionLookupSize,
 };

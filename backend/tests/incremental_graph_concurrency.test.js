@@ -9,7 +9,6 @@ const {
 } = require("../src/generators/incremental_graph");
 const {
     makeEmptyIdentifierLookup,
-    cloneIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     nodeIdentifierFromString,
@@ -47,12 +46,13 @@ class InMemoryDatabase {
 
     currentReplicaName() { return 'x'; }
 
-    cloneActiveIdentifierLookup() {
-        return cloneIdentifierLookup(this._identifierLookup);
+    getActiveIdentifierLookup() {
+        return this._identifierLookup;
     }
 
-    replaceActiveIdentifierLookup(lookup) {
-        this._identifierLookup = lookup;
+    mergeActiveIdentifierLookup(pendingAllocations) {
+        const { mergeIdentifierLookupInto } = require("../src/generators/incremental_graph/database");
+        mergeIdentifierLookupInto(this._identifierLookup, pendingAllocations);
     }
 
     nodeIdToKey(nodeIdentifier) {

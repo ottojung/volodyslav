@@ -5,12 +5,19 @@
  * These tests verify the implemented testable properties and invariants from
  * the spec.
  * They use the public API of IncrementalGraph plus getRootDatabase for
- * persistence/restart tests and cloneActiveIdentifierLookup() to inspect
+ * persistence/restart tests and getActiveIdentifierLookup() to inspect
  * the volatile layer.
  */
 
-const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
+const {
+    getRootDatabase,
+    IDENTIFIERS_KEY,
+    getIdentifierLookupSize,
+    nodeKeyToIdFromLookup,
+    nodeIdToKeyFromLookup,
+    serializeIdentifierLookup,
+    stringToNodeKeyString,
+} = require("../src/generators/incremental_graph/database");
 const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -27,10 +34,10 @@ function getTestCapabilities() {
  * lookup (matches serializeNodeKey output).
  * @param {string} head
  * @param {Array<*>} [args=[]]
- * @returns {string}
+ * @returns {import('../src/generators/incremental_graph/database').NodeKeyString}
  */
 function nodeKeyString(head, args = []) {
-    return JSON.stringify({ head, args });
+    return stringToNodeKeyString(JSON.stringify({ head, args }));
 }
 
 function makeDeferredPromise() {
@@ -45,7 +52,7 @@ function makeDeferredPromise() {
 // ---------------------------------------------------------------------------
 
 describe("Properties 1+5 — Exact isomorphism: volatile matches disk after commit", () => {
-    test("after pulling a node, its identifier is in cloneActiveIdentifierLookup()", async () => {
+    test("after pulling a node, its identifier is in getActiveIdentifierLookup()", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = makeIncrementalGraph(capabilities, db, [
@@ -60,8 +67,8 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
 
         await graph.pull("source");
 
-        const lookup = db.cloneActiveIdentifierLookup();
-        const id = lookup.keyToId.get(nodeKeyString("source"));
+        const lookup = db.getActiveIdentifierLookup();
+        const id = nodeKeyToIdFromLookup(lookup, nodeKeyString("source"));
         expect(id).not.toBeUndefined();
 
         await db.close();
@@ -83,23 +90,23 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
         await graph.pull("source");
 
         // Capture the volatile identifier for "source".
-        const lookup1 = db1.cloneActiveIdentifierLookup();
-        const sourceId = lookup1.keyToId.get(nodeKeyString("source"));
+        const lookup1 = db1.getActiveIdentifierLookup();
+        const sourceId = nodeKeyToIdFromLookup(lookup1, nodeKeyString("source"));
         expect(sourceId).not.toBeUndefined();
 
         await db1.close();
 
         // Reopen the database (simulates a restart).
         const db2 = await getRootDatabase(capabilities);
-        const lookup2 = db2.cloneActiveIdentifierLookup();
+        const lookup2 = db2.getActiveIdentifierLookup();
 
         // Volatile ⊆ disk: every volatile entry exists on disk.
-        for (const [id, key] of lookup1.idToKey) {
-            expect(lookup2.idToKey.get(id)).toEqual(key);
+        for (const [id, key] of serializeIdentifierLookup(lookup1)) {
+            expect(nodeIdToKeyFromLookup(lookup2, id)).toEqual(key);
         }
         // Disk ⊆ volatile: every disk entry was in volatile.
-        for (const [id, key] of lookup2.idToKey) {
-            expect(lookup1.idToKey.get(id)).toEqual(key);
+        for (const [id, key] of serializeIdentifierLookup(lookup2)) {
+            expect(nodeIdToKeyFromLookup(lookup1, id)).toEqual(key);
         }
 
         await db2.close();
@@ -132,17 +139,17 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
             const pullPromise = graph.pull("node_paused");
             await enteredBatch.promise;
 
-            const lookupDuringFlush = db.cloneActiveIdentifierLookup();
+            const lookupDuringFlush = db.getActiveIdentifierLookup();
             expect(
-                lookupDuringFlush.keyToId.get(nodeKeyString("node_paused"))
+                nodeKeyToIdFromLookup(lookupDuringFlush, nodeKeyString("node_paused"))
             ).toBeUndefined();
 
             releaseBatch.resolve(undefined);
             await pullPromise;
 
-            const lookupAfterFlush = db.cloneActiveIdentifierLookup();
+            const lookupAfterFlush = db.getActiveIdentifierLookup();
             expect(
-                lookupAfterFlush.keyToId.get(nodeKeyString("node_paused"))
+                nodeKeyToIdFromLookup(lookupAfterFlush, nodeKeyString("node_paused"))
             ).not.toBeUndefined();
         } finally {
             schemaStorage.batch = originalBatch;
@@ -183,11 +190,11 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         expect(result1).toEqual(result2);
         // The node was computed exactly once (the second pull hit the cache).
         expect(computations).toBe(1);
-        // The volatile lookup has exactly one entry for "source".
-        const lookup = db.cloneActiveIdentifierLookup();
-        const id = lookup.keyToId.get(nodeKeyString("source"));
+        // Z must have exactly one identifier in the volatile lookup.
+        const lookup = db.getActiveIdentifierLookup();
+        const id = nodeKeyToIdFromLookup(lookup, nodeKeyString("source"));
         expect(id).not.toBeUndefined();
-        expect(lookup.keyToId.size).toBe(1);
+        expect(getIdentifierLookupSize(lookup)).toBe(1);
 
         await db.close();
     });
@@ -236,8 +243,8 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         expect(zComputations).toBe(1);
 
         // Z must have exactly one identifier in the volatile lookup.
-        const lookup = db.cloneActiveIdentifierLookup();
-        const zId = lookup.keyToId.get(nodeKeyString("z"));
+        const lookup = db.getActiveIdentifierLookup();
+        const zId = nodeKeyToIdFromLookup(lookup, nodeKeyString("z"));
         expect(zId).not.toBeUndefined();
 
         await db.close();
@@ -268,9 +275,9 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             );
             expect(await graph.getFreshness("flush_fail_node")).toBe("missing");
 
-            const lookup = db.cloneActiveIdentifierLookup();
+            const lookup = db.getActiveIdentifierLookup();
             expect(
-                lookup.keyToId.get(nodeKeyString("flush_fail_node"))
+                nodeKeyToIdFromLookup(lookup, nodeKeyString("flush_fail_node"))
             ).toBeUndefined();
         } finally {
             schemaStorage.batch = originalBatch;
@@ -299,16 +306,16 @@ describe("Property 3 — Identifier stability across restarts", () => {
 
         await graph.pull("stable");
 
-        const lookup1 = db1.cloneActiveIdentifierLookup();
-        const stableId = lookup1.keyToId.get(nodeKeyString("stable"));
+        const lookup1 = db1.getActiveIdentifierLookup();
+        const stableId = nodeKeyToIdFromLookup(lookup1, nodeKeyString("stable"));
         expect(stableId).not.toBeUndefined();
 
         await db1.close();
 
         // Reopen and verify the same identifier.
         const db2 = await getRootDatabase(capabilities);
-        const lookup2 = db2.cloneActiveIdentifierLookup();
-        const stableIdAfterRestart = lookup2.keyToId.get(nodeKeyString("stable"));
+        const lookup2 = db2.getActiveIdentifierLookup();
+        const stableIdAfterRestart = nodeKeyToIdFromLookup(lookup2, nodeKeyString("stable"));
         expect(stableIdAfterRestart).toEqual(stableId);
 
         await db2.close();
@@ -341,15 +348,15 @@ describe("Property 4 — Monotonicity: no identifier entries disappear", () => {
         ]);
 
         await graph.pull("a");
-        const lookupAfterA = db.cloneActiveIdentifierLookup();
-        const entriesAfterA = new Map(lookupAfterA.idToKey);
+        const lookupAfterA = db.getActiveIdentifierLookup();
+        const entriesAfterA = new Map(serializeIdentifierLookup(lookupAfterA).map(([id, key]) => [id, key]));
 
         await graph.pull("b");
-        const lookupAfterB = db.cloneActiveIdentifierLookup();
+        const lookupAfterB = db.getActiveIdentifierLookup();
 
         // Every entry present after pulling "a" must still be present after pulling "b".
         for (const [id, key] of entriesAfterA) {
-            expect(lookupAfterB.idToKey.get(id)).toEqual(key);
+            expect(nodeIdToKeyFromLookup(lookupAfterB, id)).toEqual(key);
         }
 
         await db.close();
@@ -384,20 +391,20 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
         await graph1.pull("node1");
         await graph1.pull("node2");
 
-        const volatileLookup = db1.cloneActiveIdentifierLookup();
+        const volatileLookup = db1.getActiveIdentifierLookup();
         await db1.close();
 
         // Reopen and check the disk lookup matches volatile exactly (bidirectional).
         const db2 = await getRootDatabase(capabilities);
-        const diskLookup = db2.cloneActiveIdentifierLookup();
+        const diskLookup = db2.getActiveIdentifierLookup();
 
         // Volatile ⊆ disk: no volatile-only entries.
-        for (const [id, key] of volatileLookup.idToKey) {
-            expect(diskLookup.idToKey.get(id)).toEqual(key);
+        for (const [id, key] of serializeIdentifierLookup(volatileLookup)) {
+            expect(nodeIdToKeyFromLookup(diskLookup, id)).toEqual(key);
         }
         // Disk ⊆ volatile: no disk-only entries.
-        for (const [id, key] of diskLookup.idToKey) {
-            expect(volatileLookup.idToKey.get(id)).toEqual(key);
+        for (const [id, key] of serializeIdentifierLookup(diskLookup)) {
+            expect(nodeIdToKeyFromLookup(volatileLookup, id)).toEqual(key);
         }
 
         await db2.close();
@@ -647,10 +654,10 @@ describe("Property 10 — Read-only lookups do not interfere with allocations", 
         expect(await graph.getFreshness("new_node")).toBe("up-to-date");
 
         // The volatile lookup has exactly two entries (one per node).
-        const lookup = db.cloneActiveIdentifierLookup();
-        expect(lookup.keyToId.get(nodeKeyString("existing"))).not.toBeUndefined();
-        expect(lookup.keyToId.get(nodeKeyString("new_node"))).not.toBeUndefined();
-        expect(lookup.keyToId.size).toBe(2);
+        const lookup = db.getActiveIdentifierLookup();
+        expect(nodeKeyToIdFromLookup(lookup, nodeKeyString("existing"))).not.toBeUndefined();
+        expect(nodeKeyToIdFromLookup(lookup, nodeKeyString("new_node"))).not.toBeUndefined();
+        expect(getIdentifierLookupSize(lookup)).toBe(2);
 
         await db.close();
     });

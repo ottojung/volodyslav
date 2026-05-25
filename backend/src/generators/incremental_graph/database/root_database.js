@@ -15,7 +15,6 @@ const {
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
-    cloneIdentifierLookup,
     makeEmptyIdentifierLookup,
     makeIdentifierLookup,
     nodeIdToKeyFromLookup,
@@ -319,18 +318,14 @@ class RootDatabaseClass {
     }
 
     /**
+     * Get the live IdentifierLookup for the active replica.
+     * The returned object is not a clone — it is the same object that is updated
+     * in-place when new identifiers are committed. Callers must not store this
+     * reference across an await boundary where the lookup may be mutated.
      * @returns {IdentifierLookup}
      */
-    cloneActiveIdentifierLookup() {
-        return cloneIdentifierLookup(this._computed.identifierLookup);
-    }
-
-    /**
-     * @param {IdentifierLookup} lookup
-     * @returns {void}
-     */
-    replaceActiveIdentifierLookup(lookup) {
-        this._computed.identifierLookup = lookup;
+    getActiveIdentifierLookup() {
+        return this._computed.identifierLookup;
     }
 
     /**

@@ -1,8 +1,9 @@
-const { nodeIdentifierToString } = require('./node_identifier');
 const {
     makeIdentifierLookup,
     serializeIdentifierLookup,
     deleteIdentifierMappingForNodeKey,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
     setIdentifierMapping,
 } = require('./identifier_lookup');
 
@@ -15,27 +16,26 @@ const {
  */
 function reconcileHostLookupWithTargetLookup(targetLookup, hostLookup) {
     const reconciledHostLookup = makeIdentifierLookup(serializeIdentifierLookup(hostLookup));
-    for (const [nodeKeyString, targetIdentifier] of targetLookup.keyToId.entries()) {
-        const hostIdentifier = reconciledHostLookup.keyToId.get(nodeKeyString);
+    for (const [targetIdentifier, targetNodeKey] of serializeIdentifierLookup(targetLookup)) {
+        const hostIdentifier = nodeKeyToIdFromLookup(reconciledHostLookup, targetNodeKey);
         if (hostIdentifier !== undefined && hostIdentifier !== targetIdentifier) {
-            const hostNodeKey = reconciledHostLookup.idToKey.get(nodeIdentifierToString(hostIdentifier));
+            const hostNodeKey = nodeIdToKeyFromLookup(reconciledHostLookup, hostIdentifier);
             if (hostNodeKey !== undefined) {
                 deleteIdentifierMappingForNodeKey(reconciledHostLookup, hostNodeKey);
             }
 
-            const targetNodeKey = targetLookup.idToKey.get(nodeIdentifierToString(targetIdentifier));
-            if (targetNodeKey !== undefined) {
-                const conflictingHostNodeKey = reconciledHostLookup.idToKey.get(
-                    nodeIdentifierToString(targetIdentifier)
-                );
-                if (
-                    conflictingHostNodeKey !== undefined
-                    && conflictingHostNodeKey !== targetNodeKey
-                ) {
-                    deleteIdentifierMappingForNodeKey(reconciledHostLookup, conflictingHostNodeKey);
-                }
-                setIdentifierMapping(reconciledHostLookup, targetIdentifier, targetNodeKey);
+            // targetNodeKey is the key mapped to targetIdentifier in the target lookup.
+            const conflictingHostNodeKey = nodeIdToKeyFromLookup(
+                reconciledHostLookup,
+                targetIdentifier
+            );
+            if (
+                conflictingHostNodeKey !== undefined
+                && conflictingHostNodeKey !== targetNodeKey
+            ) {
+                deleteIdentifierMappingForNodeKey(reconciledHostLookup, conflictingHostNodeKey);
             }
+            setIdentifierMapping(reconciledHostLookup, targetIdentifier, targetNodeKey);
         }
     }
     return reconciledHostLookup;

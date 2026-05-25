@@ -7,11 +7,13 @@
 
 const {
     makeIdentifierLookup,
+    makeEmptyIdentifierLookup,
     nodeIdentifierFromString,
     stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
 const {
     getOrAllocateNodeIdentifier,
+    getTransactionLookupSize,
     lookupNodeIdentifier,
     requireNodeKey,
 } = require("../src/generators/incremental_graph/graph_state");
@@ -36,10 +38,10 @@ function makeRootDatabase() {
  * @param {Array<[import('../src/generators/incremental_graph/database').NodeIdentifier, import('../src/generators/incremental_graph/database').NodeKeyString]>} initialLookupEntries
  */
 function makeTransaction(initialLookupEntries) {
-    const lookup = makeIdentifierLookup(initialLookupEntries);
     return {
         batch: {},
-        identifierLookup: lookup,
+        _committedLookup: makeIdentifierLookup(initialLookupEntries),
+        _pendingAllocations: makeEmptyIdentifierLookup(),
     };
 }
 
@@ -66,8 +68,8 @@ describe("Transaction-based identifier operations", () => {
         
         const result = getOrAllocateNodeIdentifier(tx, db, existingKey);
         expect(result).toEqual(existingIdentifier);
-        // Lookup size should not change
-        expect(tx.identifierLookup.keyToId.size).toBe(1);
+        // Total lookup size should not change (committed=1, pending=0)
+        expect(getTransactionLookupSize(tx)).toBe(1);
     });
 
     test("getOrAllocateNodeIdentifier allocates new identifier for unknown key", () => {
@@ -77,8 +79,8 @@ describe("Transaction-based identifier operations", () => {
         
         const allocated = getOrAllocateNodeIdentifier(tx, db, key);
         expect(allocated).toBeDefined();
-        // Lookup should now have the new entry
-        expect(tx.identifierLookup.keyToId.size).toBe(1);
+        // Total lookup size should now be 1 (committed=0, pending=1)
+        expect(getTransactionLookupSize(tx)).toBe(1);
     });
 
     test("getOrAllocateNodeIdentifier returns same identifier on repeated calls", () => {
@@ -136,7 +138,7 @@ describe("Transaction-based identifier operations", () => {
         
         expect(lookupNodeIdentifier(tx, keyA)).toEqual(idA);
         expect(lookupNodeIdentifier(tx, keyB)).toEqual(idB);
-        expect(tx.identifierLookup.keyToId.size).toBe(2);
+        expect(getTransactionLookupSize(tx)).toBe(2);
     });
 
     test("allocations include pre-existing base lookup mappings", () => {

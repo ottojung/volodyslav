@@ -57,19 +57,59 @@ function isIdentifierAllocationError(object) {
 }
 
 /**
- * @typedef {object} IdentifierLookup
- * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
- * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key string.
+ * Private state container for IdentifierLookup instances.
+ * Using a WeakMap ensures that external code cannot access the raw Maps —
+ * the only way to read or mutate an IdentifierLookup is through the provided functions.
+ * Cloning is intentionally not supported; use serializeIdentifierLookup to export data.
+ *
+ * @type {WeakMap<IdentifierLookupClass, {keyToId: Map<string, NodeIdentifier>, idToKey: Map<string, NodeKeyString>}>}
+ */
+const lookupState = new WeakMap();
+
+/**
+ * Opaque bijection between NodeKeyString and NodeIdentifier.
+ * Do NOT store or clone this object directly — it is mutated in-place under the graph mutex.
+ * Use the provided functions (nodeKeyToIdFromLookup, nodeIdToKeyFromLookup, etc.) to interact with it.
+ */
+class IdentifierLookupClass {
+    /** @type {undefined} */
+    __brand = undefined;
+
+    constructor() {
+        lookupState.set(this, {
+            keyToId: new Map(),
+            idToKey: new Map(),
+        });
+        if (this.__brand !== undefined) {
+            throw new Error("IdentifierLookup is a nominal type");
+        }
+    }
+}
+
+/**
+ * @typedef {IdentifierLookupClass} IdentifierLookup
  */
 
 /**
+ * Internal accessor for the private Maps of an IdentifierLookup.
+ * Only available within this module.
+ * @param {IdentifierLookup} lookup
+ * @returns {{keyToId: Map<string, NodeIdentifier>, idToKey: Map<string, NodeKeyString>}}
+ */
+function getState(lookup) {
+    const state = lookupState.get(lookup);
+    if (state === undefined) {
+        throw new IdentifierLookupError("Not a valid IdentifierLookup instance");
+    }
+    return state;
+}
+
+/**
+ * Create an empty IdentifierLookup with no entries.
  * @returns {IdentifierLookup}
  */
 function makeEmptyIdentifierLookup() {
-    return {
-        keyToId: new Map(),
-        idToKey: new Map(),
-    };
+    return new IdentifierLookupClass();
 }
 
 /**
@@ -80,39 +120,34 @@ function makeEmptyIdentifierLookup() {
  */
 function makeIdentifierLookup(entries) {
     const lookup = makeEmptyIdentifierLookup();
+    const state = getState(lookup);
     for (const [nodeIdentifier, nodeKey] of entries) {
         const identifierString = nodeIdentifierToString(nodeIdentifier);
         const nodeKeyString = nodeKeyStringToString(nodeKey);
-        if (lookup.idToKey.has(identifierString)) {
+        if (state.idToKey.has(identifierString)) {
             throw new IdentifierLookupError(`Duplicate node identifier in lookup map: ${identifierString}`);
         }
-        if (lookup.keyToId.has(nodeKeyString)) {
+        if (state.keyToId.has(nodeKeyString)) {
             throw new IdentifierLookupError(`Duplicate node key in lookup map: ${nodeKeyString}`);
         }
-        lookup.idToKey.set(identifierString, nodeKey);
-        lookup.keyToId.set(nodeKeyString, nodeIdentifier);
+        state.idToKey.set(identifierString, nodeKey);
+        state.keyToId.set(nodeKeyString, nodeIdentifier);
     }
     return lookup;
 }
 
 /**
- * Clone the lookup through the persisted representation so validation stays centralized.
- * @param {IdentifierLookup} lookup
- * @returns {IdentifierLookup}
- */
-function cloneIdentifierLookup(lookup) {
-    return makeIdentifierLookup(serializeIdentifierLookup(lookup));
-}
-
-/**
  * Convert the lookup back into its persisted form, sorted by identifier string.
+ * This is also used to iterate all entries — the returned array is the only
+ * way to enumerate an IdentifierLookup's contents from outside this module.
  * @param {IdentifierLookup} lookup
  * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
 function serializeIdentifierLookup(lookup) {
+    const { idToKey } = getState(lookup);
     /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
     const entries = [];
-    for (const [identifierString, nodeKey] of lookup.idToKey.entries()) {
+    for (const [identifierString, nodeKey] of idToKey.entries()) {
         entries.push([
             nodeIdentifierFromString(identifierString),
             nodeKey,
@@ -126,22 +161,33 @@ function serializeIdentifierLookup(lookup) {
 
 /**
  * Read the identifier currently assigned to a semantic node key.
+ * Returns undefined if the key is not in the lookup.
  * @param {IdentifierLookup} lookup
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier | undefined}
  */
 function nodeKeyToIdFromLookup(lookup, nodeKey) {
-    return lookup.keyToId.get(nodeKeyStringToString(nodeKey));
+    return getState(lookup).keyToId.get(nodeKeyStringToString(nodeKey));
 }
 
 /**
  * Read the semantic node key currently assigned to an identifier.
+ * Returns undefined if the identifier is not in the lookup.
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {NodeKeyString | undefined}
  */
 function nodeIdToKeyFromLookup(lookup, nodeIdentifier) {
-    return lookup.idToKey.get(nodeIdentifierToString(nodeIdentifier));
+    return getState(lookup).idToKey.get(nodeIdentifierToString(nodeIdentifier));
+}
+
+/**
+ * Return the number of (identifier, key) pairs in the lookup.
+ * @param {IdentifierLookup} lookup
+ * @returns {number}
+ */
+function getIdentifierLookupSize(lookup) {
+    return getState(lookup).idToKey.size;
 }
 
 /**
@@ -153,22 +199,23 @@ function nodeIdToKeyFromLookup(lookup, nodeIdentifier) {
  * @returns {void}
  */
 function setIdentifierMapping(lookup, nodeIdentifier, nodeKey) {
+    const state = getState(lookup);
     const identifierString = nodeIdentifierToString(nodeIdentifier);
     const nodeKeyString = nodeKeyStringToString(nodeKey);
-    const existingKey = lookup.idToKey.get(identifierString);
+    const existingKey = state.idToKey.get(identifierString);
     if (existingKey !== undefined && existingKey !== nodeKey) {
         throw new IdentifierLookupError(
             `Node identifier ${identifierString} is already assigned to ${nodeKeyStringToString(existingKey)}`
         );
     }
-    const existingIdentifier = lookup.keyToId.get(nodeKeyString);
+    const existingIdentifier = state.keyToId.get(nodeKeyString);
     if (existingIdentifier !== undefined && existingIdentifier !== nodeIdentifier) {
         throw new IdentifierLookupError(
             `Node key ${nodeKeyString} is already assigned to ${nodeIdentifierToString(existingIdentifier)}`
         );
     }
-    lookup.idToKey.set(identifierString, nodeKey);
-    lookup.keyToId.set(nodeKeyString, nodeIdentifier);
+    state.idToKey.set(identifierString, nodeKey);
+    state.keyToId.set(nodeKeyString, nodeIdentifier);
 }
 
 /**
@@ -178,13 +225,14 @@ function setIdentifierMapping(lookup, nodeIdentifier, nodeKey) {
  * @returns {void}
  */
 function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
+    const state = getState(lookup);
     const nodeKeyString = nodeKeyStringToString(nodeKey);
-    const existingIdentifier = lookup.keyToId.get(nodeKeyString);
+    const existingIdentifier = state.keyToId.get(nodeKeyString);
     if (existingIdentifier === undefined) {
         return;
     }
-    lookup.keyToId.delete(nodeKeyString);
-    lookup.idToKey.delete(nodeIdentifierToString(existingIdentifier));
+    state.keyToId.delete(nodeKeyString);
+    state.idToKey.delete(nodeIdentifierToString(existingIdentifier));
 }
 
 /**
@@ -213,26 +261,37 @@ function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
 }
 
 /**
- * Merge two lookup snapshots by applying overlay mappings onto base.
- * Conflicting assignments throw `IdentifierLookupError` via `setIdentifierMapping`.
+ * Create a new lookup containing all entries from both `base` and `overlay`.
+ * Conflicting assignments (same identifier or key mapped to different counterparts)
+ * throw `IdentifierLookupError`.
  *
- * Note: we intentionally do not add extra per-entry NodeIdentifier validation here,
- * because identifiers are already validated at construction boundaries and repeating
- * it on every merge would be wasted compute in a hot path.
+ * Neither the base nor the overlay is modified; a new IdentifierLookup is returned.
+ * Used only during migration sync — not in the hot transaction path.
  * @param {IdentifierLookup} base
  * @param {IdentifierLookup} overlay
  * @returns {IdentifierLookup}
  */
 function mergeIdentifierLookups(base, overlay) {
-    const merged = cloneIdentifierLookup(base);
-    for (const [identifierString, nodeKey] of overlay.idToKey.entries()) {
-        setIdentifierMapping(
-            merged,
-            nodeIdentifierFromString(identifierString),
-            nodeKey
-        );
+    const merged = makeIdentifierLookup(serializeIdentifierLookup(base));
+    for (const [overlayId, overlayKey] of serializeIdentifierLookup(overlay)) {
+        setIdentifierMapping(merged, overlayId, overlayKey);
     }
     return merged;
+}
+
+/**
+ * Merge all entries from `overlay` into `base` in-place.
+ * Used at transaction commit time to incorporate pending allocations into the
+ * committed lookup without creating a new object.
+ * Conflicting assignments throw `IdentifierLookupError`.
+ * @param {IdentifierLookup} base
+ * @param {IdentifierLookup} overlay
+ * @returns {void}
+ */
+function mergeIdentifierLookupInto(base, overlay) {
+    for (const [overlayId, overlayKey] of serializeIdentifierLookup(overlay)) {
+        setIdentifierMapping(base, overlayId, overlayKey);
+    }
 }
 
 /**
@@ -260,6 +319,56 @@ function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = 6
     }
 
     throw new IdentifierAllocationError(nodeKeyStringToString(nodeKey));
+}
+
+/**
+ * Allocate a fresh identifier for a node key, checking both a committed lookup
+ * and a pending-allocations overlay for collisions.
+ * The new entry is added only to `pendingAllocations`, not to `committedLookup`.
+ * The key must not already be present in either lookup when this function is called.
+ * @param {IdentifierLookup} committedLookup - Committed state (read-only in this call).
+ * @param {IdentifierLookup} pendingAllocations - Overlay for this transaction (mutated).
+ * @param {NodeKeyString} nodeKey
+ * @param {(attempt: number) => NodeIdentifier} makeIdentifier
+ * @param {number} [maxAttempts=64]
+ * @returns {NodeIdentifier}
+ */
+function allocateNodeIdentifierWithOverlay(
+    committedLookup,
+    pendingAllocations,
+    nodeKey,
+    makeIdentifier,
+    maxAttempts = 64
+) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const candidate = makeIdentifier(attempt);
+        // The candidate must not be used in either the committed state or the pending overlay.
+        if (
+            nodeIdToKeyFromLookup(committedLookup, candidate) === undefined &&
+            nodeIdToKeyFromLookup(pendingAllocations, candidate) === undefined
+        ) {
+            setIdentifierMapping(pendingAllocations, candidate, nodeKey);
+            return candidate;
+        }
+    }
+    throw new IdentifierAllocationError(nodeKeyStringToString(nodeKey));
+}
+
+/**
+ * Produce the persisted form of the committed lookup combined with pending allocations,
+ * without merging them into a single IdentifierLookup object.
+ * The result is a sorted array of [NodeIdentifier, NodeKeyString] pairs covering
+ * all entries from both inputs, ready to be written to disk.
+ * @param {IdentifierLookup} committedLookup
+ * @param {IdentifierLookup} pendingAllocations
+ * @returns {Array<[NodeIdentifier, NodeKeyString]>}
+ */
+function serializeIdentifierLookupWithPending(committedLookup, pendingAllocations) {
+    const committedEntries = serializeIdentifierLookup(committedLookup);
+    const pendingEntries = serializeIdentifierLookup(pendingAllocations);
+    const combined = [...committedEntries, ...pendingEntries];
+    combined.sort(([leftId], [rightId]) => compareNodeIdentifier(leftId, rightId));
+    return combined;
 }
 
 /**
@@ -296,13 +405,15 @@ function requireNodeIdentifierForKey(lookup, nodeKey) {
 
 module.exports = {
     allocateNodeIdentifier,
-    cloneIdentifierLookup,
+    allocateNodeIdentifierWithOverlay,
     mergeIdentifierLookups,
+    mergeIdentifierLookupInto,
     deleteIdentifierMappingForNodeKey,
     deterministicNodeIdentifierFromNodeKey,
     IdentifierAllocationError,
     IdentifierLookupError,
     IDENTIFIERS_KEY,
+    getIdentifierLookupSize,
     isIdentifierAllocationError,
     isIdentifierLookupError,
     makeEmptyIdentifierLookup,
@@ -312,5 +423,6 @@ module.exports = {
     requireNodeIdentifierForKey,
     requireNodeKeyForIdentifier,
     serializeIdentifierLookup,
+    serializeIdentifierLookupWithPending,
     setIdentifierMapping,
 };

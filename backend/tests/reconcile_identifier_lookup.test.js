@@ -1,6 +1,8 @@
 const {
     makeIdentifierLookup,
     nodeIdentifierFromString,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
     stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
 const { reconcileHostLookupWithTargetLookup } = require("../src/generators/incremental_graph/database/reconcile_identifier_lookup");
@@ -16,9 +18,9 @@ describe("reconcile identifier lookup", () => {
 
         const reconciled = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
 
-        expect(reconciled.keyToId.get(String(semanticNodeKey))).toEqual(targetIdentifier);
-        expect(reconciled.idToKey.get(String(hostIdentifier))).toBeUndefined();
-        expect(reconciled.idToKey.get(String(targetIdentifier))).toEqual(semanticNodeKey);
+        expect(nodeKeyToIdFromLookup(reconciled, semanticNodeKey)).toEqual(targetIdentifier);
+        expect(nodeIdToKeyFromLookup(reconciled, hostIdentifier)).toBeUndefined();
+        expect(nodeIdToKeyFromLookup(reconciled, targetIdentifier)).toEqual(semanticNodeKey);
     });
 
     test("keeps identical assignments unchanged", () => {
@@ -30,8 +32,8 @@ describe("reconcile identifier lookup", () => {
 
         const reconciled = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
 
-        expect(reconciled.keyToId.get(String(semanticNodeKey))).toEqual(identifier);
-        expect(reconciled.idToKey.get(String(identifier))).toEqual(semanticNodeKey);
+        expect(nodeKeyToIdFromLookup(reconciled, semanticNodeKey)).toEqual(identifier);
+        expect(nodeIdToKeyFromLookup(reconciled, identifier)).toEqual(semanticNodeKey);
     });
 
     test("does not evict unrelated keys when target identifier already matches", () => {
@@ -48,8 +50,8 @@ describe("reconcile identifier lookup", () => {
 
         const reconciled = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
 
-        expect(reconciled.idToKey.get(String(targetIdentifier))).toEqual(semanticNodeKey);
-        expect(reconciled.keyToId.get(String(otherNodeKey))).toEqual(otherIdentifier);
+        expect(nodeIdToKeyFromLookup(reconciled, targetIdentifier)).toEqual(semanticNodeKey);
+        expect(nodeKeyToIdFromLookup(reconciled, otherNodeKey)).toEqual(otherIdentifier);
     });
 
     test("evicts host mapping that conflicts with target identifier during reconcile", () => {
@@ -66,8 +68,8 @@ describe("reconcile identifier lookup", () => {
 
         const reconciled = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
 
-        expect(reconciled.keyToId.get(String(semanticNodeKey))).toEqual(targetIdentifier);
-        expect(reconciled.idToKey.get(String(targetIdentifier))).toEqual(semanticNodeKey);
-        expect(reconciled.keyToId.get(String(conflictingNodeKey))).toBeUndefined();
+        expect(nodeKeyToIdFromLookup(reconciled, semanticNodeKey)).toEqual(targetIdentifier);
+        expect(nodeIdToKeyFromLookup(reconciled, targetIdentifier)).toEqual(semanticNodeKey);
+        expect(nodeKeyToIdFromLookup(reconciled, conflictingNodeKey)).toBeUndefined();
     });
 });
