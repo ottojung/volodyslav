@@ -130,7 +130,7 @@ function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
 function stringToNodeIdentifier(nodeIdentifierStr) {
     if (!NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr)) {
         throw new Error(
-            `Invalid node identifier string: ${nodeIdentifierStr}`
+            `Invalid node identifier string: ${nodeIdentifierStr}. Expected a 9-character lowercase alphabetic string matching /^[a-z]{9}$/`
         );
     }
     return unsafeStringToNodeIdentifier(nodeIdentifierStr);

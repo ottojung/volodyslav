@@ -25,6 +25,7 @@ const {
     commitTransactionLookup,
     nodeIdentifierFromString,
     stringToNodeKeyString,
+    isIdentifierAllocationError,
 } = require('../src/generators/incremental_graph/database');
 
 /**
@@ -239,5 +240,51 @@ describe('commitTransactionLookup merges overlay into base', () => {
 
         expect(base.keyToId.size).toBe(1);
         expect(base.idToKey.size).toBe(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 5. Error conditions
+// ---------------------------------------------------------------------------
+
+describe('error conditions', () => {
+    test('txAllocateNodeIdentifier throws IdentifierAllocationError when all candidates collide', () => {
+        const base = makeEmptyIdentifierLookup();
+        const txLookup = makeTransactionIdentifierLookup(base);
+
+        // The only candidate identifier is 'aaaaaaaaa'.
+        const keyA = stringToNodeKeyString('keyA');
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']));
+
+        // Now try to allocate a second key with the same single candidate.
+        // All attempts will collide → IdentifierAllocationError.
+        const keyB = stringToNodeKeyString('keyB');
+        const singleCandidate = makeIdFactory(['aaaaaaaaa']);
+        let caught;
+        try {
+            txAllocateNodeIdentifier(txLookup, keyB, singleCandidate, 1);
+        } catch (err) {
+            caught = err;
+        }
+        expect(isIdentifierAllocationError(caught)).toBe(true);
+    });
+
+    test('stringToNodeIdentifier rejects a legacy JSON node key string', () => {
+        const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
+        expect(() => stringToNodeIdentifier('{"head":"foo","args":[]}')).toThrow(
+            /Expected a 9-character lowercase alphabetic string/
+        );
+    });
+
+    test('stringToNodeIdentifier rejects an 8-character string (too short)', () => {
+        const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
+        expect(() => stringToNodeIdentifier('aaaaaaaa')).toThrow(
+            /Expected a 9-character lowercase alphabetic string/
+        );
+    });
+
+    test('stringToNodeIdentifier accepts a valid 9-character lowercase string', () => {
+        const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
+        expect(() => stringToNodeIdentifier('aaaaaaaaa')).not.toThrow();
     });
 });
