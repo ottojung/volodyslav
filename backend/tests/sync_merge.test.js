@@ -479,6 +479,71 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('replica pointer and schema storage are immediately coherent after cutover without reopening DB', async () => {
+        // Objective 2: setCurrentReplicaPointer atomically updates both the
+        // persisted _meta/current_replica and this._computed in the same call.
+        // This test verifies that callers never observe stale in-memory pointer
+        // state after a successful merge that triggers a cutover.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            // Write a remote node with a strictly newer timestamp so the merge
+            // produces changes and triggers a replica cutover.
+            const nodeA = NODE_A;
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS2, [], remoteValue);
+
+            // Verify precondition: active replica is 'x' before the merge.
+            expect(db.currentReplicaName()).toBe('x');
+
+            // Call mergeHostIntoReplica directly — do NOT reopen the DB.
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+
+            // The merge must have triggered a cutover.
+            expect(switched).toBe(true);
+
+            // In-memory pointer must be immediately coherent (no reopen needed).
+            expect(db.currentReplicaName()).toBe('y');
+
+            // Schema storage must also reflect the new replica immediately.
+            const T = db.getSchemaStorage();
+            const merged = await T.values.get(nodeA);
+            expect(merged).toEqual(remoteValue);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('replica pointer stays at x when merge is a no-op', async () => {
+        // Verify the false/not-switched return value is semantically correct:
+        // a no-op merge must not change the replica pointer, even in-memory.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            // No nodes in H → no changes → no cutover.
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            expect(switched).toBe(false);
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('rejects malformed host identifiers lookup during host merge', async () => {
         const capabilities = getTestCapabilities();
         let db;
