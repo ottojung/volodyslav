@@ -686,10 +686,10 @@ describe("Nested pull deduplication — concurrent pulls of the same key share o
     });
 });
 // ---------------------------------------------------------------------------
-// Property 10 — Read-only lookups do not interfere with allocations
+// Supplemental scenario — Read-only lookups do not interfere with allocations
 // ---------------------------------------------------------------------------
 
-describe("Property 10 — Read-only lookups do not interfere with allocations", () => {
+describe("Supplemental scenario — Read-only lookups do not interfere with allocations", () => {
     test("getFreshness of existing nodes does not interfere with pulling new nodes", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
