@@ -187,8 +187,6 @@ function createBatch(schemaStorage) {
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase, sleeper) {
-    const schemaStorage = rootDatabase.getSchemaStorage();
-
     /**
      * @param {NodeIdentifier} node
      * @param {NodeIdentifier[]} inputs
@@ -260,23 +258,24 @@ function makeGraphStorage(rootDatabase, sleeper) {
      */
     async function listMaterializedNodes() {
         const nodes = [];
-        for await (const key of schemaStorage.inputs.keys()) {
+        for await (const key of rootDatabase.getSchemaStorage().inputs.keys()) {
             nodes.push(key);
         }
         return nodes;
     }
 
     return {
-        values: schemaStorage.values,
-        freshness: schemaStorage.freshness,
-        inputs: schemaStorage.inputs,
-        revdeps: schemaStorage.revdeps,
-        counters: schemaStorage.counters,
-        timestamps: schemaStorage.timestamps,
+        get values() { return rootDatabase.getSchemaStorage().values; },
+        get freshness() { return rootDatabase.getSchemaStorage().freshness; },
+        get inputs() { return rootDatabase.getSchemaStorage().inputs; },
+        get revdeps() { return rootDatabase.getSchemaStorage().revdeps; },
+        get counters() { return rootDatabase.getSchemaStorage().counters; },
+        get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
         async withBatch(fn) {
-            const { batch, operations } = createBatch(schemaStorage);
+            const activeSchemaStorage = rootDatabase.getSchemaStorage();
+            const { batch, operations } = createBatch(activeSchemaStorage);
             const result = await fn(batch);
-            await schemaStorage.batch(operations);
+            await activeSchemaStorage.batch(operations);
             return result;
         },
         /**
