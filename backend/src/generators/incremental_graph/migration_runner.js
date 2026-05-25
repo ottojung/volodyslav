@@ -24,13 +24,12 @@ const {
     serializeNodeKey,
     serializeIdentifierLookup,
     stringToNodeIdentifier,
-    legacyStringToNodeIdentifier,
     stringToNodeKeyString,
     stringToNodeName,
     getRootDatabase,
 } = require("./database");
 const { withExclusiveMode } = require("./lock");
-const { makeMigrationStorage } = require("./migration_storage");
+const { makeMigrationStorage, legacyStringToNodeIdentifier } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
