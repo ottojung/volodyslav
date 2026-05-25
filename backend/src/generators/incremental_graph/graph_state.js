@@ -326,22 +326,31 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
                 // commitTransaction(): disk-first — flush batch, then update volatile layer.
                 // txLookup.keyToId contains only the new allocations from this transaction.
+                const hasPendingOperations = operations.length > 0;
                 const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
+
+                // No-op transaction: no node writes and no new identifier allocations.
+                // Skip persistence work entirely.
+                if (!hasPersistentDelta) {
+                    return value;
+                }
+
+                if (hasPendingAllocations && activeSchemaStorage.global !== undefined) {
+                    operations.push(
+                        activeSchemaStorage.global.rawPutOp(
+                            IDENTIFIERS_KEY,
+                            serializeTransactionLookup(tx.identifierLookup)
+                        )
+                    );
+                }
+
+                await activeSchemaStorage.batch(operations);
+
                 if (hasPendingAllocations) {
-                    if (activeSchemaStorage.global !== undefined) {
-                        operations.push(
-                            activeSchemaStorage.global.rawPutOp(
-                                IDENTIFIERS_KEY,
-                                serializeTransactionLookup(tx.identifierLookup)
-                            )
-                        );
-                    }
-                    await activeSchemaStorage.batch(operations);
                     // Disk flush succeeded: apply overlay to base in-place.
                     // This is the only mutation of _computed.identifierLookup.
                     commitTransactionLookup(tx.identifierLookup);
-                } else {
-                    await activeSchemaStorage.batch(operations);
                 }
 
                 return value;
