@@ -14,12 +14,9 @@ const { makeUniqueFunctor } = require("../../unique_functor");
  */
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
-const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
 const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
-/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
-/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 
 /**
  * Executes a procedure while holding the global incremental-graph mutex
@@ -58,20 +55,6 @@ function withObserveMode(sleeper, procedure) {
  */
 function withPullMode(sleeper, procedure) {
     return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "pull", procedure);
-}
-
-/**
- * @template T
- * @param {SleepCapability} sleeper
- * @param {NodeIdentifier | NodeKeyString} nodeKeyStr
- * @param {() => Promise<T>} procedure
- * @returns {Promise<T>}
- */
-function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
-    return sleeper.withMutex(
-        PULL_NODE_KEY.instantiate([String(nodeKeyStr)]),
-        procedure
-    );
 }
 
 /**
@@ -125,6 +108,5 @@ module.exports = {
     withExclusiveMode,
     withObserveMode,
     withPullMode,
-    withPullNodeMutex,
     withComputedStateMutex,
 };
