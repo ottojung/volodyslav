@@ -101,13 +101,10 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
         const lookup2 = db2.getActiveIdentifierLookup();
 
         // Volatile ⊆ disk: every volatile entry exists on disk.
-        for (const [id, key] of serializeIdentifierLookup(lookup1)) {
-            expect(nodeIdToKeyFromLookup(lookup2, id)).toEqual(key);
-        }
         // Disk ⊆ volatile: every disk entry was in volatile.
-        for (const [id, key] of serializeIdentifierLookup(lookup2)) {
-            expect(nodeIdToKeyFromLookup(lookup1, id)).toEqual(key);
-        }
+        // Since both serializations are sorted by the same key, comparing them directly
+        // verifies bidirectional isomorphism in O(n) time.
+        expect(serializeIdentifierLookup(lookup1)).toEqual(serializeIdentifierLookup(lookup2));
 
         await db2.close();
     });
@@ -349,7 +346,7 @@ describe("Property 4 — Monotonicity: no identifier entries disappear", () => {
 
         await graph.pull("a");
         const lookupAfterA = db.getActiveIdentifierLookup();
-        const entriesAfterA = new Map(serializeIdentifierLookup(lookupAfterA).map(([id, key]) => [id, key]));
+        const entriesAfterA = new Map(serializeIdentifierLookup(lookupAfterA));
 
         await graph.pull("b");
         const lookupAfterB = db.getActiveIdentifierLookup();
@@ -399,13 +396,10 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
         const diskLookup = db2.getActiveIdentifierLookup();
 
         // Volatile ⊆ disk: no volatile-only entries.
-        for (const [id, key] of serializeIdentifierLookup(volatileLookup)) {
-            expect(nodeIdToKeyFromLookup(diskLookup, id)).toEqual(key);
-        }
         // Disk ⊆ volatile: no disk-only entries.
-        for (const [id, key] of serializeIdentifierLookup(diskLookup)) {
-            expect(nodeIdToKeyFromLookup(volatileLookup, id)).toEqual(key);
-        }
+        // Since both serializations are sorted by the same key, comparing them directly
+        // verifies bidirectional isomorphism in O(n) time.
+        expect(serializeIdentifierLookup(volatileLookup)).toEqual(serializeIdentifierLookup(diskLookup));
 
         await db2.close();
     });

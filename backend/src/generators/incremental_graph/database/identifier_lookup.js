@@ -80,6 +80,11 @@ class IdentifierLookupClass {
             keyToId: new Map(),
             idToKey: new Map(),
         });
+        // This check always evaluates to false at runtime — it exists solely for
+        // the JSDoc/TypeScript type system to treat IdentifierLookupClass as a
+        // nominal type that cannot be substituted by a plain object with a
+        // compatible shape. This is the established codebase convention for
+        // nominal typing in JSDoc-typed JavaScript.
         if (this.__brand !== undefined) {
             throw new Error("IdentifierLookup is a nominal type");
         }
@@ -359,6 +364,11 @@ function allocateNodeIdentifierWithOverlay(
  * without merging them into a single IdentifierLookup object.
  * The result is a sorted array of [NodeIdentifier, NodeKeyString] pairs covering
  * all entries from both inputs, ready to be written to disk.
+ *
+ * Precondition: there must be no overlapping entries between `committedLookup` and
+ * `pendingAllocations`. This is guaranteed when `pendingAllocations` was populated
+ * exclusively via `allocateNodeIdentifierWithOverlay`, which checks both layers for
+ * collisions before inserting. Violating this precondition produces a corrupt array.
  * @param {IdentifierLookup} committedLookup
  * @param {IdentifierLookup} pendingAllocations
  * @returns {Array<[NodeIdentifier, NodeKeyString]>}
