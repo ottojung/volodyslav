@@ -580,22 +580,14 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     if (hasChanges) {
         const hostIdentifierValue = await H.global.get('identifiers_keys_map');
         const targetIdentifierValue = await T.global.get('identifiers_keys_map');
-
-        let hostLookup = makeEmptyIdentifierLookup();
-        if (hostIdentifierValue !== undefined) {
-            if (!Array.isArray(hostIdentifierValue)) {
-                throw new MalformedIdentifierLookupError(hostIdentifierValue);
-            }
-            hostLookup = makeIdentifierLookup(hostIdentifierValue);
-        }
-
-        let targetLookup = makeEmptyIdentifierLookup();
-        if (targetIdentifierValue !== undefined) {
-            if (!Array.isArray(targetIdentifierValue)) {
-                throw new MalformedIdentifierLookupError(targetIdentifierValue);
-            }
-            targetLookup = makeIdentifierLookup(targetIdentifierValue);
-        }
+        /** @param {unknown} rawEntries */
+        const parseIdentifierLookup = (rawEntries) => {
+            if (rawEntries === undefined) return makeEmptyIdentifierLookup();
+            if (!Array.isArray(rawEntries)) throw new MalformedIdentifierLookupError(rawEntries);
+            return makeIdentifierLookup(rawEntries);
+        };
+        const hostLookup = parseIdentifierLookup(hostIdentifierValue);
+        const targetLookup = parseIdentifierLookup(targetIdentifierValue);
         const reconciledHostLookup = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
         const mergedLookup = mergeIdentifierLookups(targetLookup, reconciledHostLookup);
 
