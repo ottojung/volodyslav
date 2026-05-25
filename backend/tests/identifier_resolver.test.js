@@ -7,6 +7,7 @@
 
 const {
     makeIdentifierLookup,
+    makeTransactionIdentifierLookup,
     nodeIdentifierFromString,
     stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
@@ -33,13 +34,14 @@ function makeRootDatabase() {
 
 /**
  * Create a minimal Transaction mock for testing.
+ * Initial entries are placed in the base lookup; the overlay starts empty.
  * @param {Array<[import('../src/generators/incremental_graph/database').NodeIdentifier, import('../src/generators/incremental_graph/database').NodeKeyString]>} initialLookupEntries
  */
 function makeTransaction(initialLookupEntries) {
-    const lookup = makeIdentifierLookup(initialLookupEntries);
+    const baseLookup = makeIdentifierLookup(initialLookupEntries);
     return {
         batch: {},
-        identifierLookup: lookup,
+        identifierLookup: makeTransactionIdentifierLookup(baseLookup),
     };
 }
 
@@ -66,8 +68,8 @@ describe("Transaction-based identifier operations", () => {
         
         const result = getOrAllocateNodeIdentifier(tx, db, existingKey);
         expect(result).toEqual(existingIdentifier);
-        // Lookup size should not change
-        expect(tx.identifierLookup.keyToId.size).toBe(1);
+        // The existing entry is in the base; the overlay stays empty.
+        expect(tx.identifierLookup.keyToId.size).toBe(0);
     });
 
     test("getOrAllocateNodeIdentifier allocates new identifier for unknown key", () => {

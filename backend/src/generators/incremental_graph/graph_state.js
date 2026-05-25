@@ -14,13 +14,14 @@
 
 const {
     IDENTIFIERS_KEY,
-    allocateNodeIdentifier,
-    cloneIdentifierLookup,
-    nodeIdToKeyFromLookup,
     nodeIdentifierToString,
-    nodeKeyToIdFromLookup,
-    serializeIdentifierLookup,
     stringToNodeIdentifier,
+    makeTransactionIdentifierLookup,
+    txAllocateNodeIdentifier,
+    txNodeIdToKey,
+    txNodeKeyToId,
+    serializeTransactionLookup,
+    commitTransactionLookup,
 } = require('./database');
 const { withComputedStateMutex } = require('./lock');
 
@@ -40,6 +41,7 @@ const { withComputedStateMutex } = require('./lock');
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
+/** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
@@ -64,12 +66,16 @@ const { withComputedStateMutex } = require('./lock');
  * A Transaction groups all reads and writes for one top-level graph operation.
  * It contains:
  * - batch: LevelDB batch accumulator with read-your-writes overlay
- * - identifierLookup: working copy of the committed lookup, extended in-place
- *   with any new allocations made during this transaction
+ * - identifierLookup: a `TransactionIdentifierLookup` that holds only the
+ *   **new** allocations made during this transaction in a small overlay map,
+ *   backed by a read-only reference to the committed `_computed.identifierLookup`.
+ *   Lookups check the overlay first and fall through to the base.
+ *   At commit time, the overlay is applied to the base in-place after a
+ *   successful disk flush (disk-first invariant).
  *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
- * @property {IdentifierLookup} identifierLookup - Working copy of the identifier lookup.
+ * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
  */
 
 /**
@@ -283,9 +289,16 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * identifier allocations made during the operation.
          *
          * This implements the transaction model from the volatile-consistency spec:
-         * - createTransaction(): reads identifierLookup, creates fresh batch
-         * - operation runs with the transaction
-         * - commitTransaction(): flush batch to disk, then update identifierLookup
+         * - createTransaction(): creates an overlay-based TransactionIdentifierLookup
+         *   backed by a direct (non-cloned) reference to the committed lookup, then
+         *   creates a fresh batch accumulator. No full-copy clone is performed.
+         * - operation runs with the transaction.
+         * - commitTransaction(): serialize (base + overlay) for disk, flush the batch,
+         *   then apply the overlay to the base in-place (disk-first ordering).
+         *
+         * Using an overlay instead of a full clone eliminates the O(n log n) copy at
+         * transaction start and the second O(n log n) copy at commit time. Only new
+         * allocations (typically very few per transaction) are tracked in the overlay.
          *
          * The entire operation happens inside withComputedStateMutex, serializing all
          * concurrent callers end-to-end and eliminating identifier allocation races.
@@ -300,32 +313,34 @@ function makeGraphStorage(rootDatabase, sleeper) {
          */
         async withTransaction(fn) {
             return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // createTransaction(): reads _computed.identifierLookup, creates fresh batch.
+                // createTransaction(): get a direct reference to _computed.identifierLookup
+                // (no clone), create an empty overlay for this transaction's allocations.
                 const activeSchemaStorage = rootDatabase.getSchemaStorage();
-                const identifierLookup = rootDatabase.cloneActiveIdentifierLookup();
-                const initialLookupSize = identifierLookup.keyToId.size;
+                const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
                 const { batch, operations } = createBatch(activeSchemaStorage);
 
                 /** @type {Transaction} */
-                const tx = { batch, identifierLookup };
+                const tx = { batch, identifierLookup: txLookup };
 
                 // Run the operation (identifier allocation + node-data writes).
                 const value = await fn(tx);
 
                 // commitTransaction(): disk-first — flush batch, then update volatile layer.
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > initialLookupSize;
+                // txLookup.keyToId contains only the new allocations from this transaction.
+                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
                 if (hasPendingAllocations) {
-                    const lookupToCommit = cloneIdentifierLookup(tx.identifierLookup);
                     if (activeSchemaStorage.global !== undefined) {
                         operations.push(
                             activeSchemaStorage.global.rawPutOp(
                                 IDENTIFIERS_KEY,
-                                serializeIdentifierLookup(lookupToCommit)
+                                serializeTransactionLookup(tx.identifierLookup)
                             )
                         );
                     }
                     await activeSchemaStorage.batch(operations);
-                    rootDatabase.replaceActiveIdentifierLookup(lookupToCommit);
+                    // Disk flush succeeded: apply overlay to base in-place.
+                    // This is the only mutation of _computed.identifierLookup.
+                    commitTransactionLookup(tx.identifierLookup);
                 } else {
                     await activeSchemaStorage.batch(operations);
                 }
@@ -343,42 +358,44 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
 /**
  * Look up an existing identifier for a node key in the transaction's lookup.
- * Returns undefined if the node key is not in the lookup.
+ * Checks the overlay first, then falls through to the committed base.
+ * Returns undefined if the node key is not found in either.
  * @param {Transaction} tx
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier | undefined}
  */
 function lookupNodeIdentifier(tx, nodeKey) {
-    return nodeKeyToIdFromLookup(tx.identifierLookup, nodeKey);
+    return txNodeKeyToId(tx.identifierLookup, nodeKey);
 }
 
 /**
  * Look up an existing identifier or allocate a new one for a node key.
- * New allocations are added to the transaction's working lookup.
+ * New allocations are recorded only in the transaction's overlay, not in the
+ * committed base lookup. They become part of the base only after a successful
+ * disk flush via `commitTransactionLookup`.
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier}
  */
 function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
-    const existing = nodeKeyToIdFromLookup(tx.identifierLookup, nodeKey);
-    if (existing !== undefined) {
-        return existing;
-    }
-    return allocateNodeIdentifier(tx.identifierLookup, nodeKey, () =>
-        rootDatabase.generateNodeIdentifier()
+    return txAllocateNodeIdentifier(
+        tx.identifierLookup,
+        nodeKey,
+        () => rootDatabase.generateNodeIdentifier()
     );
 }
 
 /**
  * Convert an identifier back to its semantic node key.
- * Throws if the identifier is not in the transaction's lookup.
+ * Checks the overlay first, then falls through to the committed base.
+ * Throws if the identifier is not found in either.
  * @param {Transaction} tx
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {NodeKeyString}
  */
 function requireNodeKey(tx, nodeIdentifier) {
-    const nodeKey = nodeIdToKeyFromLookup(tx.identifierLookup, nodeIdentifier);
+    const nodeKey = txNodeIdToKey(tx.identifierLookup, nodeIdentifier);
     if (nodeKey === undefined) {
         throw new Error(`Missing semantic node key for identifier ${nodeIdentifierToString(nodeIdentifier)}`);
     }

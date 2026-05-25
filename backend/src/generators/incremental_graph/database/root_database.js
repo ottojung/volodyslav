@@ -326,6 +326,17 @@ class RootDatabaseClass {
     }
 
     /**
+     * Return a direct (non-cloned) reference to the active identifier lookup.
+     * The caller must treat it as read-only; only `commitTransactionLookup`
+     * (called inside `withComputedStateMutex` after a successful flush) may
+     * mutate it.
+     * @returns {IdentifierLookup}
+     */
+    getActiveIdentifierLookup() {
+        return this._computed.identifierLookup;
+    }
+
+    /**
      * @param {IdentifierLookup} lookup
      * @returns {void}
      */

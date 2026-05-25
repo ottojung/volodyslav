@@ -51,6 +51,10 @@ class InMemoryDatabase {
         return cloneIdentifierLookup(this._identifierLookup);
     }
 
+    getActiveIdentifierLookup() {
+        return this._identifierLookup;
+    }
+
     replaceActiveIdentifierLookup(lookup) {
         this._identifierLookup = lookup;
     }
