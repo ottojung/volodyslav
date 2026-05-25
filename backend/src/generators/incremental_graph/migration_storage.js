@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database");
+const { legacyStringToNodeIdentifier, stringToNodeKeyString } = require("./database");
 const { deserializeNodeKey } = require("./database");
 const { stringToNodeName } = require("./database");
 const {
@@ -94,7 +94,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return record.inputs.map(stringToNodeIdentifier);
+    return record.inputs.map(legacyStringToNodeIdentifier);
 }
 
 /**

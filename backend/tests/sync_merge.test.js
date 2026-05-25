@@ -16,6 +16,7 @@
 const {
     getRootDatabase,
     isMalformedIdentifierLookupError,
+    nodeIdentifierFromString,
 } = require('../src/generators/incremental_graph/database');
 const {
     mergeHostIntoReplica,
@@ -47,9 +48,12 @@ function makeLogger() {
     };
 }
 
-function nk(name) {
-    return `{"head":"${name}","args":[]}`;
-}
+// Stable 9-letter lowercase NodeIdentifiers used as test node keys.
+const NODE_A = nodeIdentifierFromString('aaaaaaaaa');
+const NODE_B = nodeIdentifierFromString('bbbbbbbbb');
+const NODE_C = nodeIdentifierFromString('ccccccccc');
+const NODE_P = nodeIdentifierFromString('ppppppppp');
+const NODE_H = nodeIdentifierFromString('hhhhhhhhh');
 
 // Hardcoded ISO 8601 UTC timestamps for test reproducibility.
 // Values are chosen to be clearly ordered: TS1 < TS2 < TS3.
@@ -121,7 +125,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeA = nk('a');
+            const nodeA = NODE_A;
             const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
             const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
 
@@ -155,7 +159,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeA = nk('a');
+            const nodeA = NODE_A;
             const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
             const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
 
@@ -189,7 +193,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeA = nk('a-only-in-h');
+            const nodeA = NODE_A;
             const remoteValue = { value: { id: 'h-only', type: 'test', description: 'h only' }, isDirty: false };
 
             const H = db.hostnameSchemaStorage(hostname);
@@ -223,8 +227,8 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeP = nk('p');  // shared node; T is newer (force-keep)
-            const nodeC = nk('c');  // H-only node that depends on P
+            const nodeP = NODE_P;  // shared node; T is newer (force-keep)
+            const nodeC = NODE_C;  // H-only node that depends on P
 
             const localPValue = { value: { id: 'p-local', type: 'test', description: 'newer local P' }, isDirty: false };
             const remoteCValue = { value: { id: 'c-remote', type: 'test', description: 'stale remote C' }, isDirty: false };
@@ -267,7 +271,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             // Write an H-only node without a timestamps record.
-            const hOnlyNode = nk('h-only-no-ts');
+            const hOnlyNode = NODE_H;
             const H = db.hostnameSchemaStorage(hostname);
             await H.inputs.put(hOnlyNode, { inputs: [], inputCounters: [] });
             await H.freshness.put(hOnlyNode, 'up-to-date');
@@ -325,8 +329,8 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeA = nk('a');
-            const nodeB = nk('b');
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
             const localValueB = { value: { id: 'b-local', type: 'test', description: 'local B' }, isDirty: false };
             const remoteValueB = { value: { id: 'b-remote', type: 'test', description: 'remote B' }, isDirty: false };
 
@@ -390,8 +394,8 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeA = nk('a');
-            const nodeB = nk('b');
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
             const localValueB = { value: { id: 'b-local', type: 'test', description: 'local B' }, isDirty: false };
             const remoteValueB = { value: { id: 'b-remote', type: 'test', description: 'remote B' }, isDirty: false };
 
@@ -460,7 +464,7 @@ describe('mergeHostIntoReplica', () => {
             // Second host: same version, with one node.
             const hostname2 = 'peer2';
             await db.setHostnameGlobal(hostname2, 'version', appVersionStr);
-            const nodeA = nk('a');
+            const nodeA = NODE_A;
             const remoteValue = { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false };
             const H2 = db.hostnameSchemaStorage(hostname2);
             await writeNode(H2, nodeA, TS1, [], remoteValue);
@@ -486,7 +490,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const nodeA = nk('a');
+            const nodeA = NODE_A;
             const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS2, [], remoteValue);

@@ -119,11 +119,36 @@ function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
 }
 
 /**
- * Parse and validate persisted node identifier text.
+ * Parse and validate a persisted node identifier in the current (strict) format.
+ * Only accepts 9-character lowercase alphabetic identifiers matching /^[a-z]{9}$/.
+ * Runtime paths (sync, pull, merge) must use this function.
+ * For migration code that must also accept legacy node key strings, use
+ * legacyStringToNodeIdentifier() instead.
  * @param {string} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
 function stringToNodeIdentifier(nodeIdentifierStr) {
+    if (!NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr)) {
+        throw new Error(
+            `Invalid node identifier string: ${nodeIdentifierStr}`
+        );
+    }
+    return unsafeStringToNodeIdentifier(nodeIdentifierStr);
+}
+
+/**
+ * Parse a node identifier string that may be in either the current strict
+ * format (/^[a-z]{9}$/) or one of the two legacy formats:
+ *   - Serialised node key JSON: {"head":"...","args":[...]}
+ *   - Zero-argument bare node name: /^[a-z][a-z0-9_-]*$/
+ *
+ * Use this function only inside the migration path (migration_runner.js,
+ * migration_storage.js).  All runtime read/write/sync code must use the strict
+ * stringToNodeIdentifier() instead.
+ * @param {string} nodeIdentifierStr
+ * @returns {NodeIdentifier}
+ */
+function legacyStringToNodeIdentifier(nodeIdentifierStr) {
     if (
         !NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr) &&
         !isLegacySerializedNodeKey(nodeIdentifierStr) &&
@@ -599,6 +624,7 @@ module.exports = {
     VersionClass,
     nodeIdentifierToString,
     stringToNodeIdentifier,
+    legacyStringToNodeIdentifier,
     unsafeStringToNodeIdentifier,
     NodeIdentifierClass,
     nodeNameToString,
