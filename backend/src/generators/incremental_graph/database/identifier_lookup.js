@@ -57,9 +57,31 @@ function isIdentifierAllocationError(object) {
 }
 
 /**
+ * Committed identifier lookup used as the in-memory mirror of the persisted
+ * `identifiers_keys_map`. Both maps always contain exactly the same entries
+ * as the on-disk record at every observable point (outside a transaction).
+ *
  * @typedef {object} IdentifierLookup
  * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
  * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key string.
+ */
+
+/**
+ * Transaction-scoped overlay over a committed `IdentifierLookup`.
+ *
+ * Only new allocations made **during this transaction** are stored in the
+ * overlay maps (`keyToId`, `idToKey`). The underlying committed lookup is
+ * held in `base` as a read-only reference and is never mutated during the
+ * transaction.
+ *
+ * At commit time (after a successful disk flush) the overlay is applied to
+ * `base` in-place via `commitTransactionLookup`, making the committed lookup
+ * reflect the new entries without any full-clone operation.
+ *
+ * @typedef {object} TransactionIdentifierLookup
+ * @property {Map<string, NodeIdentifier>} keyToId - New allocations in this transaction only.
+ * @property {Map<string, NodeKeyString>} idToKey  - New allocations in this transaction only (inverse).
+ * @property {IdentifierLookup} base               - Read-only reference to the committed lookup.
  */
 
 /**
@@ -294,6 +316,130 @@ function requireNodeIdentifierForKey(lookup, nodeKey) {
     return nodeIdentifier;
 }
 
+// ---------------------------------------------------------------------------
+// TransactionIdentifierLookup helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Create an empty transaction lookup overlay backed by the given committed lookup.
+ * The overlay starts empty; new allocations are written into it during the transaction.
+ * The base is never mutated by transaction operations.
+ * @param {IdentifierLookup} baseLookup - The committed in-memory lookup (read-only reference).
+ * @returns {TransactionIdentifierLookup}
+ */
+function makeTransactionIdentifierLookup(baseLookup) {
+    return {
+        keyToId: new Map(),
+        idToKey: new Map(),
+        base: baseLookup,
+    };
+}
+
+/**
+ * Look up the identifier for a semantic node key within a transaction.
+ * Checks the overlay first, then falls through to the committed base.
+ * @param {TransactionIdentifierLookup} txLookup
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier | undefined}
+ */
+function txNodeKeyToId(txLookup, nodeKey) {
+    const keyString = nodeKeyStringToString(nodeKey);
+    return txLookup.keyToId.get(keyString) ?? txLookup.base.keyToId.get(keyString);
+}
+
+/**
+ * Look up the semantic node key for an identifier within a transaction.
+ * Checks the overlay first, then falls through to the committed base.
+ * @param {TransactionIdentifierLookup} txLookup
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString | undefined}
+ */
+function txNodeIdToKey(txLookup, nodeIdentifier) {
+    const idString = nodeIdentifierToString(nodeIdentifier);
+    return txLookup.idToKey.get(idString) ?? txLookup.base.idToKey.get(idString);
+}
+
+/**
+ * Return the existing identifier for a node key, or allocate a new one and
+ * record it in the overlay (never in the base).
+ *
+ * Collision detection checks both the overlay and the base so that newly
+ * generated identifiers are guaranteed to be globally unique within this
+ * transaction.
+ *
+ * @param {TransactionIdentifierLookup} txLookup
+ * @param {NodeKeyString} nodeKey
+ * @param {(attempt: number) => NodeIdentifier} makeIdentifier
+ * @param {number} [maxAttempts=64]
+ * @returns {NodeIdentifier}
+ */
+function txAllocateNodeIdentifier(txLookup, nodeKey, makeIdentifier, maxAttempts = 64) {
+    const existing = txNodeKeyToId(txLookup, nodeKey);
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const keyString = nodeKeyStringToString(nodeKey);
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const candidate = makeIdentifier(attempt);
+        // Collision-check against both overlay and base.
+        if (txNodeIdToKey(txLookup, candidate) === undefined) {
+            txLookup.keyToId.set(keyString, candidate);
+            txLookup.idToKey.set(nodeIdentifierToString(candidate), nodeKey);
+            return candidate;
+        }
+    }
+
+    throw new IdentifierAllocationError(keyString);
+}
+
+/**
+ * Serialize the combined (base + overlay) lookup into the sorted-array format
+ * used for disk persistence. The overlay entries are appended to the base
+ * entries before sorting, so the result reflects all allocations made during
+ * this transaction without requiring a separate merge step.
+ *
+ * Call this **before** `commitTransactionLookup` so that the base is still
+ * unmodified while serializing.
+ *
+ * @param {TransactionIdentifierLookup} txLookup
+ * @returns {Array<[NodeIdentifier, NodeKeyString]>}
+ */
+function serializeTransactionLookup(txLookup) {
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const entries = [];
+    for (const [idString, nodeKey] of txLookup.base.idToKey.entries()) {
+        entries.push([nodeIdentifierFromString(idString), nodeKey]);
+    }
+    for (const [idString, nodeKey] of txLookup.idToKey.entries()) {
+        entries.push([nodeIdentifierFromString(idString), nodeKey]);
+    }
+    entries.sort(([leftIdentifier], [rightIdentifier]) =>
+        compareNodeIdentifier(leftIdentifier, rightIdentifier)
+    );
+    return entries;
+}
+
+/**
+ * Apply all overlay entries from a committed transaction to the base lookup
+ * in-place. Must be called **only after** a successful disk flush so that the
+ * "disk before memory" invariant is preserved.
+ *
+ * After this call the overlay is exhausted into the base and should not be
+ * used again; the transaction object itself is discarded.
+ *
+ * @param {TransactionIdentifierLookup} txLookup
+ * @returns {void}
+ */
+function commitTransactionLookup(txLookup) {
+    for (const [keyString, id] of txLookup.keyToId) {
+        txLookup.base.keyToId.set(keyString, id);
+    }
+    for (const [idString, nodeKey] of txLookup.idToKey) {
+        txLookup.base.idToKey.set(idString, nodeKey);
+    }
+}
+
 module.exports = {
     allocateNodeIdentifier,
     cloneIdentifierLookup,
@@ -307,10 +453,16 @@ module.exports = {
     isIdentifierLookupError,
     makeEmptyIdentifierLookup,
     makeIdentifierLookup,
+    makeTransactionIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     requireNodeIdentifierForKey,
     requireNodeKeyForIdentifier,
     serializeIdentifierLookup,
     setIdentifierMapping,
+    txAllocateNodeIdentifier,
+    txNodeIdToKey,
+    txNodeKeyToId,
+    serializeTransactionLookup,
+    commitTransactionLookup,
 };
