@@ -1,8 +1,14 @@
 /**
  * IncrementalGraph class for propagating data through dependency edges.
+ *
+ * This implementation follows the transaction model specified in:
+ * docs/specs/incremental-graph-volatile-consistency.md
+ *
+ * Key principles:
+ * - Explicit over ambient: Transaction context is passed as a direct function argument
+ * - No global state, no async_hooks
+ * - Disk before memory: in-memory state is updated only after LevelDB batch flushes
  */
-
-const { createHook, executionAsyncId } = require("async_hooks");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -14,85 +20,14 @@ const { createHook, executionAsyncId } = require("async_hooks");
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
-/** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').GraphStorage} GraphStorage */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 /** @typedef {import('../../datetime').DateTime} DateTime */
 /** @typedef {import('../../datetime').Datetime} Datetime */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
-/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
-/**
- * @typedef {object} PullContext
- * @property {IdentifierResolver} identifierResolver
- * @property {BatchBuilder} batch
- */
-/**
- * @typedef {PullContext & { ownerAsyncIds: Set<number> }} PullContextFrame
- */
-/**
- * Active pull-context frames across all IncrementalGraph instances.
- * Each frame tracks the async resources that belong to that context.
- *
- * @type {Set<PullContextFrame>}
- */
-const activePullContextFrames = new Set();
-/** @type {Map<number, Set<PullContextFrame>>} */
-const pullContextFramesByAsyncId = new Map();
-
-/**
- * @param {number} asyncId
- * @param {PullContextFrame} frame
- * @returns {void}
- */
-function addFrameAsyncOwnership(asyncId, frame) {
-    frame.ownerAsyncIds.add(asyncId);
-    const existing = pullContextFramesByAsyncId.get(asyncId);
-    if (existing !== undefined) {
-        existing.add(frame);
-        return;
-    }
-    pullContextFramesByAsyncId.set(asyncId, new Set([frame]));
-}
-
-/**
- * @param {number} asyncId
- * @returns {void}
- */
-function releaseAsyncOwnership(asyncId) {
-    const frames = pullContextFramesByAsyncId.get(asyncId);
-    if (frames === undefined) {
-        return;
-    }
-    for (const frame of frames) {
-        frame.ownerAsyncIds.delete(asyncId);
-    }
-    pullContextFramesByAsyncId.delete(asyncId);
-}
-/**
- * Track async-resource lineage for active pull contexts.
- *
- * We register ownership on `init` by inheriting from the triggering async
- * resource. Cleanup runs on both `destroy` and `promiseResolve` because not all
- * async resources consistently emit only one lifecycle signal in practice.
- */
-createHook({
-    init(asyncId, _type, triggerAsyncId) {
-        const inheritedFrames = pullContextFramesByAsyncId.get(triggerAsyncId);
-        if (inheritedFrames === undefined) {
-            return;
-        }
-        for (const frame of inheritedFrames) {
-            addFrameAsyncOwnership(asyncId, frame);
-        }
-    },
-    destroy(asyncId) {
-        releaseAsyncOwnership(asyncId);
-    },
-    promiseResolve(asyncId) {
-        releaseAsyncOwnership(asyncId);
-    },
-}).enable();
 
 const {
     compileNodeDef,
@@ -101,12 +36,7 @@ const {
     validateNoOverlap,
     validateSingleArityPerHead,
 } = require("./compiled_node");
-const { makeGraphStorage } = require("./graph_storage");
-const { getActiveLookup } = require("./identifier_resolver");
-const {
-    nodeKeyToIdFromLookup,
-    nodeIdToKeyFromLookup,
-} = require("./database");
+const { makeGraphStorage, getOrAllocateNodeIdentifier } = require("./graph_state");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -154,9 +84,6 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
-    /** @type {Array<PullContextFrame>} */
-    _activePullContexts;
-
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -180,7 +107,6 @@ class IncrementalGraphClass {
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
-        this._activePullContexts = [];
     }
 
     /**
@@ -238,10 +164,7 @@ class IncrementalGraphClass {
      * @returns {import('./types').NodeKeyString | undefined}
      */
     lookupNodeKey(nodeIdentifier) {
-        if (typeof this.rootDatabase.nodeIdToKey === "function") {
-            return this.rootDatabase.nodeIdToKey(nodeIdentifier);
-        }
-        return nodeIdToKeyFromLookup(getActiveLookup(this.rootDatabase), nodeIdentifier);
+        return this.rootDatabase.nodeIdToKey(nodeIdentifier);
     }
 
     /**
@@ -251,107 +174,38 @@ class IncrementalGraphClass {
      * @returns {NodeIdentifier | undefined}
      */
     lookupNodeIdentifier(nodeKey) {
-        if (typeof this.rootDatabase.nodeKeyToId === "function") {
-            return this.rootDatabase.nodeKeyToId(nodeKey);
-        }
-        return nodeKeyToIdFromLookup(getActiveLookup(this.rootDatabase), nodeKey);
+        return this.rootDatabase.nodeKeyToId(nodeKey);
     }
 
     /**
+     * Execute a procedure within a transaction that provides a batch writer
+     * and identifier lookup. The batch is flushed and in-memory state updated
+     * only if the procedure succeeds.
+     *
      * @template T
-     * @param {(batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>} procedure
+     * @param {(tx: Transaction) => Promise<T>} procedure
      * @returns {Promise<T>}
      */
-    async withIdentifierBatch(procedure) {
-        return this.storage.withIdentifierBatch(procedure);
-    }
-
-    /**
-     * @param {PullContext} context
-     * @returns {void}
-     */
-    pushActivePullContext(context) {
-        const ownerAsyncId = executionAsyncId();
-        const frame = {
-            ...context,
-            ownerAsyncIds: new Set(),
-        };
-        addFrameAsyncOwnership(ownerAsyncId, frame);
-        this._activePullContexts.push(frame);
-        activePullContextFrames.add(frame);
-    }
-
-    /**
-     * @returns {PullContext | null}
-     */
-    getActivePullContext() {
-        const currentAsyncId = executionAsyncId();
-        for (let index = this._activePullContexts.length - 1; index >= 0; index--) {
-            const current = this._activePullContexts[index];
-            if (current === undefined) {
-                continue;
-            }
-            if (current.ownerAsyncIds.has(currentAsyncId)) {
-                return {
-                    identifierResolver: current.identifierResolver,
-                    batch: current.batch,
-                };
-            }
-        }
-        return null;
-    }
-
-    /**
-     * @param {PullContext} context
-     * @returns {void}
-     */
-    popActivePullContext(context) {
-        // Locate the frame by identity rather than assuming LIFO order.
-        // Nested pulls launched concurrently (e.g. via Promise.all inside a
-        // computor) can complete in any order, so the frame to remove may not
-        // be at the top of the stack. The search is O(n) in the number of
-        // active contexts, which is bounded by the nesting depth and is
-        // expected to remain very small in practice.
-        const index = this._activePullContexts.findIndex(
-            (frame) =>
-                frame.identifierResolver === context.identifierResolver &&
-                frame.batch === context.batch
-        );
-        if (index === -1) {
-            throw new Error("Invalid pull context stack");
-        }
-        const frame = this._activePullContexts[index];
-        if (frame === undefined) {
-            throw new Error("Invalid pull context stack");
-        }
-        for (const asyncId of frame.ownerAsyncIds) {
-            const frames = pullContextFramesByAsyncId.get(asyncId);
-            if (frames === undefined) {
-                continue;
-            }
-            frames.delete(frame);
-            if (frames.size === 0) {
-                pullContextFramesByAsyncId.delete(asyncId);
-            }
-        }
-        activePullContextFrames.delete(frame);
-        this._activePullContexts.splice(index, 1);
+    async withTransaction(procedure) {
+        return this.storage.withTransaction(procedure);
     }
 
     /**
      * @param {ConcreteNode} concreteNode
-     * @param {IdentifierResolver} identifierResolver
+     * @param {Transaction} tx
      * @returns {ResolvedConcreteNode}
      */
-    resolveConcreteNode(concreteNode, identifierResolver) {
+    resolveConcreteNode(concreteNode, tx) {
         return {
             outputKey: concreteNode.output,
             inputKeys: concreteNode.inputs,
-            outputIdentifier: identifierResolver.getOrAllocateNodeIdentifier(
+            outputIdentifier: getOrAllocateNodeIdentifier(
+                tx,
+                this.rootDatabase,
                 concreteNode.output
             ),
             inputIdentifiers: concreteNode.inputs.map((inputKey) =>
-                identifierResolver.getOrAllocateNodeIdentifier(inputKey)
+                getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
             ),
             computor: concreteNode.computor,
         };
@@ -359,17 +213,11 @@ class IncrementalGraphClass {
 
     /**
      * @param {ResolvedConcreteNode} nodeDefinition
-     * @param {BatchBuilder} batch
-     * @param {IdentifierResolver} identifierResolver
+     * @param {Transaction} tx
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, batch, identifierResolver) {
-        return await internalMaybeRecalculate(
-            this,
-            nodeDefinition,
-            batch,
-            identifierResolver
-        );
+    async maybeRecalculate(nodeDefinition, tx) {
+        return await internalMaybeRecalculate(this, nodeDefinition, tx);
     }
 
     /**
@@ -400,17 +248,18 @@ class IncrementalGraphClass {
     }
 
     /**
+     * Internal method for pulling a node during an existing pull operation.
+     * The transaction context is passed explicitly to share the batch and lookup.
+     *
      * @param {NodeKeyString} nodeKeyStr
-     * @param {IdentifierResolver} identifierResolver
-     * @param {BatchBuilder | null} [outerBatch=null]
+     * @param {Transaction} tx
      * @returns {Promise<RecomputeResult>}
      */
-    async _pullDuringPull(nodeKeyStr, identifierResolver, outerBatch = null) {
+    async _pullDuringPull(nodeKeyStr, tx) {
         return await internalPullByNodeKeyWithStatusDuringPull(
             this,
             nodeKeyStr,
-            identifierResolver,
-            outerBatch
+            tx
         );
     }
 

@@ -7,6 +7,13 @@
 const {
     makeIncrementalGraph,
 } = require("../src/generators/incremental_graph");
+const {
+    makeEmptyIdentifierLookup,
+    cloneIdentifierLookup,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+    nodeIdentifierFromString,
+} = require("../src/generators/incremental_graph/database");
 const { withExclusiveMode, withPullMode, withObserveMode } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -34,6 +41,37 @@ class InMemoryDatabase {
         this.closed = false;
         /** @type {string} */
         this.version = 'test-version';
+        this._identifierLookup = makeEmptyIdentifierLookup();
+        this._identifierCounter = 0;
+    }
+
+    currentReplicaName() { return 'x'; }
+
+    cloneActiveIdentifierLookup() {
+        return cloneIdentifierLookup(this._identifierLookup);
+    }
+
+    replaceActiveIdentifierLookup(lookup) {
+        this._identifierLookup = lookup;
+    }
+
+    nodeIdToKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(this._identifierLookup, nodeIdentifier);
+    }
+
+    nodeKeyToId(nodeKey) {
+        return nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+    }
+
+    generateNodeIdentifier() {
+        this._identifierCounter++;
+        let n = this._identifierCounter;
+        let id = '';
+        for (let i = 0; i < 9; i++) {
+            id = String.fromCharCode(97 + (n % 26)) + id;
+            n = Math.floor(n / 26);
+        }
+        return nodeIdentifierFromString(id);
     }
 
     getSchemaStorage() {
@@ -582,13 +620,13 @@ describe("IncrementalGraph concurrency", () => {
             const releaseBoth = makeDeferred();
             let active = 0;
             let maxActive = 0;
-            const originalWithIdentifierBatch = graph.storage.withIdentifierBatch.bind(graph.storage);
-            graph.storage.withIdentifierBatch = async (run) => {
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (run) => {
                 active += 1;
                 maxActive = Math.max(maxActive, active);
                 await releaseBoth.promise;
                 try {
-                    return await originalWithIdentifierBatch(run);
+                    return await originalWithTransaction(run);
                 } finally {
                     active -= 1;
                 }
@@ -620,11 +658,11 @@ describe("IncrementalGraph concurrency", () => {
 
             const releaseInvalidate = makeDeferred();
             const enteredInvalidate = makeDeferred();
-            const originalWithIdentifierBatch = graph.storage.withIdentifierBatch.bind(graph.storage);
-            graph.storage.withIdentifierBatch = async (run) => {
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (run) => {
                 enteredInvalidate.resolve(undefined);
                 await releaseInvalidate.promise;
-                return await originalWithIdentifierBatch(run);
+                return await originalWithTransaction(run);
             };
 
             const invalidatePromise = graph.invalidate("source");

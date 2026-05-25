@@ -23,6 +23,11 @@ const {
 } = require("../src/generators/incremental_graph/database");
 const { functor } = require("../src/generators/incremental_graph/expr");
 const { isJsonKey } = require("./test_json_key_helper");
+const {
+    getOrAllocateNodeIdentifier,
+    lookupNodeIdentifier,
+    requireNodeKey,
+} = require("../src/generators/incremental_graph/graph_state");
 
 /**
  * Converts a node name to JSON key format if needed.
@@ -118,15 +123,19 @@ function makeSemanticStorage(graph) {
             },
             async put(key, value) {
                 const jsonKey = toJsonKey(key);
-                await graph.withIdentifierBatch(async (batch, identifierResolver) => {
-                    const nodeIdentifier = identifierResolver.getOrAllocateNodeIdentifier(
+                await graph.withTransaction(async (tx) => {
+                    const nodeIdentifier = getOrAllocateNodeIdentifier(
+                        tx,
+                        graph.rootDatabase,
                         jsonKey
                     );
                     if (databaseName === "inputs") {
-                        batch.inputs.put(nodeIdentifier, {
+                        tx.batch.inputs.put(nodeIdentifier, {
                             inputs: value.inputs.map((inputKey) =>
                                 nodeIdentifierToString(
-                                    identifierResolver.getOrAllocateNodeIdentifier(
+                                    getOrAllocateNodeIdentifier(
+                                        tx,
+                                        graph.rootDatabase,
                                         toJsonKey(inputKey)
                                     )
                                 )
@@ -136,17 +145,19 @@ function makeSemanticStorage(graph) {
                         return;
                     }
                     if (databaseName === "revdeps") {
-                        batch.revdeps.put(
+                        tx.batch.revdeps.put(
                             nodeIdentifier,
                             value.map((dependentKey) =>
-                                identifierResolver.getOrAllocateNodeIdentifier(
+                                getOrAllocateNodeIdentifier(
+                                    tx,
+                                    graph.rootDatabase,
                                     toJsonKey(dependentKey)
                                 )
                             )
                         );
                         return;
                     }
-                    batch[databaseName].put(nodeIdentifier, value);
+                    tx.batch[databaseName].put(nodeIdentifier, value);
                 });
             },
             async del(key) {
@@ -155,8 +166,8 @@ function makeSemanticStorage(graph) {
                 if (nodeIdentifier === undefined) {
                     return;
                 }
-                await graph.withIdentifierBatch(async (batch) => {
-                    batch[databaseName].del(nodeIdentifier);
+                await graph.withTransaction(async (tx) => {
+                    tx.batch[databaseName].del(nodeIdentifier);
                 });
             },
         };
@@ -194,7 +205,7 @@ function makeSemanticStorage(graph) {
             return record ? record.inputs : null;
         },
         async withBatch(run) {
-            return await graph.withIdentifierBatch(async (batch, identifierResolver) => {
+            return await graph.withTransaction(async (tx) => {
                 /**
                  * @param {"values" | "freshness" | "inputs" | "revdeps" | "counters" | "timestamps"} databaseName
                  */
@@ -203,12 +214,14 @@ function makeSemanticStorage(graph) {
                         put(key, value) {
                             const jsonKey = toJsonKey(key);
                             const nodeIdentifier =
-                                identifierResolver.getOrAllocateNodeIdentifier(jsonKey);
+                                getOrAllocateNodeIdentifier(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
-                                batch.inputs.put(nodeIdentifier, {
+                                tx.batch.inputs.put(nodeIdentifier, {
                                     inputs: value.inputs.map((inputKey) =>
                                         nodeIdentifierToString(
-                                            identifierResolver.getOrAllocateNodeIdentifier(
+                                            getOrAllocateNodeIdentifier(
+                                                tx,
+                                                graph.rootDatabase,
                                                 toJsonKey(inputKey)
                                             )
                                         )
@@ -218,35 +231,37 @@ function makeSemanticStorage(graph) {
                                 return;
                             }
                             if (databaseName === "revdeps") {
-                                batch.revdeps.put(
+                                tx.batch.revdeps.put(
                                     nodeIdentifier,
                                     value.map((dependentKey) =>
-                                        identifierResolver.getOrAllocateNodeIdentifier(
+                                        getOrAllocateNodeIdentifier(
+                                            tx,
+                                            graph.rootDatabase,
                                             toJsonKey(dependentKey)
                                         )
                                     )
                                 );
                                 return;
                             }
-                            batch[databaseName].put(nodeIdentifier, value);
+                            tx.batch[databaseName].put(nodeIdentifier, value);
                         },
                         del(key) {
                             const jsonKey = toJsonKey(key);
                             const nodeIdentifier =
-                                identifierResolver.lookupNodeIdentifier(jsonKey);
+                                lookupNodeIdentifier(tx, jsonKey);
                             if (nodeIdentifier === undefined) {
                                 return;
                             }
-                            batch[databaseName].del(nodeIdentifier);
+                            tx.batch[databaseName].del(nodeIdentifier);
                         },
                         async get(key) {
                             const jsonKey = toJsonKey(key);
                             const nodeIdentifier =
-                                identifierResolver.lookupNodeIdentifier(jsonKey);
+                                lookupNodeIdentifier(tx, jsonKey);
                             if (nodeIdentifier === undefined) {
                                 return undefined;
                             }
-                            const value = await batch[databaseName].get(nodeIdentifier);
+                            const value = await tx.batch[databaseName].get(nodeIdentifier);
                             if (value === undefined) {
                                 return undefined;
                             }
@@ -254,7 +269,8 @@ function makeSemanticStorage(graph) {
                                 return {
                                     inputs: value.inputs.map((inputIdentifier) =>
                                         String(
-                                            identifierResolver.requireNodeKey(
+                                            requireNodeKey(
+                                                tx,
                                                 nodeIdentifierFromString(inputIdentifier)
                                             )
                                         )
@@ -264,7 +280,7 @@ function makeSemanticStorage(graph) {
                             }
                             if (databaseName === "revdeps") {
                                 return value.map((dependentIdentifier) =>
-                                    identifierResolver.requireNodeKey(dependentIdentifier)
+                                    requireNodeKey(tx, dependentIdentifier)
                                 );
                             }
                             return value;

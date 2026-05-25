@@ -1,19 +1,22 @@
 /**
  * Invalidation operations for IncrementalGraph.
+ *
+ * Transaction context is passed explicitly through the call stack.
  */
 
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
+
 /**
  * @typedef {object} IncrementalGraphInvalidateAccess
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {import('./graph_storage').GraphStorage} storage
- * @property {(procedure: (batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<void>) => Promise<void>} withIdentifierBatch
- * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
+ * @property {import('./graph_state').GraphStorage} storage
+ * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
@@ -103,20 +106,19 @@ async function internalUnsafeInvalidate(
     );
 
     /**
-     * @param {BatchBuilder} batch
-     * @param {IdentifierResolver} identifierResolver
+     * @param {Transaction} tx
      * @returns {Promise<void>}
      */
-    const run = async (batch, identifierResolver) => {
+    const run = async (tx) => {
         const nodeDefinition = incrementalGraph.resolveConcreteNode(
             concreteNode,
-            identifierResolver
+            tx
         );
-        batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
+        tx.batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
 
         const inputCounters = [];
         for (const inputIdentifier of nodeDefinition.inputIdentifiers) {
-            const counter = await batch.counters.get(inputIdentifier);
+            const counter = await tx.batch.counters.get(inputIdentifier);
             inputCounters.push(counter !== undefined ? counter : 0);
         }
 
@@ -124,16 +126,16 @@ async function internalUnsafeInvalidate(
             nodeDefinition.outputIdentifier,
             nodeDefinition.inputIdentifiers,
             inputCounters,
-            batch
+            tx.batch
         );
         await internalPropagateOutdated(
             incrementalGraph,
             nodeDefinition.outputIdentifier,
-            batch
+            tx.batch
         );
     };
 
-    await incrementalGraph.withIdentifierBatch(run);
+    await incrementalGraph.withTransaction(run);
 }
 
 /**

@@ -1,18 +1,29 @@
 /* eslint volodyslav/max-lines-per-file: "off" */
 /**
- * Identifier-native graph storage.
- * This module is the low-level persistence layer below IncrementalGraph runtime logic.
+ * Graph state management with transaction model for volatile-persistent consistency.
+ *
+ * This module implements the transaction model specified in:
+ * docs/specs/incremental-graph-volatile-consistency.md
+ *
+ * Key concepts:
+ * - A Transaction groups: batch (LevelDB batch accumulator with read-your-writes)
+ *   + identifierLookup (working copy)
+ * - A graph mutex serializes all operations
+ * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
+ * - commitTransaction(tx) flushes batch then updates _computed.identifierLookup
  */
 
 const {
     IDENTIFIERS_KEY,
+    allocateNodeIdentifier,
     cloneIdentifierLookup,
+    nodeIdToKeyFromLookup,
     nodeIdentifierToString,
+    nodeKeyToIdFromLookup,
     serializeIdentifierLookup,
     stringToNodeIdentifier,
 } = require('./database');
 const { withComputedStateMutex } = require('./lock');
-const { makeIdentifierResolver, setActiveLookup } = require('./identifier_resolver');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -28,7 +39,8 @@ const { makeIdentifierResolver, setActiveLookup } = require('./identifier_resolv
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
-/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
+/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
@@ -60,6 +72,18 @@ const { makeIdentifierResolver, setActiveLookup } = require('./identifier_resolv
  */
 
 /**
+ * A Transaction groups all reads and writes for one top-level graph operation.
+ * It contains:
+ * - batch: LevelDB batch accumulator with read-your-writes overlay
+ * - identifierLookup: working copy of the committed lookup, extended in-place
+ *   with any new allocations made during this transaction
+ *
+ * @typedef {object} Transaction
+ * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
+ * @property {IdentifierLookup} identifierLookup - Working copy of the identifier lookup.
+ */
+
+/**
  * @typedef {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} BatchFunction
  */
 
@@ -72,7 +96,7 @@ const { makeIdentifierResolver, setActiveLookup } = require('./identifier_resolv
  * @property {IdentifierDatabase<Counter>} counters - Identifier-keyed counters.
  * @property {IdentifierDatabase<TimestampRecord>} timestamps - Identifier-keyed timestamps.
  * @property {BatchFunction} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(fn: (batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>) => Promise<T>} withIdentifierBatch - Run atomically: creates the identifier resolver inside the computed-state mutex, commits node writes and identifier map in one batch under that mutex.
+ * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
@@ -499,52 +523,42 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * Run a batch that atomically commits node writes together with any new
          * identifier allocations made during the operation.
          *
-         * Correctness guarantee: the entire operation — loading the identifier lookup,
-         * creating the resolver (from the up-to-date active lookup), running `fn(batch,
-         * identifierResolver)`, the DB flush of both node operations and the updated
-         * identifier map, and the in-memory update of `_computed` — all happen inside a
-         * single `withComputedStateMutex` acquisition.  This serialises all concurrent
-         * callers end-to-end, eliminating identifier allocation races and the need for
-         * any merge recovery logic.
+         * This implements the transaction model from the volatile-consistency spec:
+         * - createTransaction(): reads identifierLookup, creates fresh batch
+         * - operation runs with the transaction
+         * - commitTransaction(): flush batch to disk, then update identifierLookup
          *
-         * The resolver is created inside the critical section so it always loads the
-         * correct, up-to-date active lookup.  At commit time `identifierResolver.lookup`
-         * is the authoritative snapshot (base lookup + new allocations) and is persisted
-         * directly — no merge step is required.
+         * The entire operation happens inside withComputedStateMutex, serializing all
+         * concurrent callers end-to-end and eliminating identifier allocation races.
          *
          * Callers that are already inside the mutex (nested dependency pulls) must
-         * NOT call this method again; they must instead receive the outer batch and
-         * resolver via `getActivePullContext` and operate on them directly.
+         * NOT call this method again; they must receive the outer transaction via
+         * explicit argument passing and operate on it directly.
          *
          * @template T
-         * @param {(batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>} fn
+         * @param {(tx: Transaction) => Promise<T>} fn
          * @returns {Promise<T>}
          */
-        async withIdentifierBatch(fn) {
-            const computedStateIdentifier = typeof rootDatabase.currentReplicaName === "function"
-                ? rootDatabase.currentReplicaName()
-                : "__default__";
-
-            return await withComputedStateMutex(sleeper, computedStateIdentifier, async () => {
-                // Step 1: ensure the identifier lookup is loaded from disk (lazy init).
-                if (typeof rootDatabase.ensureActiveIdentifierLookupLoaded === "function") {
-                    await rootDatabase.ensureActiveIdentifierLookupLoaded();
-                }
-
-                // Step 2: create the resolver inside the mutex so it loads the correct,
-                // up-to-date active lookup.
-                const identifierResolver = makeIdentifierResolver(rootDatabase);
-
-                // Step 3: run the operation (identifier allocation + node-data writes)
-                // entirely inside the mutex so all allocations see the committed state.
+        async withTransaction(fn) {
+            return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                // Step 1: create the transaction (spec: createTransaction()).
+                // Clone the current committed lookup as the working copy.
+                const identifierLookup = rootDatabase.cloneActiveIdentifierLookup();
+                const initialLookupSize = identifierLookup.keyToId.size;
                 const { batch, operations } = createBatch(schemaStorage);
-                const value = await fn(batch, identifierResolver);
 
-                // Step 4: flush to disk first, then update _computed (disk-first ordering).
-                if (identifierResolver.hasPendingAllocations) {
-                    // identifierResolver.lookup already contains base + new allocations.
-                    // Clone it for an immutable snapshot to persist and store.
-                    const lookupToCommit = cloneIdentifierLookup(identifierResolver.lookup);
+                /** @type {Transaction} */
+                const tx = { batch, identifierLookup };
+
+                // Step 2: run the operation (identifier allocation + node-data writes).
+                const value = await fn(tx);
+
+                // Step 3: commit (spec: commitTransaction()).
+                // Disk-first ordering: flush batch, then update volatile layer.
+                const hasPendingAllocations = tx.identifierLookup.keyToId.size > initialLookupSize;
+                if (hasPendingAllocations) {
+                    // Append the updated identifier lookup to the batch.
+                    const lookupToCommit = cloneIdentifierLookup(tx.identifierLookup);
                     if (schemaStorage.global !== undefined) {
                         operations.push(
                             schemaStorage.global.rawPutOp(
@@ -556,7 +570,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                     // Flush to disk first.
                     await schemaStorage.batch(operations);
                     // Only after a successful flush: update the volatile layer.
-                    setActiveLookup(rootDatabase, lookupToCommit);
+                    rootDatabase.replaceActiveIdentifierLookup(lookupToCommit);
                 } else {
                     await schemaStorage.batch(operations);
                 }
@@ -572,6 +586,53 @@ function makeGraphStorage(rootDatabase, sleeper) {
     };
 }
 
+/**
+ * Look up an existing identifier for a node key in the transaction's lookup.
+ * Returns undefined if the node key is not in the lookup.
+ * @param {Transaction} tx
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier | undefined}
+ */
+function lookupNodeIdentifier(tx, nodeKey) {
+    return nodeKeyToIdFromLookup(tx.identifierLookup, nodeKey);
+}
+
+/**
+ * Look up an existing identifier or allocate a new one for a node key.
+ * New allocations are added to the transaction's working lookup.
+ * @param {Transaction} tx
+ * @param {RootDatabase} rootDatabase
+ * @param {NodeKeyString} nodeKey
+ * @returns {NodeIdentifier}
+ */
+function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
+    const existing = nodeKeyToIdFromLookup(tx.identifierLookup, nodeKey);
+    if (existing !== undefined) {
+        return existing;
+    }
+    return allocateNodeIdentifier(tx.identifierLookup, nodeKey, () =>
+        rootDatabase.generateNodeIdentifier()
+    );
+}
+
+/**
+ * Convert an identifier back to its semantic node key.
+ * Throws if the identifier is not in the transaction's lookup.
+ * @param {Transaction} tx
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString}
+ */
+function requireNodeKey(tx, nodeIdentifier) {
+    const nodeKey = nodeIdToKeyFromLookup(tx.identifierLookup, nodeIdentifier);
+    if (nodeKey === undefined) {
+        throw new Error(`Missing semantic node key for identifier ${nodeIdentifierToString(nodeIdentifier)}`);
+    }
+    return nodeKey;
+}
+
 module.exports = {
     makeGraphStorage,
+    lookupNodeIdentifier,
+    getOrAllocateNodeIdentifier,
+    requireNodeKey,
 };
