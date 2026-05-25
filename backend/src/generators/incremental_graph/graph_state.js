@@ -75,6 +75,7 @@ const { withComputedStateMutex } = require('./lock');
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
+ * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
  */
 
 /**
@@ -319,7 +320,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 const { batch, operations } = createBatch(activeSchemaStorage);
 
                 /** @type {Transaction} */
-                const tx = { batch, identifierLookup: txLookup };
+                const tx = { batch, identifierLookup: txLookup, inFlight: new Map() };
 
                 // Run the operation (identifier allocation + node-data writes).
                 const value = await fn(tx);
@@ -336,7 +337,12 @@ function makeGraphStorage(rootDatabase, sleeper) {
                     return value;
                 }
 
-                if (hasPendingAllocations && activeSchemaStorage.global !== undefined) {
+                if (hasPendingAllocations) {
+                    if (activeSchemaStorage.global === undefined) {
+                        throw new Error(
+                            "Impossible: identifier allocations occurred but activeSchemaStorage.global is undefined"
+                        );
+                    }
                     operations.push(
                         activeSchemaStorage.global.rawPutOp(
                             IDENTIFIERS_KEY,

@@ -120,6 +120,9 @@ class InMemoryDatabase {
                 putOp: (key, value) => {
                     return { type: 'put', sublevel, key, value };
                 },
+                rawPutOp: (key, value) => {
+                    return { type: 'put', sublevel, key, value };
+                },
                 delOp: (key) => {
                     return { type: 'del', sublevel, key };
                 },
@@ -151,6 +154,7 @@ class InMemoryDatabase {
         const revdeps = createSublevel('revdeps');
         const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
+        const global = createSublevel('global');
 
         return {
             values,
@@ -159,6 +163,7 @@ class InMemoryDatabase {
             revdeps,
             counters,
             timestamps,
+            global,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({

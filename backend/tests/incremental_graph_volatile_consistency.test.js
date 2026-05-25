@@ -606,7 +606,11 @@ describe("Property 9 — Nested pull shares allocation context", () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// No-op pull optimization — skips persistent batch writes
+// ---------------------------------------------------------------------------
 
+describe("No-op pull optimization — skips persistent batch writes", () => {
     test("no-op pull skips persistent batch writes", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -638,6 +642,49 @@ describe("Property 9 — Nested pull shares allocation context", () => {
             await db.close();
         }
     });
+});
+// ---------------------------------------------------------------------------
+// Nested pull deduplication — concurrent pulls of the same key share one result
+// ---------------------------------------------------------------------------
+
+describe("Nested pull deduplication — concurrent pulls of the same key share one result", () => {
+    test("Promise.all of the same leaf key inside one computor runs the leaf once", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        let leafComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async () => {
+                    leafComputations++;
+                    return { value: "leaf-data" };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    // Pull the same leaf twice concurrently — should deduplicate.
+                    const [a, b] = await Promise.all([pull("leaf"), pull("leaf")]);
+                    return { value: `${a.value}+${b.value}` };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const result = await graph.pull("root");
+        expect(result).toEqual({ value: "leaf-data+leaf-data" });
+        // The leaf computor must have run exactly once despite two concurrent pulls.
+        expect(leafComputations).toBe(1);
+
+        await db.close();
+    });
+});
 // ---------------------------------------------------------------------------
 // Property 10 — Read-only lookups do not interfere with allocations
 // ---------------------------------------------------------------------------
