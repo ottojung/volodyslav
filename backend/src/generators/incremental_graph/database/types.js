@@ -80,28 +80,6 @@ function castToNodeIdentifierUnsafe(value) {
 }
 
 const NODE_IDENTIFIER_REGEX = /^[a-z]{9}$/;
-const LEGACY_ZERO_ARG_NODE_KEY_REGEX = /^[a-z][a-z0-9_-]*$/;
-
-/**
- * @param {string} value
- * @returns {boolean}
- */
-function isLegacySerializedNodeKey(value) {
-    if (!value.startsWith("{") || !value.endsWith("}")) {
-        return false;
-    }
-    try {
-        const parsed = JSON.parse(value);
-        return (
-            typeof parsed === "object" &&
-            parsed !== null &&
-            typeof parsed.head === "string" &&
-            Array.isArray(parsed.args)
-        );
-    } catch (_err) {
-        return false;
-    }
-}
 
 /**
  * Unsafe nominal cast from string to NodeIdentifier.
@@ -119,18 +97,16 @@ function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
 }
 
 /**
- * Parse and validate persisted node identifier text.
+ * Parse and validate a persisted node identifier in the current (strict) format.
+ * Only accepts 9-character lowercase alphabetic identifiers matching /^[a-z]{9}$/.
+ * Runtime paths (sync, pull, merge) must use this function.
  * @param {string} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
 function stringToNodeIdentifier(nodeIdentifierStr) {
-    if (
-        !NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr) &&
-        !isLegacySerializedNodeKey(nodeIdentifierStr) &&
-        !LEGACY_ZERO_ARG_NODE_KEY_REGEX.test(nodeIdentifierStr)
-    ) {
+    if (!NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr)) {
         throw new Error(
-            `Invalid node identifier string: ${nodeIdentifierStr}`
+            `Invalid node identifier string: ${nodeIdentifierStr}. Expected a 9-character lowercase alphabetic string matching /^[a-z]{9}$/`
         );
     }
     return unsafeStringToNodeIdentifier(nodeIdentifierStr);

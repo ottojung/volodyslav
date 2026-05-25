@@ -29,7 +29,7 @@ const {
     getRootDatabase,
 } = require("./database");
 const { withExclusiveMode } = require("./lock");
-const { makeMigrationStorage } = require("./migration_storage");
+const { makeMigrationStorage, legacyStringToNodeIdentifier } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
@@ -146,7 +146,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
         for (const [nodeIdentifier, nodeKey] of persistedEntries) {
             decisionKeyByOutputKey.set(
                 String(nodeIdentifier),
-                stringToNodeIdentifier(String(nodeKey))
+                legacyStringToNodeIdentifier(String(nodeKey))
             );
         }
         return {
@@ -172,7 +172,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
             },
             outputKeyToDecisionKey(outputKey) {
                 return decisionKeyByOutputKey.get(String(outputKey))
-                    ?? stringToNodeIdentifier(
+                    ?? legacyStringToNodeIdentifier(
                         String(requireNodeKeyForIdentifier(
                             lookup,
                             nodeIdentifierFromString(String(outputKey))
@@ -213,7 +213,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
             return outputKey;
         },
         outputKeyToDecisionKey(outputKey) {
-            return decisionKeyByOutputKey.get(String(outputKey)) ?? stringToNodeIdentifier(String(outputKey));
+            return decisionKeyByOutputKey.get(String(outputKey)) ?? legacyStringToNodeIdentifier(String(outputKey));
         },
         get outputEntries() {
             return serializeIdentifierLookup(legacyLookup);
@@ -257,7 +257,7 @@ function makeMigrationDecisionStorage(prevStorage, keyPlan) {
                 }
                 return {
                     inputs: record.inputs.map((input) =>
-                        String(keyPlan.outputKeyToDecisionKey(stringToNodeIdentifier(input)))
+                        String(keyPlan.outputKeyToDecisionKey(legacyStringToNodeIdentifier(input)))
                     ),
                     inputCounters: record.inputCounters,
                 };
@@ -304,7 +304,7 @@ async function buildDesiredRevdeps(prevStorage, decisions, keyPlan) {
         if (!inputsRecord) continue;
 
         for (const inputStr of inputsRecord.inputs) {
-            const inputKey = stringToNodeIdentifier(inputStr);
+            const inputKey = legacyStringToNodeIdentifier(inputStr);
             const inputDecision = decisions.get(inputKey);
             if (inputDecision && inputDecision.kind === "delete") continue;
             const outputInputKey = keyPlan.keyToOutputKey(inputKey);
@@ -453,7 +453,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 }
                 return {
                     inputs: record.inputs.map((input) =>
-                        String(keyPlan.keyToOutputKey(stringToNodeIdentifier(input)))
+                        String(keyPlan.keyToOutputKey(legacyStringToNodeIdentifier(input)))
                     ),
                     inputCounters: record.inputCounters,
                 };

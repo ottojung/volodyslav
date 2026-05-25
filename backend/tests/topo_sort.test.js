@@ -12,6 +12,7 @@
 
 const {
     getRootDatabase,
+    nodeIdentifierFromString,
 } = require('../src/generators/incremental_graph/database');
 const {
     topologicalSort,
@@ -38,13 +39,23 @@ function getTestCapabilities() {
 }
 
 /**
- * Create a node key string for the given node name (head only, no args).
- * @param {string} name
- * @returns {string}
+ * Return a stable 9-letter lowercase NodeIdentifier for test index i (0-25).
+ * Uses letter repetition: 0 → "aaaaaaaaa", 1 → "bbbbbbbbb", ... 25 → "zzzzzzzzz".
+ * @param {number} i
+ * @returns {import('../src/generators/incremental_graph/database/types').NodeIdentifier}
  */
-function nk(name) {
-    return `{"head":"${name}","args":[]}`;
+function makeTestId(i) {
+    return nodeIdentifierFromString(String.fromCharCode(97 + i).repeat(9));
 }
+
+// Named constants for the most commonly used test node identifiers.
+const NODE_A = makeTestId(0);  // 'aaaaaaaaa'
+const NODE_B = makeTestId(1);  // 'bbbbbbbbb'
+const NODE_C = makeTestId(2);  // 'ccccccccc'
+const NODE_D = makeTestId(3);  // 'ddddddddd'
+const NODE_E = makeTestId(4);  // 'eeeeeeeee'  (used as external/unlisted node)
+const NODE_M = makeTestId(12); // 'mmmmmmmmm'
+const NODE_Z = makeTestId(25); // 'zzzzzzzzz'
 
 /**
  * Write an inputs record for `node` whose dependencies are `inputs`.
@@ -78,7 +89,7 @@ describe('topologicalSort', () => {
         try {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
-            const nodeA = nk('alpha');
+            const nodeA = NODE_A;
             await putNode(storage, nodeA, []);
             const result = await topologicalSort(storage);
             expect(result).toEqual([nodeA]);
@@ -93,9 +104,9 @@ describe('topologicalSort', () => {
         try {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
-            const nodeA = nk('a');
-            const nodeB = nk('b');
-            const nodeC = nk('c');
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
+            const nodeC = NODE_C;
             // B depends on A, C depends on B.
             await putNode(storage, nodeA, []);
             await putNode(storage, nodeB, [nodeA]);
@@ -113,10 +124,10 @@ describe('topologicalSort', () => {
         try {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
-            const nodeA = nk('a');
-            const nodeB = nk('b');
-            const nodeC = nk('c');
-            const nodeD = nk('d');
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
+            const nodeC = NODE_C;
+            const nodeD = NODE_D;
             // B and C both depend on A; D depends on both B and C.
             await putNode(storage, nodeA, []);
             await putNode(storage, nodeB, [nodeA]);
@@ -146,9 +157,9 @@ describe('topologicalSort', () => {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
             // Three independent root nodes; they should appear in ascending key order.
-            const nodeZ = nk('zed');
-            const nodeA = nk('aaa');
-            const nodeM = nk('mid');
+            const nodeZ = NODE_Z;
+            const nodeA = NODE_A;
+            const nodeM = NODE_M;
             await putNode(storage, nodeZ, []);
             await putNode(storage, nodeA, []);
             await putNode(storage, nodeM, []);
@@ -168,8 +179,8 @@ describe('topologicalSort', () => {
         try {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
-            const nodeA = nk('a');
-            const nodeB = nk('b');
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
             // A → B and B → A form a cycle.
             await putNode(storage, nodeA, [nodeB]);
             await putNode(storage, nodeB, [nodeA]);
@@ -187,8 +198,8 @@ describe('topologicalSort', () => {
         try {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
-            const nodeA = nk('a');
-            const nodeB = nk('b');
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
             await putNode(storage, nodeA, [nodeB]);
             await putNode(storage, nodeB, [nodeA]);
             let caught;
@@ -221,16 +232,16 @@ describe('topologicalSortFromMap', () => {
     });
 
     test('orders A → B → C correctly', () => {
-        const nodeA = nk('a');
-        const nodeB = nk('b');
-        const nodeC = nk('c');
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
+        const nodeC = NODE_C;
         const map = makeMap({ [nodeA]: [], [nodeB]: [nodeA], [nodeC]: [nodeB] });
         expect(topologicalSortFromMap(map)).toEqual([nodeA, nodeB, nodeC]);
     });
 
     test('detects a cycle among in-map nodes', () => {
-        const nodeA = nk('a');
-        const nodeB = nk('b');
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
         const map = makeMap({ [nodeA]: [nodeB], [nodeB]: [nodeA] });
         expect(() => topologicalSortFromMap(map)).toThrow(TopologicalSortCycleError);
     });
@@ -240,7 +251,7 @@ describe('topologicalSortFromMap', () => {
         const obj = {};
         const nodes = [];
         for (let i = 0; i < 25; i += 1) {
-            nodes.push(nk(`n${i}`));
+            nodes.push(makeTestId(i));
         }
         for (let i = 0; i < nodes.length; i += 1) {
             obj[nodes[i]] = [nodes[(i + 1) % nodes.length]];
@@ -262,9 +273,9 @@ describe('topologicalSortFromMap', () => {
     });
 
     test('ignores edges to nodes not present in the map', () => {
-        const nodeA = nk('a');
-        const nodeB = nk('b');
-        const external = nk('external');
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
+        const external = NODE_E;
         // nodeB "depends" on external which is not in the map — treated as root.
         const map = makeMap({ [nodeA]: [], [nodeB]: [external] });
         const result = topologicalSortFromMap(map);

@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeIdentifier, stringToNodeKeyString } = require("./database");
+const { stringToNodeKeyString, stringToNodeIdentifier } = require("./database");
 const { deserializeNodeKey } = require("./database");
 const { stringToNodeName } = require("./database");
 const {
@@ -45,6 +45,60 @@ const {
  * @typedef {{ kind: 'create', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
  * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
+
+
+
+
+const LEGACY_ZERO_ARG_NODE_KEY_REGEX = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isLegacySerializedNodeKey(value) {
+    if (!value.startsWith("{") || !value.endsWith("}")) {
+        return false;
+    }
+    try {
+        const parsed = JSON.parse(value);
+        return (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            typeof parsed.head === "string" &&
+            Array.isArray(parsed.args)
+        );
+    } catch (_err) {
+        return false;
+    }
+}
+
+const NODE_IDENTIFIER_REGEX = /^[a-z]{9}$/;
+
+/**
+ * Parse a node identifier string that may be in either the current strict
+ * format (/^[a-z]{9}$/) or one of the two legacy formats:
+ *   - Serialised node key JSON: {"head":"...","args":[...]}
+ *   - Zero-argument bare node name: /^[a-z][a-z0-9_-]*$/
+ *
+ * Use this function only inside the migration path (migration_runner.js,
+ * migration_storage.js).  All runtime read/write/sync code must use the strict
+ * stringToNodeIdentifier() instead.
+ * @param {string} nodeIdentifierStr
+ * @returns {NodeIdentifier}
+ */
+function legacyStringToNodeIdentifier(nodeIdentifierStr) {
+    if (
+        !NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr) &&
+        !isLegacySerializedNodeKey(nodeIdentifierStr) &&
+        !LEGACY_ZERO_ARG_NODE_KEY_REGEX.test(nodeIdentifierStr)
+    ) {
+        throw new Error(
+            `Invalid node identifier string: ${nodeIdentifierStr}`
+        );
+    }
+    return stringToNodeIdentifier(nodeIdentifierStr);
+}
+
 
 /**
  * @param {NodeIdentifier} nodeKey
@@ -94,7 +148,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return record.inputs.map(stringToNodeIdentifier);
+    return record.inputs.map(legacyStringToNodeIdentifier);
 }
 
 /**
@@ -447,4 +501,5 @@ function isMigrationStorage(object) {
 module.exports = {
     makeMigrationStorage,
     isMigrationStorage,
+    legacyStringToNodeIdentifier,
 };
