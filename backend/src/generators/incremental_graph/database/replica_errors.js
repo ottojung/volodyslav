@@ -78,6 +78,25 @@ function isSchemaBatchVersionError(object) {
     return object instanceof SchemaBatchVersionError;
 }
 
+class MalformedIdentifierLookupError extends Error {
+    /**
+     * @param {unknown} value
+     */
+    constructor(value) {
+        super(`Malformed identifiers_keys_map record: expected an array, got ${Array.isArray(value) ? 'array' : typeof value}.`);
+        this.name = 'MalformedIdentifierLookupError';
+        this.value = value;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MalformedIdentifierLookupError}
+ */
+function isMalformedIdentifierLookupError(object) {
+    return object instanceof MalformedIdentifierLookupError;
+}
+
 module.exports = {
     InvalidReplicaPointerError,
     isInvalidReplicaPointerError,
@@ -85,4 +104,6 @@ module.exports = {
     isSwitchReplicaError,
     SchemaBatchVersionError,
     isSchemaBatchVersionError,
+    MalformedIdentifierLookupError,
+    isMalformedIdentifierLookupError,
 };

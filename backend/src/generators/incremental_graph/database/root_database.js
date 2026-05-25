@@ -36,6 +36,8 @@ const {
     isSwitchReplicaError,
     SchemaBatchVersionError,
     isSchemaBatchVersionError,
+    MalformedIdentifierLookupError,
+    isMalformedIdentifierLookupError,
 } = require('./replica_errors');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
@@ -173,7 +175,7 @@ async function loadIdentifierLookupFromGlobal(globalSublevel) {
         return makeEmptyIdentifierLookup();
     }
     if (!Array.isArray(rawEntries)) {
-        return makeEmptyIdentifierLookup();
+        throw new MalformedIdentifierLookupError(rawEntries);
     }
     return makeIdentifierLookup(rawEntries);
 }
@@ -855,5 +857,6 @@ module.exports = {
     isInvalidReplicaPointerError,
     isSwitchReplicaError,
     isSchemaBatchVersionError,
+    isMalformedIdentifierLookupError,
     RAW_BATCH_CHUNK_SIZE,
 };
