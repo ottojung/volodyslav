@@ -58,6 +58,8 @@ async function pullNode(graph, nodeKeyStr, tx) {
     const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
 
     /**
+     * Checks freshness: returns cached value if up-to-date,
+     * otherwise delegates to maybeRecalculate.
      * @param {Transaction} activeTx
      * @returns {Promise<RecomputeResult>}
      */

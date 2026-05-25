@@ -120,12 +120,12 @@ function findInsertionIndex(sortedArray, nodeIdentifier) {
 
 /**
  * Create a read-your-writes batch wrapper for a single typed sublevel.
- * Writes are queued as LevelDB batch operations; reads check the pending overlay
+ * Writes are queued as LevelDB batch operations (opaque objects); reads check the pending overlay
  * first and fall through to the underlying database on a miss.
  *
  * @template TValue
- * @param {{ get: (key: NodeIdentifier) => Promise<TValue | undefined>, putOp: (key: NodeIdentifier, value: TValue) => *, delOp: (key: NodeIdentifier) => * }} db
- * @param {Array<*>} operations - Shared operations array all sublevels append to.
+ * @param {{ get: (key: NodeIdentifier) => Promise<TValue | undefined>, putOp: (key: NodeIdentifier, value: TValue) => object, delOp: (key: NodeIdentifier) => object }} db
+ * @param {Array<object>} operations - Shared operations array all sublevels append to.
  * @returns {BatchDatabaseOps<TValue>}
  */
 function makeSublevelBatch(db, operations) {
