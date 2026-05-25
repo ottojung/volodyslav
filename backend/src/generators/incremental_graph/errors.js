@@ -286,28 +286,29 @@ function isSchemaOverlap(object) {
  */
 class InvalidComputorReturnValue extends Error {
     /**
-     * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentifier
+     * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentity
      * @param {unknown} value
      */
-    constructor(nodeIdentifier, value) {
+    constructor(nodeIdentity, value) {
         super(
-            `Computor for node '${nodeIdentifier}' returned an invalid value: ${value}. ` +
+            `Computor for node '${nodeIdentity}' returned an invalid value: ${value}. ` +
                 `Computors must return a valid ComputedValue or Unchanged, not null or undefined.`
         );
         this.name = "InvalidComputorReturnValueError";
-        this.nodeKey = nodeIdentifier;
+        this.nodeIdentifier = nodeIdentity;
+        this.nodeKey = nodeIdentity;
         this.value = value;
     }
 }
 
 /**
  * Constructs an InvalidComputorReturnValue error.
- * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentifier
+ * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentity
  * @param {unknown} value
  * @returns {InvalidComputorReturnValue}
  */
-function makeInvalidComputorReturnValueError(nodeIdentifier, value) {
-    return new InvalidComputorReturnValue(nodeIdentifier, value);
+function makeInvalidComputorReturnValueError(nodeIdentity, value) {
+    return new InvalidComputorReturnValue(nodeIdentity, value);
 }
 
 /**
