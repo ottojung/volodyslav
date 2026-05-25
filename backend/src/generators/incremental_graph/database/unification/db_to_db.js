@@ -345,7 +345,11 @@ function makeInMemorySchemaStorage() {
                 // JS default string comparison matches byte order.
                 const sorted = [...store.keys()].sort();
                 for (const k of sorted) {
-                    yield stringToNodeIdentifier(k);
+                    if (sublevelName === 'global') {
+                        yield k;
+                    } else {
+                        yield stringToNodeIdentifier(k);
+                    }
                 }
             },
             async clear() {
