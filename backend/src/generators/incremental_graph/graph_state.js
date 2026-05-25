@@ -40,7 +40,6 @@ const { withComputedStateMutex } = require('./lock');
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
