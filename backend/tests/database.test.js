@@ -12,6 +12,7 @@ const {
     isDatabaseInitializationError,
     isInvalidReplicaPointerError,
     isSchemaBatchVersionError,
+    isMalformedIdentifierLookupError,
     versionToString,
 } = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
@@ -521,6 +522,27 @@ describe('generators/database', () => {
         });
 
 
+
+
+        test('malformed identifiers lookup in current replica fails initialization', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const rawDb = capabilities.levelDatabase.initialize(
+                    path.join(capabilities.environment.workingDirectory(), LIVE_DATABASE_WORKING_PATH)
+                );
+                await rawDb.open();
+                const xGlobal = rawDb.sublevel('x').sublevel('global', { valueEncoding: 'json' });
+                await xGlobal.put('identifiers_keys_map', 'not-an-array');
+                await rawDb.close();
+
+                const error = await getRootDatabase(capabilities).catch(e => e);
+                expect(isDatabaseInitializationError(error)).toBe(true);
+                expect(isMalformedIdentifierLookupError(error.cause)).toBe(true);
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
         test('setCurrentReplicaPointer updates in-memory active replica immediately', async () => {
             const capabilities = getTestCapabilities();
             try {
@@ -540,6 +562,30 @@ describe('generators/database', () => {
             }
         });
 
+
+
+
+        test('setCurrentReplicaPointer keeps pointer unchanged when target lookup record is malformed', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.global.put('identifiers_keys_map', 12345);
+
+                await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
+                expect(db.currentReplicaName()).toBe('x');
+
+                await db.close();
+
+                const reopened = await getRootDatabase(capabilities);
+                expect(reopened.currentReplicaName()).toBe('x');
+                await reopened.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
 
         test('setCurrentReplicaPointer keeps persisted pointer unchanged when target lookup init fails', async () => {
             const capabilities = getTestCapabilities();

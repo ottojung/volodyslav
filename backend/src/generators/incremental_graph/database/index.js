@@ -14,7 +14,7 @@ const {
     versionToString,
     stringToVersion,
 } = require('./types');
-const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError } = require('./root_database');
+const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError, isMalformedIdentifierLookupError } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 const {
     checkpointDatabase,
@@ -95,6 +95,7 @@ module.exports = {
     isInvalidReplicaPointerError,
     isSwitchReplicaError,
     isSchemaBatchVersionError,
+    isMalformedIdentifierLookupError,
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,
