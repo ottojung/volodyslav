@@ -606,6 +606,38 @@ describe("Property 9 — Nested pull shares allocation context", () => {
     });
 });
 
+
+    test("no-op pull skips persistent batch writes", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "stable",
+                inputs: [],
+                computor: async () => ({ value: "same" }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("stable");
+
+        const schemaStorage = db.getSchemaStorage();
+        const originalBatch = schemaStorage.batch.bind(schemaStorage);
+        let batchCalls = 0;
+        schemaStorage.batch = async (operations) => {
+            batchCalls += 1;
+            return await originalBatch(operations);
+        };
+
+        try {
+            await graph.pull("stable");
+            expect(batchCalls).toBe(0);
+        } finally {
+            schemaStorage.batch = originalBatch;
+            await db.close();
+        }
+    });
 // ---------------------------------------------------------------------------
 // Property 10 — Read-only lookups do not interfere with allocations
 // ---------------------------------------------------------------------------
