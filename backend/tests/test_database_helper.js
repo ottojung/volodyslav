@@ -100,7 +100,7 @@ function makeSemanticStorage(graph) {
                             );
                             if (nodeKey === undefined) {
                                 throw new Error(
-                                    `Missing semantic node key for input identifier in get()`
+                                    `Missing semantic node key for input identifier ${String(inputIdentifier)} in get() for parent key ${String(key)} (json key ${String(jsonKey)})`
                                 );
                             }
                             return String(nodeKey);
