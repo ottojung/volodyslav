@@ -113,7 +113,7 @@ function makeSemanticStorage(graph) {
                         const nodeKey = graph.lookupNodeKey(nodeIdentifierValue);
                         if (nodeKey === undefined) {
                             throw new Error(
-                                `Missing semantic node key for revdep identifier in get()`
+                                `Missing semantic node key for revdep identifier in get(): ${nodeIdentifierValue}`
                             );
                         }
                         return nodeKey;
