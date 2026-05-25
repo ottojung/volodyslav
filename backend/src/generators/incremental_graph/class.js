@@ -102,7 +102,11 @@ const {
     validateSingleArityPerHead,
 } = require("./compiled_node");
 const { makeGraphStorage } = require("./graph_storage");
-const { makeIdentifierResolver } = require("./identifier_resolver");
+const { getActiveLookup } = require("./identifier_resolver");
+const {
+    nodeKeyToIdFromLookup,
+    nodeIdToKeyFromLookup,
+} = require("./database");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -227,19 +231,39 @@ class IncrementalGraphClass {
         );
     }
 
-    /** @returns {IdentifierResolver} */
-    makeIdentifierResolver() {
-        return makeIdentifierResolver(this.rootDatabase);
+    /**
+     * Look up the semantic node key for a given identifier.
+     * This is a lock-free read from the active in-memory lookup.
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {import('./types').NodeKeyString | undefined}
+     */
+    lookupNodeKey(nodeIdentifier) {
+        if (typeof this.rootDatabase.nodeIdToKey === "function") {
+            return this.rootDatabase.nodeIdToKey(nodeIdentifier);
+        }
+        return nodeIdToKeyFromLookup(getActiveLookup(this.rootDatabase), nodeIdentifier);
     }
 
     /**
-     * @param {IdentifierResolver} identifierResolver
+     * Look up the identifier for a given semantic node key.
+     * This is a lock-free read from the active in-memory lookup.
+     * @param {import('./types').NodeKeyString} nodeKey
+     * @returns {NodeIdentifier | undefined}
+     */
+    lookupNodeIdentifier(nodeKey) {
+        if (typeof this.rootDatabase.nodeKeyToId === "function") {
+            return this.rootDatabase.nodeKeyToId(nodeKey);
+        }
+        return nodeKeyToIdFromLookup(getActiveLookup(this.rootDatabase), nodeKey);
+    }
+
+    /**
      * @template T
-     * @param {(batch: BatchBuilder) => Promise<T>} procedure
+     * @param {(batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<T>} procedure
      * @returns {Promise<T>}
      */
-    async withIdentifierBatch(identifierResolver, procedure) {
-        return this.storage.withIdentifierBatch(identifierResolver, procedure);
+    async withIdentifierBatch(procedure) {
+        return this.storage.withIdentifierBatch(procedure);
     }
 
     /**
@@ -297,6 +321,9 @@ class IncrementalGraphClass {
             throw new Error("Invalid pull context stack");
         }
         const frame = this._activePullContexts[index];
+        if (frame === undefined) {
+            throw new Error("Invalid pull context stack");
+        }
         for (const asyncId of frame.ownerAsyncIds) {
             const frames = pullContextFramesByAsyncId.get(asyncId);
             if (frames === undefined) {

@@ -79,8 +79,7 @@ function makeSemanticStorage(graph) {
         return {
             async get(key) {
                 const jsonKey = toJsonKey(key);
-                const identifierResolver = graph.makeIdentifierResolver();
-                const nodeIdentifier = identifierResolver.lookupNodeIdentifier(jsonKey);
+                const nodeIdentifier = graph.lookupNodeIdentifier(jsonKey);
                 if (nodeIdentifier === undefined) {
                     return undefined;
                 }
@@ -90,27 +89,36 @@ function makeSemanticStorage(graph) {
                 }
                 if (databaseName === "inputs") {
                     return {
-                        inputs: value.inputs.map((inputIdentifier) =>
-                            String(
-                                identifierResolver.requireNodeKey(
-                                    nodeIdentifierFromString(inputIdentifier)
-                                )
-                            )
-                        ),
+                        inputs: value.inputs.map((inputIdentifier) => {
+                            const nodeKey = graph.lookupNodeKey(
+                                nodeIdentifierFromString(inputIdentifier)
+                            );
+                            if (nodeKey === undefined) {
+                                throw new Error(
+                                    `Missing semantic node key for input identifier in get()`
+                                );
+                            }
+                            return String(nodeKey);
+                        }),
                         inputCounters: value.inputCounters,
                     };
                 }
                 if (databaseName === "revdeps") {
-                    return value.map((nodeIdentifierValue) =>
-                        identifierResolver.requireNodeKey(nodeIdentifierValue)
-                    );
+                    return value.map((nodeIdentifierValue) => {
+                        const nodeKey = graph.lookupNodeKey(nodeIdentifierValue);
+                        if (nodeKey === undefined) {
+                            throw new Error(
+                                `Missing semantic node key for revdep identifier in get()`
+                            );
+                        }
+                        return nodeKey;
+                    });
                 }
                 return value;
             },
             async put(key, value) {
                 const jsonKey = toJsonKey(key);
-                const identifierResolver = graph.makeIdentifierResolver();
-                await graph.withIdentifierBatch(identifierResolver, async (batch) => {
+                await graph.withIdentifierBatch(async (batch, identifierResolver) => {
                     const nodeIdentifier = identifierResolver.getOrAllocateNodeIdentifier(
                         jsonKey
                     );
@@ -143,12 +151,11 @@ function makeSemanticStorage(graph) {
             },
             async del(key) {
                 const jsonKey = toJsonKey(key);
-                const identifierResolver = graph.makeIdentifierResolver();
-                const nodeIdentifier = identifierResolver.lookupNodeIdentifier(jsonKey);
+                const nodeIdentifier = graph.lookupNodeIdentifier(jsonKey);
                 if (nodeIdentifier === undefined) {
                     return;
                 }
-                await graph.withIdentifierBatch(identifierResolver, async (batch) => {
+                await graph.withIdentifierBatch(async (batch) => {
                     batch[databaseName].del(nodeIdentifier);
                 });
             },
@@ -187,8 +194,7 @@ function makeSemanticStorage(graph) {
             return record ? record.inputs : null;
         },
         async withBatch(run) {
-            const identifierResolver = graph.makeIdentifierResolver();
-            return await graph.withIdentifierBatch(identifierResolver, async (batch) => {
+            return await graph.withIdentifierBatch(async (batch, identifierResolver) => {
                 /**
                  * @param {"values" | "freshness" | "inputs" | "revdeps" | "counters" | "timestamps"} databaseName
                  */
