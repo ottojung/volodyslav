@@ -284,15 +284,6 @@ class RootDatabaseClass {
     _computed;
 
     /**
-     * Whether the active identifier lookup has been loaded from disk.
-     * Starts as false; set to true by initializeActiveIdentifierLookup()
-     * and ensureActiveIdentifierLookupLoaded().
-     * @private
-     * @type {boolean}
-     */
-    _identifierLookupLoaded = false;
-
-    /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
      * @param {Version} version - The current application version
@@ -370,21 +361,6 @@ class RootDatabaseClass {
      */
     async initializeActiveIdentifierLookup() {
         this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(this._computed.globalSublevel);
-        this._identifierLookupLoaded = true;
-    }
-
-    /**
-     * Ensure the active identifier lookup is loaded from disk.
-     * This is idempotent: if the lookup is already loaded, this is a no-op.
-     * Must be called inside withComputedStateMutex.
-     * @returns {Promise<void>}
-     */
-    async ensureActiveIdentifierLookupLoaded() {
-        if (this._identifierLookupLoaded) {
-            return;
-        }
-        this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(this._computed.globalSublevel);
-        this._identifierLookupLoaded = true;
     }
 
     /**
@@ -434,7 +410,6 @@ class RootDatabaseClass {
             const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
             await this._rootMetaSublevel.put('current_replica', name);
             this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup };
-            this._identifierLookupLoaded = true;
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
@@ -505,7 +480,6 @@ class RootDatabaseClass {
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
                 identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
             };
-            this._identifierLookupLoaded = true;
         }
     }
 
