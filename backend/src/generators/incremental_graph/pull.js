@@ -80,26 +80,31 @@ async function pullNode(graph, nodeKeyStr, tx) {
         return graph.maybeRecalculate(nodeDefinition, activeTx);
     };
 
-    if (tx !== null) {
-        // Nested call: outer pull already holds the computed-state mutex.
-        // Share the outer transaction directly to avoid deadlock.
-        // Deduplicate concurrent nested pulls of the same node key within this
-        // transaction: if a pull for this key is already in-flight, return its
-        // promise directly so both callers get the same result without a second
-        // recompute (avoids duplicate side effects and last-writer-wins races).
-        const existing = tx.inFlight.get(nodeKeyStr);
+    /**
+     * Deduplicate in-flight pulls of the same node key within one transaction.
+     * @param {Transaction} activeTx
+     * @returns {Promise<RecomputeResult>}
+     */
+    const runDeduplicatedInTransaction = (activeTx) => {
+        const existing = activeTx.inFlight.get(nodeKeyStr);
         if (existing !== undefined) {
             return existing;
         }
-        const promise = runWithTransaction(tx).finally(() => {
-            tx.inFlight.delete(nodeKeyStr);
+        const promise = runWithTransaction(activeTx).finally(() => {
+            activeTx.inFlight.delete(nodeKeyStr);
         });
-        tx.inFlight.set(nodeKeyStr, promise);
+        activeTx.inFlight.set(nodeKeyStr, promise);
         return promise;
+    };
+
+    if (tx !== null) {
+        // Nested call: outer pull already holds the computed-state mutex.
+        // Share the outer transaction directly to avoid deadlock.
+        return runDeduplicatedInTransaction(tx);
     }
 
     // Top-level pull: acquire the computed-state lock and create a fresh transaction.
-    return graph.withTransaction(runWithTransaction);
+    return graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
 }
 
 /**

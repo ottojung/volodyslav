@@ -684,6 +684,34 @@ describe("Nested pull deduplication — concurrent pulls of the same key share o
 
         await db.close();
     });
+
+    test("re-entrant self pull during a top-level recomputation reuses the in-flight promise", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        let selfPullPromise;
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "root",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    selfPullPromise = pull("root");
+                    return { value: "root-data" };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const result = await graph.pull("root");
+        expect(result).toEqual({ value: "root-data" });
+        await expect(selfPullPromise).resolves.toEqual({ value: "root-data" });
+        expect(rootComputations).toBe(1);
+
+        await db.close();
+    });
 });
 // ---------------------------------------------------------------------------
 // Supplemental scenario — Read-only lookups do not interfere with allocations

@@ -15,6 +15,7 @@
 
 const {
     getRootDatabase,
+    isMalformedIdentifierLookupError,
 } = require('../src/generators/incremental_graph/database');
 const {
     mergeHostIntoReplica,
@@ -469,6 +470,37 @@ describe('mergeHostIntoReplica', () => {
             await expect(
                 mergeHostIntoReplica(logger, db, hostname2)
             ).resolves.toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('rejects malformed host identifiers lookup during host merge', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = nk('a');
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS2, [], remoteValue);
+            await H.global.put('identifiers_keys_map', 'not-an-array');
+
+            let error;
+            try {
+                await mergeHostIntoReplica(logger, db, hostname);
+            } catch (caught) {
+                error = caught;
+            }
+
+            expect(isMalformedIdentifierLookupError(error)).toBe(true);
+            expect(db.currentReplicaName()).toBe('x');
         } finally {
             if (db) await db.close();
         }

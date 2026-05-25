@@ -56,6 +56,7 @@ const {
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
 const { reconcileHostLookupWithTargetLookup } = require('./reconcile_identifier_lookup');
+const { MalformedIdentifierLookupError } = require('./replica_errors');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -580,8 +581,21 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         const hostIdentifierValue = await H.global.get('identifiers_keys_map');
         const targetIdentifierValue = await T.global.get('identifiers_keys_map');
 
-        const hostLookup = hostIdentifierValue !== undefined && Array.isArray(hostIdentifierValue) ? makeIdentifierLookup(hostIdentifierValue) : makeEmptyIdentifierLookup();
-        const targetLookup = targetIdentifierValue !== undefined && Array.isArray(targetIdentifierValue) ? makeIdentifierLookup(targetIdentifierValue) : makeEmptyIdentifierLookup();
+        let hostLookup = makeEmptyIdentifierLookup();
+        if (hostIdentifierValue !== undefined) {
+            if (!Array.isArray(hostIdentifierValue)) {
+                throw new MalformedIdentifierLookupError(hostIdentifierValue);
+            }
+            hostLookup = makeIdentifierLookup(hostIdentifierValue);
+        }
+
+        let targetLookup = makeEmptyIdentifierLookup();
+        if (targetIdentifierValue !== undefined) {
+            if (!Array.isArray(targetIdentifierValue)) {
+                throw new MalformedIdentifierLookupError(targetIdentifierValue);
+            }
+            targetLookup = makeIdentifierLookup(targetIdentifierValue);
+        }
         const reconciledHostLookup = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
         const mergedLookup = mergeIdentifierLookups(targetLookup, reconciledHostLookup);
 
