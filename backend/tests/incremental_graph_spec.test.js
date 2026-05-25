@@ -10,6 +10,13 @@ const {
     makeUnchanged,
     isUnchanged,
 } = require("../src/generators/incremental_graph");
+const {
+    makeEmptyIdentifierLookup,
+    cloneIdentifierLookup,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+    nodeIdentifierFromString,
+} = require("../src/generators/incremental_graph/database");
 const { makeSemanticStorage } = require("./test_database_helper");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
@@ -45,6 +52,41 @@ class InMemoryDatabase {
         this.getValueLog = [];
         /** @type {string} */
         this.version = 'test-version';
+        this._identifierLookup = makeEmptyIdentifierLookup();
+        this._identifierCounter = 0;
+    }
+
+    currentReplicaName() { return 'x'; }
+
+    cloneActiveIdentifierLookup() {
+        return cloneIdentifierLookup(this._identifierLookup);
+    }
+
+    getActiveIdentifierLookup() {
+        return this._identifierLookup;
+    }
+
+    replaceActiveIdentifierLookup(lookup) {
+        this._identifierLookup = lookup;
+    }
+
+    nodeIdToKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(this._identifierLookup, nodeIdentifier);
+    }
+
+    nodeKeyToId(nodeKey) {
+        return nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+    }
+
+    generateNodeIdentifier() {
+        this._identifierCounter++;
+        let n = this._identifierCounter;
+        let id = '';
+        for (let i = 0; i < 9; i++) {
+            id = String.fromCharCode(97 + (n % 26)) + id;
+            n = Math.floor(n / 26);
+        }
+        return nodeIdentifierFromString(id);
     }
 
     getSchemaStorage() {
@@ -78,6 +120,9 @@ class InMemoryDatabase {
                 putOp: (key, value) => {
                     return { type: 'put', sublevel, key, value };
                 },
+                rawPutOp: (key, value) => {
+                    return { type: 'put', sublevel, key, value };
+                },
                 delOp: (key) => {
                     return { type: 'del', sublevel, key };
                 },
@@ -109,6 +154,7 @@ class InMemoryDatabase {
         const revdeps = createSublevel('revdeps');
         const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
+        const global = createSublevel('global');
 
         return {
             values,
@@ -117,6 +163,7 @@ class InMemoryDatabase {
             revdeps,
             counters,
             timestamps,
+            global,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({

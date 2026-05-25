@@ -7,6 +7,13 @@
 const {
     makeIncrementalGraph,
 } = require("../src/generators/incremental_graph");
+const {
+    makeEmptyIdentifierLookup,
+    cloneIdentifierLookup,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+    nodeIdentifierFromString,
+} = require("../src/generators/incremental_graph/database");
 const { withExclusiveMode, withPullMode, withObserveMode } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -34,6 +41,41 @@ class InMemoryDatabase {
         this.closed = false;
         /** @type {string} */
         this.version = 'test-version';
+        this._identifierLookup = makeEmptyIdentifierLookup();
+        this._identifierCounter = 0;
+    }
+
+    currentReplicaName() { return 'x'; }
+
+    cloneActiveIdentifierLookup() {
+        return cloneIdentifierLookup(this._identifierLookup);
+    }
+
+    getActiveIdentifierLookup() {
+        return this._identifierLookup;
+    }
+
+    replaceActiveIdentifierLookup(lookup) {
+        this._identifierLookup = lookup;
+    }
+
+    nodeIdToKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(this._identifierLookup, nodeIdentifier);
+    }
+
+    nodeKeyToId(nodeKey) {
+        return nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+    }
+
+    generateNodeIdentifier() {
+        this._identifierCounter++;
+        let n = this._identifierCounter;
+        let id = '';
+        for (let i = 0; i < 9; i++) {
+            id = String.fromCharCode(97 + (n % 26)) + id;
+            n = Math.floor(n / 26);
+        }
+        return nodeIdentifierFromString(id);
     }
 
     getSchemaStorage() {
@@ -60,6 +102,9 @@ class InMemoryDatabase {
                     schemaMap.delete(fullKey);
                 },
                 putOp: (key, value) => {
+                    return { type: "put", sublevel, key, value };
+                },
+                rawPutOp: (key, value) => {
                     return { type: "put", sublevel, key, value };
                 },
                 delOp: (key) => {
@@ -93,6 +138,7 @@ class InMemoryDatabase {
         const revdeps = createSublevel("revdeps");
         const counters = createSublevel("counters");
         const timestamps = createSublevel("timestamps");
+        const global = createSublevel("global");
 
         return {
             values,
@@ -101,6 +147,7 @@ class InMemoryDatabase {
             revdeps,
             counters,
             timestamps,
+            global,
             batch: async (operations) => {
                 for (const op of operations) {
                     if (op.type === "put") {
@@ -582,13 +629,13 @@ describe("IncrementalGraph concurrency", () => {
             const releaseBoth = makeDeferred();
             let active = 0;
             let maxActive = 0;
-            const originalWithIdentifierBatch = graph.storage.withIdentifierBatch.bind(graph.storage);
-            graph.storage.withIdentifierBatch = async (resolver, run) => {
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (run) => {
                 active += 1;
                 maxActive = Math.max(maxActive, active);
                 await releaseBoth.promise;
                 try {
-                    return await originalWithIdentifierBatch(resolver, run);
+                    return await originalWithTransaction(run);
                 } finally {
                     active -= 1;
                 }
@@ -620,11 +667,11 @@ describe("IncrementalGraph concurrency", () => {
 
             const releaseInvalidate = makeDeferred();
             const enteredInvalidate = makeDeferred();
-            const originalWithIdentifierBatch = graph.storage.withIdentifierBatch.bind(graph.storage);
-            graph.storage.withIdentifierBatch = async (resolver, run) => {
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (run) => {
                 enteredInvalidate.resolve(undefined);
                 await releaseInvalidate.promise;
-                return await originalWithIdentifierBatch(resolver, run);
+                return await originalWithTransaction(run);
             };
 
             const invalidatePromise = graph.invalidate("source");
@@ -721,7 +768,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(maxActiveComputations).toBe(1);
         });
 
-        test("concurrent pulls on different nodes can overlap", async () => {
+        test("concurrent pulls on different nodes are serialized", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const source1Cell = { value: { type: "test", value: 1 } };
@@ -757,10 +804,70 @@ describe("IncrementalGraph concurrency", () => {
             const pull1 = graph.pull("source1");
             const pull2 = graph.pull("source2");
             await new Promise((resolve) => setTimeout(resolve, 20));
-            expect(started.sort()).toEqual(["source1", "source2"]);
+            // Pulls on different nodes are now serialized by withComputedStateMutex:
+            // source1 holds the mutex (awaiting releaseBoth), source2 has not started yet.
+            expect(started).toEqual(["source1"]);
 
             releaseBoth.resolve(undefined);
             await Promise.all([pull1, pull2]);
+            // After both complete (sequentially), both have been computed.
+            expect(started.sort()).toEqual(["source1", "source2"]);
+        });
+
+        test("fire-and-forget callback pull reacquires computed-state mutex", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const releaseSlow = makeDeferred();
+            const callbackResult = makeDeferred();
+            let activeSlowComputations = 0;
+            let maxActiveSlowComputations = 0;
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "slow",
+                    inputs: [],
+                    computor: async () => {
+                        activeSlowComputations += 1;
+                        maxActiveSlowComputations = Math.max(
+                            maxActiveSlowComputations,
+                            activeSlowComputations
+                        );
+                        await releaseSlow.promise;
+                        activeSlowComputations -= 1;
+                        return { type: "test", value: "slow-value" };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "trigger",
+                    inputs: [],
+                    computor: async () => {
+                        setTimeout(async () => {
+                            const result = await graph.pull("slow");
+                            callbackResult.resolve(result);
+                        }, 10);
+                        return { type: "test", value: "trigger-value" };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.pull("trigger");
+            const slowPull = graph.pull("slow");
+
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            expect(maxActiveSlowComputations).toBe(1);
+
+            releaseSlow.resolve(undefined);
+            await slowPull;
+            await expect(callbackResult.promise).resolves.toEqual({
+                type: "test",
+                value: "slow-value",
+            });
+
+            expect(maxActiveSlowComputations).toBe(1);
         });
     });
 

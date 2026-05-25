@@ -1,11 +1,11 @@
 /**
- * Tests for deterministic revdeps ordering in identifier-native graph_storage.js.
+ * Tests for deterministic revdeps ordering in identifier-native graph_state.js.
  *
  * Verifies that ensureReverseDepsIndexed always produces lexicographically
  * sorted identifier arrays regardless of insertion order.
  */
 
-const { makeGraphStorage } = require("../src/generators/incremental_graph/graph_storage");
+const { makeGraphStorage } = require("../src/generators/incremental_graph/graph_state");
 const {
     nodeIdentifierFromString,
     nodeIdentifierToDatabaseKey,

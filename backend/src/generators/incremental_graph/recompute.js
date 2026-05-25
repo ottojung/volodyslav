@@ -1,35 +1,38 @@
 /**
  * Recalculation helpers for IncrementalGraph.
+ *
+ * Transaction context is passed explicitly - no async_hooks or push/pop context.
  */
 
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
-/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
+
 /**
  * @typedef {object} IncrementalGraphRecomputeAccess
- * @property {import('./graph_storage').GraphStorage} storage
+ * @property {import('./graph_state').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: import('./types').NodeKeyString, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(nodeKeyStr: import('./types').NodeKeyString, tx: Transaction) => Promise<RecomputeResult>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { isUnchanged } = require("./unchanged");
-const { nodeIdentifierToString } = require("./database");
+const { nodeIdentifierToString, stringToNodeName, serializeNodeKey } = require("./database");
+
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition
- * @param {BatchBuilder} batch
- * @param {IdentifierResolver} identifierResolver
+ * @param {Transaction} tx
  * @returns {Promise<RecomputeResult>}
  */
 async function internalMaybeRecalculate(
     incrementalGraph,
     nodeDefinition,
-    batch,
-    identifierResolver
+    tx
 ) {
+    const batch = tx.batch;
     const nodeIdentifier = nodeDefinition.outputIdentifier;
     const oldValue = await batch.values.get(nodeIdentifier);
 
@@ -44,10 +47,7 @@ async function internalMaybeRecalculate(
             throw new Error(`Missing input identifier for node ${nodeDefinition.outputKey}`);
         }
         const { value: inputValue } =
-            await incrementalGraph._pullDuringPull(
-                inputKey,
-                identifierResolver
-            );
+            await incrementalGraph._pullDuringPull(inputKey, tx);
         inputValues.push(inputValue);
 
         const inputCounter = await batch.counters.get(inputIdentifier);
@@ -123,7 +123,25 @@ async function internalMaybeRecalculate(
         }
     }
 
-    const computedValue = await nodeDefinition.computor(inputValues, oldValue);
+    // Create a pull callback bound to the current transaction.
+    // Computors must use this callback for any dynamic dependencies rather
+    // than calling the graph's public pull method (which would deadlock).
+    /**
+     * @param {string} nodeName
+     * @param {Array<import('./types').ConstValue>} [bindings=[]]
+     * @returns {Promise<import('./types').ComputedValue>}
+     */
+    const pullCallback = async (nodeName, bindings = []) => {
+        const nodeKey = { head: stringToNodeName(nodeName), args: bindings };
+        const concreteKey = serializeNodeKey(nodeKey);
+        const result = await incrementalGraph._pullDuringPull(concreteKey, tx);
+        return result.value;
+    };
+
+    // Execute the computor. Pass the pull callback so the computor can
+    // pull additional dependencies using the current transaction.
+    const computedValue = await nodeDefinition.computor(inputValues, oldValue, pullCallback);
+
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
             throw makeInvalidUnchangedError(nodeDefinition.outputKey);

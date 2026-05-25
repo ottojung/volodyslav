@@ -1,5 +1,13 @@
 /**
  * IncrementalGraph class for propagating data through dependency edges.
+ *
+ * This implementation follows the transaction model specified in:
+ * docs/specs/incremental-graph-volatile-consistency.md
+ *
+ * Key principles:
+ * - Explicit over ambient: Transaction context is passed as a direct function argument
+ * - No global state, no async_hooks
+ * - Disk before memory: in-memory state is updated only after LevelDB batch flushes
  */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -12,14 +20,14 @@
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
-/** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').GraphStorage} GraphStorage */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 /** @typedef {import('../../datetime').DateTime} DateTime */
 /** @typedef {import('../../datetime').Datetime} Datetime */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
-/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
 
 const {
     compileNodeDef,
@@ -28,8 +36,7 @@ const {
     validateNoOverlap,
     validateSingleArityPerHead,
 } = require("./compiled_node");
-const { makeGraphStorage } = require("./graph_storage");
-const { makeIdentifierResolver } = require("./identifier_resolver");
+const { makeGraphStorage, getOrAllocateNodeIdentifier } = require("./graph_state");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -150,35 +157,55 @@ class IncrementalGraphClass {
         );
     }
 
-    /** @returns {IdentifierResolver} */
-    makeIdentifierResolver() {
-        return makeIdentifierResolver(this.rootDatabase);
+    /**
+     * Look up the semantic node key for a given identifier.
+     * This is a lock-free read from the active in-memory lookup.
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {import('./types').NodeKeyString | undefined}
+     */
+    lookupNodeKey(nodeIdentifier) {
+        return this.rootDatabase.nodeIdToKey(nodeIdentifier);
     }
 
     /**
-     * @param {IdentifierResolver} identifierResolver
+     * Look up the identifier for a given semantic node key.
+     * This is a lock-free read from the active in-memory lookup.
+     * @param {import('./types').NodeKeyString} nodeKey
+     * @returns {NodeIdentifier | undefined}
+     */
+    lookupNodeIdentifier(nodeKey) {
+        return this.rootDatabase.nodeKeyToId(nodeKey);
+    }
+
+    /**
+     * Execute a procedure within a transaction that provides a batch writer
+     * and identifier lookup. The batch is flushed and in-memory state updated
+     * only if the procedure succeeds.
+     *
      * @template T
-     * @param {(batch: BatchBuilder) => Promise<T>} procedure
+     * @param {(tx: Transaction) => Promise<T>} procedure
      * @returns {Promise<T>}
      */
-    async withIdentifierBatch(identifierResolver, procedure) {
-        return this.storage.withIdentifierBatch(identifierResolver, procedure);
+    async withTransaction(procedure) {
+        return this.storage.withTransaction(procedure);
     }
 
     /**
      * @param {ConcreteNode} concreteNode
-     * @param {IdentifierResolver} identifierResolver
+     * @param {Transaction} tx
      * @returns {ResolvedConcreteNode}
      */
-    resolveConcreteNode(concreteNode, identifierResolver) {
+    resolveConcreteNode(concreteNode, tx) {
         return {
             outputKey: concreteNode.output,
             inputKeys: concreteNode.inputs,
-            outputIdentifier: identifierResolver.getOrAllocateNodeIdentifier(
+            outputIdentifier: getOrAllocateNodeIdentifier(
+                tx,
+                this.rootDatabase,
                 concreteNode.output
             ),
             inputIdentifiers: concreteNode.inputs.map((inputKey) =>
-                identifierResolver.getOrAllocateNodeIdentifier(inputKey)
+                getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
             ),
             computor: concreteNode.computor,
         };
@@ -186,17 +213,11 @@ class IncrementalGraphClass {
 
     /**
      * @param {ResolvedConcreteNode} nodeDefinition
-     * @param {BatchBuilder} batch
-     * @param {IdentifierResolver} identifierResolver
+     * @param {Transaction} tx
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, batch, identifierResolver) {
-        return await internalMaybeRecalculate(
-            this,
-            nodeDefinition,
-            batch,
-            identifierResolver
-        );
+    async maybeRecalculate(nodeDefinition, tx) {
+        return await internalMaybeRecalculate(this, nodeDefinition, tx);
     }
 
     /**
@@ -227,15 +248,18 @@ class IncrementalGraphClass {
     }
 
     /**
+     * Internal method for pulling a node during an existing pull operation.
+     * The transaction context is passed explicitly to share the batch and lookup.
+     *
      * @param {NodeKeyString} nodeKeyStr
-     * @param {IdentifierResolver} identifierResolver
+     * @param {Transaction} tx
      * @returns {Promise<RecomputeResult>}
      */
-    async _pullDuringPull(nodeKeyStr, identifierResolver) {
+    async _pullDuringPull(nodeKeyStr, tx) {
         return await internalPullByNodeKeyWithStatusDuringPull(
             this,
             nodeKeyStr,
-            identifierResolver
+            tx
         );
     }
 

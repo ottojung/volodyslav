@@ -1,236 +1,166 @@
 /**
  * Pull operations for IncrementalGraph.
+ *
+ * Transaction context is passed explicitly through the call stack - no
+ * async_hooks or global state.
+ *
+ * The spec defines two pull paths:
+ * - Top-level pull: creates a transaction via withTransaction, runs pullNode inside it.
+ * - Nested pull: reuses the outer transaction directly (no new mutex acquisition).
+ *
+ * Both paths go through pullNode(graph, nodeKeyStr, tx): tx=null means top-level.
  */
 
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
-/** @typedef {import('./identifier_resolver').IdentifierResolver} IdentifierResolver */
+
 /**
  * @typedef {object} IncrementalGraphPullAccess
  * @property {Map<NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {import('./graph_storage').GraphStorage} storage
- * @property {() => IdentifierResolver} makeIdentifierResolver
- * @property {(identifierResolver: IdentifierResolver, procedure: (batch: BatchBuilder) => Promise<RecomputeResult>) => Promise<RecomputeResult>} withIdentifierBatch
- * @property {(nodeDefinition: import('./types').ConcreteNode, identifierResolver: IdentifierResolver) => import('./types').ResolvedConcreteNode} resolveConcreteNode
+ * @property {import('./graph_state').GraphStorage} storage
+ * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
- * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, batch: BatchBuilder, identifierResolver: IdentifierResolver) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, tx: Transaction) => Promise<RecomputeResult>} maybeRecalculate
  */
 
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withPullMode, withPullNodeMutex } = require("./lock");
+const { withPullMode } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
- * Pull implementation that assumes the caller has already acquired the global
- * pull-mode lock.
+ * Core pull implementation for a node by its serialized key.
+ * - If tx is non-null (nested pull): uses it directly — the outer pull's commit covers all writes.
+ * - If tx is null (top-level pull): acquires a fresh transaction via withTransaction.
  *
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {string} nodeName
- * @param {Array<ConstValue>} bindings
- * @returns {Promise<ComputedValue>}
- */
-async function internalUnsafePull(
-    incrementalGraph,
-    nodeName,
-    bindings
-) {
-    ensureNodeNameIsHead(nodeName);
-    const nodeNameValue = stringToNodeName(nodeName);
-    const { value } = await internalPullWithStatus(
-        incrementalGraph,
-        nodeNameValue,
-        bindings
-    );
-    return value;
-}
-
-/**
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {string} nodeName
- * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<ComputedValue>}
- */
-async function internalPull(
-    incrementalGraph,
-    nodeName,
-    bindings = []
-) {
-    return withPullMode(incrementalGraph.sleeper, () =>
-        internalUnsafePull(incrementalGraph, nodeName, bindings)
-    );
-}
-
-/**
- * Pull-with-status implementation that acquires the global pull-mode lock
- * and then delegates to internalPullWithStatus.
- *
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeName} nodeName
- * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<RecomputeResult>}
- */
-async function internalSafePullWithStatus(
-    incrementalGraph,
-    nodeName,
-    bindings = []
-) {
-    return withPullMode(incrementalGraph.sleeper, () =>
-        internalPullWithStatus(incrementalGraph, nodeName, bindings)
-    );
-}
-
-/**
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeName} nodeName
- * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<RecomputeResult>}
- */
-async function internalPullWithStatus(
-    incrementalGraph,
-    nodeName,
-    bindings = []
-) {
-    const nodeKey = { head: nodeName, args: bindings };
-    const concreteKey = serializeNodeKey(nodeKey);
-    return await internalPullByNodeKeyWithStatusDuringPull(
-        incrementalGraph,
-        concreteKey,
-        incrementalGraph.makeIdentifierResolver()
-    );
-}
-
-/**
- * @param {IncrementalGraphPullAccess} incrementalGraph
+ * @param {IncrementalGraphPullAccess} graph
  * @param {NodeKeyString} nodeKeyStr
- * @param {IdentifierResolver} [identifierResolver=incrementalGraph.makeIdentifierResolver()]
+ * @param {Transaction | null} tx
  * @returns {Promise<RecomputeResult>}
  */
-async function internalPullByNodeKeyWithStatusDuringPull(
-    incrementalGraph,
-    nodeKeyStr,
-    identifierResolver = incrementalGraph.makeIdentifierResolver()
-) {
-    return runPullForSemanticNodeKey(
-        incrementalGraph,
-        nodeKeyStr,
-        identifierResolver
-    );
-}
-
-/**
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeIdentifier} nodeKeyStr
- * @returns {Promise<RecomputeResult>}
- */
-async function internalPullByNodeIdentifierWithStatus(
-    incrementalGraph,
-    nodeKeyStr
-) {
-    return withPullMode(incrementalGraph.sleeper, () =>
-        internalPullByNodeIdentifierWithStatusDuringPull(
-            incrementalGraph,
-            nodeKeyStr
-        )
-    );
-}
-
-/**
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeIdentifier} nodeKeyStr
- * @param {IdentifierResolver} [identifierResolver=incrementalGraph.makeIdentifierResolver()]
- * @returns {Promise<RecomputeResult>}
- */
-async function internalPullByNodeIdentifierWithStatusDuringPull(
-    incrementalGraph,
-    nodeKeyStr,
-    identifierResolver = incrementalGraph.makeIdentifierResolver()
-) {
-    return runPullForSemanticNodeKey(
-        incrementalGraph,
-        identifierResolver.requireNodeKey(nodeKeyStr),
-        identifierResolver
-    );
-}
-
-/**
- * @param {IncrementalGraphPullAccess} incrementalGraph
- * @param {NodeKeyString} semanticNodeKey
- * @param {IdentifierResolver} identifierResolver
- * @returns {Promise<RecomputeResult>}
- */
-async function runPullForSemanticNodeKey(
-    incrementalGraph,
-    semanticNodeKey,
-    identifierResolver
-) {
-    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(semanticNodeKey)));
-    const nodeName = nodeKey.head;
-    const bindings = nodeKey.args;
-    const compiledNode = incrementalGraph.headIndex.get(nodeName);
+async function pullNode(graph, nodeKeyStr, tx) {
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
+    const compiledNode = graph.headIndex.get(nodeKey.head);
     if (!compiledNode) {
-        throw makeInvalidNodeError(nodeName);
+        throw makeInvalidNodeError(nodeKey.head);
     }
-
-    checkArity(compiledNode, bindings);
-
-    const concreteNode = incrementalGraph.getOrCreateConcreteNode(
-        semanticNodeKey,
-        compiledNode,
-        bindings
-    );
+    checkArity(compiledNode, nodeKey.args);
+    const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
 
     /**
-     * @param {BatchBuilder} batch
+     * Checks freshness: returns cached value if up-to-date,
+     * otherwise delegates to maybeRecalculate.
+     * @param {Transaction} activeTx
      * @returns {Promise<RecomputeResult>}
      */
-    const run = async (batch) => {
-        const outputIdentifier = identifierResolver.getOrAllocateNodeIdentifier(
-            concreteNode.output
-        );
-        const nodeFreshness = await batch.freshness.get(
-            outputIdentifier
-        );
+    const runWithTransaction = async (activeTx) => {
+        const nodeDefinition = graph.resolveConcreteNode(concreteNode, activeTx);
+        const nodeFreshness = await activeTx.batch.freshness.get(nodeDefinition.outputIdentifier);
 
         if (nodeFreshness === "up-to-date") {
-            const result = await batch.values.get(outputIdentifier);
+            const result = await activeTx.batch.values.get(nodeDefinition.outputIdentifier);
             if (result === undefined) {
                 throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${String(semanticNodeKey)}`
+                    `Impossible: up-to-date node has no stored value: ${String(nodeKeyStr)}`
                 );
             }
             return { value: result, status: "cached" };
         }
 
-        const nodeDefinition = incrementalGraph.resolveConcreteNode(
-            concreteNode,
-            identifierResolver
-        );
-        return await incrementalGraph.maybeRecalculate(
-            nodeDefinition,
-            batch,
-            identifierResolver
-        );
+        return graph.maybeRecalculate(nodeDefinition, activeTx);
     };
-    return withPullNodeMutex(incrementalGraph.sleeper, semanticNodeKey, () =>
-        incrementalGraph.withIdentifierBatch(identifierResolver, run)
-    );
+
+    if (tx !== null) {
+        // Nested call: outer pull already holds the computed-state mutex.
+        // Share the outer transaction directly to avoid deadlock.
+        // Deduplicate concurrent nested pulls of the same node key within this
+        // transaction: if a pull for this key is already in-flight, return its
+        // promise directly so both callers get the same result without a second
+        // recompute (avoids duplicate side effects and last-writer-wins races).
+        const existing = tx.inFlight.get(nodeKeyStr);
+        if (existing !== undefined) {
+            return existing;
+        }
+        const promise = runWithTransaction(tx).finally(() => {
+            tx.inFlight.delete(nodeKeyStr);
+        });
+        tx.inFlight.set(nodeKeyStr, promise);
+        return promise;
+    }
+
+    // Top-level pull: acquire the computed-state lock and create a fresh transaction.
+    return graph.withTransaction(runWithTransaction);
+}
+
+/**
+ * Top-level pull. Acquires the pull-mode lock.
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {string} nodeName
+ * @param {Array<ConstValue>} [bindings=[]]
+ * @returns {Promise<ComputedValue>}
+ */
+async function internalPull(graph, nodeName, bindings = []) {
+    return withPullMode(graph.sleeper, async () => {
+        ensureNodeNameIsHead(nodeName);
+        const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
+        const { value } = await pullNode(graph, nodeKeyStr, null);
+        return value;
+    });
+}
+
+/**
+ * Top-level pull with status. Acquires the pull-mode lock.
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {NodeName} nodeName
+ * @param {Array<ConstValue>} [bindings=[]]
+ * @returns {Promise<RecomputeResult>}
+ */
+async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
+    return withPullMode(graph.sleeper, () => {
+        const nodeKeyStr = serializeNodeKey({ head: nodeName, args: bindings });
+        return pullNode(graph, nodeKeyStr, null);
+    });
+}
+
+/**
+ * Unsafe pull — caller must already hold the pull-mode lock.
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {string} nodeName
+ * @param {Array<ConstValue>} bindings
+ * @returns {Promise<ComputedValue>}
+ */
+async function internalUnsafePull(graph, nodeName, bindings) {
+    ensureNodeNameIsHead(nodeName);
+    const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
+    const { value } = await pullNode(graph, nodeKeyStr, null);
+    return value;
+}
+
+/**
+ * Nested pull by serialized key — uses the existing transaction, no new mutex.
+ * Called from computors (via _pullDuringPull) and from recompute.js.
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {NodeKeyString} nodeKeyStr
+ * @param {Transaction | null} tx
+ * @returns {Promise<RecomputeResult>}
+ */
+async function internalPullByNodeKeyWithStatusDuringPull(graph, nodeKeyStr, tx) {
+    return pullNode(graph, nodeKeyStr, tx);
 }
 
 module.exports = {
     internalPull,
     internalPullByNodeKeyWithStatusDuringPull,
-    internalPullByNodeIdentifierWithStatusDuringPull,
-    internalPullByNodeIdentifierWithStatus,
     internalSafePullWithStatus,
-    internalPullWithStatus,
     internalUnsafePull,
 };

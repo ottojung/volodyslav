@@ -22,10 +22,20 @@
 
 /**
  * A computor function for node definitions.
- * Receives inputs, optional old value, and positional bindings array.
+ * Receives inputs, optional old value, positional bindings array, and a pull callback.
  * Bindings are matched to argument positions by position (not by variable name).
  * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
- * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>} NodeDefComputor
+ *
+ * The `pull` callback allows the computor to pull additional nodes using the current
+ * transaction. Computors MUST use this callback for any dynamic dependencies rather
+ * than calling the graph's public pull method (which would deadlock).
+ *
+ * @typedef {(
+ *     inputs: Array<ComputedValue>,
+ *     oldValue: ComputedValue | undefined,
+ *     bindings: Array<ConstValue>,
+ *     pull: (nodeName: string, bindings?: Array<ConstValue>) => Promise<ComputedValue>
+ * ) => Promise<ComputedValue | Unchanged>} NodeDefComputor
  */
 
 /**
@@ -34,7 +44,15 @@
 
 /**
  * Simpler computor without bindings parameter (used for concrete instantiated nodes).
- * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined) => Promise<ComputedValue | Unchanged>} ConcreteNodeComputor
+ * The `pull` callback allows the computor to pull additional nodes using the current
+ * transaction. Computors MUST use this callback for any dynamic dependencies rather
+ * than calling the graph's public pull method (which would deadlock).
+ *
+ * @typedef {(
+ *     inputs: Array<ComputedValue>,
+ *     oldValue: ComputedValue | undefined,
+ *     pull: (nodeName: string, bindings?: Array<ConstValue>) => Promise<ComputedValue>
+ * ) => Promise<ComputedValue | Unchanged>} ConcreteNodeComputor
  */
 
 /**
