@@ -1,4 +1,3 @@
-/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * Graph state management with transaction model for volatile-persistent consistency.
  *
@@ -45,15 +44,6 @@ const { withComputedStateMutex } = require('./lock');
 
 /**
  * @template TValue
- * @typedef {object} IdentifierDatabase
- * @property {(key: NodeIdentifier) => Promise<TValue | undefined>} get - Read one identifier-keyed record.
- * @property {(key: NodeIdentifier, value: TValue) => Promise<void>} put - Write one identifier-keyed record.
- * @property {(key: NodeIdentifier) => Promise<void>} del - Delete one identifier-keyed record.
- * @property {() => AsyncIterable<NodeIdentifier>} keys - Iterate over identifier keys in storage order.
- */
-
-/**
- * @template TValue
  * @typedef {object} BatchDatabaseOps
  * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue a put operation in the current batch.
  * @property {(key: NodeIdentifier) => void} del - Queue a delete operation in the current batch.
@@ -68,7 +58,6 @@ const { withComputedStateMutex } = require('./lock');
  * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
- * @property {(operation: *) => void} appendOperation - Append a raw batch operation owned by a higher layer.
  */
 
 /**
@@ -84,18 +73,14 @@ const { withComputedStateMutex } = require('./lock');
  */
 
 /**
- * @typedef {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} BatchFunction
- */
-
-/**
  * @typedef {object} GraphStorage
- * @property {IdentifierDatabase<ComputedValue>} values - Identifier-keyed value storage.
- * @property {IdentifierDatabase<Freshness>} freshness - Identifier-keyed freshness storage.
- * @property {IdentifierDatabase<InputsRecord>} inputs - Identifier-keyed input metadata storage.
- * @property {IdentifierDatabase<NodeIdentifier[]>} revdeps - Identifier-keyed reverse dependency index.
- * @property {IdentifierDatabase<Counter>} counters - Identifier-keyed counters.
- * @property {IdentifierDatabase<TimestampRecord>} timestamps - Identifier-keyed timestamps.
- * @property {BatchFunction} withBatch - Run atomically against all graph sublevels (no identifier tracking).
+ * @property {ValuesDatabase} values - Identifier-keyed value storage.
+ * @property {FreshnessDatabase} freshness - Identifier-keyed freshness storage.
+ * @property {InputsDatabase} inputs - Identifier-keyed input metadata storage.
+ * @property {RevdepsDatabase} revdeps - Identifier-keyed reverse dependency index.
+ * @property {CountersDatabase} counters - Identifier-keyed counters.
+ * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
+ * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
@@ -103,24 +88,6 @@ const { withComputedStateMutex } = require('./lock');
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
  */
-
-/**
- * Convert a nominal identifier to the underlying database key used by typed sublevels.
- * @param {NodeIdentifier} nodeIdentifier
- * @returns {NodeIdentifier}
- */
-function toDatabaseKey(nodeIdentifier) {
-    return nodeIdentifier;
-}
-
-/**
- * Create a stable string key for per-batch overlay maps.
- * @param {NodeIdentifier} nodeIdentifier
- * @returns {string}
- */
-function pendingKey(nodeIdentifier) {
-    return nodeIdentifierToString(nodeIdentifier);
-}
 
 /**
  * Find the insertion point for an identifier inside an already-sorted identifier array.
@@ -152,218 +119,65 @@ function findInsertionIndex(sortedArray, nodeIdentifier) {
 }
 
 /**
- * Read a value from the per-batch overlay.
+ * Create a read-your-writes batch wrapper for a single typed sublevel.
+ * Writes are queued as LevelDB batch operations; reads check the pending overlay
+ * first and fall through to the underlying database on a miss.
+ *
  * @template TValue
- * @param {Map<string, TValue>} pendingPuts
- * @param {Set<string>} pendingDels
- * @param {NodeIdentifier} key
- * @returns {TValue | undefined}
+ * @param {{ get: (key: NodeIdentifier) => Promise<TValue | undefined>, putOp: (key: NodeIdentifier, value: TValue) => *, delOp: (key: NodeIdentifier) => * }} db
+ * @param {Array<*>} operations - Shared operations array all sublevels append to.
+ * @returns {BatchDatabaseOps<TValue>}
  */
-function readPendingValue(pendingPuts, pendingDels, key) {
-    const overlayKey = pendingKey(key);
-    if (pendingDels.has(overlayKey)) {
-        return undefined;
-    }
-    return pendingPuts.get(overlayKey);
+function makeSublevelBatch(db, operations) {
+    /** @type {Map<string, TValue>} */
+    const puts = new Map();
+    /** @type {Set<string>} */
+    const dels = new Set();
+    return {
+        put(key, value) {
+            const k = nodeIdentifierToString(key);
+            puts.set(k, value);
+            dels.delete(k);
+            operations.push(db.putOp(key, value));
+        },
+        del(key) {
+            const k = nodeIdentifierToString(key);
+            dels.add(k);
+            puts.delete(k);
+            operations.push(db.delOp(key));
+        },
+        async get(key) {
+            const k = nodeIdentifierToString(key);
+            if (dels.has(k)) {
+                return undefined;
+            }
+            const pending = puts.get(k);
+            if (pending !== undefined) {
+                return pending;
+            }
+            return await db.get(key);
+        },
+    };
 }
 
 /**
- * Create the identifier-native batch builder used by the low-level storage API.
+ * Create the batch builder and its shared operations array.
  * @param {SchemaStorage} schemaStorage
  * @returns {{ batch: BatchBuilder, operations: Array<*> }}
  */
 function createBatch(schemaStorage) {
-        /** @type {Array<*>} */
-        const operations = [];
-
-        /** @type {Map<string, ComputedValue>} */
-        const valuesPuts = new Map();
-        /** @type {Set<string>} */
-        const valuesDels = new Set();
-        /** @type {Map<string, Freshness>} */
-        const freshnessPuts = new Map();
-        /** @type {Set<string>} */
-        const freshnessDels = new Set();
-        /** @type {Map<string, InputsRecord>} */
-        const inputsPuts = new Map();
-        /** @type {Set<string>} */
-        const inputsDels = new Set();
-        /** @type {Map<string, NodeIdentifier[]>} */
-        const revdepsPuts = new Map();
-        /** @type {Set<string>} */
-        const revdepsDels = new Set();
-        /** @type {Map<string, Counter>} */
-        const countersPuts = new Map();
-        /** @type {Set<string>} */
-        const countersDels = new Set();
-        /** @type {Map<string, TimestampRecord>} */
-        const timestampsPuts = new Map();
-        /** @type {Set<string>} */
-        const timestampsDels = new Set();
-
-        /** @type {BatchBuilder} */
-        const batch = {
-            values: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    valuesPuts.set(overlayKey, value);
-                    valuesDels.delete(overlayKey);
-                    operations.push(schemaStorage.values.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    valuesDels.add(overlayKey);
-                    valuesPuts.delete(overlayKey);
-                    operations.push(schemaStorage.values.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(valuesPuts, valuesDels, key);
-                    if (pending !== undefined || valuesDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.values.get(toDatabaseKey(key));
-                },
-            },
-            freshness: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    freshnessPuts.set(overlayKey, value);
-                    freshnessDels.delete(overlayKey);
-                    operations.push(schemaStorage.freshness.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    freshnessDels.add(overlayKey);
-                    freshnessPuts.delete(overlayKey);
-                    operations.push(schemaStorage.freshness.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(freshnessPuts, freshnessDels, key);
-                    if (pending !== undefined || freshnessDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.freshness.get(toDatabaseKey(key));
-                },
-            },
-            inputs: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    inputsPuts.set(overlayKey, value);
-                    inputsDels.delete(overlayKey);
-                    operations.push(schemaStorage.inputs.putOp(toDatabaseKey(key), {
-                        inputs: value.inputs,
-                        inputCounters: value.inputCounters,
-                    }));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    inputsDels.add(overlayKey);
-                    inputsPuts.delete(overlayKey);
-                    operations.push(schemaStorage.inputs.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(inputsPuts, inputsDels, key);
-                    if (pending !== undefined || inputsDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.inputs.get(toDatabaseKey(key));
-                },
-            },
-            revdeps: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    revdepsPuts.set(overlayKey, value);
-                    revdepsDels.delete(overlayKey);
-                    operations.push(
-                        schemaStorage.revdeps.putOp(
-                            toDatabaseKey(key),
-                            value.map(toDatabaseKey)
-                        )
-                    );
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    revdepsDels.add(overlayKey);
-                    revdepsPuts.delete(overlayKey);
-                    operations.push(schemaStorage.revdeps.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(revdepsPuts, revdepsDels, key);
-                    if (pending !== undefined || revdepsDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
-                    if (stored === undefined) {
-                        return undefined;
-                    }
-                    return stored;
-                },
-            },
-            counters: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    countersPuts.set(overlayKey, value);
-                    countersDels.delete(overlayKey);
-                    operations.push(schemaStorage.counters.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    countersDels.add(overlayKey);
-                    countersPuts.delete(overlayKey);
-                    operations.push(schemaStorage.counters.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(countersPuts, countersDels, key);
-                    if (pending !== undefined || countersDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.counters.get(toDatabaseKey(key));
-                },
-            },
-            timestamps: {
-                put(key, value) {
-                    const overlayKey = pendingKey(key);
-                    timestampsPuts.set(overlayKey, value);
-                    timestampsDels.delete(overlayKey);
-                    operations.push(schemaStorage.timestamps.putOp(toDatabaseKey(key), value));
-                },
-                del(key) {
-                    const overlayKey = pendingKey(key);
-                    timestampsDels.add(overlayKey);
-                    timestampsPuts.delete(overlayKey);
-                    operations.push(schemaStorage.timestamps.delOp(toDatabaseKey(key)));
-                },
-                async get(key) {
-                    const pending = readPendingValue(timestampsPuts, timestampsDels, key);
-                    if (pending !== undefined || timestampsDels.has(pendingKey(key))) {
-                        return pending;
-                    }
-                    return await schemaStorage.timestamps.get(toDatabaseKey(key));
-                },
-            },
-            appendOperation(operation) {
-                operations.push(operation);
-            },
-        };
-
-        return { batch, operations };
-}
-
-/**
- * Create a BatchFunction that creates a batch, runs a callback, and commits.
- * @param {SchemaStorage} schemaStorage
- * @returns {BatchFunction}
- */
-function makeBatchBuilder(schemaStorage) {
-    /** @type {BatchFunction} */
-    const withBatch = async (fn) => {
-        const { batch, operations } = createBatch(schemaStorage);
-        const value = await fn(batch);
-        await schemaStorage.batch(operations);
-        return value;
+    /** @type {Array<*>} */
+    const operations = [];
+    /** @type {BatchBuilder} */
+    const batch = {
+        values: makeSublevelBatch(schemaStorage.values, operations),
+        freshness: makeSublevelBatch(schemaStorage.freshness, operations),
+        inputs: makeSublevelBatch(schemaStorage.inputs, operations),
+        revdeps: makeSublevelBatch(schemaStorage.revdeps, operations),
+        counters: makeSublevelBatch(schemaStorage.counters, operations),
+        timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
     };
-
-    return withBatch;
+    return { batch, operations };
 }
 
 /**
@@ -374,30 +188,6 @@ function makeBatchBuilder(schemaStorage) {
  */
 function makeGraphStorage(rootDatabase, sleeper) {
     const schemaStorage = rootDatabase.getSchemaStorage();
-    const withBatch = makeBatchBuilder(schemaStorage);
-
-    /**
-     * @param {IdentifierDatabase<*>} database
-     * @returns {IdentifierDatabase<*>}
-     */
-    function makeIdentifierDatabase(database) {
-        return {
-            async get(key) {
-                return await database.get(key);
-            },
-            async put(key, value) {
-                await database.put(key, value);
-            },
-            async del(key) {
-                await database.del(key);
-            },
-            async *keys() {
-                for await (const key of database.keys()) {
-                    yield key;
-                }
-            },
-        };
-    }
 
     /**
      * @param {NodeIdentifier} node
@@ -477,48 +267,18 @@ function makeGraphStorage(rootDatabase, sleeper) {
     }
 
     return {
-        values: makeIdentifierDatabase({
-            async get(key) { return await schemaStorage.values.get(toDatabaseKey(key)); },
-            async put(key, value) { await schemaStorage.values.put(toDatabaseKey(key), value); },
-            async del(key) { await schemaStorage.values.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.values.keys()) { yield key; } },
-        }),
-        freshness: makeIdentifierDatabase({
-            async get(key) { return await schemaStorage.freshness.get(toDatabaseKey(key)); },
-            async put(key, value) { await schemaStorage.freshness.put(toDatabaseKey(key), value); },
-            async del(key) { await schemaStorage.freshness.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.freshness.keys()) { yield key; } },
-        }),
-        inputs: makeIdentifierDatabase({
-            async get(key) { return await schemaStorage.inputs.get(toDatabaseKey(key)); },
-            async put(key, value) { await schemaStorage.inputs.put(toDatabaseKey(key), value); },
-            async del(key) { await schemaStorage.inputs.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.inputs.keys()) { yield key; } },
-        }),
-        revdeps: makeIdentifierDatabase({
-            async get(key) {
-                const stored = await schemaStorage.revdeps.get(toDatabaseKey(key));
-                return stored;
-            },
-            async put(key, value) {
-                await schemaStorage.revdeps.put(toDatabaseKey(key), value.map(toDatabaseKey));
-            },
-            async del(key) { await schemaStorage.revdeps.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.revdeps.keys()) { yield key; } },
-        }),
-        counters: makeIdentifierDatabase({
-            async get(key) { return await schemaStorage.counters.get(toDatabaseKey(key)); },
-            async put(key, value) { await schemaStorage.counters.put(toDatabaseKey(key), value); },
-            async del(key) { await schemaStorage.counters.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.counters.keys()) { yield key; } },
-        }),
-        timestamps: makeIdentifierDatabase({
-            async get(key) { return await schemaStorage.timestamps.get(toDatabaseKey(key)); },
-            async put(key, value) { await schemaStorage.timestamps.put(toDatabaseKey(key), value); },
-            async del(key) { await schemaStorage.timestamps.del(toDatabaseKey(key)); },
-            async *keys() { for await (const key of schemaStorage.timestamps.keys()) { yield key; } },
-        }),
-        withBatch,
+        values: schemaStorage.values,
+        freshness: schemaStorage.freshness,
+        inputs: schemaStorage.inputs,
+        revdeps: schemaStorage.revdeps,
+        counters: schemaStorage.counters,
+        timestamps: schemaStorage.timestamps,
+        async withBatch(fn) {
+            const { batch, operations } = createBatch(schemaStorage);
+            const result = await fn(batch);
+            await schemaStorage.batch(operations);
+            return result;
+        },
         /**
          * Run a batch that atomically commits node writes together with any new
          * identifier allocations made during the operation.
@@ -541,38 +301,34 @@ function makeGraphStorage(rootDatabase, sleeper) {
          */
         async withTransaction(fn) {
             return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // Step 1: create the transaction (spec: createTransaction()).
-                // Clone the current committed lookup as the working copy.
+                // createTransaction(): reads _computed.identifierLookup, creates fresh batch.
+                const activeSchemaStorage = rootDatabase.getSchemaStorage();
                 const identifierLookup = rootDatabase.cloneActiveIdentifierLookup();
                 const initialLookupSize = identifierLookup.keyToId.size;
-                const { batch, operations } = createBatch(schemaStorage);
+                const { batch, operations } = createBatch(activeSchemaStorage);
 
                 /** @type {Transaction} */
                 const tx = { batch, identifierLookup };
 
-                // Step 2: run the operation (identifier allocation + node-data writes).
+                // Run the operation (identifier allocation + node-data writes).
                 const value = await fn(tx);
 
-                // Step 3: commit (spec: commitTransaction()).
-                // Disk-first ordering: flush batch, then update volatile layer.
+                // commitTransaction(): disk-first — flush batch, then update volatile layer.
                 const hasPendingAllocations = tx.identifierLookup.keyToId.size > initialLookupSize;
                 if (hasPendingAllocations) {
-                    // Append the updated identifier lookup to the batch.
                     const lookupToCommit = cloneIdentifierLookup(tx.identifierLookup);
-                    if (schemaStorage.global !== undefined) {
+                    if (activeSchemaStorage.global !== undefined) {
                         operations.push(
-                            schemaStorage.global.rawPutOp(
+                            activeSchemaStorage.global.rawPutOp(
                                 IDENTIFIERS_KEY,
                                 serializeIdentifierLookup(lookupToCommit)
                             )
                         );
                     }
-                    // Flush to disk first.
-                    await schemaStorage.batch(operations);
-                    // Only after a successful flush: update the volatile layer.
+                    await activeSchemaStorage.batch(operations);
                     rootDatabase.replaceActiveIdentifierLookup(lookupToCommit);
                 } else {
-                    await schemaStorage.batch(operations);
+                    await activeSchemaStorage.batch(operations);
                 }
 
                 return value;
