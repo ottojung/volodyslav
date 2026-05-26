@@ -150,3 +150,40 @@ A solution is acceptable only if all are true:
 ## Final recommendation
 
 Adopt **Proposal A**. It provides the best balance: full locking-spec compliance, preserved volatile-persistent correctness, and manageable implementation complexity within the current architecture.
+
+
+## Additional option explored: No special lock for identifier-map updates
+
+### Hypothesis
+If identifier-map updates are append-only and non-conflicting, perhaps we can remove special commit-time locking for identifier-map updates and rely only on pull-node serialization.
+
+### What the code shows
+
+1. Transaction overlays are private and start from a shared committed base (`makeTransactionIdentifierLookup(base)`).
+2. Allocation collision checks (`txAllocateNodeIdentifier`) look only at:
+   - the transaction overlay, and
+   - the committed base at transaction-start / current reference.
+3. They do **not** see allocations made concurrently in other still-uncommitted overlays.
+4. Commit applies overlay mappings into base with plain `Map.set` in `commitTransactionLookup`.
+
+### Consequence
+Without a special lock (or equivalent coordination) at least around allocation/commit merge, two concurrent pulls on **different** nodes can each allocate the same candidate identifier before either commit is visible to the other.
+
+This is possible even if same-node pulls are serialized, because the conflict is cross-node identifier collision, not same-node duplicate work.
+
+### Why append-only is not enough
+"Append-only" here means no deletes/rewrites to existing node keys in normal pull flow. But correctness also requires a global uniqueness invariant for identifier strings (`id -> key` must stay one-to-one).
+
+If two transactions append the same identifier for different keys, one mapping can overwrite the other in volatile `idToKey`, and the persisted serialized lookup can contain logically conflicting pairs. That breaks lookup coherence and can surface as malformed lookup on reload.
+
+### Can the option ever be made safe?
+Only with extra guarantees that effectively replace the removed lock, for example:
+
+- Deterministic collision-free identifier derivation from node key (injective in practice), or
+- CAS/versioned commit that rejects/retries when base changed in conflicting ways, or
+- Reservation protocol so uncommitted allocations are globally visible as unavailable.
+
+Absent one of those, removing special synchronization for identifier-map updates is unsafe.
+
+### Verdict on this option
+As currently implemented, this option is **not valid** for full-correctness operation. Same-node pull serialization does not eliminate cross-node allocation conflicts. Any compliant proposal must keep explicit cross-transaction coordination for identifier allocation/merge/commit.
