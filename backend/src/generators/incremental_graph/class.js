@@ -193,9 +193,10 @@ class IncrementalGraphClass {
     /**
      * @param {ConcreteNode} concreteNode
      * @param {Transaction} tx
+     * @param {boolean} [allocateInputs=true]
      * @returns {ResolvedConcreteNode}
      */
-    resolveConcreteNode(concreteNode, tx) {
+    resolveConcreteNode(concreteNode, tx, allocateInputs = true) {
         return {
             outputKey: concreteNode.output,
             inputKeys: concreteNode.inputs,
@@ -204,9 +205,11 @@ class IncrementalGraphClass {
                 this.rootDatabase,
                 concreteNode.output
             ),
-            inputIdentifiers: concreteNode.inputs.map((inputKey) =>
-                getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
-            ),
+            inputIdentifiers: allocateInputs
+                ? concreteNode.inputs.map((inputKey) =>
+                    getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
+                )
+                : [],
             computor: concreteNode.computor,
         };
     }

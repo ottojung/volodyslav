@@ -26,7 +26,7 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => import('./types').ResolvedConcreteNode} resolveConcreteNode
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction, allocateInputs?: boolean) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, tx: Transaction) => Promise<RecomputeResult>} maybeRecalculate
  */
@@ -64,7 +64,8 @@ async function pullNode(graph, nodeKeyStr, tx) {
      * @returns {Promise<RecomputeResult>}
      */
     const runWithTransaction = async (activeTx) => {
-        const nodeDefinition = graph.resolveConcreteNode(concreteNode, activeTx);
+        await graph.storage.acquirePullNodeLock(nodeKeyStr, activeTx);
+        const nodeDefinition = graph.resolveConcreteNode(concreteNode, activeTx, false);
         const nodeFreshness = await activeTx.batch.freshness.get(nodeDefinition.outputIdentifier);
 
         if (nodeFreshness === "up-to-date") {
@@ -98,12 +99,11 @@ async function pullNode(graph, nodeKeyStr, tx) {
     };
 
     if (tx !== null) {
-        // Nested call: outer pull already holds the computed-state mutex.
-        // Share the outer transaction directly to avoid deadlock.
+        // Nested call: share the outer transaction directly.
         return runDeduplicatedInTransaction(tx);
     }
 
-    // Top-level pull: acquire the computed-state lock and create a fresh transaction.
+    // Top-level pull: create a transaction and hold per-node locks through commit.
     return graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
 }
 

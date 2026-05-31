@@ -21,7 +21,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { makeNodeIdentifier } = require('./node_identifier');
+const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -62,6 +62,8 @@ const {
  * @property {GlobalSublevelType} globalSublevel
  * @property {SchemaStorage} schemaStorage
  * @property {IdentifierLookup} identifierLookup
+ * @property {Set<string>} inFlightIdentifiers
+ * @property {Map<string, string>} inFlightIdentifierOwners
  */
 
 /**
@@ -308,6 +310,8 @@ class RootDatabaseClass {
             globalSublevel,
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
+            inFlightIdentifiers: new Set(),
+            inFlightIdentifierOwners: new Map(),
         };
     }
 
@@ -370,6 +374,58 @@ class RootDatabaseClass {
     }
 
     /**
+     * Try to reserve a freshly generated identifier for a live transaction.
+     * The check/generate/reserve sequence is deliberately synchronous: it must
+     * not yield to the event loop, perform I/O, or call user code.
+     * @param {string} transactionId
+     * @param {import('./types').NodeKeyString} _nodeKey
+     * @param {Set<string>} transactionReservations
+     * @param {(candidate: NodeIdentifier) => import('./types').NodeKeyString | undefined} lookupCandidate
+     * @param {(candidate: NodeIdentifier) => void} reserveInTransaction
+     * @param {number} [maxAttempts=64]
+     * @returns {NodeIdentifier}
+     */
+    reserveNodeIdentifier(transactionId, _nodeKey, transactionReservations, lookupCandidate, reserveInTransaction, maxAttempts = 64) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const candidate = this.generateNodeIdentifier();
+            const candidateString = nodeIdentifierToString(candidate);
+            if (lookupCandidate(candidate) !== undefined) {
+                continue;
+            }
+            if (this._computed.inFlightIdentifiers.has(candidateString)) {
+                continue;
+            }
+            this._computed.inFlightIdentifiers.add(candidateString);
+            this._computed.inFlightIdentifierOwners.set(candidateString, transactionId);
+            transactionReservations.add(candidateString);
+            reserveInTransaction(candidate);
+            return candidate;
+        }
+        throw new Error(`Failed to reserve a unique node identifier after ${String(maxAttempts)} attempts`);
+    }
+
+    /**
+     * Release in-flight identifier reservations held by a transaction.
+     * @param {Set<string>} transactionReservations
+     * @returns {void}
+     */
+    releaseNodeIdentifierReservations(transactionReservations) {
+        for (const identifierString of transactionReservations) {
+            this._computed.inFlightIdentifiers.delete(identifierString);
+            this._computed.inFlightIdentifierOwners.delete(identifierString);
+        }
+        transactionReservations.clear();
+    }
+
+    /**
+     * @param {string} identifierString
+     * @returns {boolean}
+     */
+    hasInFlightNodeIdentifier(identifierString) {
+        return this._computed.inFlightIdentifiers.has(identifierString);
+    }
+
+    /**
      * @returns {Promise<void>}
      */
     async initializeActiveIdentifierLookup() {
@@ -422,7 +478,15 @@ class RootDatabaseClass {
             const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
             const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
             await this._rootMetaSublevel.put('current_replica', name);
-            this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup };
+            this._computed = {
+                replicaName: name,
+                namespaceSublevel,
+                globalSublevel,
+                schemaStorage,
+                identifierLookup,
+                inFlightIdentifiers: new Set(),
+                inFlightIdentifierOwners: new Map(),
+            };
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
@@ -492,6 +556,8 @@ class RootDatabaseClass {
                 globalSublevel,
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
                 identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
+                inFlightIdentifiers: new Set(),
+                inFlightIdentifierOwners: new Map(),
             };
         }
     }

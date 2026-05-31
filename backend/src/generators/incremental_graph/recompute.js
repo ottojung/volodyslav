@@ -15,11 +15,13 @@
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {(nodeKeyStr: import('./types').NodeKeyString, tx: Transaction) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(nodeKey: import('./types').NodeKeyString) => import('./types').NodeIdentifier | undefined} lookupNodeIdentifier
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { isUnchanged } = require("./unchanged");
 const { nodeIdentifierToString, stringToNodeName, serializeNodeKey } = require("./database");
+const { lookupNodeIdentifier } = require("./graph_state");
 
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
@@ -39,17 +41,22 @@ async function internalMaybeRecalculate(
     /** @type {Array<import('./database/types').ComputedValue>} */
     const inputValues = [];
     const currentInputCounters = [];
+    const currentInputIdentifiers = [];
 
     for (let index = 0; index < nodeDefinition.inputKeys.length; index++) {
         const inputKey = nodeDefinition.inputKeys[index];
-        const inputIdentifier = nodeDefinition.inputIdentifiers[index];
-        if (inputKey === undefined || inputIdentifier === undefined) {
-            throw new Error(`Missing input identifier for node ${nodeDefinition.outputKey}`);
+        if (inputKey === undefined) {
+            throw new Error(`Missing input key for node ${nodeDefinition.outputKey}`);
         }
         const { value: inputValue } =
             await incrementalGraph._pullDuringPull(inputKey, tx);
         inputValues.push(inputValue);
 
+        const inputIdentifier = lookupNodeIdentifier(tx, inputKey);
+        if (inputIdentifier === undefined) {
+            throw new Error(`Missing input identifier for node ${nodeDefinition.outputKey}`);
+        }
+        currentInputIdentifiers.push(inputIdentifier);
         const inputCounter = await batch.counters.get(inputIdentifier);
         if (inputCounter === undefined) {
             throw new Error(
@@ -59,7 +66,7 @@ async function internalMaybeRecalculate(
         currentInputCounters.push(inputCounter);
     }
 
-    if (nodeDefinition.inputIdentifiers.length > 0 && oldValue !== undefined) {
+    if (currentInputIdentifiers.length > 0 && oldValue !== undefined) {
         const inputsRecord = await batch.inputs.get(nodeIdentifier);
         if (inputsRecord) {
             if (!inputsRecord.inputCounters) {
@@ -67,15 +74,15 @@ async function internalMaybeRecalculate(
                     `Missing inputCounters in InputsRecord for node ${nodeDefinition.outputKey}`
                 );
             }
-            if (inputsRecord.inputCounters.length !== nodeDefinition.inputIdentifiers.length) {
+            if (inputsRecord.inputCounters.length !== currentInputIdentifiers.length) {
                 throw new Error(
                     `inputCounters length mismatch for node ${nodeDefinition.outputKey}: ` +
-                    `expected ${nodeDefinition.inputIdentifiers.length}, got ${inputsRecord.inputCounters.length}`
+                    `expected ${currentInputIdentifiers.length}, got ${inputsRecord.inputCounters.length}`
                 );
             }
 
             const storedInputs = inputsRecord.inputs;
-            const currentInputs = nodeDefinition.inputIdentifiers.map(
+            const currentInputs = currentInputIdentifiers.map(
                 nodeIdentifierToString
             );
             let inputsMatch = storedInputs.length === currentInputs.length;
@@ -107,12 +114,12 @@ async function internalMaybeRecalculate(
                 if (countersMatch) {
                     await incrementalGraph.storage.ensureReverseDepsIndexed(
                         nodeIdentifier,
-                        nodeDefinition.inputIdentifiers,
+                        currentInputIdentifiers,
                         batch
                     );
                     await incrementalGraph.storage.ensureMaterialized(
                         nodeIdentifier,
-                        nodeDefinition.inputIdentifiers,
+                        currentInputIdentifiers,
                         currentInputCounters,
                         batch
                     );
@@ -153,15 +160,15 @@ async function internalMaybeRecalculate(
         );
     }
 
-    if (nodeDefinition.inputIdentifiers.length > 0) {
+    if (currentInputIdentifiers.length > 0) {
         await incrementalGraph.storage.ensureReverseDepsIndexed(
             nodeIdentifier,
-            nodeDefinition.inputIdentifiers,
+            currentInputIdentifiers,
             batch
         );
     }
 
-    for (const inputIdentifier of nodeDefinition.inputIdentifiers) {
+    for (const inputIdentifier of currentInputIdentifiers) {
         batch.freshness.put(inputIdentifier, "up-to-date");
     }
 
@@ -173,7 +180,7 @@ async function internalMaybeRecalculate(
 
         await incrementalGraph.storage.ensureMaterialized(
             nodeIdentifier,
-            nodeDefinition.inputIdentifiers,
+            currentInputIdentifiers,
             currentInputCounters,
             batch
         );
@@ -208,7 +215,7 @@ async function internalMaybeRecalculate(
     batch.values.put(nodeIdentifier, computedValue);
     await incrementalGraph.storage.ensureMaterialized(
         nodeIdentifier,
-        nodeDefinition.inputIdentifiers,
+        currentInputIdentifiers,
         currentInputCounters,
         batch
     );
