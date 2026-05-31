@@ -36,7 +36,11 @@ const {
     validateNoOverlap,
     validateSingleArityPerHead,
 } = require("./compiled_node");
-const { makeGraphStorage, getOrAllocateNodeIdentifier } = require("./graph_state");
+const {
+    makeGraphStorage,
+    getOrAllocateNodeIdentifier,
+    lookupNodeIdentifier,
+} = require("./graph_state");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -61,6 +65,7 @@ const {
     internalUnsafePull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
+const { acquireTransactionNodeLock } = require("./lock");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -193,9 +198,23 @@ class IncrementalGraphClass {
     /**
      * @param {ConcreteNode} concreteNode
      * @param {Transaction} tx
-     * @returns {ResolvedConcreteNode}
+     * @returns {Promise<ResolvedConcreteNode>}
      */
-    resolveConcreteNode(concreteNode, tx) {
+    async resolveConcreteNode(concreteNode, tx) {
+        await acquireTransactionNodeLock(tx, concreteNode.output);
+        const inputIdentifiers = [];
+        for (const inputKey of concreteNode.inputs) {
+            const existingIdentifier = lookupNodeIdentifier(tx, inputKey);
+            if (existingIdentifier !== undefined) {
+                inputIdentifiers.push(existingIdentifier);
+                continue;
+            }
+            await acquireTransactionNodeLock(tx, inputKey);
+            inputIdentifiers.push(
+                getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
+            );
+        }
+
         return {
             outputKey: concreteNode.output,
             inputKeys: concreteNode.inputs,
@@ -204,9 +223,7 @@ class IncrementalGraphClass {
                 this.rootDatabase,
                 concreteNode.output
             ),
-            inputIdentifiers: concreteNode.inputs.map((inputKey) =>
-                getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
-            ),
+            inputIdentifiers,
             computor: concreteNode.computor,
         };
     }

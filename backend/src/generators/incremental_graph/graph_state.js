@@ -16,6 +16,7 @@ const {
     IDENTIFIERS_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
+    stringToNodeKeyString,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,
@@ -23,7 +24,11 @@ const {
     serializeTransactionLookup,
     commitTransactionLookup,
 } = require('./database');
-const { withComputedStateMutex } = require('./lock');
+const {
+    withCommitMutex,
+    releaseConcreteNodeLocks,
+    transactionHoldsNodeLock,
+} = require('./lock');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -75,6 +80,9 @@ const { withComputedStateMutex } = require('./lock');
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
+ * @property {Set<string>} reservedIdentifiers - Generated identifiers reserved by this transaction.
+ * @property {Set<string>} heldNodeLocks - Concrete semantic node locks held until transaction finish.
+ * @property {Map<string, () => void>} nodeLockReleases - Release callbacks for held node locks.
  * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
  */
 
@@ -93,6 +101,7 @@ const { withComputedStateMutex } = require('./lock');
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
+ * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while commit publication is paused.
  */
 
 /**
@@ -300,10 +309,11 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * transaction start and the second O(n log n) copy at commit time. Only new
          * allocations (typically very few per transaction) are tracked in the overlay.
          *
-         * The entire operation happens inside withComputedStateMutex, serializing all
-         * concurrent callers end-to-end and eliminating identifier allocation races.
+         * The operation body runs without the commit mutex. Concrete node locks
+         * protect node-owned records, and the commit mutex is held only while
+         * durable writes and volatile identifier publication are finalized.
          *
-         * Callers that are already inside the mutex (nested dependency pulls) must
+         * Callers that are already inside a transaction (nested dependency pulls) must
          * NOT call this method again; they must receive the outer transaction via
          * explicit argument passing and operate on it directly.
          *
@@ -312,63 +322,94 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * @returns {Promise<T>}
          */
         async withTransaction(fn) {
-            return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // createTransaction(): get a direct reference to _computed.identifierLookup
-                // (no clone), create an empty overlay for this transaction's allocations.
-                const activeSchemaStorage = rootDatabase.getSchemaStorage();
-                const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
-                const { batch, operations } = createBatch(activeSchemaStorage);
+            const activeSchemaStorage = rootDatabase.getSchemaStorage();
+            const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
+            const { batch, operations } = createBatch(activeSchemaStorage);
 
-                /** @type {Transaction} */
-                const tx = { batch, identifierLookup: txLookup, inFlight: new Map() };
+            /** @type {Transaction} */
+            const tx = {
+                batch,
+                identifierLookup: txLookup,
+                reservedIdentifiers: new Set(),
+                heldNodeLocks: new Set(),
+                nodeLockReleases: new Map(),
+                inFlight: new Map(),
+            };
 
-                // Run the operation (identifier allocation + node-data writes).
+            let transactionCommitted = false;
+            try {
                 const value = await fn(tx);
 
-                // commitTransaction(): disk-first — flush batch, then update volatile layer.
-                // txLookup.keyToId contains only the new allocations from this transaction.
-                const hasPendingOperations = operations.length > 0;
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
+                await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                    const hasPendingOperations = operations.length > 0;
+                    const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+                    const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
 
-                // No-op transaction: no node writes and no new identifier allocations.
-                // Skip persistence work entirely.
-                if (!hasPersistentDelta) {
-                    return value;
-                }
+                    if (!hasPersistentDelta) {
+                        transactionCommitted = true;
+                        return;
+                    }
 
-                if (hasPendingAllocations) {
-                    if (activeSchemaStorage.global === undefined) {
-                        throw new Error(
-                            "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
-                            "The volatile state cannot be synchronized with disk, which would violate " +
-                            "the disk-first ordering invariant (volatile must not advance ahead of disk)."
+                    if (hasPendingAllocations) {
+                        if (activeSchemaStorage.global === undefined) {
+                            throw new Error(
+                                "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
+                                "The volatile state cannot be synchronized with disk, which would violate " +
+                                "the disk-first ordering invariant (volatile must not advance ahead of disk)."
+                            );
+                        }
+                        for (const [keyString, identifier] of tx.identifierLookup.keyToId.entries()) {
+                            const committedIdentifier = rootDatabase.nodeKeyToId(stringToNodeKeyString(keyString));
+                            if (committedIdentifier !== undefined && committedIdentifier !== identifier) {
+                                throw new Error(
+                                    `Identifier lookup conflict: node key ${keyString} is already mapped to ${nodeIdentifierToString(committedIdentifier)}`
+                                );
+                            }
+                        }
+                        for (const [identifierString, nodeKey] of tx.identifierLookup.idToKey.entries()) {
+                            const committedNodeKey = rootDatabase.nodeIdToKey(stringToNodeIdentifier(identifierString));
+                            if (committedNodeKey !== undefined && committedNodeKey !== nodeKey) {
+                                throw new Error(
+                                    `Identifier lookup conflict: identifier ${identifierString} is already mapped to ${String(committedNodeKey)}`
+                                );
+                            }
+                        }
+                        operations.push(
+                            activeSchemaStorage.global.rawPutOp(
+                                IDENTIFIERS_KEY,
+                                serializeTransactionLookup(tx.identifierLookup)
+                            )
                         );
                     }
-                    operations.push(
-                        activeSchemaStorage.global.rawPutOp(
-                            IDENTIFIERS_KEY,
-                            serializeTransactionLookup(tx.identifierLookup)
-                        )
-                    );
-                }
 
-                await activeSchemaStorage.batch(operations);
+                    await activeSchemaStorage.batch(operations);
 
-                if (hasPendingAllocations) {
-                    // Disk flush succeeded: apply overlay to base in-place.
-                    // This is the only mutation of _computed.identifierLookup.
-                    commitTransactionLookup(tx.identifierLookup);
-                }
+                    if (hasPendingAllocations) {
+                        commitTransactionLookup(tx.identifierLookup);
+                    }
+                    transactionCommitted = true;
+                });
 
                 return value;
-            });
+            } finally {
+                for (const identifier of tx.reservedIdentifiers) {
+                    rootDatabase.releaseInFlightIdentifier(identifier);
+                }
+                tx.reservedIdentifiers.clear();
+                releaseConcreteNodeLocks(tx);
+                if (!transactionCommitted) {
+                    tx.inFlight.clear();
+                }
+            }
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
         listDependents,
         getInputs,
         listMaterializedNodes,
+        withCommitSnapshot(procedure) {
+            return withCommitMutex(sleeper, rootDatabase.currentReplicaName(), procedure);
+        },
     };
 }
 
@@ -395,10 +436,19 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * @returns {NodeIdentifier}
  */
 function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
+    const existing = lookupNodeIdentifier(tx, nodeKey);
+    if (existing !== undefined) {
+        return existing;
+    }
+    if (!transactionHoldsNodeLock(tx, nodeKey)) {
+        throw new Error(`Cannot allocate node identifier without holding node lock for ${String(nodeKey)}`);
+    }
     return txAllocateNodeIdentifier(
         tx.identifierLookup,
         nodeKey,
-        () => rootDatabase.generateNodeIdentifier()
+        () => rootDatabase.generateNodeIdentifier(),
+        rootDatabase.getInFlightIdentifiers(),
+        tx.reservedIdentifiers
     );
 }
 
