@@ -15,6 +15,7 @@ const { makeUniqueFunctor } = require("../../unique_functor");
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
 const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
+const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
@@ -79,6 +80,24 @@ function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
     );
 }
 
+
+/**
+ * Serialize short commit/rebase/publish sections for one active replica.
+ *
+ * This lock intentionally does not cover user computors, dependency traversal,
+ * or identifier reservation. It only protects the durable batch render/flush and
+ * the subsequent volatile publication step.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {string} replicaName
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withCommitMutex(sleeper, replicaName, procedure) {
+    return sleeper.withMutex(COMMIT_KEY.instantiate([replicaName]), procedure);
+}
+
 /**
  * Acquires an exclusive lock that prevents all concurrent graph activity:
  * pulls, observes, and other exclusive operations (database opens, migrations).
@@ -108,5 +127,6 @@ module.exports = {
     withExclusiveMode,
     withObserveMode,
     withPullMode,
+    withCommitMutex,
     withComputedStateMutex,
 };

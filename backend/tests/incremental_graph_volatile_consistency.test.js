@@ -243,6 +243,92 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         await db.close();
     });
 
+
+
+    test("duplicate generated identifier candidates retry via in-flight reservations", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const originalGenerateNodeIdentifier = db.generateNodeIdentifier.bind(db);
+        let generated = 0;
+        db.generateNodeIdentifier = () => {
+            generated += 1;
+            if (generated <= 2) {
+                return originalGenerateNodeIdentifier();
+            }
+            return originalGenerateNodeIdentifier();
+        };
+        const firstCandidate = db.generateNodeIdentifier();
+        db.generateNodeIdentifier = () => {
+            generated += 1;
+            if (generated <= 2) {
+                return firstCandidate;
+            }
+            return originalGenerateNodeIdentifier();
+        };
+
+        const release = makeDeferredPromise();
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "collision_a",
+                inputs: [],
+                computor: async () => {
+                    await release.promise;
+                    return { value: "a" };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "collision_b",
+                inputs: [],
+                computor: async () => {
+                    await release.promise;
+                    return { value: "b" };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const p1 = graph.pull("collision_a");
+        const p2 = graph.pull("collision_b");
+        for (let i = 0; i < 20 && db.listInFlightIdentifierStrings().length < 2; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(db.listInFlightIdentifierStrings()).toHaveLength(2);
+        release.resolve(undefined);
+        await Promise.all([p1, p2]);
+        expect(db.listInFlightIdentifierStrings()).toHaveLength(0);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        expect(lookup.keyToId.size).toBe(2);
+        expect(lookup.idToKey.size).toBe(2);
+
+        await db.close();
+    });
+
+    test("aborted transaction clears identifier reservations", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "abort_reserved",
+                inputs: [],
+                computor: async () => {
+                    throw new Error("abort-reserved");
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("abort_reserved")).rejects.toThrow("abort-reserved");
+        expect(db.listInFlightIdentifierStrings()).toHaveLength(0);
+        expect(db.cloneActiveIdentifierLookup().keyToId.size).toBe(0);
+
+        await db.close();
+    });
+
     test("when batch flush fails, staged node data and identifier mapping are rolled back", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -767,8 +853,8 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
 // Invariant 3 — Serialisation: all mutations are serialized by the mutex
 // ---------------------------------------------------------------------------
 
-describe("Invariant 3 — Serialisation of concurrent mutations", () => {
-    test("pulls on different independent nodes are serialized (not concurrent)", async () => {
+describe("Target design — precise pull locking", () => {
+    test("pulls on different independent nodes may compute concurrently", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const released = makeDeferredPromise();
@@ -808,16 +894,12 @@ describe("Invariant 3 — Serialisation of concurrent mutations", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        // While the first pull is blocked in its computor, the second pull must not
-        // enter its own computor yet.
-        expect(started.length).toBe(1);
+        // Disjoint concrete nodes should both be able to enter their computors
+        // before either transaction commits.
+        expect(started.sort()).toEqual(["n1", "n2"]);
 
-        // Release n1's computor; n1 commits, then n2 acquires the mutex and starts.
         released.resolve(undefined);
         await Promise.all([p1, p2]);
-
-        // After both complete, both were computed (sequentially).
-        expect(started.sort()).toEqual(["n1", "n2"]);
 
         await db.close();
     });

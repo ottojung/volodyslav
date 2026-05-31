@@ -89,6 +89,28 @@ class InMemoryDatabase {
         return nodeIdentifierFromString(id);
     }
 
+    reserveNodeIdentifier(txLookup, nodeKey, transactionReservations) {
+        const existing = nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+        if (existing !== undefined) {
+            return existing;
+        }
+        const allocated = require("../src/generators/incremental_graph/database").txAllocateNodeIdentifier(
+            txLookup,
+            nodeKey,
+            () => this.generateNodeIdentifier()
+        );
+        transactionReservations.add(String(allocated));
+        return allocated;
+    }
+
+    clearIdentifierReservations(transactionReservations) {
+        transactionReservations.clear();
+    }
+
+    hasInFlightIdentifier(_identifierString) {
+        return true;
+    }
+
     getSchemaStorage() {
         const key = DEFAULT_SCHEMA_KEY;
         if (!this.schemas.has(key)) {

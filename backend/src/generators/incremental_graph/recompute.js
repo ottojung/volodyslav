@@ -19,7 +19,7 @@
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { isUnchanged } = require("./unchanged");
-const { nodeIdentifierToString, stringToNodeName, serializeNodeKey } = require("./database");
+const { nodeIdentifierToString, stringToNodeName, serializeNodeKey, txNodeKeyToId } = require("./database");
 
 /**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
@@ -50,13 +50,22 @@ async function internalMaybeRecalculate(
             await incrementalGraph._pullDuringPull(inputKey, tx);
         inputValues.push(inputValue);
 
-        const inputCounter = await batch.counters.get(inputIdentifier);
+        const canonicalInputIdentifier =
+            txNodeKeyToId(tx.identifierLookup, inputKey) ?? inputIdentifier;
+        nodeDefinition.inputIdentifiers[index] = canonicalInputIdentifier;
+
+        const inputCounter = await batch.counters.get(canonicalInputIdentifier);
         if (inputCounter === undefined) {
-            throw new Error(
-                `Missing counter for input ${nodeIdentifierToString(inputIdentifier)} after pull`
-            );
+            if (tx.reservedIdentifiers.size > 0) {
+                currentInputCounters.push(0);
+            } else {
+                throw new Error(
+                    `Missing counter for input ${nodeIdentifierToString(canonicalInputIdentifier)} after pull`
+                );
+            }
+        } else {
+            currentInputCounters.push(inputCounter);
         }
-        currentInputCounters.push(inputCounter);
     }
 
     if (nodeDefinition.inputIdentifiers.length > 0 && oldValue !== undefined) {

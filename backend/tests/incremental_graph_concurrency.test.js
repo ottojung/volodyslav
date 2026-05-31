@@ -78,6 +78,28 @@ class InMemoryDatabase {
         return nodeIdentifierFromString(id);
     }
 
+    reserveNodeIdentifier(txLookup, nodeKey, transactionReservations) {
+        const existing = nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+        if (existing !== undefined) {
+            return existing;
+        }
+        const allocated = require("../src/generators/incremental_graph/database").txAllocateNodeIdentifier(
+            txLookup,
+            nodeKey,
+            () => this.generateNodeIdentifier()
+        );
+        transactionReservations.add(String(allocated));
+        return allocated;
+    }
+
+    clearIdentifierReservations(transactionReservations) {
+        transactionReservations.clear();
+    }
+
+    hasInFlightIdentifier(_identifierString) {
+        return true;
+    }
+
     getSchemaStorage() {
         const key = DEFAULT_SCHEMA_KEY;
         if (!this.schemas.has(key)) {
@@ -804,14 +826,11 @@ describe("IncrementalGraph concurrency", () => {
             const pull1 = graph.pull("source1");
             const pull2 = graph.pull("source2");
             await new Promise((resolve) => setTimeout(resolve, 20));
-            // Pulls on different nodes are now serialized by withComputedStateMutex:
-            // source1 holds the mutex (awaiting releaseBoth), source2 has not started yet.
-            expect(started).toEqual(["source1"]);
+            // Disjoint concrete nodes should both enter their computors before either commits.
+            expect(started.sort()).toEqual(["source1", "source2"]);
 
             releaseBoth.resolve(undefined);
             await Promise.all([pull1, pull2]);
-            // After both complete (sequentially), both have been computed.
-            expect(started.sort()).toEqual(["source1", "source2"]);
         });
 
         test("fire-and-forget callback pull reacquires computed-state mutex", async () => {

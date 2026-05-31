@@ -29,6 +29,12 @@
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 
+/**
+ * @typedef {object} PullNodeLockEntry
+ * @property {boolean} locked
+ * @property {Array<() => void>} waiters
+ */
+
 const {
     compileNodeDef,
     validateAcyclic,
@@ -84,6 +90,9 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
+    /** @type {Map<string, PullNodeLockEntry>} */
+    pullNodeLocks;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -107,6 +116,7 @@ class IncrementalGraphClass {
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
+        this.pullNodeLocks = new Map();
     }
 
     /**
@@ -209,6 +219,53 @@ class IncrementalGraphClass {
             ),
             computor: concreteNode.computor,
         };
+    }
+
+
+    /**
+     * Acquire a per-concrete-node pull lock and retain it in the transaction
+     * until the transaction commits or aborts.
+     * @param {NodeKeyString} nodeKey
+     * @param {Transaction} tx
+     * @returns {Promise<void>}
+     */
+    async acquirePullNodeLock(nodeKey, tx) {
+        const lockKey = String(nodeKey);
+        if (tx.heldPullNodeLocks.has(lockKey)) {
+            return;
+        }
+        let entry = this.pullNodeLocks.get(lockKey);
+        if (entry === undefined) {
+            entry = { locked: false, waiters: [] };
+            this.pullNodeLocks.set(lockKey, entry);
+        }
+        while (entry.locked) {
+            const waitingEntry = entry;
+            await new Promise((resolve) => {
+                waitingEntry.waiters.push(() => resolve(undefined));
+            });
+            entry = this.pullNodeLocks.get(lockKey);
+            if (entry === undefined) {
+                entry = { locked: false, waiters: [] };
+                this.pullNodeLocks.set(lockKey, entry);
+            }
+        }
+        entry.locked = true;
+        tx.heldPullNodeLocks.add(lockKey);
+        tx.releasePullNodeLocks.push(() => {
+            const lockedEntry = this.pullNodeLocks.get(lockKey);
+            if (lockedEntry === undefined) {
+                return;
+            }
+            const next = lockedEntry.waiters.shift();
+            if (next === undefined) {
+                lockedEntry.locked = false;
+                this.pullNodeLocks.delete(lockKey);
+            } else {
+                lockedEntry.locked = false;
+                next();
+            }
+        });
     }
 
     /**

@@ -1,15 +1,10 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * Graph state management with transaction model for volatile-persistent consistency.
  *
- * This module implements the transaction model specified in:
- * docs/specs/incremental-graph-volatile-consistency.md
- *
- * Key concepts:
- * - A Transaction groups: batch (LevelDB batch accumulator with read-your-writes)
- *   + identifierLookup (working copy)
- * - A graph mutex serializes all operations
- * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
- * - commitTransaction(tx) flushes batch then updates _computed.identifierLookup
+ * Transactions execute user work without holding the commit mutex. They record
+ * read-your-writes logical intents, reserve identifiers synchronously, and then
+ * rebase/render those intents inside a short commit mutex.
  */
 
 const {
@@ -17,13 +12,12 @@ const {
     nodeIdentifierToString,
     stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
-    txAllocateNodeIdentifier,
     txNodeIdToKey,
     txNodeKeyToId,
-    serializeTransactionLookup,
-    commitTransactionLookup,
+    serializeIdentifierLookup,
+    setIdentifierMapping,
 } = require('./database');
-const { withComputedStateMutex } = require('./lock');
+const { withCommitMutex } = require('./lock');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -43,12 +37,22 @@ const { withComputedStateMutex } = require('./lock');
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
+let nextTransactionNumber = 1;
+
 /**
  * @template TValue
  * @typedef {object} BatchDatabaseOps
- * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue a put operation in the current batch.
- * @property {(key: NodeIdentifier) => void} del - Queue a delete operation in the current batch.
+ * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue an absolute put intent.
+ * @property {(key: NodeIdentifier) => void} del - Queue an absolute delete intent.
  * @property {(key: NodeIdentifier) => Promise<TValue | undefined>} get - Read with read-your-writes batch consistency.
+ */
+
+/**
+ * @typedef {object} RevdepsBatchDatabaseOps
+ * @property {(key: NodeIdentifier, value: NodeIdentifier[]) => void} put - Queue an absolute reverse-dependency put intent.
+ * @property {(key: NodeIdentifier) => void} del - Queue an absolute reverse-dependency delete intent.
+ * @property {(key: NodeIdentifier) => Promise<NodeIdentifier[] | undefined>} get - Read with read-your-writes and pending merge additions.
+ * @property {(input: NodeIdentifier, dependent: NodeIdentifier) => void} addDependent - Queue a merge intent for one dependent.
  */
 
 /**
@@ -56,26 +60,22 @@ const { withComputedStateMutex } = require('./lock');
  * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
  * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Dependency metadata storage.
- * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
+ * @property {RevdepsBatchDatabaseOps} revdeps - Reverse dependency index.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
  */
 
 /**
  * A Transaction groups all reads and writes for one top-level graph operation.
- * It contains:
- * - batch: LevelDB batch accumulator with read-your-writes overlay
- * - identifierLookup: a `TransactionIdentifierLookup` that holds only the
- *   **new** allocations made during this transaction in a small overlay map,
- *   backed by a read-only reference to the committed `_computed.identifierLookup`.
- *   Lookups check the overlay first and fall through to the base.
- *   At commit time, the overlay is applied to the base in-place after a
- *   successful disk flush (disk-first invariant).
  *
  * @typedef {object} Transaction
- * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
- * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
- * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
+ * @property {string} id - Diagnostic transaction identifier.
+ * @property {BatchBuilder} batch - Logical intent accumulator with read-your-writes.
+ * @property {TransactionIdentifierLookup} identifierLookup - Overlay identifier lookup.
+ * @property {Set<string>} reservedIdentifiers - Identifier strings reserved by this transaction.
+ * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises.
+ * @property {Set<string>} heldPullNodeLocks - Pull-node lock keys held until commit or abort.
+ * @property {Array<() => void>} releasePullNodeLocks - Release callbacks for held pull-node locks.
  */
 
 /**
@@ -87,7 +87,7 @@ const { withComputedStateMutex } = require('./lock');
  * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
+ * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run a transaction, then commit its intents under the commit mutex.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
@@ -96,7 +96,23 @@ const { withComputedStateMutex } = require('./lock');
  */
 
 /**
- * Find the insertion point for an identifier inside an already-sorted identifier array.
+ * @typedef {object} LogicalBatchState
+ * @property {Map<string, ComputedValue>} valuesPuts
+ * @property {Set<string>} valuesDels
+ * @property {Map<string, Freshness>} freshnessPuts
+ * @property {Set<string>} freshnessDels
+ * @property {Map<string, InputsRecord>} inputsPuts
+ * @property {Set<string>} inputsDels
+ * @property {Map<string, NodeIdentifier[]>} revdepsPuts
+ * @property {Set<string>} revdepsDels
+ * @property {Map<string, Set<string>>} revdepsAdds
+ * @property {Map<string, Counter>} countersPuts
+ * @property {Set<string>} countersDels
+ * @property {Map<string, TimestampRecord>} timestampsPuts
+ * @property {Set<string>} timestampsDels
+ */
+
+/**
  * @param {NodeIdentifier[]} sortedArray
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {{ index: number, found: boolean }}
@@ -125,39 +141,51 @@ function findInsertionIndex(sortedArray, nodeIdentifier) {
 }
 
 /**
- * Create a read-your-writes batch wrapper for a single typed sublevel.
- * Writes are queued as LevelDB batch operations (opaque objects); reads check the pending overlay
- * first and fall through to the underlying database on a miss.
- *
+ * @returns {LogicalBatchState}
+ */
+function makeLogicalBatchState() {
+    return {
+        valuesPuts: new Map(),
+        valuesDels: new Set(),
+        freshnessPuts: new Map(),
+        freshnessDels: new Set(),
+        inputsPuts: new Map(),
+        inputsDels: new Set(),
+        revdepsPuts: new Map(),
+        revdepsDels: new Set(),
+        revdepsAdds: new Map(),
+        countersPuts: new Map(),
+        countersDels: new Set(),
+        timestampsPuts: new Map(),
+        timestampsDels: new Set(),
+    };
+}
+
+/**
  * @template TValue
- * @param {{ get: (key: NodeIdentifier) => Promise<TValue | undefined>, putOp: (key: NodeIdentifier, value: TValue) => object, delOp: (key: NodeIdentifier) => object }} db
- * @param {Array<object>} operations - Shared operations array all sublevels append to.
+ * @param {{ get: (key: NodeIdentifier) => Promise<TValue | undefined> }} db
+ * @param {Map<string, TValue>} puts
+ * @param {Set<string>} dels
  * @returns {BatchDatabaseOps<TValue>}
  */
-function makeSublevelBatch(db, operations) {
-    /** @type {Map<string, TValue>} */
-    const puts = new Map();
-    /** @type {Set<string>} */
-    const dels = new Set();
+function makeSublevelBatch(db, puts, dels) {
     return {
         put(key, value) {
-            const k = nodeIdentifierToString(key);
-            puts.set(k, value);
-            dels.delete(k);
-            operations.push(db.putOp(key, value));
+            const keyString = nodeIdentifierToString(key);
+            puts.set(keyString, value);
+            dels.delete(keyString);
         },
         del(key) {
-            const k = nodeIdentifierToString(key);
-            dels.add(k);
-            puts.delete(k);
-            operations.push(db.delOp(key));
+            const keyString = nodeIdentifierToString(key);
+            dels.add(keyString);
+            puts.delete(keyString);
         },
         async get(key) {
-            const k = nodeIdentifierToString(key);
-            if (dels.has(k)) {
+            const keyString = nodeIdentifierToString(key);
+            if (dels.has(keyString)) {
                 return undefined;
             }
-            const pending = puts.get(k);
+            const pending = puts.get(keyString);
             if (pending !== undefined) {
                 return pending;
             }
@@ -167,23 +195,231 @@ function makeSublevelBatch(db, operations) {
 }
 
 /**
- * Create the batch builder and its shared operations array.
+ * @param {RevdepsDatabase} db
+ * @param {LogicalBatchState} state
+ * @returns {RevdepsBatchDatabaseOps}
+ */
+function makeRevdepsBatch(db, state) {
+    return {
+        put(key, value) {
+            const keyString = nodeIdentifierToString(key);
+            state.revdepsPuts.set(keyString, value);
+            state.revdepsDels.delete(keyString);
+        },
+        del(key) {
+            const keyString = nodeIdentifierToString(key);
+            state.revdepsDels.add(keyString);
+            state.revdepsPuts.delete(keyString);
+            state.revdepsAdds.delete(keyString);
+        },
+        async get(key) {
+            const keyString = nodeIdentifierToString(key);
+            if (state.revdepsDels.has(keyString)) {
+                return undefined;
+            }
+            let current = state.revdepsPuts.get(keyString);
+            if (current === undefined) {
+                current = await db.get(key);
+            }
+            const additions = state.revdepsAdds.get(keyString);
+            if (additions === undefined || additions.size === 0) {
+                return current;
+            }
+            let merged = current === undefined ? [] : current;
+            for (const additionString of additions) {
+                const addition = stringToNodeIdentifier(additionString);
+                const { index, found } = findInsertionIndex(merged, addition);
+                if (!found) {
+                    merged = [
+                        ...merged.slice(0, index),
+                        addition,
+                        ...merged.slice(index),
+                    ];
+                }
+            }
+            return merged;
+        },
+        addDependent(input, dependent) {
+            const inputString = nodeIdentifierToString(input);
+            let additions = state.revdepsAdds.get(inputString);
+            if (additions === undefined) {
+                additions = new Set();
+                state.revdepsAdds.set(inputString, additions);
+            }
+            additions.add(nodeIdentifierToString(dependent));
+        },
+    };
+}
+
+/**
+ * Create the batch builder and its logical intent state.
  * @param {SchemaStorage} schemaStorage
- * @returns {{ batch: BatchBuilder, operations: Array<*> }}
+ * @returns {{ batch: BatchBuilder, state: LogicalBatchState }}
  */
 function createBatch(schemaStorage) {
+    const state = makeLogicalBatchState();
+    const batch = {
+        values: makeSublevelBatch(schemaStorage.values, state.valuesPuts, state.valuesDels),
+        freshness: makeSublevelBatch(schemaStorage.freshness, state.freshnessPuts, state.freshnessDels),
+        inputs: makeSublevelBatch(schemaStorage.inputs, state.inputsPuts, state.inputsDels),
+        revdeps: makeRevdepsBatch(schemaStorage.revdeps, state),
+        counters: makeSublevelBatch(schemaStorage.counters, state.countersPuts, state.countersDels),
+        timestamps: makeSublevelBatch(schemaStorage.timestamps, state.timestampsPuts, state.timestampsDels),
+    };
+    return { batch, state };
+}
+
+/**
+ * @param {Transaction} tx
+ * @param {NodeIdentifier} identifier
+ * @returns {NodeIdentifier}
+ */
+function canonicalizeIdentifier(tx, identifier) {
+    const identifierString = nodeIdentifierToString(identifier);
+    const nodeKey = tx.identifierLookup.idToKey.get(identifierString);
+    if (nodeKey === undefined) {
+        return identifier;
+    }
+    return txNodeKeyToId(tx.identifierLookup, nodeKey) ?? identifier;
+}
+
+/**
+ * @param {Transaction} tx
+ * @param {InputsRecord} record
+ * @returns {InputsRecord}
+ */
+function canonicalizeInputsRecord(tx, record) {
+    return {
+        inputs: record.inputs.map((input) =>
+            nodeIdentifierToString(canonicalizeIdentifier(tx, stringToNodeIdentifier(input)))
+        ),
+        inputCounters: record.inputCounters,
+    };
+}
+
+/**
+ * @template TValue
+ * @param {Array<*>} operations
+ * @param {{ putOp: (key: NodeIdentifier, value: TValue) => object, delOp: (key: NodeIdentifier) => object }} db
+ * @param {Map<string, TValue>} puts
+ * @param {Set<string>} dels
+ * @param {(tx: Transaction, value: TValue) => TValue} canonicalizeValue
+ * @param {Transaction} tx
+ * @returns {void}
+ */
+function appendAbsoluteOperations(operations, db, puts, dels, canonicalizeValue, tx) {
+    for (const keyString of dels) {
+        operations.push(db.delOp(canonicalizeIdentifier(tx, stringToNodeIdentifier(keyString))));
+    }
+    for (const [keyString, value] of puts) {
+        operations.push(db.putOp(
+            canonicalizeIdentifier(tx, stringToNodeIdentifier(keyString)),
+            canonicalizeValue(tx, value)
+        ));
+    }
+}
+
+/**
+ * @param {Transaction} tx
+ * @param {LogicalBatchState} state
+ * @param {SchemaStorage} schemaStorage
+ * @returns {Promise<Array<*>>}
+ */
+async function renderOperations(tx, state, schemaStorage) {
     /** @type {Array<*>} */
     const operations = [];
-    /** @type {BatchBuilder} */
-    const batch = {
-        values: makeSublevelBatch(schemaStorage.values, operations),
-        freshness: makeSublevelBatch(schemaStorage.freshness, operations),
-        inputs: makeSublevelBatch(schemaStorage.inputs, operations),
-        revdeps: makeSublevelBatch(schemaStorage.revdeps, operations),
-        counters: makeSublevelBatch(schemaStorage.counters, operations),
-        timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
-    };
-    return { batch, operations };
+    appendAbsoluteOperations(operations, schemaStorage.values, state.valuesPuts, state.valuesDels, (_tx, value) => value, tx);
+    appendAbsoluteOperations(operations, schemaStorage.freshness, state.freshnessPuts, state.freshnessDels, (_tx, value) => value, tx);
+    appendAbsoluteOperations(operations, schemaStorage.inputs, state.inputsPuts, state.inputsDels, canonicalizeInputsRecord, tx);
+    appendAbsoluteOperations(operations, schemaStorage.counters, state.countersPuts, state.countersDels, (_tx, value) => value, tx);
+    appendAbsoluteOperations(operations, schemaStorage.timestamps, state.timestampsPuts, state.timestampsDels, (_tx, value) => value, tx);
+
+    for (const keyString of state.revdepsDels) {
+        operations.push(schemaStorage.revdeps.delOp(canonicalizeIdentifier(tx, stringToNodeIdentifier(keyString))));
+    }
+    for (const [keyString, value] of state.revdepsPuts) {
+        operations.push(schemaStorage.revdeps.putOp(
+            canonicalizeIdentifier(tx, stringToNodeIdentifier(keyString)),
+            value.map((dependent) => canonicalizeIdentifier(tx, dependent))
+        ));
+    }
+    for (const [inputString, dependentStrings] of state.revdepsAdds) {
+        const input = canonicalizeIdentifier(tx, stringToNodeIdentifier(inputString));
+        let merged = await schemaStorage.revdeps.get(input) ?? [];
+        for (const dependentString of dependentStrings) {
+            const dependent = canonicalizeIdentifier(tx, stringToNodeIdentifier(dependentString));
+            const { index, found } = findInsertionIndex(merged, dependent);
+            if (!found) {
+                merged = [
+                    ...merged.slice(0, index),
+                    dependent,
+                    ...merged.slice(index),
+                ];
+            }
+        }
+        operations.push(schemaStorage.revdeps.putOp(input, merged));
+    }
+    return operations;
+}
+
+/**
+ * @param {RootDatabase} rootDatabase
+ * @param {Transaction} tx
+ * @returns {{ identifiersChanged: boolean, mergedLookup: import('./database/identifier_lookup').IdentifierLookup }}
+ */
+function rebaseIdentifierLookup(rootDatabase, tx) {
+    let identifiersChanged = false;
+    const committedLookup = rootDatabase.getActiveIdentifierLookup();
+    const mergedLookup = rootDatabase.cloneActiveIdentifierLookup();
+    for (const [reservedIdentifierString, nodeKey] of tx.identifierLookup.idToKey) {
+        const committedIdentifier = committedLookup.keyToId.get(String(nodeKey));
+        if (committedIdentifier !== undefined) {
+            tx.identifierLookup.keyToId.set(String(nodeKey), committedIdentifier);
+            continue;
+        }
+        if (!tx.reservedIdentifiers.has(reservedIdentifierString)) {
+            continue;
+        }
+        if (typeof rootDatabase.hasInFlightIdentifier === "function" &&
+            !rootDatabase.hasInFlightIdentifier(reservedIdentifierString)) {
+            throw new Error(`Identifier reservation ${reservedIdentifierString} for transaction ${tx.id} is not in flight`);
+        }
+        setIdentifierMapping(
+            mergedLookup,
+            stringToNodeIdentifier(reservedIdentifierString),
+            nodeKey
+        );
+        identifiersChanged = true;
+    }
+    return { identifiersChanged, mergedLookup };
+}
+
+
+/**
+ * @param {RootDatabase} rootDatabase
+ * @param {Set<string>} reservations
+ * @returns {void}
+ */
+function clearRootIdentifierReservations(rootDatabase, reservations) {
+    if (typeof rootDatabase.clearIdentifierReservations === "function") {
+        rootDatabase.clearIdentifierReservations(reservations);
+        return;
+    }
+    reservations.clear();
+}
+
+/**
+ * @param {Transaction} tx
+ * @returns {void}
+ */
+function releasePullNodeLocks(tx) {
+    while (tx.releasePullNodeLocks.length > 0) {
+        const release = tx.releasePullNodeLocks.pop();
+        if (release !== undefined) {
+            release();
+        }
+    }
+    tx.heldPullNodeLocks.clear();
 }
 
 /**
@@ -220,20 +456,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
         for (const input of inputs) {
-            const existingDependents = await batch.revdeps.get(input);
-            if (existingDependents === undefined) {
-                batch.revdeps.put(input, [node]);
-                continue;
-            }
-            const { index, found } = findInsertionIndex(existingDependents, node);
-            if (found) {
-                continue;
-            }
-            batch.revdeps.put(input, [
-                ...existingDependents.slice(0, index),
-                node,
-                ...existingDependents.slice(index),
-            ]);
+            batch.revdeps.addDependent(input, node);
         }
     }
 
@@ -279,90 +502,82 @@ function makeGraphStorage(rootDatabase, sleeper) {
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
         async withBatch(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
-            const { batch, operations } = createBatch(activeSchemaStorage);
+            const { batch, state } = createBatch(activeSchemaStorage);
             const result = await fn(batch);
+            const baseLookup = typeof rootDatabase.getActiveIdentifierLookup === "function"
+                ? rootDatabase.getActiveIdentifierLookup()
+                : { keyToId: new Map(), idToKey: new Map() };
+            const txLookup = makeTransactionIdentifierLookup(baseLookup);
+            const tx = {
+                id: `batch-${String(nextTransactionNumber++)}`,
+                batch,
+                identifierLookup: txLookup,
+                reservedIdentifiers: new Set(),
+                inFlight: new Map(),
+                heldPullNodeLocks: new Set(),
+                releasePullNodeLocks: [],
+            };
+            const operations = await renderOperations(tx, state, activeSchemaStorage);
             await activeSchemaStorage.batch(operations);
             return result;
         },
         /**
-         * Run a batch that atomically commits node writes together with any new
-         * identifier allocations made during the operation.
-         *
-         * This implements the transaction model from the volatile-consistency spec:
-         * - createTransaction(): creates an overlay-based TransactionIdentifierLookup
-         *   backed by a direct (non-cloned) reference to the committed lookup, then
-         *   creates a fresh batch accumulator. No full-copy clone is performed.
-         * - operation runs with the transaction.
-         * - commitTransaction(): serialize (base + overlay) for disk, flush the batch,
-         *   then apply the overlay to the base in-place (disk-first ordering).
-         *
-         * Using an overlay instead of a full clone eliminates the O(n log n) copy at
-         * transaction start and the second O(n log n) copy at commit time. Only new
-         * allocations (typically very few per transaction) are tracked in the overlay.
-         *
-         * The entire operation happens inside withComputedStateMutex, serializing all
-         * concurrent callers end-to-end and eliminating identifier allocation races.
-         *
-         * Callers that are already inside the mutex (nested dependency pulls) must
-         * NOT call this method again; they must receive the outer transaction via
-         * explicit argument passing and operate on it directly.
+         * Run a transaction without serializing its body. Identifier reservations
+         * are synchronous and transaction intents are rebased under a short commit
+         * mutex before the durable batch is flushed and volatile lookup published.
          *
          * @template T
          * @param {(tx: Transaction) => Promise<T>} fn
          * @returns {Promise<T>}
          */
         async withTransaction(fn) {
-            return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // createTransaction(): get a direct reference to _computed.identifierLookup
-                // (no clone), create an empty overlay for this transaction's allocations.
-                const activeSchemaStorage = rootDatabase.getSchemaStorage();
-                const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
-                const { batch, operations } = createBatch(activeSchemaStorage);
-
-                /** @type {Transaction} */
-                const tx = { batch, identifierLookup: txLookup, inFlight: new Map() };
-
-                // Run the operation (identifier allocation + node-data writes).
+            const activeSchemaStorage = rootDatabase.getSchemaStorage();
+            const baseLookup = typeof rootDatabase.getActiveIdentifierLookup === "function"
+                ? rootDatabase.getActiveIdentifierLookup()
+                : { keyToId: new Map(), idToKey: new Map() };
+            const txLookup = makeTransactionIdentifierLookup(baseLookup);
+            const { batch, state } = createBatch(activeSchemaStorage);
+            const tx = {
+                id: `tx-${String(nextTransactionNumber++)}`,
+                batch,
+                identifierLookup: txLookup,
+                reservedIdentifiers: new Set(),
+                inFlight: new Map(),
+                heldPullNodeLocks: new Set(),
+                releasePullNodeLocks: [],
+            };
+            try {
                 const value = await fn(tx);
-
-                // commitTransaction(): disk-first — flush batch, then update volatile layer.
-                // txLookup.keyToId contains only the new allocations from this transaction.
-                const hasPendingOperations = operations.length > 0;
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
-
-                // No-op transaction: no node writes and no new identifier allocations.
-                // Skip persistence work entirely.
-                if (!hasPersistentDelta) {
-                    return value;
-                }
-
-                if (hasPendingAllocations) {
-                    if (activeSchemaStorage.global === undefined) {
-                        throw new Error(
-                            "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
-                            "The volatile state cannot be synchronized with disk, which would violate " +
-                            "the disk-first ordering invariant (volatile must not advance ahead of disk)."
-                        );
-                    }
-                    operations.push(
-                        activeSchemaStorage.global.rawPutOp(
+                return await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                    const schemaStorage = rootDatabase.getSchemaStorage();
+                    const { identifiersChanged, mergedLookup } = rebaseIdentifierLookup(rootDatabase, tx);
+                    const operations = await renderOperations(tx, state, schemaStorage);
+                    if (identifiersChanged) {
+                        if (schemaStorage.global === undefined) {
+                            throw new Error(
+                                "Cannot commit identifier allocations: active schema storage has no global sublevel."
+                            );
+                        }
+                        operations.push(schemaStorage.global.rawPutOp(
                             IDENTIFIERS_KEY,
-                            serializeTransactionLookup(tx.identifierLookup)
-                        )
-                    );
-                }
-
-                await activeSchemaStorage.batch(operations);
-
-                if (hasPendingAllocations) {
-                    // Disk flush succeeded: apply overlay to base in-place.
-                    // This is the only mutation of _computed.identifierLookup.
-                    commitTransactionLookup(tx.identifierLookup);
-                }
-
-                return value;
-            });
+                            serializeIdentifierLookup(mergedLookup)
+                        ));
+                    }
+                    if (operations.length > 0) {
+                        await schemaStorage.batch(operations);
+                    }
+                    if (identifiersChanged) {
+                        rootDatabase.replaceActiveIdentifierLookup(mergedLookup);
+                    }
+                    clearRootIdentifierReservations(rootDatabase, tx.reservedIdentifiers);
+                    releasePullNodeLocks(tx);
+                    return value;
+                });
+            } catch (err) {
+                clearRootIdentifierReservations(rootDatabase, tx.reservedIdentifiers);
+                releasePullNodeLocks(tx);
+                throw err;
+            }
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
@@ -374,8 +589,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
 /**
  * Look up an existing identifier for a node key in the transaction's lookup.
- * Checks the overlay first, then falls through to the committed base.
- * Returns undefined if the node key is not found in either.
  * @param {Transaction} tx
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier | undefined}
@@ -385,16 +598,22 @@ function lookupNodeIdentifier(tx, nodeKey) {
 }
 
 /**
- * Look up an existing identifier or allocate a new one for a node key.
- * New allocations are recorded only in the transaction's overlay, not in the
- * committed base lookup. They become part of the base only after a successful
- * disk flush via `commitTransactionLookup`.
+ * Look up an existing identifier or synchronously reserve a new one for a node key.
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
  * @returns {NodeIdentifier}
  */
 function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
+    if (typeof rootDatabase.reserveNodeIdentifier === "function") {
+        return rootDatabase.reserveNodeIdentifier(
+            tx.identifierLookup,
+            nodeKey,
+            tx.reservedIdentifiers,
+            tx.id
+        );
+    }
+    const { txAllocateNodeIdentifier } = require('./database');
     return txAllocateNodeIdentifier(
         tx.identifierLookup,
         nodeKey,
@@ -404,8 +623,6 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
 
 /**
  * Convert an identifier back to its semantic node key.
- * Checks the overlay first, then falls through to the committed base.
- * Throws if the identifier is not found in either.
  * @param {Transaction} tx
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {NodeKeyString}

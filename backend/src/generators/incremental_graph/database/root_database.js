@@ -8,6 +8,7 @@
 const { getVersion } = require('../../../version');
 const { makeTypedDatabase } = require('./typed_database');
 const {
+    nodeKeyStringToString,
     stringToVersion,
     unsafeStringToNodeIdentifier,
     versionToString,
@@ -21,6 +22,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
+const { nodeIdentifierToString } = require('./node_identifier');
 const { makeNodeIdentifier } = require('./node_identifier');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -62,6 +64,8 @@ const {
  * @property {GlobalSublevelType} globalSublevel
  * @property {SchemaStorage} schemaStorage
  * @property {IdentifierLookup} identifierLookup
+ * @property {Set<string>} inFlightIdentifiers
+ * @property {Map<string, string>} inFlightIdentifierOwners
  */
 
 /**
@@ -308,6 +312,8 @@ class RootDatabaseClass {
             globalSublevel,
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
+            inFlightIdentifiers: new Set(),
+            inFlightIdentifierOwners: new Map(),
         };
     }
 
@@ -369,6 +375,81 @@ class RootDatabaseClass {
         return makeNodeIdentifier({ seed: this._seed });
     }
 
+
+    /**
+     * Reserve a globally-unused identifier for one live transaction.
+     *
+     * This helper is deliberately synchronous: it performs lookup, candidate
+     * generation, collision checks against committed and in-flight identifiers,
+     * and reservation insertion without yielding to the event loop.
+     *
+     * @param {import('./identifier_lookup').TransactionIdentifierLookup} txLookup
+     * @param {import('./types').NodeKeyString} nodeKey
+     * @param {Set<string>} transactionReservations
+     * @param {string} transactionId
+     * @returns {NodeIdentifier}
+     */
+    reserveNodeIdentifier(txLookup, nodeKey, transactionReservations, transactionId) {
+        const nodeKeyString = nodeKeyStringToString(nodeKey);
+        const existingCommittedIdentifier = this._computed.identifierLookup.keyToId.get(nodeKeyString);
+        if (existingCommittedIdentifier !== undefined) {
+            txLookup.keyToId.set(nodeKeyString, existingCommittedIdentifier);
+            txLookup.idToKey.set(nodeIdentifierToString(existingCommittedIdentifier), nodeKey);
+            return existingCommittedIdentifier;
+        }
+        const existingOverlayIdentifier = txLookup.keyToId.get(nodeKeyString);
+        if (existingOverlayIdentifier !== undefined) {
+            return existingOverlayIdentifier;
+        }
+
+        for (let attempt = 0; attempt < 64; attempt++) {
+            const candidate = this.generateNodeIdentifier();
+            const candidateString = nodeIdentifierToString(candidate);
+            if (this._computed.identifierLookup.idToKey.has(candidateString)) {
+                continue;
+            }
+            if (this._computed.inFlightIdentifiers.has(candidateString)) {
+                continue;
+            }
+            this._computed.inFlightIdentifiers.add(candidateString);
+            this._computed.inFlightIdentifierOwners.set(candidateString, transactionId);
+            txLookup.keyToId.set(nodeKeyString, candidate);
+            txLookup.idToKey.set(candidateString, nodeKey);
+            transactionReservations.add(candidateString);
+            return candidate;
+        }
+
+        throw new Error(`Failed to reserve a unique node identifier for ${nodeKeyString}`);
+    }
+
+    /**
+     * Release every uncommitted identifier reservation held by a transaction.
+     * @param {Set<string>} transactionReservations
+     * @returns {void}
+     */
+    clearIdentifierReservations(transactionReservations) {
+        for (const identifierString of transactionReservations) {
+            this._computed.inFlightIdentifiers.delete(identifierString);
+            this._computed.inFlightIdentifierOwners.delete(identifierString);
+        }
+        transactionReservations.clear();
+    }
+
+    /**
+     * @param {string} identifierString
+     * @returns {boolean}
+     */
+    hasInFlightIdentifier(identifierString) {
+        return this._computed.inFlightIdentifiers.has(identifierString);
+    }
+
+    /**
+     * @returns {string[]}
+     */
+    listInFlightIdentifierStrings() {
+        return Array.from(this._computed.inFlightIdentifiers);
+    }
+
     /**
      * @returns {Promise<void>}
      */
@@ -422,7 +503,15 @@ class RootDatabaseClass {
             const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
             const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
             await this._rootMetaSublevel.put('current_replica', name);
-            this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup };
+            this._computed = {
+                replicaName: name,
+                namespaceSublevel,
+                globalSublevel,
+                schemaStorage,
+                identifierLookup,
+                inFlightIdentifiers: new Set(),
+                inFlightIdentifierOwners: new Map(),
+            };
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
@@ -492,6 +581,8 @@ class RootDatabaseClass {
                 globalSublevel,
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
                 identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
+                inFlightIdentifiers: new Set(),
+                inFlightIdentifierOwners: new Map(),
             };
         }
     }

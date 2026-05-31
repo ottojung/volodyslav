@@ -29,6 +29,7 @@
  * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => import('./types').ResolvedConcreteNode} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, tx: Transaction) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {(nodeKey: NodeKeyString, tx: Transaction) => Promise<void>} acquirePullNodeLock
  */
 
 const { stringToNodeName } = require("./database");
@@ -64,6 +65,7 @@ async function pullNode(graph, nodeKeyStr, tx) {
      * @returns {Promise<RecomputeResult>}
      */
     const runWithTransaction = async (activeTx) => {
+        await graph.acquirePullNodeLock(nodeKeyStr, activeTx);
         const nodeDefinition = graph.resolveConcreteNode(concreteNode, activeTx);
         const nodeFreshness = await activeTx.batch.freshness.get(nodeDefinition.outputIdentifier);
 
@@ -90,9 +92,7 @@ async function pullNode(graph, nodeKeyStr, tx) {
         if (existing !== undefined) {
             return existing;
         }
-        const promise = runWithTransaction(activeTx).finally(() => {
-            activeTx.inFlight.delete(nodeKeyStr);
-        });
+        const promise = runWithTransaction(activeTx);
         activeTx.inFlight.set(nodeKeyStr, promise);
         return promise;
     };
