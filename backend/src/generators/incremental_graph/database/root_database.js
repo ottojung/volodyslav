@@ -62,6 +62,8 @@ const {
  * @property {GlobalSublevelType} globalSublevel
  * @property {SchemaStorage} schemaStorage
  * @property {IdentifierLookup} identifierLookup
+ * @property {Set<string>} inFlightIdentifiers
+ * @property {Map<string, string>} inFlightIdentifierOwners
  */
 
 /**
@@ -308,6 +310,8 @@ class RootDatabaseClass {
             globalSublevel,
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
+            inFlightIdentifiers: new Set(),
+            inFlightIdentifierOwners: new Map(),
         };
     }
 
@@ -360,6 +364,17 @@ class RootDatabaseClass {
      */
     nodeIdToKey(nodeIdentifier) {
         return nodeIdToKeyFromLookup(this._computed.identifierLookup, nodeIdentifier);
+    }
+
+
+    /**
+     * @returns {{ inFlightIdentifiers: Set<string>, inFlightIdentifierOwners: Map<string, string> }}
+     */
+    getIdentifierReservationState() {
+        return {
+            inFlightIdentifiers: this._computed.inFlightIdentifiers,
+            inFlightIdentifierOwners: this._computed.inFlightIdentifierOwners,
+        };
     }
 
     /**
@@ -422,7 +437,15 @@ class RootDatabaseClass {
             const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
             const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
             await this._rootMetaSublevel.put('current_replica', name);
-            this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup };
+            this._computed = {
+                replicaName: name,
+                namespaceSublevel,
+                globalSublevel,
+                schemaStorage,
+                identifierLookup,
+                inFlightIdentifiers: new Set(),
+                inFlightIdentifierOwners: new Map(),
+            };
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
@@ -492,6 +515,8 @@ class RootDatabaseClass {
                 globalSublevel,
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
                 identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
+                inFlightIdentifiers: new Set(),
+                inFlightIdentifierOwners: new Map(),
             };
         }
     }

@@ -17,7 +17,6 @@ const {
     nodeIdentifierToString,
     stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
-    txAllocateNodeIdentifier,
     txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,
@@ -25,7 +24,12 @@ const {
 } = require('./database');
 const { withComputedStateMutex } = require('./lock');
 
-/** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
+/**
+ * @typedef {import('./database/root_database').RootDatabase & {
+ *     getIdentifierReservationState?: () => { inFlightIdentifiers: Set<string>, inFlightIdentifierOwners: Map<string, string> },
+ *     __graphReservationState?: { inFlightIdentifiers: Set<string>, inFlightIdentifierOwners: Map<string, string> },
+ * }} RootDatabase
+ */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/root_database').ValuesDatabase} ValuesDatabase */
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
@@ -73,8 +77,10 @@ const { withComputedStateMutex } = require('./lock');
  *   successful disk flush (disk-first invariant).
  *
  * @typedef {object} Transaction
+ * @property {string} id - Diagnostic transaction identifier.
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
+ * @property {Set<string>} reservedIdentifiers - Identifier strings reserved by this live transaction.
  * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
  */
 
@@ -87,7 +93,7 @@ const { withComputedStateMutex } = require('./lock');
  * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
+ * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run a transaction body concurrently and serialize only commit/publish.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
@@ -186,13 +192,117 @@ function createBatch(schemaStorage) {
     return { batch, operations };
 }
 
+let nextTransactionCounter = 0;
+
+/**
+ * @returns {string}
+ */
+function makeTransactionId() {
+    nextTransactionCounter += 1;
+    return `tx-${String(nextTransactionCounter)}`;
+}
+
+/**
+ * Ensure the active root computed state contains live identifier-reservation
+ * diagnostics used by concurrent transactions.
+ * @param {RootDatabase} rootDatabase
+ * @returns {{ inFlightIdentifiers: Set<string>, inFlightIdentifierOwners: Map<string, string> }}
+ */
+function ensureIdentifierReservationState(rootDatabase) {
+    if (rootDatabase.getIdentifierReservationState !== undefined) {
+        return rootDatabase.getIdentifierReservationState();
+    }
+    if (rootDatabase.__graphReservationState === undefined) {
+        rootDatabase.__graphReservationState = {
+            inFlightIdentifiers: new Set(),
+            inFlightIdentifierOwners: new Map(),
+        };
+    }
+    return rootDatabase.__graphReservationState;
+}
+
+/**
+ * Clear this transaction's live identifier reservations from the active root
+ * computed state. The volatile committed lookup is intentionally untouched.
+ * @param {Transaction} tx
+ * @param {RootDatabase} rootDatabase
+ * @returns {void}
+ */
+function clearIdentifierReservations(tx, rootDatabase) {
+    const { inFlightIdentifiers, inFlightIdentifierOwners } =
+        ensureIdentifierReservationState(rootDatabase);
+    for (const identifierString of tx.reservedIdentifiers) {
+        inFlightIdentifiers.delete(identifierString);
+        const owner = inFlightIdentifierOwners.get(identifierString);
+        if (owner === tx.id) {
+            inFlightIdentifierOwners.delete(identifierString);
+        }
+    }
+    tx.reservedIdentifiers.clear();
+}
+
+/**
+ * Synchronously reserve a fresh node identifier for a transaction overlay.
+ * The check/generate/reserve/update-overlay sequence never awaits and never
+ * calls user code, so it is atomic within one Node.js event loop.
+ * @param {Transaction} tx
+ * @param {RootDatabase} rootDatabase
+ * @param {NodeKeyString} nodeKey
+ * @param {number} [maxAttempts=64]
+ * @returns {NodeIdentifier}
+ */
+function reserveNodeIdentifier(tx, rootDatabase, nodeKey, maxAttempts = 64) {
+    const existing = txNodeKeyToId(tx.identifierLookup, nodeKey);
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const { inFlightIdentifiers, inFlightIdentifierOwners } =
+        ensureIdentifierReservationState(rootDatabase);
+    const keyString = String(nodeKey);
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const candidate = rootDatabase.generateNodeIdentifier();
+        const candidateString = nodeIdentifierToString(candidate);
+        if (txNodeIdToKey(tx.identifierLookup, candidate) !== undefined) {
+            continue;
+        }
+        if (inFlightIdentifiers.has(candidateString)) {
+            continue;
+        }
+
+        inFlightIdentifiers.add(candidateString);
+        inFlightIdentifierOwners.set(candidateString, tx.id);
+        tx.identifierLookup.keyToId.set(keyString, candidate);
+        tx.identifierLookup.idToKey.set(candidateString, nodeKey);
+        tx.reservedIdentifiers.add(candidateString);
+        return candidate;
+    }
+
+    throw new Error(`Failed to reserve a unique node identifier for ${keyString}`);
+}
+
 /**
  * Create the identifier-native graph storage facade for one schema namespace.
  * @param {RootDatabase} rootDatabase
- * @param {SleepCapability} sleeper
+ * @param {SleepCapability} [sleeper]
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase, sleeper) {
+    /**
+     * @template T
+     * @param {() => Promise<T>} procedure
+     * @returns {Promise<T>}
+     */
+    const withCommitMutex = async (procedure) => {
+        if (sleeper === undefined) {
+            return await procedure();
+        }
+        return await withComputedStateMutex(
+            sleeper,
+            rootDatabase.currentReplicaName(),
+            procedure
+        );
+    };
     /**
      * @param {NodeIdentifier} node
      * @param {NodeIdentifier[]} inputs
@@ -285,84 +395,74 @@ function makeGraphStorage(rootDatabase, sleeper) {
             return result;
         },
         /**
-         * Run a batch that atomically commits node writes together with any new
-         * identifier allocations made during the operation.
+         * Run a transaction body concurrently and serialize only the commit.
          *
-         * This implements the transaction model from the volatile-consistency spec:
-         * - createTransaction(): creates an overlay-based TransactionIdentifierLookup
-         *   backed by a direct (non-cloned) reference to the committed lookup, then
-         *   creates a fresh batch accumulator. No full-copy clone is performed.
-         * - operation runs with the transaction.
-         * - commitTransaction(): serialize (base + overlay) for disk, flush the batch,
-         *   then apply the overlay to the base in-place (disk-first ordering).
-         *
-         * Using an overlay instead of a full clone eliminates the O(n log n) copy at
-         * transaction start and the second O(n log n) copy at commit time. Only new
-         * allocations (typically very few per transaction) are tracked in the overlay.
-         *
-         * The entire operation happens inside withComputedStateMutex, serializing all
-         * concurrent callers end-to-end and eliminating identifier allocation races.
-         *
-         * Callers that are already inside the mutex (nested dependency pulls) must
-         * NOT call this method again; they must receive the outer transaction via
-         * explicit argument passing and operate on it directly.
+         * Identifier allocation uses synchronous live reservations during the
+         * transaction body. Node writes are queued in a private read-your-writes
+         * batch. The commit mutex covers only durable batch flush, volatile
+         * identifier publication, and reservation cleanup, preserving disk-first
+         * volatile consistency without serializing computor execution.
          *
          * @template T
          * @param {(tx: Transaction) => Promise<T>} fn
          * @returns {Promise<T>}
          */
         async withTransaction(fn) {
-            return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // createTransaction(): get a direct reference to _computed.identifierLookup
-                // (no clone), create an empty overlay for this transaction's allocations.
-                const activeSchemaStorage = rootDatabase.getSchemaStorage();
-                const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
-                const { batch, operations } = createBatch(activeSchemaStorage);
+            const activeSchemaStorage = rootDatabase.getSchemaStorage();
+            const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
+            const { batch, operations } = createBatch(activeSchemaStorage);
 
-                /** @type {Transaction} */
-                const tx = { batch, identifierLookup: txLookup, inFlight: new Map() };
+            /** @type {Transaction} */
+            const tx = {
+                id: makeTransactionId(),
+                batch,
+                identifierLookup: txLookup,
+                reservedIdentifiers: new Set(),
+                inFlight: new Map(),
+            };
 
-                // Run the operation (identifier allocation + node-data writes).
+            try {
                 const value = await fn(tx);
 
-                // commitTransaction(): disk-first — flush batch, then update volatile layer.
-                // txLookup.keyToId contains only the new allocations from this transaction.
-                const hasPendingOperations = operations.length > 0;
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
+                return await withCommitMutex(async () => {
+                    const hasPendingOperations = operations.length > 0;
+                    const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+                    const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
 
-                // No-op transaction: no node writes and no new identifier allocations.
-                // Skip persistence work entirely.
-                if (!hasPersistentDelta) {
-                    return value;
-                }
+                    if (!hasPersistentDelta) {
+                        clearIdentifierReservations(tx, rootDatabase);
+                        return value;
+                    }
 
-                if (hasPendingAllocations) {
-                    if (activeSchemaStorage.global === undefined) {
-                        throw new Error(
-                            "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
-                            "The volatile state cannot be synchronized with disk, which would violate " +
-                            "the disk-first ordering invariant (volatile must not advance ahead of disk)."
+                    if (hasPendingAllocations) {
+                        if (activeSchemaStorage.global === undefined) {
+                            throw new Error(
+                                "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
+                                "The volatile state cannot be synchronized with disk, which would violate " +
+                                "the disk-first ordering invariant (volatile must not advance ahead of disk)."
+                            );
+                        }
+                        operations.push(
+                            activeSchemaStorage.global.rawPutOp(
+                                IDENTIFIERS_KEY,
+                                serializeTransactionLookup(tx.identifierLookup)
+                            )
                         );
                     }
-                    operations.push(
-                        activeSchemaStorage.global.rawPutOp(
-                            IDENTIFIERS_KEY,
-                            serializeTransactionLookup(tx.identifierLookup)
-                        )
-                    );
-                }
 
-                await activeSchemaStorage.batch(operations);
+                    await activeSchemaStorage.batch(operations);
 
-                if (hasPendingAllocations) {
-                    // Disk flush succeeded: apply overlay to base in-place.
-                    // This is the only mutation of _computed.identifierLookup.
-                    commitTransactionLookup(tx.identifierLookup);
-                }
+                    if (hasPendingAllocations) {
+                        commitTransactionLookup(tx.identifierLookup);
+                    }
+                    clearIdentifierReservations(tx, rootDatabase);
 
-                return value;
-            });
+                    return value;
+                });
+            } catch (error) {
+                clearIdentifierReservations(tx, rootDatabase);
+                throw error;
+            }
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
@@ -395,11 +495,7 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * @returns {NodeIdentifier}
  */
 function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
-    return txAllocateNodeIdentifier(
-        tx.identifierLookup,
-        nodeKey,
-        () => rootDatabase.generateNodeIdentifier()
-    );
+    return reserveNodeIdentifier(tx, rootDatabase, nodeKey);
 }
 
 /**

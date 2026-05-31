@@ -34,9 +34,44 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withPullMode } = require("./lock");
+const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
+
+/**
+ * Run a transaction while holding locks for the requested concrete node and
+ * its static concrete inputs. This intentionally covers known shared
+ * dependencies before either transaction starts executing so concurrent pulls
+ * that share a static dependency serialize on that dependency, while disjoint
+ * pulls can still overlap.
+ * @template T
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {import('./types').ConcreteNode} concreteNode
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withTopLevelPullLocks(graph, concreteNode, procedure) {
+    const lockKeys = [concreteNode.output, ...concreteNode.inputs]
+        .map(String)
+        .sort();
+    const uniqueLockKeys = lockKeys.filter((lockKey, index) =>
+        index === 0 || lockKey !== lockKeys[index - 1]
+    );
+
+    /**
+     * @param {number} index
+     * @returns {Promise<T>}
+     */
+    const acquireFrom = (index) => {
+        const lockKey = uniqueLockKeys[index];
+        if (lockKey === undefined) {
+            return procedure();
+        }
+        return withPullNodeMutex(graph.sleeper, lockKey, () => acquireFrom(index + 1));
+    };
+
+    return acquireFrom(0);
+}
 
 /**
  * Core pull implementation for a node by its serialized key.
@@ -98,13 +133,17 @@ async function pullNode(graph, nodeKeyStr, tx) {
     };
 
     if (tx !== null) {
-        // Nested call: outer pull already holds the computed-state mutex.
-        // Share the outer transaction directly to avoid deadlock.
+        // Nested call: share the outer transaction directly. Per-transaction
+        // deduplication prevents duplicate dependency pulls in one pull DAG.
         return runDeduplicatedInTransaction(tx);
     }
 
-    // Top-level pull: acquire the computed-state lock and create a fresh transaction.
-    return graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
+    // Top-level pull: serialize this concrete node and its known static inputs
+    // across transactions. Disjoint lock sets may execute concurrently; shared
+    // dependencies serialize before duplicate dependency computation can begin.
+    return withTopLevelPullLocks(graph, concreteNode, () =>
+        graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx))
+    );
 }
 
 /**

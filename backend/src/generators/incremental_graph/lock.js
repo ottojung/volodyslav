@@ -15,6 +15,7 @@ const { makeUniqueFunctor } = require("../../unique_functor");
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
 const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
+const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
@@ -80,6 +81,22 @@ function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
 }
 
 /**
+ * Serialize execution of a concrete node pull body across transactions.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {string} nodeKeyString
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withPullNodeMutex(sleeper, nodeKeyString, procedure) {
+    return sleeper.withMutex(
+        PULL_NODE_KEY.instantiate([nodeKeyString]),
+        procedure
+    );
+}
+
+/**
  * Acquires an exclusive lock that prevents all concurrent graph activity:
  * pulls, observes, and other exclusive operations (database opens, migrations).
  *
@@ -109,4 +126,5 @@ module.exports = {
     withObserveMode,
     withPullMode,
     withComputedStateMutex,
+    withPullNodeMutex,
 };

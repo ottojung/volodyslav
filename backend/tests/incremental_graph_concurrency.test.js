@@ -733,6 +733,62 @@ describe("IncrementalGraph concurrency", () => {
             await inspectPromise;
         });
 
+        test("duplicate generated identifiers are retried against live reservations", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+            const generated = [
+                nodeIdentifierFromString("aaaaaaaaa"),
+                nodeIdentifierFromString("aaaaaaaaa"),
+                nodeIdentifierFromString("bbbbbbbbb"),
+            ];
+            db.generateNodeIdentifier = () => {
+                const next = generated.shift();
+                if (next === undefined) {
+                    throw new Error("test exhausted deterministic identifiers");
+                }
+                return next;
+            };
+            const releaseBoth = makeDeferred();
+            const started = [];
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source1",
+                    inputs: [],
+                    computor: async () => {
+                        started.push("source1");
+                        await releaseBoth.promise;
+                        return { type: "test", value: 1 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "source2",
+                    inputs: [],
+                    computor: async () => {
+                        started.push("source2");
+                        await releaseBoth.promise;
+                        return { type: "test", value: 2 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            const pull1 = graph.pull("source1");
+            const pull2 = graph.pull("source2");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(started.sort()).toEqual(["source1", "source2"]);
+
+            releaseBoth.resolve(undefined);
+            await Promise.all([pull1, pull2]);
+
+            const lookup = db.cloneActiveIdentifierLookup();
+            const identifiers = new Set([...lookup.keyToId.values()].map(String));
+            expect(identifiers).toEqual(new Set(["aaaaaaaaa", "bbbbbbbbb"]));
+        });
+
         test("concurrent pulls on the same node are serialized", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
@@ -768,7 +824,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(maxActiveComputations).toBe(1);
         });
 
-        test("concurrent pulls on different nodes are serialized", async () => {
+        test("concurrent pulls on different nodes can overlap", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const source1Cell = { value: { type: "test", value: 1 } };
@@ -804,13 +860,12 @@ describe("IncrementalGraph concurrency", () => {
             const pull1 = graph.pull("source1");
             const pull2 = graph.pull("source2");
             await new Promise((resolve) => setTimeout(resolve, 20));
-            // Pulls on different nodes are now serialized by withComputedStateMutex:
-            // source1 holds the mutex (awaiting releaseBoth), source2 has not started yet.
-            expect(started).toEqual(["source1"]);
+            // Disjoint concrete node locks let both top-level computors run before
+            // either transaction commits.
+            expect(started.sort()).toEqual(["source1", "source2"]);
 
             releaseBoth.resolve(undefined);
             await Promise.all([pull1, pull2]);
-            // After both complete (sequentially), both have been computed.
             expect(started.sort()).toEqual(["source1", "source2"]);
         });
 
