@@ -16,7 +16,7 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => import('./types').ResolvedConcreteNode} resolveConcreteNode
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
@@ -110,7 +110,7 @@ async function internalUnsafeInvalidate(
      * @returns {Promise<void>}
      */
     const run = async (tx) => {
-        const nodeDefinition = incrementalGraph.resolveConcreteNode(
+        const nodeDefinition = await incrementalGraph.resolveConcreteNode(
             concreteNode,
             tx
         );

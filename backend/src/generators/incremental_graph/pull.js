@@ -26,7 +26,7 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => import('./types').ResolvedConcreteNode} resolveConcreteNode
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, tx: Transaction) => Promise<RecomputeResult>} maybeRecalculate
  */
@@ -64,7 +64,7 @@ async function pullNode(graph, nodeKeyStr, tx) {
      * @returns {Promise<RecomputeResult>}
      */
     const runWithTransaction = async (activeTx) => {
-        const nodeDefinition = graph.resolveConcreteNode(concreteNode, activeTx);
+        const nodeDefinition = await graph.resolveConcreteNode(concreteNode, activeTx);
         const nodeFreshness = await activeTx.batch.freshness.get(nodeDefinition.outputIdentifier);
 
         if (nodeFreshness === "up-to-date") {

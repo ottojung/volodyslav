@@ -34,6 +34,18 @@ const {
  * @param {string} key
  * @returns {string}
  */
+/**
+ * Allocate an identifier in a test transaction after marking the semantic lock held.
+ * @param {import('../src/generators/incremental_graph/graph_state').Transaction} tx
+ * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} rootDatabase
+ * @param {string} jsonKey
+ * @returns {import('../src/generators/incremental_graph/database').NodeIdentifier}
+ */
+function getOrAllocateNodeIdentifierForTest(tx, rootDatabase, jsonKey) {
+    tx.heldNodeLocks.add(String(jsonKey));
+    return getOrAllocateNodeIdentifier(tx, rootDatabase, jsonKey);
+}
+
 function toJsonKey(key) {
     // If already a valid JSON key, return as-is
     if (isJsonKey(key)) {
@@ -124,7 +136,7 @@ function makeSemanticStorage(graph) {
             async put(key, value) {
                 const jsonKey = toJsonKey(key);
                 await graph.withTransaction(async (tx) => {
-                    const nodeIdentifier = getOrAllocateNodeIdentifier(
+                    const nodeIdentifier = getOrAllocateNodeIdentifierForTest(
                         tx,
                         graph.rootDatabase,
                         jsonKey
@@ -133,7 +145,7 @@ function makeSemanticStorage(graph) {
                         tx.batch.inputs.put(nodeIdentifier, {
                             inputs: value.inputs.map((inputKey) =>
                                 nodeIdentifierToString(
-                                    getOrAllocateNodeIdentifier(
+                                    getOrAllocateNodeIdentifierForTest(
                                         tx,
                                         graph.rootDatabase,
                                         toJsonKey(inputKey)
@@ -148,7 +160,7 @@ function makeSemanticStorage(graph) {
                         tx.batch.revdeps.put(
                             nodeIdentifier,
                             value.map((dependentKey) =>
-                                getOrAllocateNodeIdentifier(
+                                getOrAllocateNodeIdentifierForTest(
                                     tx,
                                     graph.rootDatabase,
                                     toJsonKey(dependentKey)
@@ -214,12 +226,12 @@ function makeSemanticStorage(graph) {
                         put(key, value) {
                             const jsonKey = toJsonKey(key);
                             const nodeIdentifier =
-                                getOrAllocateNodeIdentifier(tx, graph.rootDatabase, jsonKey);
+                                getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
                                 tx.batch.inputs.put(nodeIdentifier, {
                                     inputs: value.inputs.map((inputKey) =>
                                         nodeIdentifierToString(
-                                            getOrAllocateNodeIdentifier(
+                                            getOrAllocateNodeIdentifierForTest(
                                                 tx,
                                                 graph.rootDatabase,
                                                 toJsonKey(inputKey)
@@ -234,7 +246,7 @@ function makeSemanticStorage(graph) {
                                 tx.batch.revdeps.put(
                                     nodeIdentifier,
                                     value.map((dependentKey) =>
-                                        getOrAllocateNodeIdentifier(
+                                        getOrAllocateNodeIdentifierForTest(
                                             tx,
                                             graph.rootDatabase,
                                             toJsonKey(dependentKey)

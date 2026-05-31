@@ -764,11 +764,11 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
 });
 
 // ---------------------------------------------------------------------------
-// Invariant 3 — Serialisation: all mutations are serialized by the mutex
+// Invariant 3 — Independent pull concurrency
 // ---------------------------------------------------------------------------
 
-describe("Invariant 3 — Serialisation of concurrent mutations", () => {
-    test("pulls on different independent nodes are serialized (not concurrent)", async () => {
+describe("Invariant 3 — Independent pull concurrency", () => {
+    test("pulls on different independent nodes can run concurrently", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const released = makeDeferredPromise();
@@ -808,15 +808,14 @@ describe("Invariant 3 — Serialisation of concurrent mutations", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        // While the first pull is blocked in its computor, the second pull must not
-        // enter its own computor yet.
-        expect(started.length).toBe(1);
+        // Independent concrete nodes are protected by different node locks, so both
+        // computors may enter before either finishes.
+        expect(started.sort()).toEqual(["n1", "n2"]);
 
-        // Release n1's computor; n1 commits, then n2 acquires the mutex and starts.
+        // Release both computors and allow both transactions to commit.
         released.resolve(undefined);
         await Promise.all([p1, p2]);
 
-        // After both complete, both were computed (sequentially).
         expect(started.sort()).toEqual(["n1", "n2"]);
 
         await db.close();

@@ -15,6 +15,93 @@ const { makeUniqueFunctor } = require("../../unique_functor");
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
 const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
+const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
+
+
+/**
+ * @typedef {{ promise: Promise<void>, release: () => void }} ManualLockEntry
+ */
+
+/** @type {Map<string, ManualLockEntry>} */
+const concreteNodeLocks = new Map();
+
+/**
+ * Acquire a process-local concrete node lock and return a release callback.
+ * @param {import('./types').NodeKeyString} nodeKey
+ * @returns {Promise<() => void>}
+ */
+async function acquireConcreteNodeLock(nodeKey) {
+    const stringKey = String(nodeKey);
+    for (;;) {
+        const existing = concreteNodeLocks.get(stringKey);
+        if (existing === undefined) {
+            break;
+        }
+        await existing.promise;
+    }
+
+    /** @type {() => void} */
+    let releasePromise = () => undefined;
+    const promise = new Promise((resolve) => {
+        releasePromise = () => resolve(undefined);
+    });
+    let released = false;
+    concreteNodeLocks.set(stringKey, {
+        promise,
+        release() {
+            if (released) {
+                return;
+            }
+            released = true;
+            concreteNodeLocks.delete(stringKey);
+            releasePromise();
+        },
+    });
+    return () => {
+        const entry = concreteNodeLocks.get(stringKey);
+        if (entry !== undefined) {
+            entry.release();
+        }
+    };
+}
+
+/**
+ * Release concrete node locks held by a transaction.
+ * @param {{ heldNodeLocks: Set<string>, nodeLockReleases: Map<string, () => void> }} tx
+ * @returns {void}
+ */
+function releaseConcreteNodeLocks(tx) {
+    const releases = Array.from(tx.nodeLockReleases.values()).reverse();
+    tx.nodeLockReleases.clear();
+    tx.heldNodeLocks.clear();
+    for (const release of releases) {
+        release();
+    }
+}
+
+/**
+ * @param {{ heldNodeLocks: Set<string>, nodeLockReleases: Map<string, () => void> }} tx
+ * @param {import('./types').NodeKeyString} nodeKey
+ * @returns {Promise<void>}
+ */
+async function acquireTransactionNodeLock(tx, nodeKey) {
+    const stringKey = String(nodeKey);
+    if (tx.heldNodeLocks.has(stringKey)) {
+        return;
+    }
+    const release = await acquireConcreteNodeLock(nodeKey);
+    tx.heldNodeLocks.add(stringKey);
+    tx.nodeLockReleases.set(stringKey, release);
+}
+
+/**
+ * @param {{ heldNodeLocks: Set<string> }} tx
+ * @param {import('./types').NodeKeyString} nodeKey
+ * @returns {boolean}
+ */
+function transactionHoldsNodeLock(tx, nodeKey) {
+    return tx.heldNodeLocks.has(String(nodeKey));
+}
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
@@ -80,6 +167,17 @@ function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
 }
 
 /**
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {string} replicaName
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withCommitMutex(sleeper, replicaName, procedure) {
+    return sleeper.withMutex(COMMIT_KEY.instantiate([replicaName]), procedure);
+}
+
+/**
  * Acquires an exclusive lock that prevents all concurrent graph activity:
  * pulls, observes, and other exclusive operations (database opens, migrations).
  *
@@ -109,4 +207,8 @@ module.exports = {
     withObserveMode,
     withPullMode,
     withComputedStateMutex,
+    withCommitMutex,
+    acquireTransactionNodeLock,
+    releaseConcreteNodeLocks,
+    transactionHoldsNodeLock,
 };
