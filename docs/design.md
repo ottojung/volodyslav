@@ -1,341 +1,293 @@
-# Incremental Graph Minimal Locking Design
+# IncrementalGraph locking design
 
-## Purpose
+## Goal
 
-This document defines the target locking and transaction design for the incremental graph. The design standard is production-grade medical software: correctness must be deterministic, auditable, recoverable, and independent of probability arguments.
+IncrementalGraph should allow independent pull work to run concurrently while preserving the durable/volatile consistency of the identifier-based database.
 
-The goal is to satisfy the incremental graph locking semantics while preserving volatile↔persistent synchronization:
+The required behavior is:
 
-1. `pull()` is mutually exclusive with `invalidate()` and inspection reads.
-2. `invalidate()` calls may run concurrently with each other.
-3. Inspection reads may run concurrently with `invalidate()`.
-4. Pulls for the same concrete node serialize.
-5. Pulls for disjoint concrete node sets may run concurrently.
-6. The volatile identifier lookup never advances ahead of durable storage.
-7. No two live transactions may ever hold the same newly generated node identifier, even transiently.
+1. `pull()` operations may overlap other `pull()` operations unless they need the same concrete node.
+2. `pull()` operations do not overlap invalidation or inspection reads.
+3. `invalidate()` operations may overlap other `invalidate()` operations.
+4. Inspection reads may overlap invalidation.
+5. Maintenance operations such as database open, reset, replica switch, and migration exclude all graph activity.
+6. The volatile identifier lookup never contains data that has not first been durably written.
+7. Identifier allocation remains a bijection: one semantic node key has one identifier, and one identifier belongs to one semantic node key.
 
-## Current architecture verified
+The main implementation task is to remove the broad lock around whole transactions. User computors and dependency traversal must not run under the commit/publish lock.
 
-### Graph activity phase locks
+## Model
 
-The graph already has a global mode-lock abstraction:
+### Node key and node identifier
 
-- `withObserveMode(...)` uses `GRAPH_ACTIVITY_KEY` in mode `"observe"`.
-- `withPullMode(...)` uses `GRAPH_ACTIVITY_KEY` in mode `"pull"`.
-- `withExclusiveMode(...)` combines exclusive operation serialization with `GRAPH_ACTIVITY_KEY` in mode `"exclusive"`.
+A concrete graph node has two identities:
 
-This correctly expresses the high-level compatibility matrix: observe work can overlap observe work, pull work can overlap pull work, and different modes exclude each other.
+- `NodeKeyString` is the canonical semantic identity: node head plus bindings.
+- `NodeIdentifier` is the opaque durable storage identity used as the key in graph sublevels.
 
-### Pull path
+The persistent graph sublevels are keyed by `NodeIdentifier`. The mapping between semantic keys and identifiers is stored in `global/identifiers_keys_map` and mirrored in memory as `identifierLookup`.
 
-Public pull entry points enter pull mode, serialize the requested node key, and call `pullNode(...)`. Nested pulls reuse the caller's transaction by passing `tx` explicitly through the stack. The current `tx.inFlight` map only deduplicates repeated pulls within one transaction; it is not a cross-transaction lock.
+### Identifier lookup
 
-### Invalidation path
-
-Invalidation enters observe mode and then runs a transaction. Since observe-mode callers can overlap, concurrent invalidations must be handled by idempotent or merge-based commit behavior rather than by a broad invalidation mutex.
-
-### Inspection path
-
-Inspection reads enter observe mode and read the volatile identifier lookup plus persistent graph sublevels. They are intentionally compatible with invalidation and excluded from pull activity.
-
-### Current transaction path
-
-The current transaction implementation creates:
-
-- a private transaction identifier overlay backed by the active committed lookup;
-- a read-your-writes batch wrapper;
-- an operations array of raw LevelDB operations.
-
-It currently protects the entire transaction body with `withComputedStateMutex(...)`. That is correct but too coarse: it serializes computor execution, dependency traversal, identifier allocation, and commit. The target design narrows that serialization to the places where shared state is actually mutated or published.
-
-### Identifier allocation path
-
-The allocation path is synchronous today:
-
-```text
-resolveConcreteNode(...)
-  -> getOrAllocateNodeIdentifier(...)
-    -> txAllocateNodeIdentifier(...)
-      -> rootDatabase.generateNodeIdentifier()
-        -> makeNodeIdentifier(...)
-          -> random.basicString(...)
-```
-
-Within that path, lookup checks, random candidate generation, and `Map` writes are synchronous. There is no `await`, timer, I/O continuation, promise callback yield, or user callback in the check/generate/insert sequence.
-
-In JavaScript running on one Node.js event loop, one synchronous call stack runs to completion before another graph operation can interleave. Therefore a synchronous check-and-insert reservation helper can be atomic without a sleeper mutex. This is an in-process guarantee; production deployment must still guarantee a single active writer process for one database replica. If multiple writer processes are permitted, identifier reservation must move to durable transactional storage with uniqueness semantics.
-
-## Core design
-
-The design uses three coordination mechanisms:
-
-1. graph activity mode locks;
-2. per-node pull locks;
-3. a short commit merge/publish mutex.
-
-Identifier reservation is deliberately **not** a mutex. It is a synchronous, non-yielding in-memory critical section.
-
-## Data structures
-
-### Root computed state
-
-The active root database computed state should contain:
+The committed lookup is a bijection:
 
 ```javascript
 {
-    identifierLookup,
-    inFlightIdentifiers,
-    inFlightIdentifierOwners,
+    keyToId, // Map<NodeKeyString, NodeIdentifier>
+    idToKey, // Map<string, NodeKeyString>
 }
 ```
 
-Where:
+The in-memory committed lookup is part of the active root computed state and is updated only after the durable batch containing the same lookup update succeeds.
 
-- `identifierLookup` is the committed in-memory `IdentifierLookup` loaded from durable storage and updated only after durable commit succeeds.
-- `inFlightIdentifiers` is a `Set<string>` of generated identifier strings that have been reserved by live transactions but not yet committed or aborted.
-- `inFlightIdentifierOwners` is optional but recommended for production diagnostics. It maps identifier strings to transaction IDs and supports assertion-quality error messages.
+### Transaction
 
-### Transaction state
-
-A transaction should contain:
+A transaction is the state for one top-level graph operation. It contains:
 
 ```javascript
 {
-    id,
+    batch,
     identifierLookup,
     reservedIdentifiers,
+    heldNodeLocks,
     inFlight,
-    intents,
-    heldPullNodeLocks,
 }
 ```
 
 Where:
 
-- `id` is a diagnostic transaction ID.
-- `identifierLookup` is the private overlay for newly allocated `nodeKey -> nodeIdentifier` mappings.
-- `reservedIdentifiers` is the set of identifier strings reserved by this transaction.
-- `inFlight` deduplicates repeated pulls inside the same transaction.
-- `intents` records logical writes to be rebased and converted into raw operations at commit time.
-- `heldPullNodeLocks` records per-node locks acquired by the transaction and released only after commit or abort.
+- `batch` is the existing read-your-writes batch for node-data sublevels.
+- `identifierLookup` is a transaction overlay containing only mappings newly allocated by this transaction, backed by the committed lookup.
+- `reservedIdentifiers` is the set of generated identifier strings reserved by this transaction and not yet committed or aborted.
+- `heldNodeLocks` is the set of concrete node-lock keys held until transaction finish.
+- `inFlight` deduplicates repeated pulls of the same node within this transaction.
 
-## Lock set
+A transaction does not need an ID. Correctness is derived from lock ownership, synchronous reservation, and commit assertions, not from diagnostic transaction ownership metadata.
 
-### 1. Graph activity mode lock
+### Active root computed state
 
-Use the existing mode lock:
+The active root computed state contains the active replica handles, committed identifier lookup, and a set of generated identifiers reserved by live transactions:
 
-- `observe` for invalidation and inspection reads;
-- `pull` for all pull work;
-- `exclusive` for migrations, database open/reset/switch-replica operations, and other maintenance that must exclude graph activity.
-
-This lock is acquired first.
-
-### 2. Per-node pull locks
-
-Every concrete node whose pull body executes must be protected by a per-node pull lock:
-
-```text
-PULL_NODE_KEY(nodeIdentifier or canonical nodeKey)
+```javascript
+{
+    replicaName,
+    namespaceSublevel,
+    globalSublevel,
+    schemaStorage,
+    identifierLookup,
+    inFlightIdentifiers,
+}
 ```
 
-The lock must be held until the owning transaction commits or aborts, not merely until the computor returns. Releasing it earlier would allow another transaction to pull the same node while the first transaction's writes are still private, causing duplicate computation and potentially conflicting intents.
+`inFlightIdentifiers` is a `Set<string>`. It prevents two live transactions from reserving the same generated identifier before either transaction commits. It does not store transaction owners.
 
-Nested dependency pulls acquire additional per-node locks as dependencies are traversed. Because the graph is a DAG, wait edges follow dependency edges and cannot form a cycle unless the graph itself contains a cycle, which construction already rejects.
+## Locking primitives
 
-### 3. Commit merge/publish mutex
+### Graph activity mode lock
 
-Replace broad transaction-body serialization with a short commit mutex:
-
-```text
-COMMIT_KEY(activeReplica)
-```
-
-This mutex covers only:
-
-1. rebasing transaction intents onto the latest committed state;
-2. validating identifier reservations;
-3. producing raw database operations;
-4. flushing one durable batch;
-5. publishing the committed identifier overlay into volatile memory;
-6. clearing this transaction's identifier reservations.
-
-No computor execution, dependency traversal, identifier generation, or identifier reservation happens under this mutex.
-
-## Synchronous identifier reservation
-
-### Contract
-
-Identifier reservation must be implemented as a synchronous helper. It must not:
-
-- `await`;
-- return a promise;
-- schedule callbacks;
-- perform I/O;
-- call user code;
-- acquire a sleeper mutex;
-- call any API that may yield to the event loop.
-
-The helper performs a complete check/generate/reserve/update-overlay sequence before returning to the event loop.
-
-### Algorithm
-
-For `reserveNodeIdentifier(tx, rootDatabase, nodeKey)`:
-
-1. If `nodeKey` already exists in `tx.identifierLookup`, return that identifier.
-2. If `nodeKey` exists in the committed base lookup, return that identifier.
-3. Generate a candidate identifier synchronously.
-4. Check whether the committed base `idToKey` already contains the candidate.
-5. Check whether `_computed.inFlightIdentifiers` already contains the candidate string.
-6. If either check finds the candidate, generate a new candidate and repeat.
-7. Insert the candidate string into `_computed.inFlightIdentifiers`.
-8. Optionally record `candidate -> tx.id` in `_computed.inFlightIdentifierOwners`.
-9. Insert `nodeKey -> candidate` into the transaction overlay.
-10. Insert the candidate string into `tx.reservedIdentifiers`.
-11. Return the candidate.
-
-Steps 3 through 10 are one synchronous critical section. In one Node.js process, no second transaction can interleave between the duplicate check and the reservation insert.
-
-### Abort cleanup
-
-If a transaction aborts before durable commit succeeds:
-
-1. synchronously remove every `tx.reservedIdentifiers` entry from `_computed.inFlightIdentifiers`;
-2. remove owner diagnostics for the same identifiers;
-3. release held pull-node locks;
-4. discard transaction intents and overlays.
-
-The committed volatile lookup is not changed on abort.
-
-## Transaction intents
-
-The current eager raw-operation batch is not sufficient for concurrent execution because some operations derive from shared records that may change before commit. The target design should record logical intents and render them under the commit mutex.
-
-### Absolute node-owned intents
-
-These records are owned by the node being pulled or invalidated and are safe under that node's ownership discipline:
-
-- `values[node] = value`;
-- `freshness[node] = state`;
-- `inputs[node] = inputsRecord`;
-- `counters[node] = counter`;
-- `timestamps[node] = timestampRecord`.
-
-### Merge intents for reverse dependencies
-
-Reverse dependency records are shared by all dependents of one input. Eagerly writing the whole array can lose updates if two transactions add different dependents to the same input concurrently.
-
-Represent reverse dependency updates as merge intents:
+There is one graph activity key with compatible modes:
 
 ```text
-revdepsAdd(inputIdentifier, dependentIdentifier)
+GRAPH_ACTIVITY_KEY
 ```
 
-Under the commit mutex:
+Use it as follows:
 
-1. read the latest committed `revdeps[inputIdentifier]`;
-2. insert `dependentIdentifier` if absent;
-3. keep the array sorted by node identifier;
-4. write the merged array.
+| Operation | Mode |
+| --- | --- |
+| Pull | `pull` |
+| Invalidation | `observe` |
+| Inspection read | `observe` |
+| Maintenance | `exclusive` |
 
-### Freshness intents
+Same-mode holders may overlap. Different modes exclude each other. Therefore pulls can overlap pulls, invalidations can overlap invalidations, inspection can overlap invalidation, and maintenance excludes everything.
 
-Represent freshness transitions explicitly:
+The graph activity lock is always the first lock acquired by public graph operations.
 
-- `markPotentiallyOutdated(node)` from invalidation;
-- `markUpToDate(node)` from pull.
+### Concrete node lock
 
-Pull and invalidation cannot overlap due to graph activity modes. Concurrent invalidations are idempotent. Concurrent pulls may both mark a shared dependency up to date; that is also idempotent.
+There is one exclusive lock per canonical semantic node key:
+
+```text
+NODE_KEY(nodeKeyString)
+```
+
+The lock key is the semantic `NodeKeyString`, not the `NodeIdentifier`, because a previously unseen node does not have a committed identifier yet. Using the semantic key guarantees that two concurrent operations cannot allocate two different identifiers for the same node while it is still absent from the committed lookup.
+
+This lock protects:
+
+- execution of the pull body for that concrete node;
+- writes to node-owned records: `values[node]`, `freshness[node]`, `inputs[node]`, `counters[node]`, and `timestamps[node]`;
+- read-modify-write updates to that node's reverse-dependency list when the node is used as an input;
+- creation of a new identifier mapping for that node key.
+
+A transaction holds every acquired concrete node lock until commit or abort. Releasing a node lock before commit is unsafe because the transaction's batch is still private; another transaction could read the old durable state and compute or update against stale data.
+
+If a transaction already holds `NODE_KEY(k)`, reacquiring it is a no-op.
+
+### Commit mutex
+
+There is one short commit mutex per active replica:
+
+```text
+COMMIT_KEY(replicaName)
+```
+
+The commit mutex protects only the durable commit and volatile publication phase. It does not protect computor execution, dependency traversal, identifier generation, or waiting for concrete node locks.
+
+## Identifier allocation
+
+Identifier allocation is a synchronous operation. It must not `await`, perform I/O, call user code, schedule callbacks, or acquire a sleeper mutex.
+
+Before a transaction creates a new mapping for `nodeKey`, it must hold `NODE_KEY(nodeKey)`. That lock prevents another live transaction from creating a competing mapping for the same semantic key.
+
+Allocation algorithm:
+
+1. If the transaction overlay maps `nodeKey`, return that identifier.
+2. If the committed lookup maps `nodeKey`, return that identifier.
+3. Assert that the transaction holds `NODE_KEY(nodeKey)`.
+4. Generate a candidate identifier synchronously.
+5. If the committed lookup already maps the candidate identifier to any key, retry.
+6. If `inFlightIdentifiers` already contains the candidate identifier string, retry.
+7. Add the candidate identifier string to `inFlightIdentifiers`.
+8. Add `nodeKey -> candidate` and `candidate -> nodeKey` to the transaction overlay.
+9. Add the candidate identifier string to `tx.reservedIdentifiers`.
+10. Return the candidate.
+
+Steps 4 through 9 are one non-yielding critical section. In a single Node.js writer process, no other graph operation can interleave between the duplicate checks and the reservation insert.
+
+If a transaction aborts, every identifier in `tx.reservedIdentifiers` is removed from `inFlightIdentifiers`. If a transaction commits, those reservations are removed after durable commit and volatile publication.
+
+## Pull protocol
+
+A top-level pull follows this sequence:
+
+1. Acquire `GRAPH_ACTIVITY_KEY` in `pull` mode.
+2. Create an empty transaction.
+3. Pull the requested node within the transaction.
+4. Commit the transaction under `COMMIT_KEY(replicaName)`.
+5. Release all concrete node locks held by the transaction.
+6. Release graph activity mode.
+
+Pulling a concrete node within a transaction follows this sequence:
+
+1. Canonicalize the requested node to `nodeKeyString`.
+2. If `tx.inFlight` already has this key, await and return that promise.
+3. Acquire `NODE_KEY(nodeKeyString)` unless already held by the transaction.
+4. Resolve or allocate the node identifier.
+5. Read freshness and value through `tx.batch`.
+6. If the node is up-to-date, return the cached value while keeping the node lock held until transaction finish.
+7. Pull static and dynamic dependencies using the same transaction.
+8. For every dependency, keep its concrete node lock held until transaction finish.
+9. Write this node's value, freshness, inputs, counter, timestamp, and reverse-dependency updates into `tx.batch`.
+10. Return the recompute result.
+
+Dependency pulls use exactly the same transaction. They do not acquire graph activity mode and do not create a nested transaction.
+
+This protocol is intentionally conservative about dependency locks: if a recomputation will add this node to `revdeps[input]`, the transaction must hold the concrete node lock for `input` until commit. That makes reverse-dependency updates ordinary batch writes rather than global diffs.
+
+## Invalidation protocol
+
+A top-level invalidation follows this sequence:
+
+1. Acquire `GRAPH_ACTIVITY_KEY` in `observe` mode.
+2. Create an empty transaction.
+3. Canonicalize the target node key.
+4. Acquire `NODE_KEY(targetNodeKey)` if the invalidation must create an identifier mapping or materialize the target node's input record.
+5. Resolve or allocate the target node identifier.
+6. Write `freshness[target] = "potentially-outdated"` into `tx.batch`.
+7. Propagate `"potentially-outdated"` through existing reverse-dependency records.
+8. Commit the transaction under `COMMIT_KEY(replicaName)`.
+9. Release all concrete node locks held by the transaction.
+10. Release graph activity mode.
+
+Concurrent invalidations are allowed because their freshness writes are idempotent. If an invalidation only touches already-identified nodes and only sets freshness to `"potentially-outdated"`, it does not need to acquire node locks for every propagated dependent. If it creates new identifier mappings or materialized records, it must hold the corresponding concrete node locks until transaction finish.
 
 ## Commit protocol
 
-Under `COMMIT_KEY(activeReplica)`:
+The transaction's node-data writes remain a normal LevelDB batch. They are not converted into a logical diff representation.
 
-1. Capture the latest active schema storage and active committed identifier lookup.
-2. Rebase transaction identifier overlay onto the latest committed lookup.
-3. For each transaction overlay mapping:
-   1. If the committed lookup already maps the node key to an identifier, use that committed identifier as canonical and rewrite transaction intents from the reserved identifier to the canonical identifier.
-   2. Otherwise assert that the reserved identifier is still present in `tx.reservedIdentifiers` and `_computed.inFlightIdentifiers`.
-   3. Assert that the committed lookup does not map the reserved identifier to a different node key.
-   4. Add the mapping to the merged lookup snapshot.
-4. Render node-owned intents into raw database operations.
-5. Render reverse-dependency merge intents against the latest committed records.
-6. If identifier mappings changed, include a raw put of the full serialized identifier lookup in the same durable batch as node-state writes.
-7. Await the durable batch.
-8. After the batch succeeds, publish identifier mappings into the volatile committed lookup.
-9. Synchronously clear this transaction's entries from `_computed.inFlightIdentifiers` and owner diagnostics.
-10. Release held pull-node locks.
-11. Return the transaction result.
+Only the identifier overlay is rebased against the latest committed lookup. The overlay is global metadata, while the node-data batch is protected by concrete node locks.
 
-The durable write happens before volatile publication. If durable write fails, volatile lookup remains unchanged and reservations are cleared during abort cleanup.
+Under `COMMIT_KEY(replicaName)`:
 
-## Crash and recovery behavior
+1. Read the latest active schema storage and committed identifier lookup.
+2. For each transaction overlay entry, assert that the committed lookup does not already map the same node key to a different identifier.
+3. For each transaction overlay entry, assert that the committed lookup does not already map the same identifier to a different node key.
+4. Merge the overlay entries into a lookup snapshot.
+5. If the overlay is non-empty, append one `global/identifiers_keys_map` put operation containing the full serialized merged lookup.
+6. Flush the transaction's existing node-data operations plus the optional lookup put in one durable batch.
+7. After the batch succeeds, publish the overlay entries into the volatile committed lookup.
+8. Remove `tx.reservedIdentifiers` from `inFlightIdentifiers`.
+9. Return the transaction result.
 
-### Crash before durable batch success
+If any assertion fails before the durable batch, abort the transaction and leave the volatile committed lookup unchanged. Such a failure indicates that a caller created a mapping without holding the required concrete node lock, or that durable state was changed outside this protocol.
 
-No volatile identifier publication has occurred. Durable state remains at the previous committed version. In-memory reservations disappear with the process.
+If the durable batch fails, abort the transaction, clear reservations, release locks, and leave the volatile committed lookup unchanged.
 
-### Crash after durable batch success but before volatile publication
+If the process crashes after the durable batch succeeds but before volatile publication, restart reconstructs the lookup from durable `identifiers_keys_map`.
 
-The process dies before in-memory state matters again. On restart, the active identifier lookup is loaded from durable storage and includes the committed batch.
+## Why node-data batches are not diffs
 
-### Crash after volatile publication
+Node-data conflicts should be prevented by lock coverage, not repaired by a second merge language.
 
-Durable state already contains the same identifier lookup and node-state batch. Restart reconstructs the same committed state.
+The batch writes are safe when these ownership rules hold:
 
-## Inspection consistency
+- A transaction writing node-owned records for `node` holds `NODE_KEY(nodeKey)` until commit.
+- A transaction updating `revdeps[input]` holds `NODE_KEY(inputNodeKey)` until commit.
+- Invalidation writes that set freshness to `"potentially-outdated"` are idempotent.
+- Maintenance operations run in `exclusive` graph activity mode.
 
-Inspection reads remain observe-mode and are excluded from pulls. They may overlap invalidations by design.
+Identifier lookup updates are different because unrelated transactions can allocate different node keys concurrently. Therefore the transaction identifier overlay is merged under the commit mutex. This is the only required diff-like operation.
 
-For single-record inspection reads (`getValue`, `getFreshness`, timestamps), observe-mode compatibility is sufficient because invalidation changes are idempotent and pull writes are excluded.
+## Inspection protocol
 
-For multi-record inspection reads that combine volatile lookup data with persistent sublevel scans, prefer one of these implementation choices:
+Inspection reads acquire `GRAPH_ACTIVITY_KEY` in `observe` mode.
 
-1. read after the no-`await` disk-success-to-volatile-publish window; or
-2. use a short read-side commit mutex around the multi-record read.
+Single-record reads may read the current durable sublevels normally.
 
-The second option is stricter and easier to audit. It blocks only the publish window, not invalidation computation.
+Inspection reads that combine `identifierLookup` with durable node-data sublevels must not observe a volatile lookup that is newer or older than the durable records being combined with it. The simplest rule is: take `COMMIT_KEY(replicaName)` around multi-record inspection reads that combine volatile lookup state with durable sublevel scans.
 
-## Multi-process requirement
+## Maintenance protocol
 
-The synchronous reservation guarantee is in-process. Production deployment must enforce exactly one active writer process per database replica. If multiple writer processes are required, `_computed.inFlightIdentifiers` must become a durable reservation table with transactional uniqueness, and commit must verify/clear that durable reservation.
+Operations that replace active replica state, migrate storage, reset the database, or reopen active handles acquire graph activity in `exclusive` mode.
 
-## Lock ordering
+Exclusive operations may rebuild `_computed`, including `identifierLookup` and `inFlightIdentifiers`. They must not run concurrently with pull, invalidation, inspection, or commit publication.
 
-The required order is:
+## Lock order
+
+All code follows this order:
 
 1. graph activity mode lock;
-2. per-node pull locks during dependency traversal;
-3. synchronous identifier reservation helper as needed (no mutex, no await);
-4. commit merge/publish mutex;
+2. concrete node locks;
+3. synchronous identifier allocation while holding the concrete node lock for the allocated key;
+4. commit mutex;
 5. release commit mutex;
-6. release per-node pull locks.
+6. release concrete node locks;
+7. release graph activity mode lock.
 
-Never acquire graph activity mode while holding per-node pull locks or the commit mutex. Never call user computors while holding the commit mutex.
+Code must never acquire graph activity mode while holding a concrete node lock or the commit mutex. Code must never call user computors while holding the commit mutex.
+
+The dependency graph is a DAG, so recursive dependency pulls acquire concrete node locks along dependency edges. A concrete-node deadlock would imply a dependency cycle, which graph construction rejects.
+
+## Multi-process boundary
+
+`inFlightIdentifiers` is an in-process reservation set. This design assumes one active writer process per database replica.
+
+If multiple writer processes can write the same replica, identifier reservation must move to durable transactional storage with uniqueness guarantees. The in-memory reservation set is not sufficient across processes.
 
 ## Required tests
 
-1. Concurrent pulls of disjoint nodes both enter computors before either completes.
-2. Concurrent pulls of the same node serialize until the first transaction commits.
-3. Concurrent pulls that share only one dependency serialize only on that dependency.
-4. Nested pulls reuse the outer transaction and do not reacquire transaction-body locks.
-5. A deterministic fake random source returning the same candidate to two live transactions causes the second synchronous reservation to retry.
-6. A transaction abort clears all `inFlightIdentifiers` reservations and does not mutate the committed lookup.
-7. A durable batch failure leaves volatile lookup unchanged and clears reservations.
-8. Concurrent reverse-dependency additions to the same input preserve every dependent.
-9. Concurrent invalidations of the same previously unmaterialized node converge on one canonical identifier and clear non-canonical reservations.
-10. Restart after durable batch success reconstructs the identifier lookup and node-state graph from persistent storage.
-11. Inspection reads do not observe volatile identifier mappings that were not durably flushed.
-12. Exclusive migration/open/reset work blocks pull and observe activity while it mutates replica state.
+The implementation should include tests for:
 
-## Implementation sequence
-
-1. Add `inFlightIdentifiers` and optional owner diagnostics to active root computed state.
-2. Add transaction IDs and `reservedIdentifiers` to transaction state.
-3. Replace direct `txAllocateNodeIdentifier(...)` calls with a synchronous reservation-aware allocator.
-4. Add per-node pull locks and hold them through transaction commit or abort.
-5. Replace eager raw batch recording for shared records with transaction intents.
-6. Add commit merge/publish mutex scoped only to rebase, render, durable batch, volatile publication, and reservation cleanup.
-7. Add failure injection tests for durable batch rejection and reservation cleanup.
-8. Add deterministic duplicate-candidate tests using a fake random source.
-9. Add concurrency tests for disjoint pulls, shared dependency pulls, same-node pulls, invalidations, reverse-dependency merges, and inspection consistency.
+1. two disjoint pulls both enter their computors before either finishes;
+2. two pulls of the same node serialize on the concrete node lock;
+3. two pulls with a shared dependency serialize only at the shared dependency;
+4. nested pulls reuse the outer transaction and do not create a nested transaction;
+5. duplicate generated identifier candidates retry using `inFlightIdentifiers`;
+6. abort clears identifier reservations and releases concrete node locks;
+7. durable batch failure leaves volatile `identifierLookup` unchanged;
+8. reverse-dependency updates from concurrent pulls preserve every dependent;
+9. concurrent invalidations converge on `"potentially-outdated"` without requiring full batch diffs;
+10. multi-record inspection does not combine mismatched volatile lookup and durable node-data snapshots;
+11. exclusive maintenance blocks pull, invalidation, inspection, and commit publication.
