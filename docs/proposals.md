@@ -113,7 +113,7 @@ Not acceptable if full compliance is mandatory.
 | B. Allocation-only serialization | Medium-High | Medium (subtle hazards) | Medium-High | Maybe |
 | C. Journaled commit engine | High | High | Very High | No (now) |
 | D. Keep global serialization | Low | High | Low | No |
-| E. Minimal locks + reserved ids + locked merge/publish | High | High | Medium-High | **Yes** |
+| E. Minimal locks + sync reserved ids + locked merge/publish | High | High | Medium-High | **Yes** |
 
 ## Historical rollout sketch (Proposal A)
 
@@ -151,7 +151,7 @@ A solution is acceptable only if all are true:
 
 ## Final recommendation
 
-Adopt **Proposal E** below rather than Proposal A. Proposal A identified the right execution/commit split, but Proposal E narrows the lock boundary further while treating identifier uniqueness as a hard production-grade guarantee: random generation is coordinated by a very small reservation critical section, and only concrete node ownership plus merge/publish of shared state use longer locks.
+Adopt **Proposal E** below rather than Proposal A. Proposal A identified the right execution/commit split, but Proposal E narrows the lock boundary further while treating identifier uniqueness as a hard production-grade guarantee: random generation is coordinated by a synchronous reservation section (no mutex/await), and only concrete node ownership plus merge/publish of shared state require locks.
 
 
 ## Additional option explored: No special lock for identifier-map updates
@@ -190,12 +190,15 @@ Absent one of those, removing special synchronization for identifier-map updates
 ### Verdict on this option
 As currently implemented, this option is **not valid** for full-correctness operation. Same-node pull serialization does not eliminate cross-node allocation conflicts. Any compliant proposal must keep explicit cross-transaction coordination for identifier allocation/merge/commit.
 
-## Proposal E (new recommended): Minimal-lock transaction protocol with reserved random allocation and locked merge/publish
+## Proposal E (new recommended): Minimal-lock transaction protocol with synchronous identifier reservation and locked merge/publish
 
 ### Why this proposal exists
-The previous proposals treated identifier allocation as either a broad synchronization point or a probabilistic non-issue. For production-grade medical software, identifier uniqueness must be a deterministic runtime guarantee, not a probability argument. After studying the current architecture more closely, the necessary synchronization boundary is still narrow:
+The previous proposals treated identifier allocation as either a broad synchronization point or a probabilistic non-issue. For production-grade medical software, identifier uniqueness must be a deterministic runtime guarantee, not a probability argument. After verifying the current allocation path, the necessary synchronization boundary is narrower than a mutex:
 
-- Random identifier generation may happen outside long graph locks, but candidate **reservation** must be atomic against the committed base lookup and other in-flight reservations.
+- JavaScript executes one synchronous call stack at a time on the Node.js event loop. A section with no `await`, callback entry, timer, I/O continuation, or promise yield cannot be interleaved by another graph operation in the same process.
+- The current identifier allocation path (`resolveConcreteNode` → `getOrAllocateNodeIdentifier` → `txAllocateNodeIdentifier` → `rootDatabase.generateNodeIdentifier`) is synchronous today: it performs lookup checks, random string generation, and `Map` mutations without `await`.
+- Therefore candidate **reservation** can be atomic without a sleeper mutex as long as the reservation function remains synchronous by API contract.
+- This is an **in-process** guarantee. Production deployment must also guarantee a single active writer process for one database replica, or replace this in-memory reservation with a database-backed compare-and-swap / lease mechanism. The existing sleeper locks are also in-process, so this is not a new limitation of the reservation design.
 - Per-transaction overlays do **not** need a mutex while they are private to one transaction.
 - The shared base lookup and the persistent store **do** need a coordinated merge/publish boundary, because that is where private overlays become globally visible and durable.
 
@@ -203,7 +206,7 @@ This proposal therefore locks the minimum surfaces that carry shared mutable sta
 
 1. graph phase compatibility;
 2. concrete node execution/commit ownership;
-3. short reservation of generated identifiers;
+3. synchronous reservation of generated identifiers without a mutex;
 4. final merge of transaction intent into persistent state plus volatile lookup publication.
 
 ### Architecture paths studied
@@ -256,8 +259,8 @@ This is still minimal because:
 - shared dependency nodes serialize only where they actually overlap;
 - no graph-wide pull mutex is introduced.
 
-#### 3. Identifier reservation mutex
-Add a very short `IDENTIFIER_RESERVATION_KEY(activeReplica)` mutex that protects only the reservation set:
+#### 3. Synchronous identifier reservation, with no mutex
+Add a synchronous reservation API that updates only the in-memory reservation set:
 
 - `_computed.inFlightIdentifiers`: `Set<string>` of generated identifiers that have been allocated into a transaction overlay but not yet committed or aborted;
 - optionally `_computed.inFlightIdentifierOwners`: `Map<string, TransactionId>` for diagnostics and assertion-quality errors.
@@ -265,14 +268,17 @@ Add a very short `IDENTIFIER_RESERVATION_KEY(activeReplica)` mutex that protects
 Allocation protocol:
 
 1. If the node key already exists in the transaction overlay or committed base, return the existing identifier.
-2. Otherwise generate a random candidate.
-3. Under `IDENTIFIER_RESERVATION_KEY`, check both the committed base `idToKey` and `_computed.inFlightIdentifiers`.
-4. If either contains the candidate, release the mutex and retry with a new candidate.
-5. If both are clear, insert the candidate into `_computed.inFlightIdentifiers`, record it in the transaction's `reservedIdentifiers`, and add the mapping to the private overlay.
+2. Otherwise enter a synchronous helper such as `reserveNodeIdentifier(tx, rootDatabase, nodeKey)`.
+3. Generate a random candidate synchronously.
+4. In the same synchronous call stack, check both the committed base `idToKey` and `_computed.inFlightIdentifiers`.
+5. If either contains the candidate, loop synchronously and generate another candidate.
+6. If both are clear, insert the candidate into `_computed.inFlightIdentifiers`, record it in the transaction's `reservedIdentifiers`, and add the mapping to the private overlay before returning.
 
-The mutex is not held during computor execution, dependency traversal, storage reads, or transaction commit. It only makes "candidate is globally unused or reserved" an atomic fact.
+There must be no `await`, promise callback scheduling, timer, I/O, or user callback inside this helper. Because the whole check-and-insert sequence is synchronous, JavaScript cannot interleave another graph transaction between the check and the reservation insert in the same process. A sleeper mutex would add queueing complexity without increasing atomicity for this specific operation.
 
-On abort, all transaction reservations are removed. On successful commit, reservations are removed only after the durable batch succeeds and the volatile base lookup has been published.
+For production-grade operation across multiple OS processes, this design requires the existing application-level guarantee that only one process owns a live replica at a time. If that guarantee is intentionally removed, `_computed.inFlightIdentifiers` must move from memory into a durable reservation table with transactional uniqueness semantics.
+
+On abort, all transaction reservations are removed by a synchronous cleanup helper. On successful commit, reservations are removed synchronously only after the durable batch succeeds and the volatile base lookup has been published.
 
 #### 4. Commit merge/publish mutex
 Replace the broad `withComputedStateMutex` transaction-body lock with a short `COMMIT_KEY(activeReplica)` mutex around only:
@@ -282,7 +288,7 @@ Replace the broad `withComputedStateMutex` transaction-body lock with a short `C
 3. flushing one atomic persistent batch;
 4. publishing the overlay into the volatile base after the flush succeeds.
 
-No computor execution, dependency traversal, or random identifier reservation happens under this mutex.
+No computor execution, dependency traversal, or identifier reservation happens under this mutex.
 
 ### Transaction representation changes required
 The current batch builder eagerly records raw LevelDB operations. That is too early for a concurrent design because some writes are derived from shared state that can change before commit.
@@ -329,7 +335,7 @@ At commit time, for each private `nodeKey -> proposedId` mapping:
 
 3. Else assert that `proposedId` is still owned by this transaction in `_computed.inFlightIdentifiers`, then insert `nodeKey -> proposedId` into the base snapshot that will be serialized.
 
-Only reservation and merge need mutexes. Candidate generation and private overlay access remain outside long locks, but same-identifier generation is still ruled out by construction.
+Only merge/publish needs a mutex. Candidate generation plus reservation is a synchronous atomic section rather than a lock, and same-identifier generation is ruled out by construction.
 
 ### Persistent/volatile synchronization protocol
 
@@ -375,22 +381,22 @@ The required order is:
 
 1. graph activity mode lock;
 2. pull-node locks acquired along dependency traversal;
-3. short identifier reservation mutex whenever a new candidate must be reserved;
+3. synchronous identifier reservation helper whenever a new candidate must be reserved;
 4. commit merge/publish mutex;
 5. release commit mutex;
 6. release pull-node locks.
 
-The reservation mutex must never call user computors or persistent storage APIs while held. It is a pure in-memory check/update critical section.
+The reservation helper must never call user computors or persistent storage APIs and must never `await`. It is a pure in-memory check/update critical section that completes before control returns to the event loop.
 
-Never acquire observe mode while holding node locks, the reservation mutex, or commit mutex. Exclusive operations acquire exclusive graph mode before touching transaction state.
+Never acquire observe mode while holding node locks or commit mutex. Exclusive operations acquire exclusive graph mode before touching transaction state.
 
 This remains deadlock-safe because pull-node wait edges follow dependency edges in the graph DAG.
 
 ### Why this is less locking than Proposal A
 Proposal A serialized the whole commit operation and assumed transaction overlays may need conservative conflict handling. Proposal E is more precise while meeting a production-grade uniqueness bar:
 
-- no long lock for random identifier generation;
-- a tiny in-memory reservation lock guarantees no duplicate in-flight identifier;
+- no mutex for random identifier generation or reservation;
+- a synchronous in-memory reservation section guarantees no duplicate in-flight identifier in one Node.js process;
 - no lock for private overlay writes after reservation;
 - no lock for computor execution;
 - no lock for disjoint node writes;
@@ -404,9 +410,9 @@ Proposal A serialized the whole commit operation and assumed transaction overlay
 3. Same-node top-level pulls serialize until the first transaction commits.
 4. Concurrent pulls adding reverse deps to the same input preserve both dependents.
 5. Concurrent invalidations of the same previously-unmaterialized node converge on one canonical identifier and release the losing reservation.
-6. A deterministic fake random source that returns the same candidate to two concurrent transactions causes the second allocator to retry because `_computed.inFlightIdentifiers` contains the candidate.
+6. A deterministic fake random source that returns the same candidate to two concurrent transactions causes the second synchronous allocator call to retry because `_computed.inFlightIdentifiers` already contains the candidate.
 7. Injected failure after batch rejection leaves volatile lookup unchanged and clears reservations.
 8. Injected crash/reload after batch success reconstructs the committed lookup from disk.
 
 ### Final recommendation
-Adopt Proposal E as the implementation target. It keeps the lock footprint small, but it no longer relies on probabilistic uniqueness. Generated identifiers become globally reserved before entering transaction overlays, and the merge/publish boundary remains serialized so durable state and volatile state cannot diverge.
+Adopt Proposal E as the implementation target. It keeps the lock footprint small, but it no longer relies on probabilistic uniqueness. Generated identifiers become globally reserved in a synchronous, non-interleavable section before entering transaction overlays, and the merge/publish boundary remains serialized so durable state and volatile state cannot diverge.
