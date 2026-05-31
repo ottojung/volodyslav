@@ -45,18 +45,17 @@
  */
 
 const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
+const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { stringToNodeIdentifier, versionToString } = require('./types');
-const { compareNodeIdentifier } = require('./node_identifier');
+const { compareNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
 const {
-    makeEmptyIdentifierLookup,
-    makeIdentifierLookup,
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
 const { reconcileHostLookupWithTargetLookup } = require('./reconcile_identifier_lookup');
-const { MalformedIdentifierLookupError } = require('./replica_errors');
+const { makeHostIdentifierTranslation, parseIdentifierLookup } = require('./sync_merge_identifier_translation');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -127,27 +126,6 @@ function isSyncMergeAggregateError(object) {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
- * Compare two ISO-8601 date strings.
- * Returns negative if a < b, 0 if equal, positive if a > b.
- * `undefined` is treated as the oldest possible value (before any real timestamp).
- *
- * ISO 8601 UTC timestamps (ending in 'Z') are lexicographically ordered,
- * so plain string comparison produces the correct temporal ordering.
- *
- * @param {string | undefined} a
- * @param {string | undefined} b
- * @returns {number}
- */
-function compareIsoTimestamps(a, b) {
-    if (a === undefined && b === undefined) return 0;
-    if (a === undefined) return -1;
-    if (b === undefined) return 1;
-    if (a < b) return -1;
-    if (a > b) return 1;
-    return 0;
-}
-
-/**
  * Gently unify the entire contents of replica `from` into replica `to`.
  * Only keys whose value differs are written; keys absent from the source
  * are deleted from the target.  This replaces the previous clear-then-copy
@@ -182,46 +160,52 @@ async function copyReplicaGently(rootDatabase, from, to) {
  *
  * @param {SchemaStorage} T - Target (inactive) replica storage.
  * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeIdentifier} key
+ * @param {NodeIdentifier} targetKey - Identifier to write in the target replica.
+ * @param {NodeIdentifier} hostKey - Identifier to read from the host staging storage.
+ * @param {(hostIdentifier: NodeIdentifier) => NodeIdentifier} targetIdentifierForHostIdentifier
  * @returns {Promise<Array<*>>}
  */
-async function buildTakeOps(T, H, key) {
+async function buildTakeOps(T, H, targetKey, hostKey, targetIdentifierForHostIdentifier) {
     /** @type {Array<*>} */
     const ops = [];
 
-    const hValue = await H.values.get(key);
+    const hValue = await H.values.get(hostKey);
     if (hValue !== undefined) {
-        ops.push(T.values.putOp(key, hValue));
+        ops.push(T.values.putOp(targetKey, hValue));
     } else {
-        ops.push(T.values.delOp(key));
+        ops.push(T.values.delOp(targetKey));
     }
 
-    const hFreshness = await H.freshness.get(key);
-    ops.push(T.freshness.putOp(key, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
+    const hFreshness = await H.freshness.get(hostKey);
+    ops.push(T.freshness.putOp(targetKey, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
 
-    const hTimestamps = await H.timestamps.get(key);
+    const hTimestamps = await H.timestamps.get(hostKey);
     if (hTimestamps !== undefined) {
-        ops.push(T.timestamps.putOp(key, hTimestamps));
+        ops.push(T.timestamps.putOp(targetKey, hTimestamps));
     } else {
-        ops.push(T.timestamps.delOp(key));
+        ops.push(T.timestamps.delOp(targetKey));
     }
 
-    const hInputs = await H.inputs.get(key);
+    const hInputs = await H.inputs.get(hostKey);
     if (hInputs !== undefined) {
-        ops.push(T.inputs.putOp(key, hInputs));
+        ops.push(T.inputs.putOp(targetKey, {
+            inputs: hInputs.inputs.map(input => nodeIdentifierToString(targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))),
+            inputCounters: hInputs.inputCounters,
+        }));
     } else {
-        ops.push(T.inputs.delOp(key));
+        ops.push(T.inputs.delOp(targetKey));
     }
 
-    const hCounter = await H.counters.get(key);
+    const hCounter = await H.counters.get(hostKey);
     if (hCounter !== undefined) {
-        ops.push(T.counters.putOp(key, hCounter));
+        ops.push(T.counters.putOp(targetKey, hCounter));
     } else {
-        ops.push(T.counters.delOp(key));
+        ops.push(T.counters.delOp(targetKey));
     }
 
     return ops;
 }
+
 
 /**
  * Gently update the revdeps index in `T` to match the desired state derived
@@ -357,6 +341,37 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const T = rootDatabase.schemaStorageForReplica(toReplica);
     const H = rootDatabase.hostnameSchemaStorage(hostname);
 
+    const hostLookup = parseIdentifierLookup(await H.global.get('identifiers_keys_map'));
+    const targetLookup = parseIdentifierLookup(await T.global.get('identifiers_keys_map'));
+    const reconciledHostLookup = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
+    const { hostToTarget, targetToHost } = makeHostIdentifierTranslation(hostLookup, reconciledHostLookup);
+
+    /**
+     * @param {NodeIdentifier} hostIdentifier
+     * @returns {NodeIdentifier}
+     */
+    function targetIdentifierForHostIdentifier(hostIdentifier) {
+        return hostToTarget.get(nodeIdentifierToString(hostIdentifier)) ?? hostIdentifier;
+    }
+
+    /**
+     * @param {NodeIdentifier} targetIdentifier
+     * @returns {NodeIdentifier}
+     */
+    function hostIdentifierForTargetIdentifier(targetIdentifier) {
+        return targetToHost.get(nodeIdentifierToString(targetIdentifier)) ?? targetIdentifier;
+    }
+
+    /**
+     * @param {import('./root_database').InputsRecord | undefined} record
+     * @returns {NodeIdentifier[]}
+     */
+    function translatedHostInputs(record) {
+        return record
+            ? record.inputs.map(input => targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))
+            : [];
+    }
+
     // ── Step 2: Collect nodes and build merged dependency map ────────────────
     //
     // Initial timestamp decisions are computed for all T nodes.  Then the
@@ -380,7 +395,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     for await (const node of T.inputs.keys()) {
         const tTimestamps = await T.timestamps.get(node);
-        const hTimestamps = await H.timestamps.get(node);
+        const hTimestamps = await H.timestamps.get(hostIdentifierForTargetIdentifier(node));
 
         const cmp = compareIsoTimestamps(tTimestamps?.modifiedAt, hTimestamps?.modifiedAt);
 
@@ -398,9 +413,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // ── 2b: Discover H-only nodes ─────────────────────────────────────────────
     /** @type {Set<NodeIdentifier>} */
     const hOnlyNodes = new Set();
-    for await (const key of H.inputs.keys()) {
-        if (!initialDecisions.has(key)) {
-            hOnlyNodes.add(key);
+    for await (const hostKey of H.inputs.keys()) {
+        const targetKey = targetIdentifierForHostIdentifier(hostKey);
+        if (!initialDecisions.has(targetKey)) {
+            hOnlyNodes.add(targetKey);
         }
     }
 
@@ -420,22 +436,20 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             // merged graph (empty list).  Falling back to T.inputs here would
             // make mergedInputsMap inconsistent with the actual DB state after
             // the merge, leaving revdeps pointing to inputs that no longer exist.
-            record = await H.inputs.get(node);
+            record = await H.inputs.get(hostIdentifierForTargetIdentifier(node));
+            mergedInputsMap.set(node, translatedHostInputs(record));
         } else {
             record = await T.inputs.get(node);
+            const inputKeys = record
+                ? record.inputs.map(input => stringToNodeIdentifier(input))
+                : [];
+            mergedInputsMap.set(node, inputKeys);
         }
-        const inputKeys = record
-            ? record.inputs.map(s => stringToNodeIdentifier(s))
-            : [];
-        mergedInputsMap.set(node, inputKeys);
     }
 
     for (const key of hOnlyNodes) {
-        const record = await H.inputs.get(key);
-        const inputKeys = record
-            ? record.inputs.map(s => stringToNodeIdentifier(s))
-            : [];
-        mergedInputsMap.set(key, inputKeys);
+        const record = await H.inputs.get(hostIdentifierForTargetIdentifier(key));
+        mergedInputsMap.set(key, translatedHostInputs(record));
     }
 
     // ── Step 3: Stable topological sort of the merged graph ──────────────────
@@ -512,7 +526,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     for (const [node, decision] of decisions) {
         if (decision === 'take') {
-            const takeOps = await buildTakeOps(T, H, node);
+            const takeOps = await buildTakeOps(T, H, node, hostIdentifierForTargetIdentifier(node), targetIdentifierForHostIdentifier);
             pendingOps.push(...takeOps);
             // H-only nodes whose ancestors include a locally-kept (T-newer) node
             // were computed on the remote with stale inputs.  Copy the structural
@@ -528,7 +542,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             // mergedInputsMap and rebuilt revdeps. We then force freshness to
             // potentially-outdated to trigger recomputation.
             if (initialDecisions.get(node) === 'take') {
-                const takeOps = await buildTakeOps(T, H, node);
+                const takeOps = await buildTakeOps(T, H, node, hostIdentifierForTargetIdentifier(node), targetIdentifierForHostIdentifier);
                 pendingOps.push(...takeOps);
             }
             pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
@@ -546,7 +560,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             // an ancestor, T.modifiedAt >= H.modifiedAt already — overwriting would
             // regress the timestamp.
             if (initialDecisions.get(node) === 'take') {
-                const hTimestamps = await H.timestamps.get(node);
+                const hTimestamps = await H.timestamps.get(hostIdentifierForTargetIdentifier(node));
                 if (hTimestamps !== undefined) {
                     const tTimestamps = await T.timestamps.get(node);
                     // Preserve T's createdAt; advance only modifiedAt to H's value.
@@ -578,17 +592,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const hasChanges = taken + invalidated > 0;
 
     if (hasChanges) {
-        const hostIdentifierValue = await H.global.get('identifiers_keys_map');
-        const targetIdentifierValue = await T.global.get('identifiers_keys_map');
-        /** @param {unknown} rawEntries */
-        const parseIdentifierLookup = (rawEntries) => {
-            if (rawEntries === undefined) return makeEmptyIdentifierLookup();
-            if (!Array.isArray(rawEntries)) throw new MalformedIdentifierLookupError(rawEntries);
-            return makeIdentifierLookup(rawEntries);
-        };
-        const hostLookup = parseIdentifierLookup(hostIdentifierValue);
-        const targetLookup = parseIdentifierLookup(targetIdentifierValue);
-        const reconciledHostLookup = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
         const mergedLookup = mergeIdentifierLookups(targetLookup, reconciledHostLookup);
 
         pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
