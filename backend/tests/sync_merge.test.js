@@ -16,7 +16,10 @@
 const {
     getRootDatabase,
     isMalformedIdentifierLookupError,
+    makeIdentifierLookup,
     nodeIdentifierFromString,
+    serializeIdentifierLookup,
+    stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
 const {
     mergeHostIntoReplica,
@@ -177,6 +180,65 @@ describe('mergeHostIntoReplica', () => {
             const T = db.schemaStorageForReplica(newActive);
             const merged = await T.values.get(nodeA);
             expect(merged).toEqual(remoteValue);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('reconciles host identifiers before timestamp decisions and copied inputs', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const targetParent = nodeIdentifierFromString('parentaaa');
+            const targetChild = nodeIdentifierFromString('childaaaa');
+            const hostParent = nodeIdentifierFromString('parentbbb');
+            const hostChild = nodeIdentifierFromString('childbbbb');
+            const parentKey = stringToNodeKeyString('{"head":"parent","args":[]}');
+            const childKey = stringToNodeKeyString('{"head":"child","args":[]}');
+            const localChildValue = { value: { id: 'child-local', type: 'test', description: 'local child' }, isDirty: false };
+            const remoteChildValue = { value: { id: 'child-remote', type: 'test', description: 'remote child' }, isDirty: false };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetParent, TS1, [], undefined);
+            await writeNode(L, targetChild, TS1, [targetParent], localChildValue);
+            await L.global.put('identifiers_keys_map', serializeIdentifierLookup(makeIdentifierLookup([
+                [targetParent, parentKey],
+                [targetChild, childKey],
+            ])));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostParent, TS1, [], undefined);
+            await writeNode(H, hostChild, TS2, [hostParent], remoteChildValue);
+            await H.global.put('identifiers_keys_map', serializeIdentifierLookup(makeIdentifierLookup([
+                [hostParent, parentKey],
+                [hostChild, childKey],
+            ])));
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const T = db.schemaStorageForReplica(db.currentReplicaName());
+            expect(db.currentReplicaName()).toBe('y');
+            expect(await T.values.get(targetChild)).toEqual(remoteChildValue);
+            expect(await T.values.get(hostChild)).toBeUndefined();
+            expect(await T.timestamps.get(targetChild)).toEqual({ createdAt: TS2, modifiedAt: TS2 });
+            expect(await T.timestamps.get(hostChild)).toBeUndefined();
+            expect(await T.inputs.get(targetChild)).toEqual({
+                inputs: [targetParent],
+                inputCounters: [],
+            });
+            expect(await T.revdeps.get(targetParent)).toEqual([targetChild]);
+            expect(await T.revdeps.get(hostParent)).toBeUndefined();
+            expect(await T.global.get('identifiers_keys_map')).toEqual(serializeIdentifierLookup(makeIdentifierLookup([
+                [targetParent, parentKey],
+                [targetChild, childKey],
+            ])));
         } finally {
             if (db) await db.close();
         }
