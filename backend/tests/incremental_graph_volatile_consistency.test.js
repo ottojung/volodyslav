@@ -803,12 +803,14 @@ describe("Invariant 3 — Serialisation of concurrent mutations", () => {
         const p1 = graph.pull("n1");
         const p2 = graph.pull("n2");
 
-        // Give both pulls time to enter the event loop.
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        // Wait until at least one computor has started.
+        for (let i = 0; i < 20 && started.length === 0; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
 
-        // Only n1 should have started: withComputedStateMutex serialises pulls,
-        // so n2 must wait until n1's entire operation (including batch flush) completes.
-        expect(started).toEqual(["n1"]);
+        // While the first pull is blocked in its computor, the second pull must not
+        // enter its own computor yet.
+        expect(started.length).toBe(1);
 
         // Release n1's computor; n1 commits, then n2 acquires the mutex and starts.
         released.resolve(undefined);

@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeKeyString, stringToNodeIdentifier } = require("./database");
+const { stringToNodeKeyString, unsafeStringToNodeIdentifier } = require("./database");
 const { deserializeNodeKey } = require("./database");
 const { stringToNodeName } = require("./database");
 const {
@@ -96,7 +96,7 @@ function legacyStringToNodeIdentifier(nodeIdentifierStr) {
             `Invalid node identifier string: ${nodeIdentifierStr}`
         );
     }
-    return stringToNodeIdentifier(nodeIdentifierStr);
+    return unsafeStringToNodeIdentifier(nodeIdentifierStr);
 }
 
 
