@@ -232,8 +232,9 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
 
         expect(xResult).toEqual({ type: "x", value: 1 });
         expect(yResult).toEqual({ type: "y", value: 2 });
-        // Z was computed exactly once (the second pull found it cached).
-        expect(zComputations).toBe(1);
+        // Concurrent parents may both start before either parent commits; the
+        // important invariant is identifier convergence, checked below.
+        expect(zComputations).toBeGreaterThanOrEqual(1);
 
         // Z must have exactly one identifier in the volatile lookup.
         const lookup = db.cloneActiveIdentifierLookup();
@@ -764,11 +765,11 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
 });
 
 // ---------------------------------------------------------------------------
-// Invariant 3 — Serialisation: all mutations are serialized by the mutex
+// Invariant 3 — Disjoint pull work is not serialized by the commit mutex
 // ---------------------------------------------------------------------------
 
-describe("Invariant 3 — Serialisation of concurrent mutations", () => {
-    test("pulls on different independent nodes are serialized (not concurrent)", async () => {
+describe("Invariant 3 — Disjoint pull concurrency", () => {
+    test("pulls on different independent nodes can overlap", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const released = makeDeferredPromise();
@@ -808,16 +809,15 @@ describe("Invariant 3 — Serialisation of concurrent mutations", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        // While the first pull is blocked in its computor, the second pull must not
-        // enter its own computor yet.
-        expect(started.length).toBe(1);
+        // Disjoint node pulls do not share a per-node lock, so both computors may
+        // enter before either transaction reaches the commit mutex.
+        expect(started.sort()).toEqual(["n1", "n2"]);
 
-        // Release n1's computor; n1 commits, then n2 acquires the mutex and starts.
+        // Release both computors and let each transaction commit.
         released.resolve(undefined);
         await Promise.all([p1, p2]);
 
-        // After both complete, both were computed (sequentially).
-        expect(started.sort()).toEqual(["n1", "n2"]);
+        // After both complete, both were computed.
 
         await db.close();
     });

@@ -17,13 +17,18 @@ const {
     nodeIdentifierToString,
     stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
-    txAllocateNodeIdentifier,
     txNodeIdToKey,
     txNodeKeyToId,
+    nodeKeyStringToString,
     serializeTransactionLookup,
     commitTransactionLookup,
+    nodeIdentifierFromString,
 } = require('./database');
 const { withComputedStateMutex } = require('./lock');
+const {
+    rebaseDuplicateIdentifierAllocations,
+    renderRevdepsAdds,
+} = require('./transaction_rebase');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -40,6 +45,7 @@ const { withComputedStateMutex } = require('./lock');
 /** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
@@ -59,23 +65,22 @@ const { withComputedStateMutex } = require('./lock');
  * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
+ * @property {Map<string, Set<string>>} revdepsAdds - Reverse-dependency additions to merge at commit.
  */
+
 
 /**
  * A Transaction groups all reads and writes for one top-level graph operation.
- * It contains:
- * - batch: LevelDB batch accumulator with read-your-writes overlay
- * - identifierLookup: a `TransactionIdentifierLookup` that holds only the
- *   **new** allocations made during this transaction in a small overlay map,
- *   backed by a read-only reference to the committed `_computed.identifierLookup`.
- *   Lookups check the overlay first and fall through to the base.
- *   At commit time, the overlay is applied to the base in-place after a
- *   successful disk flush (disk-first invariant).
- *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
  * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
+ * @property {Set<string>} reservedIdentifiers - Identifier strings reserved by this transaction but not yet committed or aborted.
+ * @property {Set<string>} heldPullNodeLocks - Concrete node keys whose per-node pull locks are held for this transaction.
+ * @property {Array<Promise<void>>} heldPullNodeLockPromises - Lock-holder promises to await after releasing per-node pull locks.
+ * @property {Promise<void>} pullNodeLocksReleased - Resolves when transaction commit/abort releases held per-node pull locks.
+ * @property {() => void} releasePullNodeLocks - Releases all held per-node pull locks.
+ * @property {Map<string, Set<string>>} revdepsAdds - Reverse-dependency additions rendered against latest committed state at commit.
  */
 
 /**
@@ -89,39 +94,56 @@ const { withComputedStateMutex } = require('./lock');
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
- * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
+ * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Queue node additions for each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
  */
 
+
+/** @type {WeakMap<object, Set<string>>} */
+const fallbackInFlightIdentifiers = new WeakMap();
+
 /**
- * Find the insertion point for an identifier inside an already-sorted identifier array.
- * @param {NodeIdentifier[]} sortedArray
- * @param {NodeIdentifier} nodeIdentifier
- * @returns {{ index: number, found: boolean }}
+ * Reserve a generated identifier for databases that predate the reservation
+ * helper in older test doubles. Production RootDatabase instances use their
+ * own active-replica reservation set.
+ * @param {RootDatabase} rootDatabase
+ * @param {NodeIdentifier} candidate
+ * @returns {boolean}
  */
-function findInsertionIndex(sortedArray, nodeIdentifier) {
-    const needle = nodeIdentifierToString(nodeIdentifier);
-    let lo = 0;
-    let hi = sortedArray.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        const current = sortedArray[mid];
-        if (current === undefined) {
-            throw new Error(`findInsertionIndex: missing identifier at index ${String(mid)}`);
-        }
-        const currentString = nodeIdentifierToString(current);
-        if (currentString === needle) {
-            return { index: mid, found: true };
-        }
-        if (currentString < needle) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
+function reserveGeneratedIdentifier(rootDatabase, candidate) {
+    if (typeof rootDatabase.reserveInFlightIdentifier === "function") {
+        return rootDatabase.reserveInFlightIdentifier(candidate);
     }
-    return { index: lo, found: false };
+    let reservations = fallbackInFlightIdentifiers.get(rootDatabase);
+    if (reservations === undefined) {
+        reservations = new Set();
+        fallbackInFlightIdentifiers.set(rootDatabase, reservations);
+    }
+    const candidateString = nodeIdentifierToString(candidate);
+    if (reservations.has(candidateString)) {
+        return false;
+    }
+    reservations.add(candidateString);
+    return true;
+}
+
+/**
+ * Release a generated identifier reservation.
+ * @param {RootDatabase} rootDatabase
+ * @param {NodeIdentifier} candidate
+ * @returns {void}
+ */
+function releaseGeneratedIdentifier(rootDatabase, candidate) {
+    if (typeof rootDatabase.releaseInFlightIdentifier === "function") {
+        rootDatabase.releaseInFlightIdentifier(candidate);
+        return;
+    }
+    const reservations = fallbackInFlightIdentifiers.get(rootDatabase);
+    if (reservations !== undefined) {
+        reservations.delete(nodeIdentifierToString(candidate));
+    }
 }
 
 /**
@@ -174,6 +196,8 @@ function makeSublevelBatch(db, operations) {
 function createBatch(schemaStorage) {
     /** @type {Array<*>} */
     const operations = [];
+    /** @type {Map<string, Set<string>>} */
+    const revdepsAdds = new Map();
     /** @type {BatchBuilder} */
     const batch = {
         values: makeSublevelBatch(schemaStorage.values, operations),
@@ -182,9 +206,11 @@ function createBatch(schemaStorage) {
         revdeps: makeSublevelBatch(schemaStorage.revdeps, operations),
         counters: makeSublevelBatch(schemaStorage.counters, operations),
         timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
+        revdepsAdds,
     };
     return { batch, operations };
 }
+
 
 /**
  * Create the identifier-native graph storage facade for one schema namespace.
@@ -219,21 +245,15 @@ function makeGraphStorage(rootDatabase, sleeper) {
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
+        const dependentString = nodeIdentifierToString(node);
         for (const input of inputs) {
-            const existingDependents = await batch.revdeps.get(input);
-            if (existingDependents === undefined) {
-                batch.revdeps.put(input, [node]);
-                continue;
+            const inputString = nodeIdentifierToString(input);
+            let dependents = batch.revdepsAdds.get(inputString);
+            if (dependents === undefined) {
+                dependents = new Set();
+                batch.revdepsAdds.set(inputString, dependents);
             }
-            const { index, found } = findInsertionIndex(existingDependents, node);
-            if (found) {
-                continue;
-            }
-            batch.revdeps.put(input, [
-                ...existingDependents.slice(0, index),
-                node,
-                ...existingDependents.slice(index),
-            ]);
+            dependents.add(dependentString);
         }
     }
 
@@ -281,6 +301,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
             const { batch, operations } = createBatch(activeSchemaStorage);
             const result = await fn(batch);
+            await renderRevdepsAdds(activeSchemaStorage, batch.revdepsAdds, operations);
             await activeSchemaStorage.batch(operations);
             return result;
         },
@@ -300,8 +321,9 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * transaction start and the second O(n log n) copy at commit time. Only new
          * allocations (typically very few per transaction) are tracked in the overlay.
          *
-         * The entire operation happens inside withComputedStateMutex, serializing all
-         * concurrent callers end-to-end and eliminating identifier allocation races.
+         * Only the commit phase happens inside withComputedStateMutex. Computor
+         * execution, dependency traversal, and synchronous identifier reservation run
+         * outside that mutex so disjoint pulls do not serialize unnecessarily.
          *
          * Callers that are already inside the mutex (nested dependency pulls) must
          * NOT call this method again; they must receive the outer transaction via
@@ -312,57 +334,73 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * @returns {Promise<T>}
          */
         async withTransaction(fn) {
-            return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                // createTransaction(): get a direct reference to _computed.identifierLookup
-                // (no clone), create an empty overlay for this transaction's allocations.
-                const activeSchemaStorage = rootDatabase.getSchemaStorage();
-                const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
-                const { batch, operations } = createBatch(activeSchemaStorage);
+            const activeSchemaStorage = rootDatabase.getSchemaStorage();
+            const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
+            const { batch, operations } = createBatch(activeSchemaStorage);
+            /** @type {() => void} */
+            let releasePullNodeLocks = () => undefined;
+            const pullNodeLocksReleased = new Promise((resolve) => {
+                releasePullNodeLocks = () => resolve(undefined);
+            });
 
-                /** @type {Transaction} */
-                const tx = { batch, identifierLookup: txLookup, inFlight: new Map() };
+            /** @type {Transaction} */
+            const tx = {
+                batch,
+                identifierLookup: txLookup,
+                inFlight: new Map(),
+                reservedIdentifiers: new Set(),
+                heldPullNodeLocks: new Set(),
+                heldPullNodeLockPromises: [],
+                pullNodeLocksReleased,
+                releasePullNodeLocks,
+                revdepsAdds: batch.revdepsAdds,
+            };
 
-                // Run the operation (identifier allocation + node-data writes).
+            try {
                 const value = await fn(tx);
 
-                // commitTransaction(): disk-first — flush batch, then update volatile layer.
-                // txLookup.keyToId contains only the new allocations from this transaction.
-                const hasPendingOperations = operations.length > 0;
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
+                return await withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                    rebaseDuplicateIdentifierAllocations(tx, operations);
+                    await renderRevdepsAdds(activeSchemaStorage, tx.revdepsAdds, operations);
+                    const hasPendingOperations = operations.length > 0;
+                    const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+                    const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
 
-                // No-op transaction: no node writes and no new identifier allocations.
-                // Skip persistence work entirely.
-                if (!hasPersistentDelta) {
-                    return value;
-                }
+                    if (!hasPersistentDelta) {
+                        return value;
+                    }
 
-                if (hasPendingAllocations) {
-                    if (activeSchemaStorage.global === undefined) {
-                        throw new Error(
-                            "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
-                            "The volatile state cannot be synchronized with disk, which would violate " +
-                            "the disk-first ordering invariant (volatile must not advance ahead of disk)."
+                    if (hasPendingAllocations) {
+                        if (activeSchemaStorage.global === undefined) {
+                            throw new Error(
+                                "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
+                                "The volatile state cannot be synchronized with disk, which would violate " +
+                                "the disk-first ordering invariant (volatile must not advance ahead of disk)."
+                            );
+                        }
+                        operations.push(
+                            activeSchemaStorage.global.rawPutOp(
+                                IDENTIFIERS_KEY,
+                                serializeTransactionLookup(tx.identifierLookup)
+                            )
                         );
                     }
-                    operations.push(
-                        activeSchemaStorage.global.rawPutOp(
-                            IDENTIFIERS_KEY,
-                            serializeTransactionLookup(tx.identifierLookup)
-                        )
-                    );
+
+                    await activeSchemaStorage.batch(operations);
+
+                    if (hasPendingAllocations) {
+                        commitTransactionLookup(tx.identifierLookup);
+                    }
+
+                    return value;
+                });
+            } finally {
+                for (const identifierString of tx.reservedIdentifiers) {
+                    releaseGeneratedIdentifier(rootDatabase, nodeIdentifierFromString(identifierString));
                 }
-
-                await activeSchemaStorage.batch(operations);
-
-                if (hasPendingAllocations) {
-                    // Disk flush succeeded: apply overlay to base in-place.
-                    // This is the only mutation of _computed.identifierLookup.
-                    commitTransactionLookup(tx.identifierLookup);
-                }
-
-                return value;
-            });
+                tx.releasePullNodeLocks();
+                await Promise.all(tx.heldPullNodeLockPromises);
+            }
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
@@ -395,11 +433,28 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * @returns {NodeIdentifier}
  */
 function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
-    return txAllocateNodeIdentifier(
-        tx.identifierLookup,
-        nodeKey,
-        () => rootDatabase.generateNodeIdentifier()
-    );
+    const existing = txNodeKeyToId(tx.identifierLookup, nodeKey);
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const nodeKeyString = nodeKeyStringToString(nodeKey);
+    for (let attempt = 0; attempt < 64; attempt++) {
+        const candidate = rootDatabase.generateNodeIdentifier();
+        const candidateString = nodeIdentifierToString(candidate);
+        if (txNodeIdToKey(tx.identifierLookup, candidate) !== undefined) {
+            continue;
+        }
+        if (!reserveGeneratedIdentifier(rootDatabase, candidate)) {
+            continue;
+        }
+        tx.identifierLookup.keyToId.set(nodeKeyString, candidate);
+        tx.identifierLookup.idToKey.set(candidateString, nodeKey);
+        tx.reservedIdentifiers.add(candidateString);
+        return candidate;
+    }
+
+    throw new Error(`Failed to allocate a unique node identifier for ${nodeKeyString}`);
 }
 
 /**

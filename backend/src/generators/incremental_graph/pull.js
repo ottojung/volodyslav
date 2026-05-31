@@ -34,7 +34,7 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withPullMode } = require("./lock");
+const { withPullMode, withHeldPullNodeLock } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
@@ -90,7 +90,7 @@ async function pullNode(graph, nodeKeyStr, tx) {
         if (existing !== undefined) {
             return existing;
         }
-        const promise = runWithTransaction(activeTx).finally(() => {
+        const promise = withHeldPullNodeLock(graph.sleeper, activeTx, String(nodeKeyStr), () => runWithTransaction(activeTx)).finally(() => {
             activeTx.inFlight.delete(nodeKeyStr);
         });
         activeTx.inFlight.set(nodeKeyStr, promise);
@@ -98,12 +98,13 @@ async function pullNode(graph, nodeKeyStr, tx) {
     };
 
     if (tx !== null) {
-        // Nested call: outer pull already holds the computed-state mutex.
-        // Share the outer transaction directly to avoid deadlock.
+        // Nested call: share the outer transaction directly. The per-node lock
+        // helper holds any newly acquired dependency lock until outer commit/abort.
         return runDeduplicatedInTransaction(tx);
     }
 
-    // Top-level pull: acquire the computed-state lock and create a fresh transaction.
+    // Top-level pull: create a fresh transaction. Commit is serialized, but
+    // computor execution only takes the per-node lock.
     return graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
 }
 

@@ -768,7 +768,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(maxActiveComputations).toBe(1);
         });
 
-        test("concurrent pulls on different nodes are serialized", async () => {
+        test("concurrent pulls on different nodes can overlap", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const source1Cell = { value: { type: "test", value: 1 } };
@@ -804,9 +804,8 @@ describe("IncrementalGraph concurrency", () => {
             const pull1 = graph.pull("source1");
             const pull2 = graph.pull("source2");
             await new Promise((resolve) => setTimeout(resolve, 20));
-            // Pulls on different nodes are now serialized by withComputedStateMutex:
-            // source1 holds the mutex (awaiting releaseBoth), source2 has not started yet.
-            expect(started).toEqual(["source1"]);
+            // Disjoint pull nodes do not share a per-node lock, so both computors may start.
+            expect(started.sort()).toEqual(["source1", "source2"]);
 
             releaseBoth.resolve(undefined);
             await Promise.all([pull1, pull2]);

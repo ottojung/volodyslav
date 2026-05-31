@@ -21,7 +21,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { makeNodeIdentifier } = require('./node_identifier');
+const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -62,6 +62,7 @@ const {
  * @property {GlobalSublevelType} globalSublevel
  * @property {SchemaStorage} schemaStorage
  * @property {IdentifierLookup} identifierLookup
+ * @property {Set<string>} inFlightIdentifiers
  */
 
 /**
@@ -308,6 +309,7 @@ class RootDatabaseClass {
             globalSublevel,
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
+            inFlightIdentifiers: new Set(),
         };
     }
 
@@ -370,6 +372,31 @@ class RootDatabaseClass {
     }
 
     /**
+     * Reserve a newly generated identifier for an in-flight transaction.
+     * Reservation is synchronous and only guards uncommitted generated
+     * identifiers; committed identifiers are tracked by identifierLookup.
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {boolean}
+     */
+    reserveInFlightIdentifier(nodeIdentifier) {
+        const identifierString = nodeIdentifierToString(nodeIdentifier);
+        if (this._computed.inFlightIdentifiers.has(identifierString)) {
+            return false;
+        }
+        this._computed.inFlightIdentifiers.add(identifierString);
+        return true;
+    }
+
+    /**
+     * Release an identifier reservation after commit or abort.
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {void}
+     */
+    releaseInFlightIdentifier(nodeIdentifier) {
+        this._computed.inFlightIdentifiers.delete(nodeIdentifierToString(nodeIdentifier));
+    }
+
+    /**
      * @returns {Promise<void>}
      */
     async initializeActiveIdentifierLookup() {
@@ -422,7 +449,7 @@ class RootDatabaseClass {
             const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
             const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
             await this._rootMetaSublevel.put('current_replica', name);
-            this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup };
+            this._computed = { replicaName: name, namespaceSublevel, globalSublevel, schemaStorage, identifierLookup, inFlightIdentifiers: new Set() };
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
@@ -492,6 +519,7 @@ class RootDatabaseClass {
                 globalSublevel,
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
                 identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
+                inFlightIdentifiers: new Set(),
             };
         }
     }

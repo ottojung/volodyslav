@@ -23,7 +23,7 @@
 const { stringToNodeName } = require("./database");
 const { nodeIdentifierToString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withObserveMode } = require("./lock");
+const { withObserveMode, withHeldPullNodeLock } = require("./lock");
 const { serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
@@ -135,7 +135,9 @@ async function internalUnsafeInvalidate(
         );
     };
 
-    await incrementalGraph.withTransaction(run);
+    await incrementalGraph.withTransaction((tx) =>
+        withHeldPullNodeLock(incrementalGraph.sleeper, tx, String(concreteKey), () => run(tx))
+    );
 }
 
 /**

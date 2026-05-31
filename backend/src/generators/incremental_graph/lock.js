@@ -15,8 +15,10 @@ const { makeUniqueFunctor } = require("../../unique_functor");
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
 const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
+const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 
 /**
  * Executes a procedure while holding the global incremental-graph mutex
@@ -79,6 +81,44 @@ function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
     );
 }
 
+
+/**
+ * Hold the per-node pull lock until the owning transaction releases all held
+ * pull-node locks. This lets nested dependency pulls finish their local async
+ * work while still preventing another transaction from pulling the same
+ * concrete node before the first transaction commits or aborts.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {Transaction} tx
+ * @param {string} nodeKey
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+async function withHeldPullNodeLock(sleeper, tx, nodeKey, procedure) {
+    if (tx.heldPullNodeLocks.has(nodeKey)) {
+        return await procedure();
+    }
+
+    /** @type {() => void} */
+    let markEntered = () => undefined;
+    const entered = new Promise((resolve) => {
+        markEntered = () => resolve(undefined);
+    });
+
+    const lockPromise = sleeper.withMutex(
+        PULL_NODE_KEY.instantiate([nodeKey]),
+        async () => {
+            tx.heldPullNodeLocks.add(nodeKey);
+            markEntered();
+            await tx.pullNodeLocksReleased;
+        }
+    );
+    tx.heldPullNodeLockPromises.push(lockPromise);
+    await entered;
+    return await procedure();
+}
+
 /**
  * Acquires an exclusive lock that prevents all concurrent graph activity:
  * pulls, observes, and other exclusive operations (database opens, migrations).
@@ -109,4 +149,5 @@ module.exports = {
     withObserveMode,
     withPullMode,
     withComputedStateMutex,
+    withHeldPullNodeLock,
 };
