@@ -110,19 +110,21 @@ function internalGetSchemaByHead(incrementalGraph, head) {
  * @returns {Promise<Array<[string, Array<ConstValue>]>>}
  */
 async function internalListMaterializedNodes(incrementalGraph) {
-    return withObserveMode(incrementalGraph.sleeper, async () => {
-        const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
-        return materializedNodes.map((nodeIdentifier) => {
-            const nodeKey = incrementalGraph.lookupNodeKey(nodeIdentifier);
-            if (nodeKey === undefined) {
-                throw new Error(
-                    `Missing semantic node key for materialized identifier ${String(nodeIdentifier)}: cannot list nodes`
-                );
-            }
-            const parsed = deserializeNodeKey(stringToNodeKeyString(String(nodeKey)));
-            return [nodeNameToString(parsed.head), parsed.args];
-        });
-    });
+    return withObserveMode(incrementalGraph.sleeper, async () =>
+        incrementalGraph.storage.withCommitSnapshot(async () => {
+            const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
+            return materializedNodes.map((nodeIdentifier) => {
+                const nodeKey = incrementalGraph.lookupNodeKey(nodeIdentifier);
+                if (nodeKey === undefined) {
+                    throw new Error(
+                        `Missing semantic node key for materialized identifier ${String(nodeIdentifier)}: cannot list nodes`
+                    );
+                }
+                const parsed = deserializeNodeKey(stringToNodeKeyString(String(nodeKey)));
+                return [nodeNameToString(parsed.head), parsed.args];
+            });
+        })
+    );
 }
 
 /**

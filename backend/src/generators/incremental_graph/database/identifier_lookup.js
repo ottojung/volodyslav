@@ -370,10 +370,24 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
+ * @param {Set<string> | number} [inFlightIdentifiers]
+ * @param {Set<string>} [reservedIdentifiers]
  * @param {number} [maxAttempts=64]
  * @returns {NodeIdentifier}
  */
-function txAllocateNodeIdentifier(txLookup, nodeKey, makeIdentifier, maxAttempts = 64) {
+function txAllocateNodeIdentifier(
+    txLookup,
+    nodeKey,
+    makeIdentifier,
+    inFlightIdentifiers = new Set(),
+    reservedIdentifiers = new Set(),
+    maxAttempts = 64
+) {
+    if (typeof inFlightIdentifiers === "number") {
+        maxAttempts = inFlightIdentifiers;
+        inFlightIdentifiers = new Set();
+    }
+
     const existing = txNodeKeyToId(txLookup, nodeKey);
     if (existing !== undefined) {
         return existing;
@@ -382,12 +396,18 @@ function txAllocateNodeIdentifier(txLookup, nodeKey, makeIdentifier, maxAttempts
     const keyString = nodeKeyStringToString(nodeKey);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const candidate = makeIdentifier(attempt);
-        // Collision-check against both overlay and base.
-        if (txNodeIdToKey(txLookup, candidate) === undefined) {
-            txLookup.keyToId.set(keyString, candidate);
-            txLookup.idToKey.set(nodeIdentifierToString(candidate), nodeKey);
-            return candidate;
+        const candidateString = nodeIdentifierToString(candidate);
+        if (txNodeIdToKey(txLookup, candidate) !== undefined) {
+            continue;
         }
+        if (inFlightIdentifiers.has(candidateString)) {
+            continue;
+        }
+        inFlightIdentifiers.add(candidateString);
+        reservedIdentifiers.add(candidateString);
+        txLookup.keyToId.set(keyString, candidate);
+        txLookup.idToKey.set(candidateString, nodeKey);
+        return candidate;
     }
 
     throw new IdentifierAllocationError(keyString);
