@@ -821,3 +821,109 @@ describe("Invariant 3 — Independent pull concurrency", () => {
         await db.close();
     });
 });
+
+// ---------------------------------------------------------------------------
+// Dynamic pull dependency tracking and stable dependency lock ordering
+// ---------------------------------------------------------------------------
+
+describe("Dynamic pull dependencies and dependency lock ordering", () => {
+    test("dynamic pull callback dependencies invalidate their parent", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const leafCell = { value: 1 };
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async () => ({ value: leafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    const leaf = await pull("leaf");
+                    return { value: leaf.value + 1 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 2 });
+        expect(rootComputations).toBe(1);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        const leafIdentifier = lookup.keyToId.get(nodeKeyString("leaf"));
+        const rootIdentifier = lookup.keyToId.get(nodeKeyString("root"));
+        expect(leafIdentifier).not.toBeUndefined();
+        expect(rootIdentifier).not.toBeUndefined();
+
+        await graph.storage.withBatch(async (batch) => {
+            const rootInputs = await graph.storage.getInputs(rootIdentifier, batch);
+            expect(rootInputs).toEqual([leafIdentifier]);
+            const leafDependents = await graph.storage.listDependents(leafIdentifier, batch);
+            expect(leafDependents).toEqual([rootIdentifier]);
+        });
+
+        leafCell.value = 10;
+        await graph.invalidate("leaf");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 11 });
+        expect(rootComputations).toBe(2);
+
+        await db.close();
+    });
+
+    test("concurrent pulls with shared fresh dependencies in opposite input orders complete", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "b",
+                inputs: [],
+                computor: async () => ({ value: 2 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "left",
+                inputs: ["a", "b"],
+                computor: async ([a, b]) => ({ value: a.value + b.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "right",
+                inputs: ["b", "a"],
+                computor: async ([b, a]) => ({ value: b.value - a.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("opposite-order dependency pulls deadlocked")), 1000);
+        });
+        await expect(Promise.race([
+            Promise.all([graph.pull("left"), graph.pull("right")]),
+            timeout,
+        ])).resolves.toEqual([
+            { value: 3 },
+            { value: 1 },
+        ]);
+
+        await db.close();
+    });
+});

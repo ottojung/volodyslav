@@ -201,15 +201,34 @@ class IncrementalGraphClass {
      * @returns {Promise<ResolvedConcreteNode>}
      */
     async resolveConcreteNode(concreteNode, tx) {
-        await acquireTransactionNodeLock(tx, concreteNode.output);
+        const outputIdentifier = lookupNodeIdentifier(tx, concreteNode.output);
+        const existingInputIdentifiers = concreteNode.inputs.map((inputKey) =>
+            lookupNodeIdentifier(tx, inputKey)
+        );
+
+        /** @type {Set<NodeKeyString>} */
+        const locksNeeded = new Set();
+        if (outputIdentifier === undefined) {
+            locksNeeded.add(concreteNode.output);
+        }
+        for (let index = 0; index < concreteNode.inputs.length; index++) {
+            if (existingInputIdentifiers[index] === undefined) {
+                const inputKey = concreteNode.inputs[index];
+                if (inputKey === undefined) {
+                    throw new Error(`Missing concrete input at index ${String(index)}`);
+                }
+                locksNeeded.add(inputKey);
+            }
+        }
+        const orderedLocks = Array.from(locksNeeded).sort((left, right) =>
+            String(left).localeCompare(String(right))
+        );
+        for (const nodeKey of orderedLocks) {
+            await acquireTransactionNodeLock(tx, nodeKey);
+        }
+
         const inputIdentifiers = [];
         for (const inputKey of concreteNode.inputs) {
-            const existingIdentifier = lookupNodeIdentifier(tx, inputKey);
-            if (existingIdentifier !== undefined) {
-                inputIdentifiers.push(existingIdentifier);
-                continue;
-            }
-            await acquireTransactionNodeLock(tx, inputKey);
             inputIdentifiers.push(
                 getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
             );

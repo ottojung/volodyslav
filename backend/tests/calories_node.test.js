@@ -162,7 +162,7 @@ describe("calories(e) node", () => {
         );
     });
 
-    test("does not recompute calories when ontology changes", async () => {
+    test("recomputes calories when the dynamically pulled ontology changes", async () => {
         const capabilities = await getTestCapabilities(333);
         const iface = capabilities.interface;
         await iface.ensureInitialized();
@@ -178,7 +178,7 @@ describe("calories(e) node", () => {
         });
         const second = await iface._incrementalGraph.pull("calories", ["1"]);
         expect(second).toEqual({ type: "calories", value: 333 });
-        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(1);
+        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(2);
     });
 
     test("uses basic context input rather than only the target event input", async () => {
