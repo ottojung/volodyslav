@@ -351,13 +351,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
                     }
 
                     if (hasPendingAllocations) {
-                        if (activeSchemaStorage.global === undefined) {
-                            throw new Error(
-                                "Cannot commit identifier allocations: activeSchemaStorage.global is undefined. " +
-                                "The volatile state cannot be synchronized with disk, which would violate " +
-                                "the disk-first ordering invariant (volatile must not advance ahead of disk)."
-                            );
-                        }
                         for (const [keyString, identifier] of tx.identifierLookup.keyToId.entries()) {
                             const committedIdentifier = rootDatabase.nodeKeyToId(stringToNodeKeyString(keyString));
                             if (committedIdentifier !== undefined && committedIdentifier !== identifier) {
