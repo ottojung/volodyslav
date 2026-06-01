@@ -201,16 +201,13 @@ class IncrementalGraphClass {
      * @returns {Promise<ResolvedConcreteNode>}
      */
     async resolveConcreteNode(concreteNode, tx) {
-        const outputIdentifier = lookupNodeIdentifier(tx, concreteNode.output);
         const existingInputIdentifiers = concreteNode.inputs.map((inputKey) =>
             lookupNodeIdentifier(tx, inputKey)
         );
 
         /** @type {Set<NodeKeyString>} */
         const locksNeeded = new Set();
-        if (outputIdentifier === undefined) {
-            locksNeeded.add(concreteNode.output);
-        }
+        locksNeeded.add(concreteNode.output);
         for (let index = 0; index < concreteNode.inputs.length; index++) {
             if (existingInputIdentifiers[index] === undefined) {
                 const inputKey = concreteNode.inputs[index];
