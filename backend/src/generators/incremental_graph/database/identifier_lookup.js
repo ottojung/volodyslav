@@ -372,7 +372,7 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
  * @param {Set<string> | number} [inFlightIdentifiers]
  * @param {Set<string>} [reservedIdentifiers]
- * @param {number} [maxAttempts=64]
+ * @param {number} [maxAttempts=9999]
  * @returns {NodeIdentifier}
  */
 function txAllocateNodeIdentifier(
@@ -381,7 +381,7 @@ function txAllocateNodeIdentifier(
     makeIdentifier,
     inFlightIdentifiers = new Set(),
     reservedIdentifiers = new Set(),
-    maxAttempts = 64
+    maxAttempts = 9999
 ) {
     if (typeof inFlightIdentifiers === "number") {
         maxAttempts = inFlightIdentifiers;
