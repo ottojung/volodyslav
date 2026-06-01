@@ -39,7 +39,6 @@ const {
 const {
     makeGraphStorage,
     getOrAllocateNodeIdentifier,
-    lookupNodeIdentifier,
 } = require("./graph_state");
 const {
     internalGetDbVersion,
