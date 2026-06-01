@@ -263,16 +263,16 @@ function mergeIdentifierLookups(base, overlay) {
  * @param {IdentifierLookup} lookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
- * @param {number} [maxAttempts=-1]
+ * @param {number} [maxAttempts]
  * @returns {NodeIdentifier}
  */
-function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = -1) {
+function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = undefined) {
     const existing = nodeKeyToIdFromLookup(lookup, nodeKey);
     if (existing !== undefined) {
         return existing;
     }
 
-    for (let attempt = 0; maxAttempts < 0 || attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; maxAttempts === undefined || attempt < maxAttempts; attempt++) {
         const candidate = makeIdentifier(attempt);
         const existingKey = nodeIdToKeyFromLookup(lookup, candidate);
         if (existingKey === undefined) {
@@ -372,7 +372,7 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
  * @param {Set<string> | number} [inFlightIdentifiers]
  * @param {Set<string>} [reservedIdentifiers]
- * @param {number} [maxAttempts=-1]
+ * @param {number} [maxAttempts]
  * @returns {NodeIdentifier}
  */
 function txAllocateNodeIdentifier(
@@ -381,7 +381,7 @@ function txAllocateNodeIdentifier(
     makeIdentifier,
     inFlightIdentifiers = new Set(),
     reservedIdentifiers = new Set(),
-    maxAttempts = -1
+    maxAttempts = undefined,
 ) {
     if (typeof inFlightIdentifiers === "number") {
         maxAttempts = inFlightIdentifiers;
@@ -394,7 +394,7 @@ function txAllocateNodeIdentifier(
     }
 
     const keyString = nodeKeyStringToString(nodeKey);
-    for (let attempt = 0; maxAttempts < 0 || attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; maxAttempts === undefined || attempt < maxAttempts; attempt++) {
         const candidate = makeIdentifier(attempt);
         const candidateString = nodeIdentifierToString(candidate);
         if (txNodeIdToKey(txLookup, candidate) !== undefined) {
