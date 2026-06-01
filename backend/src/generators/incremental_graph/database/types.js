@@ -79,8 +79,6 @@ function castToNodeIdentifierUnsafe(value) {
     return typeof value === "string";
 }
 
-const NODE_IDENTIFIER_REGEX = /^[a-z]{9}$/;
-
 /**
  * Unsafe nominal cast from string to NodeIdentifier.
  * Callers that parse persisted identifier text should use nodeIdentifierFromString()
@@ -97,18 +95,11 @@ function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
 }
 
 /**
- * Parse and validate a persisted node identifier in the current (strict) format.
- * Only accepts 9-character lowercase alphabetic identifiers matching /^[a-z]{9}$/.
- * Runtime paths (sync, pull, merge) must use this function.
+ * Convert a string to a NodeIdentifier.
  * @param {string} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
 function stringToNodeIdentifier(nodeIdentifierStr) {
-    if (!NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr)) {
-        throw new Error(
-            `Invalid node identifier string: ${nodeIdentifierStr}. Expected a 9-character lowercase alphabetic string matching /^[a-z]{9}$/`
-        );
-    }
     return unsafeStringToNodeIdentifier(nodeIdentifierStr);
 }
 
