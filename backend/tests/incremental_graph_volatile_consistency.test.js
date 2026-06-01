@@ -927,6 +927,59 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
         await db.close();
     });
 
+    test("concurrent opposite-order pulls complete when shared inputs were allocated earlier", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "b",
+                inputs: [],
+                computor: async () => ({ value: 2 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "left",
+                inputs: ["a", "b"],
+                computor: async ([a, b]) => ({ value: a.value + b.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "right",
+                inputs: ["b", "a"],
+                computor: async ([b, a]) => ({ value: b.value - a.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        // Pre-allocate shared dependency identifiers before the concurrent pulls.
+        await graph.pull("a");
+        await graph.pull("b");
+
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("opposite-order dependency pulls deadlocked after prior allocation")), 1000);
+        });
+        await expect(Promise.race([
+            Promise.all([graph.pull("left"), graph.pull("right")]),
+            timeout,
+        ])).resolves.toEqual([
+            { value: 3 },
+            { value: 1 },
+        ]);
+
+        await db.close();
+    });
+
     test("switching dynamic pull dependencies removes obsolete reverse edges", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
