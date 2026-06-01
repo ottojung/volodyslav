@@ -926,4 +926,83 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
 
         await db.close();
     });
+
+    test("switching dynamic pull dependencies removes obsolete reverse edges", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const selectorCell = { value: "old_leaf" };
+        const oldLeafCell = { value: 2 };
+        const newLeafCell = { value: 10 };
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "selector",
+                inputs: [],
+                computor: async () => ({ value: selectorCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "old_leaf",
+                inputs: [],
+                computor: async () => ({ value: oldLeafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "new_leaf",
+                inputs: [],
+                computor: async () => ({ value: newLeafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: ["selector"],
+                computor: async ([selector], _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    if (selector.value === "old_leaf") {
+                        const leaf = await pull("old_leaf");
+                        return { value: leaf.value };
+                    }
+                    const leaf = await pull("new_leaf");
+                    return { value: leaf.value };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 2 });
+        expect(rootComputations).toBe(1);
+
+        selectorCell.value = "new_leaf";
+        await graph.invalidate("selector");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 10 });
+        expect(rootComputations).toBe(2);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        const rootIdentifier = lookup.keyToId.get(nodeKeyString("root"));
+        const oldLeafIdentifier = lookup.keyToId.get(nodeKeyString("old_leaf"));
+        const newLeafIdentifier = lookup.keyToId.get(nodeKeyString("new_leaf"));
+        expect(rootIdentifier).not.toBeUndefined();
+        expect(oldLeafIdentifier).not.toBeUndefined();
+        expect(newLeafIdentifier).not.toBeUndefined();
+
+        await graph.storage.withBatch(async (batch) => {
+            const oldDependents = await graph.storage.listDependents(oldLeafIdentifier, batch);
+            const newDependents = await graph.storage.listDependents(newLeafIdentifier, batch);
+            expect(oldDependents).toEqual([]);
+            expect(newDependents).toEqual([rootIdentifier]);
+        });
+
+        oldLeafCell.value = 100;
+        await graph.invalidate("old_leaf");
+        await expect(graph.getFreshness("root")).resolves.toBe("up-to-date");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 10 });
+        expect(rootComputations).toBe(2);
+
+        await db.close();
+    });
 });

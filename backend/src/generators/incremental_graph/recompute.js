@@ -157,7 +157,7 @@ async function internalMaybeRecalculate(
             materializedDependencies.identifiers,
             materializedDependencies.counters
         )) {
-            await incrementalGraph.storage.ensureReverseDepsIndexed(
+            await incrementalGraph.storage.reconcileReverseDeps(
                 nodeIdentifier,
                 materializedDependencies.identifiers,
                 batch
@@ -214,13 +214,11 @@ async function internalMaybeRecalculate(
         );
     }
 
-    if (materializedDependencies.identifiers.length > 0) {
-        await incrementalGraph.storage.ensureReverseDepsIndexed(
-            nodeIdentifier,
-            materializedDependencies.identifiers,
-            batch
-        );
-    }
+    await incrementalGraph.storage.reconcileReverseDeps(
+        nodeIdentifier,
+        materializedDependencies.identifiers,
+        batch
+    );
 
     for (const inputIdentifier of materializedDependencies.identifiers) {
         batch.freshness.put(inputIdentifier, "up-to-date");

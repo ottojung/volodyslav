@@ -98,6 +98,7 @@ const {
  * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
+ * @property {(node: NodeIdentifier, nextInputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} reconcileReverseDeps - Reconcile reverse dependencies against the node's previously materialized inputs.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
@@ -244,6 +245,50 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 ...existingDependents.slice(index),
             ]);
         }
+    }
+
+    /**
+     * Reconcile reverse dependencies for one node by removing stale edges from
+     * previously materialized inputs and indexing current edges.
+     * @param {NodeIdentifier} node
+     * @param {NodeIdentifier[]} nextInputs
+     * @param {BatchBuilder} batch
+     * @returns {Promise<void>}
+     */
+    async function reconcileReverseDeps(node, nextInputs, batch) {
+        const previousInputs = await getInputs(node, batch);
+        const nextInputSet = new Set(nextInputs.map(nodeIdentifierToString));
+
+        if (previousInputs !== null) {
+            for (const previousInput of previousInputs) {
+                const previousInputString = nodeIdentifierToString(previousInput);
+                if (nextInputSet.has(previousInputString)) {
+                    continue;
+                }
+
+                const existingDependents = await batch.revdeps.get(previousInput);
+                if (existingDependents === undefined) {
+                    continue;
+                }
+
+                const { index, found } = findInsertionIndex(existingDependents, node);
+                if (!found) {
+                    continue;
+                }
+
+                const remainingDependents = [
+                    ...existingDependents.slice(0, index),
+                    ...existingDependents.slice(index + 1),
+                ];
+                if (remainingDependents.length === 0) {
+                    batch.revdeps.del(previousInput);
+                    continue;
+                }
+                batch.revdeps.put(previousInput, remainingDependents);
+            }
+        }
+
+        await ensureReverseDepsIndexed(node, nextInputs, batch);
     }
 
     /**
@@ -397,6 +442,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
+        reconcileReverseDeps,
         listDependents,
         getInputs,
         listMaterializedNodes,
