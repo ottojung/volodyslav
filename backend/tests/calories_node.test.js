@@ -184,6 +184,8 @@ describe("calories(e) node", () => {
 
         // Pull again without changing anything — should serve from cache.
         await tryPull(1);
+        await tryPull(1);
+        await tryPull(1);
 
         await iface.setOntology({
             types: [{ name: "food", description: "Food entries" }],
