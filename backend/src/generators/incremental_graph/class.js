@@ -39,7 +39,6 @@ const {
 const {
     makeGraphStorage,
     getOrAllocateNodeIdentifier,
-    lookupNodeIdentifier,
 } = require("./graph_state");
 const {
     internalGetDbVersion,
@@ -202,14 +201,28 @@ class IncrementalGraphClass {
      */
     async resolveConcreteNode(concreteNode, tx) {
         await acquireTransactionNodeLock(tx, concreteNode.output);
-        const inputIdentifiers = [];
-        for (const inputKey of concreteNode.inputs) {
-            const existingIdentifier = lookupNodeIdentifier(tx, inputKey);
-            if (existingIdentifier !== undefined) {
-                inputIdentifiers.push(existingIdentifier);
+
+        /** @type {Set<NodeKeyString>} */
+        const uniqueInputs = new Set();
+        for (let index = 0; index < concreteNode.inputs.length; index++) {
+            const inputKey = concreteNode.inputs[index];
+            if (inputKey === undefined) {
+                throw new Error(`Missing concrete input at index ${String(index)}`);
+            }
+            if (inputKey === concreteNode.output) {
                 continue;
             }
+            uniqueInputs.add(inputKey);
+        }
+        const orderedInputs = Array.from(uniqueInputs).sort((left, right) =>
+            String(left).localeCompare(String(right))
+        );
+        for (const inputKey of orderedInputs) {
             await acquireTransactionNodeLock(tx, inputKey);
+        }
+
+        const inputIdentifiers = [];
+        for (const inputKey of concreteNode.inputs) {
             inputIdentifiers.push(
                 getOrAllocateNodeIdentifier(tx, this.rootDatabase, inputKey)
             );

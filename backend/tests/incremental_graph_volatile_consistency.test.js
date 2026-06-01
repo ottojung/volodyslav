@@ -821,3 +821,309 @@ describe("Invariant 3 — Independent pull concurrency", () => {
         await db.close();
     });
 });
+
+// ---------------------------------------------------------------------------
+// Dynamic pull dependency tracking and stable dependency lock ordering
+// ---------------------------------------------------------------------------
+
+describe("Dynamic pull dependencies and dependency lock ordering", () => {
+    test("dynamic pull callback dependencies invalidate their parent", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const leafCell = { value: 1 };
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async () => ({ value: leafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    const leaf = await pull("leaf");
+                    return { value: leaf.value + 1 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 2 });
+        expect(rootComputations).toBe(1);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        const leafIdentifier = lookup.keyToId.get(nodeKeyString("leaf"));
+        const rootIdentifier = lookup.keyToId.get(nodeKeyString("root"));
+        expect(leafIdentifier).not.toBeUndefined();
+        expect(rootIdentifier).not.toBeUndefined();
+
+        await graph.storage.withBatch(async (batch) => {
+            const rootInputs = await graph.storage.getInputs(rootIdentifier, batch);
+            expect(rootInputs).toEqual([leafIdentifier]);
+            const leafDependents = await graph.storage.listDependents(leafIdentifier, batch);
+            expect(leafDependents).toEqual([rootIdentifier]);
+        });
+
+        leafCell.value = 10;
+        await graph.invalidate("leaf");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 11 });
+        expect(rootComputations).toBe(2);
+
+        await db.close();
+    });
+
+    test("concurrent pulls with shared fresh dependencies in opposite input orders complete", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "b",
+                inputs: [],
+                computor: async () => ({ value: 2 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "left",
+                inputs: ["a", "b"],
+                computor: async ([a, b]) => ({ value: a.value + b.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "right",
+                inputs: ["b", "a"],
+                computor: async ([b, a]) => ({ value: b.value - a.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("opposite-order dependency pulls deadlocked")), 1000);
+        });
+        await expect(Promise.race([
+            Promise.all([graph.pull("left"), graph.pull("right")]),
+            timeout,
+        ])).resolves.toEqual([
+            { value: 3 },
+            { value: 1 },
+        ]);
+
+        await db.close();
+    });
+
+    test("concurrent opposite-order pulls complete when shared inputs were allocated earlier", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "b",
+                inputs: [],
+                computor: async () => ({ value: 2 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "left",
+                inputs: ["a", "b"],
+                computor: async ([a, b]) => ({ value: a.value + b.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "right",
+                inputs: ["b", "a"],
+                computor: async ([b, a]) => ({ value: b.value - a.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        // Pre-allocate shared dependency identifiers before the concurrent pulls.
+        await graph.pull("a");
+        await graph.pull("b");
+
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("opposite-order dependency pulls deadlocked after prior allocation")), 1000);
+        });
+        await expect(Promise.race([
+            Promise.all([graph.pull("left"), graph.pull("right")]),
+            timeout,
+        ])).resolves.toEqual([
+            { value: 3 },
+            { value: 1 },
+        ]);
+
+        await db.close();
+    });
+
+    test("switching dynamic pull dependencies removes obsolete reverse edges", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const selectorCell = { value: "old_leaf" };
+        const oldLeafCell = { value: 2 };
+        const newLeafCell = { value: 10 };
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "selector",
+                inputs: [],
+                computor: async () => ({ value: selectorCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "old_leaf",
+                inputs: [],
+                computor: async () => ({ value: oldLeafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "new_leaf",
+                inputs: [],
+                computor: async () => ({ value: newLeafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: ["selector"],
+                computor: async ([selector], _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    if (selector.value === "old_leaf") {
+                        const leaf = await pull("old_leaf");
+                        return { value: leaf.value };
+                    }
+                    const leaf = await pull("new_leaf");
+                    return { value: leaf.value };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 2 });
+        expect(rootComputations).toBe(1);
+
+        selectorCell.value = "new_leaf";
+        await graph.invalidate("selector");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 10 });
+        expect(rootComputations).toBe(2);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        const rootIdentifier = lookup.keyToId.get(nodeKeyString("root"));
+        const oldLeafIdentifier = lookup.keyToId.get(nodeKeyString("old_leaf"));
+        const newLeafIdentifier = lookup.keyToId.get(nodeKeyString("new_leaf"));
+        expect(rootIdentifier).not.toBeUndefined();
+        expect(oldLeafIdentifier).not.toBeUndefined();
+        expect(newLeafIdentifier).not.toBeUndefined();
+
+        await graph.storage.withBatch(async (batch) => {
+            const oldDependents = await graph.storage.listDependents(oldLeafIdentifier, batch);
+            const newDependents = await graph.storage.listDependents(newLeafIdentifier, batch);
+            expect(oldDependents).toEqual([]);
+            expect(newDependents).toEqual([rootIdentifier]);
+        });
+
+        oldLeafCell.value = 100;
+        await graph.invalidate("old_leaf");
+        await expect(graph.getFreshness("root")).resolves.toBe("up-to-date");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 10 });
+        expect(rootComputations).toBe(2);
+
+        await db.close();
+    });
+
+    test("explicit invalidate reconciles stale dynamic revdeps before rewriting inputs", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const selectorCell = { value: "use_leaf" };
+        const leafCell = { value: 5 };
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "selector",
+                inputs: [],
+                computor: async () => ({ value: selectorCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async () => ({ value: leafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: ["selector"],
+                computor: async ([selector], _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    if (selector.value === "use_leaf") {
+                        const leaf = await pull("leaf");
+                        return { value: leaf.value + 1 };
+                    }
+                    return { value: 0 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 6 });
+        expect(rootComputations).toBe(1);
+
+        selectorCell.value = "skip_leaf";
+        await graph.invalidate("selector");
+        await graph.invalidate("root");
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 0 });
+        expect(rootComputations).toBe(2);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        const rootIdentifier = lookup.keyToId.get(nodeKeyString("root"));
+        const leafIdentifier = lookup.keyToId.get(nodeKeyString("leaf"));
+        expect(rootIdentifier).not.toBeUndefined();
+        expect(leafIdentifier).not.toBeUndefined();
+
+        await graph.storage.withBatch(async (batch) => {
+            const leafDependents = await graph.storage.listDependents(leafIdentifier, batch);
+            expect(leafDependents).toEqual([]);
+        });
+
+        leafCell.value = 100;
+        await graph.invalidate("leaf");
+        await expect(graph.getFreshness("root")).resolves.toBe("up-to-date");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 0 });
+        expect(rootComputations).toBe(2);
+
+        await db.close();
+    });
+});

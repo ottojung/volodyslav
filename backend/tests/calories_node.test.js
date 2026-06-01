@@ -162,23 +162,39 @@ describe("calories(e) node", () => {
         );
     });
 
-    test("does not recompute calories when ontology changes", async () => {
+    test("recomputes calories when the dynamically pulled ontology changes", async () => {
         const capabilities = await getTestCapabilities(333);
         const iface = capabilities.interface;
         await iface.ensureInitialized();
+        const expectedValue = { type: "calories", value: 333 };
 
         await writeEventsToStore(capabilities, [makeEvent("1", "food: a bowl of pasta")]);
-        const first = await iface._incrementalGraph.pull("calories", ["1"]);
-        expect(first).toEqual({ type: "calories", value: 333 });
-        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(1);
+
+        const tryPull = async (expectedCount) => {
+            const value = await iface._incrementalGraph.pull("calories", ["1"]);
+            expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(expectedCount);
+            expect(value).toEqual(expectedValue);
+        };
+
+        // Sanity check.
+        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(0);
+
+        // First compute.
+        await tryPull(1);
+
+        // Pull again without changing anything — should serve from cache.
+        await tryPull(1);
+        await tryPull(1);
+        await tryPull(1);
 
         await iface.setOntology({
             types: [{ name: "food", description: "Food entries" }],
             modifiers: [{ name: "when", description: "When eaten" }],
         });
-        const second = await iface._incrementalGraph.pull("calories", ["1"]);
-        expect(second).toEqual({ type: "calories", value: 333 });
-        expect(capabilities.aiCalories.estimateCalories).toHaveBeenCalledTimes(1);
+
+        // Recompute because ontology changed, even though the event input didn't change.
+        await tryPull(2);
+        await tryPull(2);
     });
 
     test("uses basic context input rather than only the target event input", async () => {
