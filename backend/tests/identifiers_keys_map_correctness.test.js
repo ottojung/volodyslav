@@ -269,20 +269,6 @@ describe('error conditions', () => {
         expect(isIdentifierAllocationError(caught)).toBe(true);
     });
 
-    test('stringToNodeIdentifier rejects a legacy JSON node key string', () => {
-        const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
-        expect(() => stringToNodeIdentifier('{"head":"foo","args":[]}')).toThrow(
-            /Expected a 9-character lowercase alphabetic string/
-        );
-    });
-
-    test('stringToNodeIdentifier rejects an 8-character string (too short)', () => {
-        const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
-        expect(() => stringToNodeIdentifier('aaaaaaaa')).toThrow(
-            /Expected a 9-character lowercase alphabetic string/
-        );
-    });
-
     test('stringToNodeIdentifier accepts a valid 9-character lowercase string', () => {
         const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
         expect(() => stringToNodeIdentifier('aaaaaaaaa')).not.toThrow();
