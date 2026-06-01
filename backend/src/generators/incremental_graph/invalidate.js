@@ -122,6 +122,14 @@ async function internalUnsafeInvalidate(
             inputCounters.push(counter !== undefined ? counter : 0);
         }
 
+        // Reconcile reverse dependencies against previously materialized inputs
+        // before invalidation rewrites inputs to the static dependency set.
+        await incrementalGraph.storage.reconcileReverseDeps(
+            nodeDefinition.outputIdentifier,
+            nodeDefinition.inputIdentifiers,
+            tx.batch
+        );
+
         await incrementalGraph.storage.ensureMaterialized(
             nodeDefinition.outputIdentifier,
             nodeDefinition.inputIdentifiers,

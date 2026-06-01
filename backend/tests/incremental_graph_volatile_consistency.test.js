@@ -1005,4 +1005,72 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
 
         await db.close();
     });
+
+    test("explicit invalidate reconciles stale dynamic revdeps before rewriting inputs", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const selectorCell = { value: "use_leaf" };
+        const leafCell = { value: 5 };
+        let rootComputations = 0;
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "selector",
+                inputs: [],
+                computor: async () => ({ value: selectorCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async () => ({ value: leafCell.value }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: ["selector"],
+                computor: async ([selector], _oldValue, _bindings, pull) => {
+                    rootComputations++;
+                    if (selector.value === "use_leaf") {
+                        const leaf = await pull("leaf");
+                        return { value: leaf.value + 1 };
+                    }
+                    return { value: 0 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 6 });
+        expect(rootComputations).toBe(1);
+
+        selectorCell.value = "skip_leaf";
+        await graph.invalidate("selector");
+        await graph.invalidate("root");
+
+        await expect(graph.pull("root")).resolves.toEqual({ value: 0 });
+        expect(rootComputations).toBe(2);
+
+        const lookup = db.cloneActiveIdentifierLookup();
+        const rootIdentifier = lookup.keyToId.get(nodeKeyString("root"));
+        const leafIdentifier = lookup.keyToId.get(nodeKeyString("leaf"));
+        expect(rootIdentifier).not.toBeUndefined();
+        expect(leafIdentifier).not.toBeUndefined();
+
+        await graph.storage.withBatch(async (batch) => {
+            const leafDependents = await graph.storage.listDependents(leafIdentifier, batch);
+            expect(leafDependents).toEqual([]);
+        });
+
+        leafCell.value = 100;
+        await graph.invalidate("leaf");
+        await expect(graph.getFreshness("root")).resolves.toBe("up-to-date");
+        await expect(graph.pull("root")).resolves.toEqual({ value: 0 });
+        expect(rootComputations).toBe(2);
+
+        await db.close();
+    });
 });
