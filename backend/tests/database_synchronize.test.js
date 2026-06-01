@@ -226,19 +226,24 @@ describe("synchronizeNoLock", () => {
     test("merges rendered data from other hostname branches into the live database", async () => {
         const capabilities = getTestCapabilities();
         const aliceNodeArgs = '{"head":"event","args":["alice"]}';
-        const aliceInputsKey = `!x!!inputs!${aliceNodeArgs}`;
-        const aliceTimestampsKey = `!x!!timestamps!${aliceNodeArgs}`;
+        const aliceNodeIdentifier = 'aliceaaaa';
+        const aliceInputsKey = `!x!!inputs!${aliceNodeIdentifier}`;
+        const aliceTimestampsKey = `!x!!timestamps!${aliceNodeIdentifier}`;
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
-                entries: [["!_meta!current_replica", "x"]],
+                entries: [
+                    ["!_meta!current_replica", "x"],
+                    ["!x!!global!identifiers_keys_map", []],
+                ],
             },
             {
                 hostname: "alice",
                 entries: [
-                                        [`!x!!values!${aliceNodeArgs}`, { source: "alice" }],
+                    [`!x!!values!${aliceNodeIdentifier}`, { source: "alice" }],
                     [aliceInputsKey, { inputs: [], inputCounters: [] }],
                     [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                    ["!x!!global!identifiers_keys_map", [[aliceNodeIdentifier, aliceNodeArgs]]],
                 ],
             },
         ]);
@@ -250,7 +255,7 @@ describe("synchronizeNoLock", () => {
             // After merge the active replica pointer may have moved to "y";
             // look for the value in whichever replica is currently active.
             const replica = reopened.currentReplicaName();
-            const activeAliceKey = `!${replica}!!values!${aliceNodeArgs}`;
+            const activeAliceKey = `!${replica}!!values!${aliceNodeIdentifier}`;
             const entries = await collectRawEntries(reopened);
             expect(entries.get(activeAliceKey)).toEqual({ source: "alice" });
         } finally {
@@ -261,20 +266,25 @@ describe("synchronizeNoLock", () => {
     test("on partial host-merge failures, merges successful hosts before rethrowing", async () => {
         const capabilities = getTestCapabilities();
         const bobNodeArgs = '{"head":"event","args":["bob"]}';
-        const bobInputsKey = `!x!!inputs!${bobNodeArgs}`;
-        const bobTimestampsKey = `!x!!timestamps!${bobNodeArgs}`;
+        const bobNodeIdentifier = 'bobbbbbbb';
+        const bobInputsKey = `!x!!inputs!${bobNodeIdentifier}`;
+        const bobTimestampsKey = `!x!!timestamps!${bobNodeIdentifier}`;
 
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
-                entries: [["!_meta!current_replica", "x"]],
+                entries: [
+                    ["!_meta!current_replica", "x"],
+                    ["!x!!global!identifiers_keys_map", []],
+                ],
             },
             {
                 hostname: "bob",
                 entries: [
-                                        [`!x!!values!${bobNodeArgs}`, { source: "bob" }],
+                    [`!x!!values!${bobNodeIdentifier}`, { source: "bob" }],
                     [bobInputsKey, { inputs: [], inputCounters: [] }],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                    ["!x!!global!identifiers_keys_map", [[bobNodeIdentifier, bobNodeArgs]]],
                 ],
             },
             {
@@ -283,6 +293,7 @@ describe("synchronizeNoLock", () => {
                                         ['!x!!global!version', "incompatible-version"],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
                     ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
+                                        ['!x!!global!identifiers_keys_map', [['zzzzzzzzz', '{"head":"event","args":["zed"]}']]],
                 ],
             },
         ]);
@@ -302,7 +313,7 @@ describe("synchronizeNoLock", () => {
             // After merge the active replica pointer may have moved to "y";
             // look for bob's value in whichever replica is currently active.
             const replica = reopened.currentReplicaName();
-            const activeBobKey = `!${replica}!!values!${bobNodeArgs}`;
+            const activeBobKey = `!${replica}!!values!${bobNodeIdentifier}`;
             const entries = await collectRawEntries(reopened);
             expect(entries.get(activeBobKey)).toEqual({ source: "bob" });
         } finally {

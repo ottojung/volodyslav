@@ -54,8 +54,10 @@ const {
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
-const { reconcileHostLookupWithTargetLookup } = require('./reconcile_identifier_lookup');
-const { makeHostIdentifierTranslation, parseIdentifierLookup } = require('./sync_merge_identifier_translation');
+const {
+    assertNoIdentifierLookupConflicts,
+    parseIdentifierLookup,
+} = require('./sync_merge_identifier_translation');
 
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -343,15 +345,14 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     const hostLookup = parseIdentifierLookup(await H.global.get('identifiers_keys_map'));
     const targetLookup = parseIdentifierLookup(await T.global.get('identifiers_keys_map'));
-    const reconciledHostLookup = reconcileHostLookupWithTargetLookup(targetLookup, hostLookup);
-    const { hostToTarget, targetToHost } = makeHostIdentifierTranslation(hostLookup, reconciledHostLookup);
+    assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
 
     /**
      * @param {NodeIdentifier} hostIdentifier
      * @returns {NodeIdentifier}
      */
     function targetIdentifierForHostIdentifier(hostIdentifier) {
-        return hostToTarget.get(nodeIdentifierToString(hostIdentifier)) ?? hostIdentifier;
+        return hostIdentifier;
     }
 
     /**
@@ -359,7 +360,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
      * @returns {NodeIdentifier}
      */
     function hostIdentifierForTargetIdentifier(targetIdentifier) {
-        return targetToHost.get(nodeIdentifierToString(targetIdentifier)) ?? targetIdentifier;
+        return targetIdentifier;
     }
 
     /**
@@ -592,7 +593,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const hasChanges = taken + invalidated > 0;
 
     if (hasChanges) {
-        const mergedLookup = mergeIdentifierLookups(targetLookup, reconciledHostLookup);
+        const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
 
         pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
         await flushPendingOps();

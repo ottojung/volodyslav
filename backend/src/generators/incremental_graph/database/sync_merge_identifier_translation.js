@@ -1,11 +1,11 @@
-const { nodeIdentifierFromString, nodeIdentifierToString } = require('./node_identifier');
 const {
     makeIdentifierLookup,
-    nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { MalformedIdentifierLookupError } = require('./replica_errors');
+const {
+    IdentifierLookupConflictError,
+    MalformedIdentifierLookupError,
+} = require('./replica_errors');
 
-/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 /**
@@ -23,37 +23,43 @@ function parseIdentifierLookup(rawEntries) {
 }
 
 /**
- * Build identifier translation tables from host identifiers into the target
- * replica's reconciled identifier namespace.
+ * Detect conflicts between host and target lookup snapshots.
  *
- * The host and target may independently allocate different identifiers for the
- * same semantic node key. Decisions must be made in the target namespace, while
- * host data still has to be read from the original host namespace. These maps
- * keep that distinction explicit.
+ * The merge path currently does not resolve cross-host identifier conflicts.
+ * If the same semantic node key is mapped to different identifiers, we fail
+ * fast with a readable error and leave resolution to a future policy.
  *
+ * We also fail if the same identifier string maps to different semantic keys
+ * between host and target.
+ *
+ * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
- * @param {IdentifierLookup} reconciledHostLookup
- * @returns {{ hostToTarget: Map<string, NodeIdentifier>, targetToHost: Map<string, NodeIdentifier> }}
+ * @returns {void}
+ * @throws {IdentifierLookupConflictError}
  */
-function makeHostIdentifierTranslation(hostLookup, reconciledHostLookup) {
-    /** @type {Map<string, NodeIdentifier>} */
-    const hostToTarget = new Map();
-    /** @type {Map<string, NodeIdentifier>} */
-    const targetToHost = new Map();
-
-    for (const [hostIdentifierString, nodeKey] of hostLookup.idToKey.entries()) {
-        const hostIdentifier = nodeIdentifierFromString(hostIdentifierString);
-        const targetIdentifier = nodeKeyToIdFromLookup(reconciledHostLookup, nodeKey);
-        if (targetIdentifier !== undefined) {
-            hostToTarget.set(hostIdentifierString, targetIdentifier);
-            targetToHost.set(nodeIdentifierToString(targetIdentifier), hostIdentifier);
+function assertNoIdentifierLookupConflicts(targetLookup, hostLookup) {
+    for (const [nodeKeyString, targetIdentifier] of targetLookup.keyToId.entries()) {
+        const hostIdentifier = hostLookup.keyToId.get(nodeKeyString);
+        if (hostIdentifier !== undefined && hostIdentifier !== targetIdentifier) {
+            throw new IdentifierLookupConflictError(
+                `Conflicting identifier assignment for node key ${nodeKeyString}: `
+                + `target=${String(targetIdentifier)}, host=${String(hostIdentifier)}`
+            );
         }
     }
 
-    return { hostToTarget, targetToHost };
+    for (const [identifierString, targetNodeKey] of targetLookup.idToKey.entries()) {
+        const hostNodeKey = hostLookup.idToKey.get(identifierString);
+        if (hostNodeKey !== undefined && hostNodeKey !== targetNodeKey) {
+            throw new IdentifierLookupConflictError(
+                `Conflicting node key assignment for identifier ${identifierString}: `
+                + `target=${String(targetNodeKey)}, host=${String(hostNodeKey)}`
+            );
+        }
+    }
 }
 
 module.exports = {
-    makeHostIdentifierTranslation,
+    assertNoIdentifierLookupConflicts,
     parseIdentifierLookup,
 };

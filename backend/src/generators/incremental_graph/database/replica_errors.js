@@ -97,6 +97,24 @@ function isMalformedIdentifierLookupError(object) {
     return object instanceof MalformedIdentifierLookupError;
 }
 
+class IdentifierLookupConflictError extends Error {
+    /**
+     * @param {string} message
+     */
+    constructor(message) {
+        super(message);
+        this.name = 'IdentifierLookupConflictError';
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is IdentifierLookupConflictError}
+ */
+function isIdentifierLookupConflictError(object) {
+    return object instanceof IdentifierLookupConflictError;
+}
+
 module.exports = {
     InvalidReplicaPointerError,
     isInvalidReplicaPointerError,
@@ -106,4 +124,6 @@ module.exports = {
     isSchemaBatchVersionError,
     MalformedIdentifierLookupError,
     isMalformedIdentifierLookupError,
+    IdentifierLookupConflictError,
+    isIdentifierLookupConflictError,
 };
