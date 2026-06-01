@@ -1,6 +1,5 @@
 const { nodeIdentifierFromString, nodeIdentifierToString } = require('./node_identifier');
 const {
-    makeEmptyIdentifierLookup,
     makeIdentifierLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
@@ -18,7 +17,7 @@ const { MalformedIdentifierLookupError } = require('./replica_errors');
  * @returns {IdentifierLookup}
  */
 function parseIdentifierLookup(rawEntries) {
-    if (rawEntries === undefined) return makeEmptyIdentifierLookup();
+    if (rawEntries === undefined) throw new MalformedIdentifierLookupError(rawEntries);
     if (!Array.isArray(rawEntries)) throw new MalformedIdentifierLookupError(rawEntries);
     return makeIdentifierLookup(rawEntries);
 }
