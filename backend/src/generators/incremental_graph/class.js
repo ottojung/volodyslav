@@ -58,7 +58,7 @@ const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
-    internalPullByNodeKeyWithStatusDuringPull,
+    internalPullByNodeKeyDuringPull,
     internalSafePullWithStatus,
     internalUnsafePull,
 } = require("./pull");
@@ -186,7 +186,7 @@ class IncrementalGraphClass {
      * only if the procedure succeeds.
      *
      * @template T
-     * @param {(tx: Transaction) => Promise<T>} procedure
+     * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>} procedure
      * @returns {Promise<T>}
      */
     async withTransaction(procedure) {
@@ -201,14 +201,17 @@ class IncrementalGraphClass {
      *
      * @param {ConcreteNode} concreteNode
      * @param {Transaction} tx
+     * @param {Set<string>} inFlightIdentifiers - Global in-flight set for collision avoidance.
+     * @param {Set<string>} reserved - Local set to track reserved identifiers for cleanup on failure.
      * @returns {Promise<ResolvedConcreteNode>}
      */
-    async resolveConcreteNode(concreteNode, tx) {
+    async resolveConcreteNode(concreteNode, tx, inFlightIdentifiers, reserved) {
         const outputIdentifier = txAllocateNodeIdentifier(
             tx.identifierLookup,
             concreteNode.output,
             (attempt) => deterministicNodeIdentifierFromNodeKey(concreteNode.output, attempt),
-            tx.reservedIdentifiers
+            inFlightIdentifiers,
+            reserved
         );
 
         return {
@@ -222,10 +225,11 @@ class IncrementalGraphClass {
     /**
      * @param {ResolvedConcreteNode} nodeDefinition
      * @param {Transaction} tx
+     * @param {(diff: import('./graph_state').RevdepDiff) => void} reportRevdepDiff
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition, tx) {
-        return await internalMaybeRecalculate(this, nodeDefinition, tx);
+    async maybeRecalculate(nodeDefinition, tx, reportRevdepDiff) {
+        return await internalMaybeRecalculate(this, nodeDefinition, tx, reportRevdepDiff);
     }
 
     /**
@@ -256,19 +260,14 @@ class IncrementalGraphClass {
     }
 
     /**
-     * Internal method for pulling a node during an existing pull operation.
-     * The transaction context is passed explicitly to share the batch and lookup.
+     * Internal method for pulling a dependency during an existing pull operation.
+     * Each call creates its own Transaction and commits atomically.
      *
      * @param {NodeKeyString} nodeKeyStr
-     * @param {Transaction} tx
-     * @returns {Promise<RecomputeResult>}
+     * @returns {Promise<ComputedValue>}
      */
-    async _pullDuringPull(nodeKeyStr, tx) {
-        return await internalPullByNodeKeyWithStatusDuringPull(
-            this,
-            nodeKeyStr,
-            tx
-        );
+    async _pullDuringPull(nodeKeyStr) {
+        return await internalPullByNodeKeyDuringPull(this, nodeKeyStr);
     }
 
     /**

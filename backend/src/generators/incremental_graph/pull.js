@@ -1,14 +1,11 @@
 /**
  * Pull operations for IncrementalGraph.
  *
- * Transaction context is passed explicitly through the call stack - no
- * async_hooks or global state.
+ * Each pull creates its own Transaction — no shared Transaction context
+ * between top-level and nested pulls. The old cross-transaction dedup
+ * cache (nodePulls) and importSharedResolution are removed.
  *
- * The spec defines two pull paths:
- * - Top-level pull: creates a transaction via withTransaction, runs pullNode inside it.
- * - Nested pull: reuses the outer transaction directly (no new mutex acquisition).
- *
- * Both paths go through pullNode(graph, nodeKeyStr, tx): tx=null means top-level.
+ * pull() always returns ComputedValue (not RecomputeResult).
  */
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
@@ -22,48 +19,37 @@
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./database/types').NodeKeyString} StoredNodeKeyString */
 
-/**
- * @typedef {object} PullResolution
- * @property {RecomputeResult} result
- * @property {NodeIdentifier} nodeIdentifier
- * @property {StoredNodeKeyString} nodeKey
- * @property {number} counter
- */
-
-/** @type {Map<NodeKeyString, Promise<PullResolution>>} */
-const nodePulls = new Map();
+const { stringToNodeName } = require("./database");
+const { stringToNodeKeyString } = require("./database");
+const { makeInvalidNodeError } = require("./errors");
+const { withPullMode } = require("./lock");
+const { deserializeNodeKey, serializeNodeKey } = require("./database");
+const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
  * @typedef {object} IncrementalGraphPullAccess
  * @property {Map<NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
- * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
- * @property {(nodeKey: import('./types').NodeKeyString) => import('./types').NodeIdentifier | undefined} lookupNodeIdentifier
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
+ * @property {import('./database/root_database').RootDatabase} rootDatabase
+ * @property {<T>(procedure: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>) => Promise<T>} withTransaction
+ * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction, inFlightIdentifiers: Set<string>, reserved: Set<string>) => Promise<ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
- * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, tx: Transaction) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {(nodeDefinition: ResolvedConcreteNode, tx: Transaction, reportRevdepDiff: (diff: import('./graph_state').RevdepDiff) => void) => Promise<RecomputeResult>} maybeRecalculate
  */
-
-const { stringToNodeName } = require("./database");
-const { stringToNodeKeyString } = require("./database");
-const { makeInvalidNodeError } = require("./errors");
-const { withPullMode } = require("./lock");
-const { deserializeNodeKey, serializeNodeKey } = require("./database");
-const { setIdentifierMapping } = require("./database/identifier_lookup");
-const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
  * Core pull implementation for a node by its serialized key.
- * - If tx is non-null (nested pull): uses it directly — the outer pull's commit covers all writes.
- * - If tx is null (top-level pull): acquires a fresh transaction via withTransaction.
+ * Always creates its own Transaction — no shared Transaction context.
+ *
+ * Returns RecomputeResult for internal use; public pull() extracts the value.
  *
  * @param {IncrementalGraphPullAccess} graph
  * @param {NodeKeyString} nodeKeyStr
- * @param {Transaction | null} tx
  * @returns {Promise<RecomputeResult>}
  */
-async function pullNode(graph, nodeKeyStr, tx) {
+async function pullNode(graph, nodeKeyStr) {
     const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
     const compiledNode = graph.headIndex.get(nodeKey.head);
     if (!compiledNode) {
@@ -72,138 +58,70 @@ async function pullNode(graph, nodeKeyStr, tx) {
     checkArity(compiledNode, nodeKey.args);
     const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
 
-    const nodeIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
-    if (nodeIdentifier !== undefined) {
-        const nodeFreshness = await graph.storage.freshness.get(nodeIdentifier);
+    // Early freshness check against committed storage — no Transaction needed.
+    const committedIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
+    if (committedIdentifier !== undefined) {
+        const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
         if (nodeFreshness === "up-to-date") {
-            const result = await graph.storage.values.get(nodeIdentifier);
+            const result = await graph.storage.values.get(committedIdentifier);
             if (result !== undefined) {
                 return { value: result, status: "cached" };
             }
         }
     }
 
-    const runWithTransaction = async (activeTx) => {
-        const nodeDefinition = await graph.resolveConcreteNode(concreteNode, activeTx);
-        try {
-            const nodeFreshness = await activeTx.batch.freshness.get(nodeDefinition.outputIdentifier);
+    // Full computation with its own Transaction
+    const reserved = new Set();
+    try {
+        const result = await graph.withTransaction(async (tx) => {
+            const nodeDefinition = await graph.resolveConcreteNode(
+                concreteNode,
+                tx,
+                new Set(),  // Deterministic — no global in-flight check needed
+                reserved
+            );
 
+            /** @type {Array<import('./graph_state').RevdepDiff>} */
+            const revdepDiffs = [];
+
+            const nodeFreshness = await tx.batch.freshness.get(nodeDefinition.outputIdentifier);
             if (nodeFreshness === "up-to-date") {
-                const result = await activeTx.batch.values.get(nodeDefinition.outputIdentifier);
-                if (result === undefined) {
-                    throw new Error(
-                        `Impossible: up-to-date node has no stored value: ${String(nodeKeyStr)}`
-                    );
+                const storedValue = await tx.batch.values.get(nodeDefinition.outputIdentifier);
+                if (storedValue !== undefined) {
+                    /** @type {RecomputeResult} */
+                    const cachedResult = { value: storedValue, status: "cached" };
+                    return {
+                        value: cachedResult,
+                        revdepDiffs,
+                    };
                 }
-                const counter = await activeTx.batch.counters.get(nodeDefinition.outputIdentifier);
-                if (counter === undefined) {
-                    throw new Error(
-                        `Impossible: up-to-date node has no stored counter: ${String(nodeKeyStr)}`
-                    );
-                }
-                return {
-                    result: { value: result, status: "cached" },
-                    nodeIdentifier: nodeDefinition.outputIdentifier,
-                    nodeKey: nodeKeyStr,
-                    counter,
-                };
             }
 
-            const result = await graph.maybeRecalculate(nodeDefinition, activeTx);
-            const counter = await activeTx.batch.counters.get(nodeDefinition.outputIdentifier);
+            const computeResult = await graph.maybeRecalculate(
+                nodeDefinition,
+                tx,
+                (diff) => revdepDiffs.push(diff)
+            );
+
+            const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
             if (counter === undefined) {
                 throw new Error(
                     `Impossible: recomputed node has no stored counter: ${String(nodeKeyStr)}`
                 );
             }
+
             return {
-                result,
-                nodeIdentifier: nodeDefinition.outputIdentifier,
-                nodeKey: nodeKeyStr,
-                counter,
+                value: computeResult,
+                revdepDiffs,
             };
-        } finally {
-        }
-    };
-
-    /**
-     * Deduplicate in-flight pulls of the same node key within one transaction.
-     * @param {Transaction} activeTx
-     * @returns {Promise<PullResolution>}
-     */
-    const runDeduplicatedInTransaction = (activeTx) => {
-        const existing = activeTx.inFlight.get(nodeKeyStr);
-        if (existing !== undefined) {
-            return existing;
-        }
-        const promise = runWithTransaction(activeTx).finally(() => {
-            activeTx.inFlight.delete(nodeKeyStr);
         });
-        activeTx.inFlight.set(nodeKeyStr, promise);
-        return promise;
-    };
-
-    /**
-     * Reuse an already-resolved shared pull result in the current transaction.
-     * @param {Transaction} activeTx
-     * @param {PullResolution} shared
-     * @returns {RecomputeResult}
-     */
-    const importSharedResolution = (activeTx, shared) => {
-        const { nodeIdentifier, nodeKey, result, counter } = shared;
-        const existingIdentifier = activeTx.identifierLookup.keyToId.get(String(nodeKey));
-        if (existingIdentifier === undefined) {
-            setIdentifierMapping(activeTx.identifierLookup, nodeIdentifier, nodeKey);
-        }
-        activeTx.batch.counters.put(nodeIdentifier, counter);
         return result;
-    };
-
-    if (tx !== null) {
-        const localExisting = tx.inFlight.get(nodeKeyStr);
-        if (localExisting !== undefined) {
-            const shared = await localExisting;
-            return importSharedResolution(tx, shared);
+    } catch (e) {
+        for (const id of reserved) {
+            graph.rootDatabase.releaseInFlightIdentifier(id);
         }
-
-        const sharedExisting = nodePulls.get(nodeKeyStr);
-        if (sharedExisting !== undefined) {
-            const shared = await sharedExisting;
-            return importSharedResolution(tx, shared);
-        }
-
-        const sharedPromise = tx.pullPromise;
-        if (sharedPromise !== undefined) {
-            nodePulls.set(nodeKeyStr, sharedPromise);
-            const shared = await runDeduplicatedInTransaction(tx);
-            return importSharedResolution(tx, shared);
-        }
-
-        const promise = runDeduplicatedInTransaction(tx).finally(() => {
-            nodePulls.delete(nodeKeyStr);
-        });
-        nodePulls.set(nodeKeyStr, promise);
-        const shared = await promise;
-        return importSharedResolution(tx, shared);
+        throw e;
     }
-
-    const existing = nodePulls.get(nodeKeyStr);
-    if (existing !== undefined) {
-        const shared = await existing;
-        return shared.result.value;
-    }
-
-    let promise;
-    promise = graph.withTransaction(async (activeTx) => {
-        activeTx.pullPromise = promise;
-        return runDeduplicatedInTransaction(activeTx);
-    }).finally(() => {
-        nodePulls.delete(nodeKeyStr);
-    });
-
-    nodePulls.set(nodeKeyStr, promise);
-    const shared = await promise;
-    return shared.result.value;
 }
 
 /**
@@ -217,9 +135,21 @@ async function internalPull(graph, nodeName, bindings = []) {
     return withPullMode(graph.sleeper, async () => {
         ensureNodeNameIsHead(nodeName);
         const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-        const { value } = await pullNode(graph, nodeKeyStr, null);
+        const { value } = await pullNode(graph, nodeKeyStr);
         return value;
     });
+}
+
+/**
+ * Pull by serialized key during an existing pull operation.
+ * Each call creates its own Transaction — no Transaction sharing.
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {NodeKeyString} nodeKeyStr
+ * @returns {Promise<ComputedValue>}
+ */
+async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
+    const { value } = await pullNode(graph, nodeKeyStr);
+    return value;
 }
 
 /**
@@ -232,7 +162,7 @@ async function internalPull(graph, nodeName, bindings = []) {
 async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
     return withPullMode(graph.sleeper, () => {
         const nodeKeyStr = serializeNodeKey({ head: nodeName, args: bindings });
-        return pullNode(graph, nodeKeyStr, null);
+        return pullNode(graph, nodeKeyStr);
     });
 }
 
@@ -246,25 +176,13 @@ async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
 async function internalUnsafePull(graph, nodeName, bindings) {
     ensureNodeNameIsHead(nodeName);
     const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-    const { value } = await pullNode(graph, nodeKeyStr, null);
+    const { value } = await pullNode(graph, nodeKeyStr);
     return value;
-}
-
-/**
- * Nested pull by serialized key — uses the existing transaction, no new mutex.
- * Called from computors (via _pullDuringPull) and from recompute.js.
- * @param {IncrementalGraphPullAccess} graph
- * @param {NodeKeyString} nodeKeyStr
- * @param {Transaction | null} tx
- * @returns {Promise<RecomputeResult>}
- */
-async function internalPullByNodeKeyWithStatusDuringPull(graph, nodeKeyStr, tx) {
-    return pullNode(graph, nodeKeyStr, tx);
 }
 
 module.exports = {
     internalPull,
-    internalPullByNodeKeyWithStatusDuringPull,
+    internalPullByNodeKeyDuringPull,
     internalSafePullWithStatus,
     internalUnsafePull,
 };

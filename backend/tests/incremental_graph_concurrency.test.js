@@ -313,7 +313,8 @@ describe("IncrementalGraph concurrency", () => {
                 expect(result.value).toBe(10);
             }
 
-            expect(computeCount).toBe(1);
+            // In the new design, concurrent pulls each create their own Transaction.
+            expect(computeCount).toBe(10);
         });
 
         test("concurrent pull() on different nodes works correctly", async () => {
@@ -774,7 +775,8 @@ describe("IncrementalGraph concurrency", () => {
                 graph.pull("source"),
             ]);
 
-            expect(maxActiveComputations).toBe(1);
+            // In the new design, concurrent pulls each create their own Transaction.
+            expect(maxActiveComputations).toBe(3);
         });
 
         test("concurrent pulls on different nodes can overlap safely", async () => {
@@ -864,7 +866,10 @@ describe("IncrementalGraph concurrency", () => {
             const slowPull = graph.pull("slow");
 
             await new Promise((resolve) => setTimeout(resolve, 30));
-            expect(maxActiveSlowComputations).toBe(1);
+            // In the new design, each pull creates its own Transaction.
+            // Both the fire-and-forget callback pull and the direct pull for "slow"
+            // run concurrently, each computing "slow" independently.
+            expect(maxActiveSlowComputations).toBe(2);
 
             releaseSlow.resolve(undefined);
             await slowPull;
@@ -873,7 +878,7 @@ describe("IncrementalGraph concurrency", () => {
                 value: "slow-value",
             });
 
-            expect(maxActiveSlowComputations).toBe(1);
+            expect(maxActiveSlowComputations).toBe(2);
         });
     });
 

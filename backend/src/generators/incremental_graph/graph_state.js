@@ -9,6 +9,11 @@
  *   + identifierLookup (working copy)
  * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
  * - commitTransaction(tx) flushes batch then updates _computed.identifierLookup
+ *
+ * In the new design, Transaction is minimal — only batch and identifierLookup.
+ * Each pull call creates its own Transaction; revdep diffs and reserved
+ * identifiers are managed by the caller (pullNode, invalidate), not by the
+ * Transaction itself.
  */
 
 const {
@@ -74,28 +79,20 @@ const {
  */
 
 /**
- * A Transaction groups all reads and writes for one top-level graph operation.
- * It contains:
- * - batch: LevelDB batch accumulator with read-your-writes overlay
- * - identifierLookup: a `TransactionIdentifierLookup` that holds only the
- *   **new** allocations made during this transaction in a small overlay map,
- *   backed by a read-only reference to the committed `_computed.identifierLookup`.
- *   Lookups check the overlay first and fall through to the base.
- * - inFlight: shared in-transaction pull promises keyed by node key string.
- * - pullPromise: the transaction's shared top-level pull promise, used so
- *   other transactions only observe a node after commit.
- *   At commit time, the overlay is applied to the base in-place after a
+ * A Transaction groups reads and writes for one graph operation.
+ * It is deliberately minimal — each pull call creates its own Transaction.
+ * Revdep diffs, reserved identifiers, and other per-pull state are managed
+ * by the caller (pullNode / invalidate), not by the Transaction.
+ *
+ * - batch: LevelDB batch accumulator with read-your-writes overlay.
+ * - identifierLookup: a `TransactionIdentifierLookup` overlay backed by a
+ *   read-only reference to the committed `_computed.identifierLookup`.
+ *   At commit time the overlay is applied to the base in-place after a
  *   successful disk flush (disk-first invariant).
- * - revdepDiffs: diffs collected during computation, applied at commit time
- *   under the commit mutex where no per-input lock is needed.
  *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
- * @property {Map<string, Promise<any>>} inFlight - In-transaction pull dedupe by node key.
- * @property {Promise<any> | undefined} pullPromise - Shared top-level pull promise for this transaction.
- * @property {Set<string>} reservedIdentifiers - Generated identifiers reserved by this transaction.
- * @property {Array<RevdepDiff>} revdepDiffs - Diffs collected during computation, applied at commit time.
  */
 
 /**
@@ -107,7 +104,7 @@ const {
  * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
+ * @property {<T>(fn: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(node: NodeIdentifier, nextInputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} reconcileReverseDeps - Reconcile reverse dependencies against the node's previously materialized inputs.
@@ -355,27 +352,20 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * identifier allocations made during the operation.
          *
          * This implements the transaction model from the volatile-consistency spec:
-         * - createTransaction(): creates an overlay-based TransactionIdentifierLookup
-         *   backed by a direct (non-cloned) reference to the committed lookup, then
-         *   creates a fresh batch accumulator. No full-copy clone is performed.
-         * - operation runs with the transaction.
-         * - commitTransaction(): serialize (base + overlay) for disk, flush the batch,
-         *   then apply the overlay to the base in-place (disk-first ordering).
+         * - Creates an overlay-based TransactionIdentifierLookup backed by a direct
+         *   (non-cloned) reference to the committed lookup, then creates a fresh
+         *   batch accumulator. No full-copy clone is performed.
+         * - The operation callback runs WITHOUT the commit mutex.
+         * - The callback must return an object with optional `value` and `revdepDiffs`
+         *   fields. revdepDiffs are applied under the commit mutex where no per-input
+         *   lock is needed.
+         * - At commit time batch is flushed to disk, then the identifier overlay is
+         *   applied to the base in-place (disk-first ordering).
          *
-         * Using an overlay instead of a full clone eliminates the O(n log n) copy at
-         * transaction start and the second O(n log n) copy at commit time. Only new
-         * allocations (typically very few per transaction) are tracked in the overlay.
-         *
-         * The operation body runs without the commit mutex. Concrete node locks
-         * protect node-owned records, and the commit mutex is held only while
-         * durable writes and volatile identifier publication are finalized.
-         *
-         * Callers that are already inside a transaction (nested dependency pulls) must
-         * NOT call this method again; they must receive the outer transaction via
-         * explicit argument passing and operate on it directly.
+         * Reserved identifiers are managed by the caller (e.g. pullNode).
          *
          * @template T
-         * @param {(tx: Transaction) => Promise<T>} fn
+         * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>} fn
          * @returns {Promise<T>}
          */
         async withTransaction(fn) {
@@ -384,111 +374,85 @@ function makeGraphStorage(rootDatabase, sleeper) {
             const { batch, operations } = createBatch(activeSchemaStorage);
 
             /** @type {Transaction} */
-            const tx = {
-                batch,
-                identifierLookup: txLookup,
-                inFlight: new Map(),
-                pullPromise: undefined,
-                reservedIdentifiers: new Set(),
-                revdepDiffs: [],
-            };
+            const tx = { batch, identifierLookup: txLookup };
 
-            let transactionCommitted = false;
-            try {
-                const value = await fn(tx);
+            const result = await fn(tx);
+            const value = result.value;
+            const revdepDiffs = result.revdepDiffs ?? [];
 
-                await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                    // Apply revdep diffs: for each diff, compute add/remove delta from
-                    // oldDependencies → newDependencies. Read committed revdeps (batch
-                    // overlay is empty for revdeps — no writes during computation), then
-                    // write the updated lists. No per-input lock is needed because the
-                    // commit mutex serializes all revdeps writes.
-                    for (const diff of tx.revdepDiffs) {
-                        const { dependant, oldDependencies, newDependencies } = diff;
-                        const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
-                        const newSet = new Set(newDependencies.map(nodeIdentifierToString));
+            await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                for (const diff of revdepDiffs) {
+                    const { dependant, oldDependencies, newDependencies } = diff;
+                    const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
+                    const newSet = new Set(newDependencies.map(nodeIdentifierToString));
 
-                        // Remove dependant from revdeps of dependencies that are no longer inputs
-                        for (const removed of oldDependencies) {
-                            const idStr = nodeIdentifierToString(removed);
-                            if (newSet.has(idStr)) continue;
-                            const committed = (await batch.revdeps.get(removed)) ?? [];
-                            const filtered = committed.filter(
-                                id => nodeIdentifierToString(id) !== nodeIdentifierToString(dependant)
-                            );
-                            if (filtered.length === 0) {
-                                batch.revdeps.del(removed);
-                            } else if (filtered.length < committed.length) {
-                                batch.revdeps.put(removed, filtered);
-                            }
-                        }
-
-                        // Add dependant to revdeps of new dependencies
-                        for (const added of newDependencies) {
-                            const idStr = nodeIdentifierToString(added);
-                            if (oldSet.has(idStr)) continue;
-                            const committed = (await batch.revdeps.get(added)) ?? [];
-                            if (!committed.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(dependant))) {
-                                committed.push(dependant);
-                                committed.sort(compareNodeIdentifier);
-                                batch.revdeps.put(added, committed);
-                            }
-                        }
-                    }
-
-                    const hasPendingOperations = operations.length > 0;
-                    const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                    const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
-
-                    if (!hasPersistentDelta) {
-                        transactionCommitted = true;
-                        return;
-                    }
-
-                    if (hasPendingAllocations) {
-                        for (const [keyString, identifier] of tx.identifierLookup.keyToId.entries()) {
-                            const committedIdentifier = rootDatabase.nodeKeyToId(stringToNodeKeyString(keyString));
-                            if (committedIdentifier !== undefined && committedIdentifier !== identifier) {
-                                throw new Error(
-                                    `Identifier lookup conflict: node key ${keyString} is already mapped to ${nodeIdentifierToString(committedIdentifier)}`
-                                );
-                            }
-                        }
-                        for (const [identifierString, nodeKey] of tx.identifierLookup.idToKey.entries()) {
-                            const committedNodeKey = rootDatabase.nodeIdToKey(stringToNodeIdentifier(identifierString));
-                            if (committedNodeKey !== undefined && committedNodeKey !== nodeKey) {
-                                throw new Error(
-                                    `Identifier lookup conflict: identifier ${identifierString} is already mapped to ${String(committedNodeKey)}`
-                                );
-                            }
-                        }
-                        operations.push(
-                            activeSchemaStorage.global.rawPutOp(
-                                IDENTIFIERS_KEY,
-                                serializeTransactionLookup(tx.identifierLookup)
-                            )
+                    for (const removed of oldDependencies) {
+                        const idStr = nodeIdentifierToString(removed);
+                        if (newSet.has(idStr)) continue;
+                        const committed = (await batch.revdeps.get(removed)) ?? [];
+                        const filtered = committed.filter(
+                            id => nodeIdentifierToString(id) !== nodeIdentifierToString(dependant)
                         );
+                        if (filtered.length === 0) {
+                            batch.revdeps.del(removed);
+                        } else if (filtered.length < committed.length) {
+                            batch.revdeps.put(removed, filtered);
+                        }
                     }
 
-                    await activeSchemaStorage.batch(operations);
-
-                    if (hasPendingAllocations) {
-                        commitTransactionLookup(tx.identifierLookup);
-                    }
-                    transactionCommitted = true;
-                });
-
-                return value;
-            } finally {
-                // Clean up reserved identifiers on error; on success they are
-                // sunk into the base in-memory lookup after the disk flush.
-                if (!transactionCommitted) {
-                    for (const id of tx.reservedIdentifiers) {
-                        rootDatabase.releaseInFlightIdentifier(id);
+                    for (const added of newDependencies) {
+                        const idStr = nodeIdentifierToString(added);
+                        if (oldSet.has(idStr)) continue;
+                        const committed = (await batch.revdeps.get(added)) ?? [];
+                        if (!committed.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(dependant))) {
+                            committed.push(dependant);
+                            committed.sort(compareNodeIdentifier);
+                            batch.revdeps.put(added, committed);
+                        }
                     }
                 }
-                tx.reservedIdentifiers.clear();
-            }
+
+                const hasPendingOperations = operations.length > 0;
+                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
+
+                if (!hasPersistentDelta) {
+                    return;
+                }
+
+                if (hasPendingAllocations) {
+                    for (const [keyString, identifier] of tx.identifierLookup.keyToId.entries()) {
+                        const committedIdentifier = rootDatabase.nodeKeyToId(stringToNodeKeyString(keyString));
+                        if (committedIdentifier !== undefined && committedIdentifier !== identifier) {
+                            throw new Error(
+                                `Identifier lookup conflict: node key ${keyString} is already mapped to ${nodeIdentifierToString(committedIdentifier)}`
+                            );
+                        }
+                    }
+                    for (const [identifierString, nodeKey] of tx.identifierLookup.idToKey.entries()) {
+                        const committedNodeKey = rootDatabase.nodeIdToKey(stringToNodeIdentifier(identifierString));
+                        if (committedNodeKey !== undefined && committedNodeKey !== nodeKey) {
+                            throw new Error(
+                                `Identifier lookup conflict: identifier ${identifierString} is already mapped to ${String(committedNodeKey)}`
+                            );
+                        }
+                    }
+                    operations.push(
+                        activeSchemaStorage.global.rawPutOp(
+                            IDENTIFIERS_KEY,
+                            serializeTransactionLookup(tx.identifierLookup)
+                        )
+                    );
+                }
+
+                await activeSchemaStorage.batch(operations);
+
+                if (hasPendingAllocations) {
+                    commitTransactionLookup(tx.identifierLookup);
+                }
+            });
+
+            return value;
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
@@ -520,17 +484,15 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
- * Note: this helper no longer checks for a held node lock. The caller
- * (`resolveConcreteNode`) now allocates identifiers directly, and input
- * identifiers are resolved post-pull via `lookupNodeIdentifier` instead of
- * being pre-allocated.
+ * The caller is responsible for releasing identifiers in `reserved` on failure.
  *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
+ * @param {Set<string>} [reserved]
  * @returns {NodeIdentifier}
  */
-function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
+function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey, reserved = new Set()) {
     const existing = lookupNodeIdentifier(tx, nodeKey);
     if (existing !== undefined) {
         return existing;
@@ -540,7 +502,7 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
         nodeKey,
         () => rootDatabase.generateNodeIdentifier(),
         rootDatabase.getInFlightIdentifiers(),
-        tx.reservedIdentifiers
+        reserved
     );
 }
 

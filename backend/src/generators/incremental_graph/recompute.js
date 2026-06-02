@@ -18,7 +18,7 @@
  * @property {import('./graph_state').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: NodeKeyString, tx: Transaction) => Promise<RecomputeResult>} _pullDuringPull
+ * @property {(nodeKeyStr: NodeKeyString) => Promise<ComputedValue>} _pullDuringPull
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -111,12 +111,14 @@ function materializedInputsMatch(inputsRecord, currentInputIdentifiers, currentI
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition
  * @param {Transaction} tx
+ * @param {(diff: import('./graph_state').RevdepDiff) => void} reportRevdepDiff
  * @returns {Promise<RecomputeResult>}
  */
 async function internalMaybeRecalculate(
     incrementalGraph,
     nodeDefinition,
-    tx
+    tx,
+    reportRevdepDiff
 ) {
     const batch = tx.batch;
     const nodeIdentifier = nodeDefinition.outputIdentifier;
@@ -134,8 +136,8 @@ async function internalMaybeRecalculate(
         if (inputKey === undefined) {
             throw new Error(`Missing input key for node ${nodeDefinition.outputKey}`);
         }
-        const { value: inputValue } =
-            await incrementalGraph._pullDuringPull(inputKey, tx);
+        const inputValue =
+            await incrementalGraph._pullDuringPull(inputKey);
         inputValues.push(inputValue);
 
         const inputIdentifier = lookupNodeIdentifier(tx, inputKey);
@@ -189,7 +191,7 @@ async function internalMaybeRecalculate(
     const pullCallback = async (nodeName, bindings = []) => {
         const nodeKey = { head: stringToNodeName(nodeName), args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        const result = await incrementalGraph._pullDuringPull(concreteKey, tx);
+        const inputValue = await incrementalGraph._pullDuringPull(concreteKey);
         const dynamicIdentifier = lookupNodeIdentifier(tx, concreteKey);
         if (dynamicIdentifier === undefined) {
             throw new Error(`Missing identifier for dynamically pulled node ${String(concreteKey)}`);
@@ -201,7 +203,7 @@ async function internalMaybeRecalculate(
             );
         }
         materializedDependencies.add(dynamicIdentifier, dynamicCounter);
-        return result.value;
+        return inputValue;
     };
 
     // Execute the computor. Pass the pull callback so the computor can
@@ -222,7 +224,7 @@ async function internalMaybeRecalculate(
     // Collect revdep diff — applied during commit phase under commit mutex
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
     const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
-    tx.revdepDiffs.push({
+    reportRevdepDiff({
         dependant: nodeIdentifier,
         oldDependencies,
         newDependencies: materializedDependencies.identifiers,

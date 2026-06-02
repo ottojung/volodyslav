@@ -153,7 +153,7 @@ function makeSemanticStorage(graph) {
                             ),
                             inputCounters: value.inputCounters,
                         });
-                        return;
+                        return { value: undefined, revdepDiffs: [] };
                     }
                     if (databaseName === "revdeps") {
                         tx.batch.revdeps.put(
@@ -166,9 +166,10 @@ function makeSemanticStorage(graph) {
                                 )
                             )
                         );
-                        return;
+                        return { value: undefined, revdepDiffs: [] };
                     }
                     tx.batch[databaseName].put(nodeIdentifier, value);
+                    return { value: undefined, revdepDiffs: [] };
                 });
             },
             async del(key) {
@@ -179,6 +180,7 @@ function makeSemanticStorage(graph) {
                 }
                 await graph.withTransaction(async (tx) => {
                     tx.batch[databaseName].del(nodeIdentifier);
+                    return { value: undefined, revdepDiffs: [] };
                 });
             },
         };
@@ -307,7 +309,8 @@ function makeSemanticStorage(graph) {
                     counters: makeBatchDatabase("counters"),
                     timestamps: makeBatchDatabase("timestamps"),
                 };
-                return await run(semanticBatch);
+                const runResult = await run(semanticBatch);
+                return { value: runResult, revdepDiffs: [] };
             });
         },
     };

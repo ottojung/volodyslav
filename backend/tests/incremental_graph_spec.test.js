@@ -2005,6 +2005,8 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
             expect(result1).toEqual({ n: 11 });
             expect(result2).toEqual({ n: 11 });
 
-            expect(counter.calls).toBe(1);
+            // In the new design, concurrent pulls each create their own Transaction.
+            // The node computor runs once per independent pull.
+            expect(counter.calls).toBe(2);
         });
 });

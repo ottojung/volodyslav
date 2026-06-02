@@ -15,8 +15,8 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
- * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
+ * @property {<T>(procedure: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>) => Promise<T>} withTransaction
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction, inFlightIdentifiers: Set<string>, reserved: Set<string>) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {import('./database/root_database').RootDatabase} rootDatabase
  */
@@ -105,59 +105,74 @@ async function internalUnsafeInvalidate(
         bindings
     );
 
-    /**
-     * @param {Transaction} tx
-     * @returns {Promise<void>}
-     */
-    const run = async (tx) => {
-        const nodeDefinition = await incrementalGraph.resolveConcreteNode(
-            concreteNode,
-            tx
-        );
-        tx.batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
+    const reserved = new Set();
+    /** @type {Array<import('./graph_state').RevdepDiff>} */
+    const revdepDiffs = [];
 
-        // Resolve static input identifiers (allocate if first encounter).
-        const staticInputIdentifiers = [];
-        for (const inputKey of nodeDefinition.inputKeys) {
-            const existing = lookupNodeIdentifier(tx, inputKey);
-            if (existing !== undefined) {
-                staticInputIdentifiers.push(existing);
-            } else {
-                staticInputIdentifiers.push(
-                    getOrAllocateNodeIdentifier(tx, incrementalGraph.rootDatabase, inputKey)
-                );
+    try {
+        /**
+         * @param {Transaction} tx
+         * @returns {Promise<{value: undefined, revdepDiffs: Array<import('./graph_state').RevdepDiff>}>}
+         */
+        const run = async (tx) => {
+            const nodeDefinition = await incrementalGraph.resolveConcreteNode(
+                concreteNode,
+                tx,
+                new Set(), // Deterministic — no global in-flight check needed
+                reserved
+            );
+            tx.batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
+
+            // Resolve static input identifiers (allocate if first encounter).
+            const staticInputIdentifiers = [];
+            for (const inputKey of nodeDefinition.inputKeys) {
+                const existing = lookupNodeIdentifier(tx, inputKey);
+                if (existing !== undefined) {
+                    staticInputIdentifiers.push(existing);
+                } else {
+                    staticInputIdentifiers.push(
+                        getOrAllocateNodeIdentifier(tx, incrementalGraph.rootDatabase, inputKey, reserved)
+                    );
+                }
             }
+
+            const inputCounters = [];
+            for (const inputIdentifier of staticInputIdentifiers) {
+                const counter = await tx.batch.counters.get(inputIdentifier);
+                inputCounters.push(counter !== undefined ? counter : 0);
+            }
+
+            // Collect revdep diff
+            const oldInputsRecord = await tx.batch.inputs.get(nodeDefinition.outputIdentifier);
+            const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
+            revdepDiffs.push({
+                dependant: nodeDefinition.outputIdentifier,
+                oldDependencies,
+                newDependencies: staticInputIdentifiers,
+            });
+
+            await incrementalGraph.storage.ensureMaterialized(
+                nodeDefinition.outputIdentifier,
+                staticInputIdentifiers,
+                inputCounters,
+                tx.batch
+            );
+            await internalPropagateOutdated(
+                incrementalGraph,
+                nodeDefinition.outputIdentifier,
+                tx.batch
+            );
+
+            return { value: undefined, revdepDiffs: [...revdepDiffs] };
+        };
+
+        await incrementalGraph.withTransaction(run);
+    } catch (e) {
+        for (const id of reserved) {
+            incrementalGraph.rootDatabase.releaseInFlightIdentifier(id);
         }
-
-        const inputCounters = [];
-        for (const inputIdentifier of staticInputIdentifiers) {
-            const counter = await tx.batch.counters.get(inputIdentifier);
-            inputCounters.push(counter !== undefined ? counter : 0);
-        }
-
-        // Collect revdep diff — applied during commit phase under commit mutex
-        const oldInputsRecord = await tx.batch.inputs.get(nodeDefinition.outputIdentifier);
-        const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
-        tx.revdepDiffs.push({
-            dependant: nodeDefinition.outputIdentifier,
-            oldDependencies,
-            newDependencies: staticInputIdentifiers,
-        });
-
-        await incrementalGraph.storage.ensureMaterialized(
-            nodeDefinition.outputIdentifier,
-            staticInputIdentifiers,
-            inputCounters,
-            tx.batch
-        );
-        await internalPropagateOutdated(
-            incrementalGraph,
-            nodeDefinition.outputIdentifier,
-            tx.batch
-        );
-    };
-
-    await incrementalGraph.withTransaction(run);
+        throw e;
+    }
 }
 
 /**
