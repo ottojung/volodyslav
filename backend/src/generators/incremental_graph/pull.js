@@ -34,9 +34,10 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withPullMode } = require("./lock");
+const { isTransactionLockContentionError, withPullMode } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
+const { fromMilliseconds } = require("../../datetime");
 
 /**
  * Core pull implementation for a node by its serialized key.
@@ -103,8 +104,22 @@ async function pullNode(graph, nodeKeyStr, tx) {
         return runDeduplicatedInTransaction(tx);
     }
 
-    // Top-level pull: acquire the computed-state lock and create a fresh transaction.
-    return graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
+    // Top-level pull: retry if the current transaction discovers a lock-order
+    // inversion while acquiring dynamic dependencies. Retrying from scratch is
+    // safe because the failed transaction is discarded before any commit.
+    for (let attempt = 0; ; attempt += 1) {
+        try {
+            return await graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
+        } catch (error) {
+            if (!isTransactionLockContentionError(error)) {
+                throw error;
+            }
+            await graph.sleeper.sleep(
+                "incremental-graph lock-order retry",
+                fromMilliseconds(Math.min(1 + attempt, 16))
+            );
+        }
+    }
 }
 
 /**

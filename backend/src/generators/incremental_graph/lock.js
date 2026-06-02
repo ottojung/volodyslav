@@ -17,6 +17,29 @@ const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").insta
 const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
 const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
 
+class TransactionLockContentionError extends Error {
+    /**
+     * @param {import('./types').NodeKeyString} nodeKey
+     */
+    constructor(nodeKey) {
+        super(
+            `Cannot acquire node lock for ${String(nodeKey)} without blocking while ` +
+            `the transaction already holds other node locks. Restarting the transaction ` +
+            `avoids a deadlock.`
+        );
+        this.name = 'TransactionLockContentionError';
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TransactionLockContentionError}
+ */
+function isTransactionLockContentionError(object) {
+    return object instanceof TransactionLockContentionError;
+}
+
 
 /**
  * @typedef {{ promise: Promise<void>, release: () => void }} ManualLockEntry
@@ -26,18 +49,12 @@ const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
 const concreteNodeLocks = new Map();
 
 /**
- * Acquire a process-local concrete node lock and return a release callback.
- * @param {import('./types').NodeKeyString} nodeKey
- * @returns {Promise<() => void>}
+ * @param {string} stringKey
+ * @returns {(() => void) | undefined}
  */
-async function acquireConcreteNodeLock(nodeKey) {
-    const stringKey = String(nodeKey);
-    for (;;) {
-        const existing = concreteNodeLocks.get(stringKey);
-        if (existing === undefined) {
-            break;
-        }
-        await existing.promise;
+function tryAcquireConcreteNodeLockByString(stringKey) {
+    if (concreteNodeLocks.has(stringKey)) {
+        return undefined;
     }
 
     /** @type {() => void} */
@@ -66,6 +83,27 @@ async function acquireConcreteNodeLock(nodeKey) {
 }
 
 /**
+ * Acquire a process-local concrete node lock and return a release callback.
+ * @param {import('./types').NodeKeyString} nodeKey
+ * @returns {Promise<() => void>}
+ */
+async function acquireConcreteNodeLock(nodeKey) {
+    const stringKey = String(nodeKey);
+    for (;;) {
+        const existing = concreteNodeLocks.get(stringKey);
+        if (existing === undefined) {
+            break;
+        }
+        await existing.promise;
+    }
+    const release = tryAcquireConcreteNodeLockByString(stringKey);
+    if (release === undefined) {
+        throw new Error(`acquireConcreteNodeLock: lost race for ${stringKey}`);
+    }
+    return release;
+}
+
+/**
  * Release concrete node locks held by a transaction.
  * @param {{ heldNodeLocks: Set<string>, nodeLockReleases: Map<string, () => void> }} tx
  * @returns {void}
@@ -89,7 +127,13 @@ async function acquireTransactionNodeLock(tx, nodeKey) {
     if (tx.heldNodeLocks.has(stringKey)) {
         return;
     }
-    const release = await acquireConcreteNodeLock(nodeKey);
+    const isFirstLock = tx.heldNodeLocks.size === 0;
+    const release = isFirstLock
+        ? await acquireConcreteNodeLock(nodeKey)
+        : tryAcquireConcreteNodeLockByString(stringKey);
+    if (release === undefined) {
+        throw new TransactionLockContentionError(nodeKey);
+    }
     tx.heldNodeLocks.add(stringKey);
     tx.nodeLockReleases.set(stringKey, release);
 }
@@ -202,6 +246,8 @@ function withExclusiveMode(sleeper, procedure) {
 }
 
 module.exports = {
+    TransactionLockContentionError,
+    isTransactionLockContentionError,
     withMutex,
     withExclusiveMode,
     withObserveMode,

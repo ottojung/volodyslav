@@ -1126,4 +1126,81 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
 
         await db.close();
     });
+
+    test("concurrent opposite-order dynamic pulls do not deadlock on first discovery", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const leftLeafStarted = makeDeferredPromise();
+        const rightLeafStarted = makeDeferredPromise();
+        const releaseLeaves = makeDeferredPromise();
+
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async () => {
+                    leftLeafStarted.resolve(undefined);
+                    await releaseLeaves.promise;
+                    return { value: 1 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "b",
+                inputs: [],
+                computor: async () => {
+                    rightLeafStarted.resolve(undefined);
+                    await releaseLeaves.promise;
+                    return { value: 2 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "left",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    const a = await pull("a");
+                    const b = await pull("b");
+                    return { value: a.value + b.value };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "right",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    const b = await pull("b");
+                    const a = await pull("a");
+                    return { value: b.value - a.value };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        try {
+            const leftPromise = graph.pull("left");
+            const rightPromise = graph.pull("right");
+
+            await Promise.all([leftLeafStarted.promise, rightLeafStarted.promise]);
+            releaseLeaves.resolve(undefined);
+
+            const timeout = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error("first-discovery opposite-order pulls deadlocked")), 1000);
+            });
+
+            await expect(Promise.race([
+                Promise.all([leftPromise, rightPromise]),
+                timeout,
+            ])).resolves.toEqual([
+                { value: 3 },
+                { value: 1 },
+            ]);
+        } finally {
+            await db.close();
+        }
+    });
 });
