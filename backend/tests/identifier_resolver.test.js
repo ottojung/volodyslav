@@ -47,20 +47,10 @@ function makeTransaction(initialLookupEntries) {
         batch: {},
         identifierLookup: makeTransactionIdentifierLookup(baseLookup),
         reservedIdentifiers: new Set(),
-        heldNodeLocks: new Set(),
-        nodeLockReleases: new Map(),
+        revdepDiffs: [],
+        pendingLockReleases: [],
         inFlight: new Map(),
     };
-}
-
-/**
- * Mark a test transaction as holding the concrete lock for a key.
- * @param {ReturnType<typeof makeTransaction>} tx
- * @param {import('../src/generators/incremental_graph/database').NodeKeyString} key
- * @returns {void}
- */
-function holdNodeLock(tx, key) {
-    tx.heldNodeLocks.add(String(key));
 }
 
 describe("Transaction-based identifier operations", () => {
@@ -94,7 +84,6 @@ describe("Transaction-based identifier operations", () => {
         const tx = makeTransaction([]);
         const db = makeRootDatabase();
         const key = stringToNodeKeyString('{"head":"node","args":[]}');
-        holdNodeLock(tx, key);
         
         const allocated = getOrAllocateNodeIdentifier(tx, db, key);
         expect(allocated).toBeDefined();
@@ -106,7 +95,6 @@ describe("Transaction-based identifier operations", () => {
         const tx = makeTransaction([]);
         const db = makeRootDatabase();
         const key = stringToNodeKeyString('{"head":"node","args":[]}');
-        holdNodeLock(tx, key);
         
         const first = getOrAllocateNodeIdentifier(tx, db, key);
         const second = getOrAllocateNodeIdentifier(tx, db, key);
@@ -131,7 +119,6 @@ describe("Transaction-based identifier operations", () => {
         const tx = makeTransaction([]);
         const db = makeRootDatabase();
         const key = stringToNodeKeyString('{"head":"node","args":[]}');
-        holdNodeLock(tx, key);
         
         const allocated = getOrAllocateNodeIdentifier(tx, db, key);
         const found = lookupNodeIdentifier(tx, key);
@@ -142,7 +129,6 @@ describe("Transaction-based identifier operations", () => {
         const tx = makeTransaction([]);
         const db = makeRootDatabase();
         const key = stringToNodeKeyString('{"head":"node","args":[]}');
-        holdNodeLock(tx, key);
         
         const allocated = getOrAllocateNodeIdentifier(tx, db, key);
         const found = requireNodeKey(tx, allocated);
@@ -154,8 +140,6 @@ describe("Transaction-based identifier operations", () => {
         const db = makeRootDatabase();
         const keyA = stringToNodeKeyString('{"head":"a","args":[]}');
         const keyB = stringToNodeKeyString('{"head":"b","args":[]}');
-        holdNodeLock(tx, keyA);
-        holdNodeLock(tx, keyB);
         
         const idA = getOrAllocateNodeIdentifier(tx, db, keyA);
         const idB = getOrAllocateNodeIdentifier(tx, db, keyB);
@@ -172,7 +156,6 @@ describe("Transaction-based identifier operations", () => {
         const db = makeRootDatabase();
         
         const newKey = stringToNodeKeyString('{"head":"new","args":[]}');
-        holdNodeLock(tx, newKey);
         const newId = getOrAllocateNodeIdentifier(tx, db, newKey);
         
         // Both the pre-existing entry and the new allocation are in the lookup.

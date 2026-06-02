@@ -25,6 +25,7 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { isUnchanged } = require("./unchanged");
 const {
     nodeIdentifierToString,
+    nodeIdentifierFromString,
     stringToNodeName,
     serializeNodeKey,
 } = require("./database");
@@ -125,16 +126,25 @@ async function internalMaybeRecalculate(
     const inputValues = [];
     /** @type {number[]} */
     const currentInputCounters = [];
+    /** @type {NodeIdentifier[]} */
+    const inputIdentifiers = [];
 
     for (let index = 0; index < nodeDefinition.inputKeys.length; index++) {
         const inputKey = nodeDefinition.inputKeys[index];
-        const inputIdentifier = nodeDefinition.inputIdentifiers[index];
-        if (inputKey === undefined || inputIdentifier === undefined) {
-            throw new Error(`Missing input identifier for node ${nodeDefinition.outputKey}`);
+        if (inputKey === undefined) {
+            throw new Error(`Missing input key for node ${nodeDefinition.outputKey}`);
         }
         const { value: inputValue } =
             await incrementalGraph._pullDuringPull(inputKey, tx);
         inputValues.push(inputValue);
+
+        const inputIdentifier = lookupNodeIdentifier(tx, inputKey);
+        if (inputIdentifier === undefined) {
+            throw new Error(
+                `Missing identifier for input ${String(inputKey)} after pull`
+            );
+        }
+        inputIdentifiers.push(inputIdentifier);
 
         const inputCounter = await batch.counters.get(inputIdentifier);
         if (inputCounter === undefined) {
@@ -146,7 +156,7 @@ async function internalMaybeRecalculate(
     }
 
     const materializedDependencies = makeMaterializedDependencyAccumulator(
-        nodeDefinition.inputIdentifiers,
+        inputIdentifiers,
         currentInputCounters
     );
 
@@ -157,11 +167,6 @@ async function internalMaybeRecalculate(
             materializedDependencies.identifiers,
             materializedDependencies.counters
         )) {
-            await incrementalGraph.storage.reconcileReverseDeps(
-                nodeIdentifier,
-                materializedDependencies.identifiers,
-                batch
-            );
             await incrementalGraph.storage.ensureMaterialized(
                 nodeIdentifier,
                 materializedDependencies.identifiers,
@@ -214,11 +219,14 @@ async function internalMaybeRecalculate(
         );
     }
 
-    await incrementalGraph.storage.reconcileReverseDeps(
-        nodeIdentifier,
-        materializedDependencies.identifiers,
-        batch
-    );
+    // Collect revdep diff — applied during commit phase under commit mutex
+    const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
+    const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
+    tx.revdepDiffs.push({
+        dependant: nodeIdentifier,
+        oldDependencies,
+        newDependencies: materializedDependencies.identifiers,
+    });
 
     for (const inputIdentifier of materializedDependencies.identifiers) {
         batch.freshness.put(inputIdentifier, "up-to-date");

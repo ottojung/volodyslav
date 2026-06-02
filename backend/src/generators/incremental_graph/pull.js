@@ -72,6 +72,8 @@ async function pullNode(graph, nodeKeyStr, tx) {
     /**
      * Checks freshness: returns cached value if up-to-date,
      * otherwise delegates to maybeRecalculate.
+     * The target lock is held for the full transaction duration
+     * and released by withTransaction's finally block.
      * @param {Transaction} activeTx
      * @returns {Promise<RecomputeResult>}
      */

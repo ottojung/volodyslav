@@ -64,44 +64,6 @@ async function acquireConcreteNodeLock(nodeKey) {
     };
 }
 
-/**
- * Release concrete node locks held by a transaction.
- * @param {{ heldNodeLocks: Set<string>, nodeLockReleases: Map<string, () => void> }} tx
- * @returns {void}
- */
-function releaseConcreteNodeLocks(tx) {
-    const releases = Array.from(tx.nodeLockReleases.values()).reverse();
-    tx.nodeLockReleases.clear();
-    tx.heldNodeLocks.clear();
-    for (const release of releases) {
-        release();
-    }
-}
-
-/**
- * @param {{ heldNodeLocks: Set<string>, nodeLockReleases: Map<string, () => void> }} tx
- * @param {import('./types').NodeKeyString} nodeKey
- * @returns {Promise<void>}
- */
-async function acquireTransactionNodeLock(tx, nodeKey) {
-    const stringKey = String(nodeKey);
-    if (tx.heldNodeLocks.has(stringKey)) {
-        return;
-    }
-    const release = await acquireConcreteNodeLock(nodeKey);
-    tx.heldNodeLocks.add(stringKey);
-    tx.nodeLockReleases.set(stringKey, release);
-}
-
-/**
- * @param {{ heldNodeLocks: Set<string> }} tx
- * @param {import('./types').NodeKeyString} nodeKey
- * @returns {boolean}
- */
-function transactionHoldsNodeLock(tx, nodeKey) {
-    return tx.heldNodeLocks.has(String(nodeKey));
-}
-
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
@@ -207,7 +169,5 @@ module.exports = {
     withPullMode,
     withComputedStateMutex,
     withCommitMutex,
-    acquireTransactionNodeLock,
-    releaseConcreteNodeLocks,
-    transactionHoldsNodeLock,
+    acquireConcreteNodeLock,
 };

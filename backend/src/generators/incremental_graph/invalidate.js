@@ -18,14 +18,14 @@
  * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
  * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {import('./database/root_database').RootDatabase} rootDatabase
  */
 
-const { stringToNodeName } = require("./database");
-const { nodeIdentifierToString } = require("./database");
+const { stringToNodeName, nodeIdentifierToString, nodeIdentifierFromString, serializeNodeKey } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
-const { serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
+const { lookupNodeIdentifier, getOrAllocateNodeIdentifier } = require("./graph_state");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
@@ -116,23 +116,37 @@ async function internalUnsafeInvalidate(
         );
         tx.batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
 
+        // Resolve static input identifiers (allocate if first encounter).
+        const staticInputIdentifiers = [];
+        for (const inputKey of nodeDefinition.inputKeys) {
+            const existing = lookupNodeIdentifier(tx, inputKey);
+            if (existing !== undefined) {
+                staticInputIdentifiers.push(existing);
+            } else {
+                staticInputIdentifiers.push(
+                    getOrAllocateNodeIdentifier(tx, incrementalGraph.rootDatabase, inputKey)
+                );
+            }
+        }
+
         const inputCounters = [];
-        for (const inputIdentifier of nodeDefinition.inputIdentifiers) {
+        for (const inputIdentifier of staticInputIdentifiers) {
             const counter = await tx.batch.counters.get(inputIdentifier);
             inputCounters.push(counter !== undefined ? counter : 0);
         }
 
-        // Reconcile reverse dependencies against previously materialized inputs
-        // before invalidation rewrites inputs to the static dependency set.
-        await incrementalGraph.storage.reconcileReverseDeps(
-            nodeDefinition.outputIdentifier,
-            nodeDefinition.inputIdentifiers,
-            tx.batch
-        );
+            // Collect revdep diff — applied during commit phase under commit mutex
+            const oldInputsRecord = await tx.batch.inputs.get(nodeDefinition.outputIdentifier);
+            const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
+            tx.revdepDiffs.push({
+                dependant: nodeDefinition.outputIdentifier,
+                oldDependencies,
+                newDependencies: staticInputIdentifiers,
+            });
 
         await incrementalGraph.storage.ensureMaterialized(
             nodeDefinition.outputIdentifier,
-            nodeDefinition.inputIdentifiers,
+            staticInputIdentifiers,
             inputCounters,
             tx.batch
         );

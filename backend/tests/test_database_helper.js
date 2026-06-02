@@ -35,14 +35,13 @@ const {
  * @returns {string}
  */
 /**
- * Allocate an identifier in a test transaction after marking the semantic lock held.
+ * Allocate an identifier in a test transaction.
  * @param {import('../src/generators/incremental_graph/graph_state').Transaction} tx
  * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} rootDatabase
  * @param {string} jsonKey
  * @returns {import('../src/generators/incremental_graph/database').NodeIdentifier}
  */
 function getOrAllocateNodeIdentifierForTest(tx, rootDatabase, jsonKey) {
-    tx.heldNodeLocks.add(String(jsonKey));
     return getOrAllocateNodeIdentifier(tx, rootDatabase, jsonKey);
 }
 

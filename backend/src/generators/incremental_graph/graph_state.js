@@ -22,11 +22,10 @@ const {
     txNodeKeyToId,
     serializeTransactionLookup,
     commitTransactionLookup,
+    compareNodeIdentifier,
 } = require('./database');
 const {
     withCommitMutex,
-    releaseConcreteNodeLocks,
-    transactionHoldsNodeLock,
 } = require('./lock');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -46,6 +45,15 @@ const {
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+
+/**
+ * A revdep diff records the old and new dependencies of a dependant node,
+ * so the commit phase can compute the add/remove delta under the commit mutex.
+ * @typedef {object} RevdepDiff
+ * @property {NodeIdentifier} dependant - The node whose dependencies changed.
+ * @property {NodeIdentifier[]} oldDependencies - Previously materialized dependency identifiers.
+ * @property {NodeIdentifier[]} newDependencies - Current dependency identifiers.
+ */
 
 /**
  * @template TValue
@@ -75,13 +83,16 @@ const {
  *   Lookups check the overlay first and fall through to the base.
  *   At commit time, the overlay is applied to the base in-place after a
  *   successful disk flush (disk-first invariant).
+ * - revdepDiffs: diffs collected during computation, applied at commit time
+ *   under the commit mutex where no per-input lock is needed.
  *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
  * @property {Set<string>} reservedIdentifiers - Generated identifiers reserved by this transaction.
- * @property {Set<string>} heldNodeLocks - Concrete semantic node locks held until transaction finish.
- * @property {Map<string, () => void>} nodeLockReleases - Release callbacks for held node locks.
+ * @property {Array<RevdepDiff>} revdepDiffs - Diffs collected during computation, applied at commit time.
+ * @property {Set<string>} heldNodeLocks - Concrete node keys whose locks are already held by this transaction.
+ * @property {Array<() => void>} pendingLockReleases - Per-node lock release callbacks; flushed after commit.
  * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
  */
 
@@ -375,8 +386,9 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 batch,
                 identifierLookup: txLookup,
                 reservedIdentifiers: new Set(),
+                revdepDiffs: [],
                 heldNodeLocks: new Set(),
-                nodeLockReleases: new Map(),
+                pendingLockReleases: [],
                 inFlight: new Map(),
             };
 
@@ -385,6 +397,44 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 const value = await fn(tx);
 
                 await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                    // Apply revdep diffs: for each diff, compute add/remove delta from
+                    // oldDependencies → newDependencies. Read committed revdeps (batch
+                    // overlay is empty for revdeps — no writes during computation), then
+                    // write the updated lists. No per-input lock is needed because the
+                    // commit mutex serializes all revdeps writes.
+                    for (const diff of tx.revdepDiffs) {
+                        const { dependant, oldDependencies, newDependencies } = diff;
+                        const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
+                        const newSet = new Set(newDependencies.map(nodeIdentifierToString));
+
+                        // Remove dependant from revdeps of dependencies that are no longer inputs
+                        for (const removed of oldDependencies) {
+                            const idStr = nodeIdentifierToString(removed);
+                            if (newSet.has(idStr)) continue;
+                            const committed = (await batch.revdeps.get(removed)) ?? [];
+                            const filtered = committed.filter(
+                                id => nodeIdentifierToString(id) !== nodeIdentifierToString(dependant)
+                            );
+                            if (filtered.length === 0) {
+                                batch.revdeps.del(removed);
+                            } else if (filtered.length < committed.length) {
+                                batch.revdeps.put(removed, filtered);
+                            }
+                        }
+
+                        // Add dependant to revdeps of new dependencies
+                        for (const added of newDependencies) {
+                            const idStr = nodeIdentifierToString(added);
+                            if (oldSet.has(idStr)) continue;
+                            const committed = (await batch.revdeps.get(added)) ?? [];
+                            if (!committed.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(dependant))) {
+                                committed.push(dependant);
+                                committed.sort(compareNodeIdentifier);
+                                batch.revdeps.put(added, committed);
+                            }
+                        }
+                    }
+
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
                     const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
@@ -429,11 +479,22 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
                 return value;
             } finally {
-                for (const identifier of tx.reservedIdentifiers) {
-                    rootDatabase.releaseInFlightIdentifier(identifier);
+                // Release per-node locks acquired during this transaction.
+                // Locks are held for the full transaction duration to prevent
+                // concurrent identifier allocation races (two transactions
+                // allocating different identifiers for the same node key).
+                for (const release of tx.pendingLockReleases) {
+                    release();
+                }
+
+                // Clean up reserved identifiers on error; on success they are
+                // sunk into the base in-memory lookup after the disk flush.
+                if (!transactionCommitted) {
+                    for (const id of tx.reservedIdentifiers) {
+                        rootDatabase.releaseInFlightIdentifier(id);
+                    }
                 }
                 tx.reservedIdentifiers.clear();
-                releaseConcreteNodeLocks(tx);
                 if (!transactionCommitted) {
                     tx.inFlight.clear();
                 }
@@ -468,6 +529,13 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * New allocations are recorded only in the transaction's overlay, not in the
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
+ *
+ * Note: this helper no longer checks for a held node lock. The caller
+ * (`resolveConcreteNode`) now acquires the target lock via
+ * `acquireConcreteNodeLock` before calling `txAllocateNodeIdentifier`
+ * directly, and input identifiers are resolved post-pull via
+ * `lookupNodeIdentifier` instead of being pre-allocated.
+ *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
@@ -477,9 +545,6 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
     const existing = lookupNodeIdentifier(tx, nodeKey);
     if (existing !== undefined) {
         return existing;
-    }
-    if (!transactionHoldsNodeLock(tx, nodeKey)) {
-        throw new Error(`Cannot allocate node identifier without holding node lock for ${String(nodeKey)}`);
     }
     return txAllocateNodeIdentifier(
         tx.identifierLookup,

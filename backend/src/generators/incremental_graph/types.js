@@ -86,11 +86,12 @@
 
 /**
  * A concrete node definition enriched with identifiers for one operation.
+ * Input identifiers are not pre-allocated; callers resolve them post-pull
+ * via lookupNodeIdentifier(tx, inputKey).
  * @typedef {object} ResolvedConcreteNode
  * @property {NodeKeyString} outputKey - Concrete output semantic node key (used for messages).
  * @property {Array<NodeKeyString>} inputKeys - Concrete input semantic node keys used for recursive pulls.
  * @property {NodeIdentifier} outputIdentifier - Persisted identifier of the output node.
- * @property {Array<NodeIdentifier>} inputIdentifiers - Persisted identifiers of the input nodes.
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value.
  */
 
