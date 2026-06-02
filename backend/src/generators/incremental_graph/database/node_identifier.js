@@ -65,9 +65,6 @@ function makeNodeIdentifier(capabilities) {
  * @returns {NodeIdentifier}
  */
 function nodeIdentifierFromString(identifier) {
-    if (!isValidNodeIdentifier(identifier)) {
-        throw new InvalidNodeIdentifierError(identifier);
-    }
     return stringToNodeIdentifier(identifier);
 }
 
