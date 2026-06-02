@@ -39,7 +39,7 @@
  */
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
-const { stringToNodeIdentifier, versionToString } = require('./types');
+const { versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     makeEmptyIdentifierLookup,
@@ -52,7 +52,7 @@ const { buildTakeOps, copyReplicaGently } = require('./sync_merge_transfer');
 const {
     assertNoIdentifierLookupConflicts,
     parseIdentifierLookup,
-} = require('./sync_merge_identifier_translation');
+} = require('./sync_merge_identifier_lookup');
 
 /** @typedef {import('../../../logger').Logger} Logger */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -216,62 +216,27 @@ async function assertHostVersionMatches(rootDatabase, hostname) {
 
 /**
  * Load and validate identifier lookup metadata for the merge target and host.
- * Missing target metadata is allowed for fresh/legacy local replicas; missing
- * host metadata is malformed because each staged host snapshot must carry its
- * own semantic identifier mapping.
+ * Missing host metadata is always an error because each staged identifier-native
+ * host snapshot must carry its own semantic identifier mapping. Missing target
+ * metadata is allowed only for a genuinely fresh local replica with no version.
  *
  * @param {SchemaStorage} targetStorage
  * @param {SchemaStorage} hostStorage
  * @returns {Promise<{ targetLookup: IdentifierLookup, hostLookup: IdentifierLookup }>}
  */
 async function loadMergeIdentifierLookups(targetStorage, hostStorage) {
-    const hostLookup = parseIdentifierLookup(await hostStorage.global.get('identifiers_keys_map'));
+    const hostLookup = parseIdentifierLookup(
+        await hostStorage.global.get('identifiers_keys_map'),
+        'staged host snapshot'
+    );
     const targetRawLookup = await targetStorage.global.get('identifiers_keys_map');
-    const targetLookup = targetRawLookup === undefined
+    const targetVersion = await targetStorage.global.get('version');
+    const targetLookup = targetRawLookup === undefined && targetVersion === undefined
         ? makeEmptyIdentifierLookup()
-        : parseIdentifierLookup(targetRawLookup);
+        : parseIdentifierLookup(targetRawLookup, 'merge target replica');
 
     assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
     return { targetLookup, hostLookup };
-}
-
-/**
- * Host-to-target identifier translation for the current conservative merge
- * policy. Conflicts are rejected before this translator is used, so any host
- * identifier that survives validation can be written into the target namespace
- * unchanged.
- *
- * @param {NodeIdentifier} hostIdentifier
- * @returns {NodeIdentifier}
- */
-function targetIdentifierForHostIdentifier(hostIdentifier) {
-    return hostIdentifier;
-}
-
-/**
- * Target-to-host identifier translation for the current conservative merge
- * policy. See targetIdentifierForHostIdentifier for the policy rationale.
- *
- * @param {NodeIdentifier} targetIdentifier
- * @returns {NodeIdentifier}
- */
-function hostIdentifierForTargetIdentifier(targetIdentifier) {
-    return targetIdentifier;
-}
-
-/**
- * Convert a host inputs record into target-namespace node identifiers.
- * Missing input records are treated as empty because `inputs` is the canonical
- * materialized-node registry: a missing record means the node has no tracked
- * dependencies in that snapshot.
- *
- * @param {import('./root_database').InputsRecord | undefined} record
- * @returns {NodeIdentifier[]}
- */
-function translatedHostInputs(record) {
-    return record
-        ? record.inputs.map(input => targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))
-        : [];
 }
 
 /**
@@ -296,9 +261,7 @@ async function applyTakeDecision(
     await writer.pushAll(await buildTakeOps(
         targetStorage,
         hostStorage,
-        node,
-        hostIdentifierForTargetIdentifier(node),
-        targetIdentifierForHostIdentifier
+        node
     ));
 
     if (hostOnlyNodesNeedingInvalidation.has(node)) {
@@ -321,9 +284,7 @@ async function copyHostStateForInvalidatedTake(writer, targetStorage, hostStorag
     await writer.pushAll(await buildTakeOps(
         targetStorage,
         hostStorage,
-        node,
-        hostIdentifierForTargetIdentifier(node),
-        targetIdentifierForHostIdentifier
+        node
     ));
 }
 
@@ -340,7 +301,7 @@ async function copyHostStateForInvalidatedTake(writer, targetStorage, hostStorag
  * @returns {Promise<void>}
  */
 async function advanceInvalidatedTakeTimestamp(writer, targetStorage, hostStorage, node) {
-    const hostTimestamps = await hostStorage.timestamps.get(hostIdentifierForTargetIdentifier(node));
+    const hostTimestamps = await hostStorage.timestamps.get(node);
     if (hostTimestamps === undefined) {
         return;
     }
@@ -531,9 +492,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hOnlyNeedsInvalidate,
     } = await buildMergePlan(
         targetStorage,
-        hostStorage,
-        hostIdentifierForTargetIdentifier,
-        translatedHostInputs
+        hostStorage
     );
 
     await applyNodeDecisions(

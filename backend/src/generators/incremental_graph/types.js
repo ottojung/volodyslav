@@ -85,7 +85,7 @@
  */
 
 /**
- * A concrete node definition enriched with identifier translations for one operation.
+ * A concrete node definition enriched with identifiers for one operation.
  * @typedef {object} ResolvedConcreteNode
  * @property {NodeKeyString} outputKey - Concrete output semantic node key (used for messages).
  * @property {Array<NodeKeyString>} inputKeys - Concrete input semantic node keys used for recursive pulls.

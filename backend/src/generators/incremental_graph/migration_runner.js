@@ -26,6 +26,8 @@ const {
     stringToNodeIdentifier,
     stringToNodeKeyString,
     stringToNodeName,
+    isValidNodeIdentifier,
+    MissingIdentifierLookupError,
     getRootDatabase,
 } = require("./database");
 const { withExclusiveMode } = require("./lock");
@@ -183,6 +185,12 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
                 return serializeIdentifierLookup(lookup);
             },
         };
+    }
+
+    for (const nodeKey of materializedNodes) {
+        if (isValidNodeIdentifier(String(nodeKey))) {
+            throw new MissingIdentifierLookupError('migration source replica');
+        }
     }
 
     /** @type {Array<[import('./database/types').NodeIdentifier, NodeKeyString]>} */

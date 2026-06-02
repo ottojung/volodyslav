@@ -89,6 +89,28 @@ class MalformedIdentifierLookupError extends Error {
     }
 }
 
+class MissingIdentifierLookupError extends Error {
+    /**
+     * @param {string} context
+     */
+    constructor(context) {
+        super(
+            `Missing identifiers_keys_map record in ${context}. ` +
+            `This identifier-native graph snapshot is incomplete and cannot be used.`
+        );
+        this.name = 'MissingIdentifierLookupError';
+        this.context = context;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingIdentifierLookupError}
+ */
+function isMissingIdentifierLookupError(object) {
+    return object instanceof MissingIdentifierLookupError;
+}
+
 /**
  * @param {unknown} object
  * @returns {object is MalformedIdentifierLookupError}
@@ -124,6 +146,8 @@ module.exports = {
     isSchemaBatchVersionError,
     MalformedIdentifierLookupError,
     isMalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
+    isMissingIdentifierLookupError,
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
 };

@@ -22,6 +22,7 @@ const {
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
 const { makeNodeIdentifier } = require('./node_identifier');
+const { isValidNodeIdentifier } = require('./node_identifier');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -38,6 +39,8 @@ const {
     isSchemaBatchVersionError,
     MalformedIdentifierLookupError,
     isMalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
+    isMissingIdentifierLookupError,
 } = require('./replica_errors');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
@@ -168,17 +171,46 @@ function assertNeverReplicaName(name) {
 
 /**
  * @param {GlobalSublevelType} globalSublevel
+ * @param {string} context
+ * @param {SchemaStorage | undefined} schemaStorage
  * @returns {Promise<IdentifierLookup>}
  */
-async function loadIdentifierLookupFromGlobal(globalSublevel) {
+async function loadIdentifierLookupFromGlobal(globalSublevel, context, schemaStorage = undefined) {
     const rawEntries = await globalSublevel.get(IDENTIFIERS_KEY);
     if (rawEntries === undefined) {
+        const version = await globalSublevel.get('version');
+        if (version !== undefined && schemaStorage !== undefined && await hasIdentifierNativeNodeData(schemaStorage)) {
+            throw new MissingIdentifierLookupError(context);
+        }
         return makeEmptyIdentifierLookup();
     }
     if (!Array.isArray(rawEntries)) {
         throw new MalformedIdentifierLookupError(rawEntries);
     }
     return makeIdentifierLookup(rawEntries);
+}
+
+/**
+ * @param {SchemaStorage} schemaStorage
+ * @returns {Promise<boolean>}
+ */
+async function hasIdentifierNativeNodeData(schemaStorage) {
+    const databases = [
+        schemaStorage.values,
+        schemaStorage.freshness,
+        schemaStorage.inputs,
+        schemaStorage.revdeps,
+        schemaStorage.counters,
+        schemaStorage.timestamps,
+    ];
+    for (const database of databases) {
+        for await (const key of database.keys()) {
+            if (isValidNodeIdentifier(String(key))) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**
@@ -390,7 +422,11 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async initializeActiveIdentifierLookup() {
-        this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(this._computed.globalSublevel);
+        this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(
+            this._computed.globalSublevel,
+            `active replica '${this.currentReplicaName()}'`,
+            this._computed.schemaStorage
+        );
     }
 
     /**
@@ -398,7 +434,12 @@ class RootDatabaseClass {
      * @returns {Promise<IdentifierLookup>}
      */
     async loadIdentifierLookupForReplica(name) {
-        return loadIdentifierLookupFromGlobal(this.replicaGlobalSublevel(name));
+        const schemaStorage = this.schemaStorageForReplica(name);
+        return loadIdentifierLookupFromGlobal(
+            this.replicaGlobalSublevel(name),
+            `replica '${name}'`,
+            schemaStorage
+        );
     }
 
     /**
@@ -437,7 +478,11 @@ class RootDatabaseClass {
             const namespaceSublevel = this.replicaNamespaceSublevel(name);
             const globalSublevel = this.replicaGlobalSublevel(name);
             const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
-            const identifierLookup = await loadIdentifierLookupFromGlobal(globalSublevel);
+            const identifierLookup = await loadIdentifierLookupFromGlobal(
+                globalSublevel,
+                `replica '${name}'`,
+                schemaStorage
+            );
             await this._rootMetaSublevel.put('current_replica', name);
             this._computed = {
                 replicaName: name,
@@ -515,7 +560,11 @@ class RootDatabaseClass {
                 namespaceSublevel,
                 globalSublevel,
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
-                identifierLookup: await loadIdentifierLookupFromGlobal(globalSublevel),
+                identifierLookup: await loadIdentifierLookupFromGlobal(
+                    globalSublevel,
+                    `replica '${name}'`,
+                    buildSchemaStorage(namespaceSublevel, globalSublevel, this.version)
+                ),
                 inFlightIdentifiers: new Set(),
             };
         }
@@ -883,5 +932,7 @@ module.exports = {
     isSwitchReplicaError,
     isSchemaBatchVersionError,
     isMalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
+    isMissingIdentifierLookupError,
     RAW_BATCH_CHUNK_SIZE,
 };

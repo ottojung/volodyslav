@@ -1,7 +1,4 @@
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
-const { stringToNodeIdentifier } = require('./types');
-const { nodeIdentifierToString } = require('./node_identifier');
-
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
@@ -34,47 +31,45 @@ async function copyReplicaGently(rootDatabase, from, to) {
  *
  * @param {SchemaStorage} T - Target (inactive) replica storage.
  * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeIdentifier} targetKey - Identifier to write in the target replica.
- * @param {NodeIdentifier} hostKey - Identifier to read from the host staging storage.
- * @param {(hostIdentifier: NodeIdentifier) => NodeIdentifier} targetIdentifierForHostIdentifier
+ * @param {NodeIdentifier} key - Identifier to copy.
  * @returns {Promise<Array<*>>}
  */
-async function buildTakeOps(T, H, targetKey, hostKey, targetIdentifierForHostIdentifier) {
+async function buildTakeOps(T, H, key) {
     /** @type {Array<*>} */
     const ops = [];
 
-    const hValue = await H.values.get(hostKey);
+    const hValue = await H.values.get(key);
     if (hValue !== undefined) {
-        ops.push(T.values.putOp(targetKey, hValue));
+        ops.push(T.values.putOp(key, hValue));
     } else {
-        ops.push(T.values.delOp(targetKey));
+        ops.push(T.values.delOp(key));
     }
 
-    const hFreshness = await H.freshness.get(hostKey);
-    ops.push(T.freshness.putOp(targetKey, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
+    const hFreshness = await H.freshness.get(key);
+    ops.push(T.freshness.putOp(key, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
 
-    const hTimestamps = await H.timestamps.get(hostKey);
+    const hTimestamps = await H.timestamps.get(key);
     if (hTimestamps !== undefined) {
-        ops.push(T.timestamps.putOp(targetKey, hTimestamps));
+        ops.push(T.timestamps.putOp(key, hTimestamps));
     } else {
-        ops.push(T.timestamps.delOp(targetKey));
+        ops.push(T.timestamps.delOp(key));
     }
 
-    const hInputs = await H.inputs.get(hostKey);
+    const hInputs = await H.inputs.get(key);
     if (hInputs !== undefined) {
-        ops.push(T.inputs.putOp(targetKey, {
-            inputs: hInputs.inputs.map(input => nodeIdentifierToString(targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))),
+        ops.push(T.inputs.putOp(key, {
+            inputs: hInputs.inputs,
             inputCounters: hInputs.inputCounters,
         }));
     } else {
-        ops.push(T.inputs.delOp(targetKey));
+        ops.push(T.inputs.delOp(key));
     }
 
-    const hCounter = await H.counters.get(hostKey);
+    const hCounter = await H.counters.get(key);
     if (hCounter !== undefined) {
-        ops.push(T.counters.putOp(targetKey, hCounter));
+        ops.push(T.counters.putOp(key, hCounter));
     } else {
-        ops.push(T.counters.delOp(targetKey));
+        ops.push(T.counters.delOp(key));
     }
 
     return ops;

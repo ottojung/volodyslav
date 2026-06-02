@@ -10,16 +10,14 @@ const { stringToNodeIdentifier } = require('./types');
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
- * @param {(targetIdentifier: NodeIdentifier) => NodeIdentifier} hostIdentifierForTargetIdentifier
- * @param {(record: import('./root_database').InputsRecord | undefined) => NodeIdentifier[]} translatedHostInputs
  * @returns {Promise<{
  *   initialDecisions: Map<NodeIdentifier, 'keep' | 'take'>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   decisions: Map<NodeIdentifier, 'keep' | 'take' | 'invalidate'>,
  *   hOnlyNeedsInvalidate: Set<NodeIdentifier>
- * }>}
+ * }>} 
  */
-async function buildMergePlan(T, H, hostIdentifierForTargetIdentifier, translatedHostInputs) {
+async function buildMergePlan(T, H) {
     /** @type {Map<NodeIdentifier, 'keep' | 'take'>} */
     const initialDecisions = new Map();
     /** @type {Set<NodeIdentifier>} */
@@ -29,7 +27,7 @@ async function buildMergePlan(T, H, hostIdentifierForTargetIdentifier, translate
 
     for await (const node of T.inputs.keys()) {
         const tTimestamps = await T.timestamps.get(node);
-        const hTimestamps = await H.timestamps.get(hostIdentifierForTargetIdentifier(node));
+        const hTimestamps = await H.timestamps.get(node);
 
         const cmp = compareIsoTimestamps(tTimestamps?.modifiedAt, hTimestamps?.modifiedAt);
 
@@ -57,8 +55,11 @@ async function buildMergePlan(T, H, hostIdentifierForTargetIdentifier, translate
 
     for (const [node, decision] of initialDecisions) {
         if (decision === 'take') {
-            const record = await H.inputs.get(hostIdentifierForTargetIdentifier(node));
-            mergedInputsMap.set(node, translatedHostInputs(record));
+            const record = await H.inputs.get(node);
+            const inputKeys = record
+                ? record.inputs.map(input => stringToNodeIdentifier(input))
+                : [];
+            mergedInputsMap.set(node, inputKeys);
         } else {
             const record = await T.inputs.get(node);
             const inputKeys = record
@@ -69,8 +70,11 @@ async function buildMergePlan(T, H, hostIdentifierForTargetIdentifier, translate
     }
 
     for (const key of hOnlyNodes) {
-        const record = await H.inputs.get(hostIdentifierForTargetIdentifier(key));
-        mergedInputsMap.set(key, translatedHostInputs(record));
+        const record = await H.inputs.get(key);
+        const inputKeys = record
+            ? record.inputs.map(input => stringToNodeIdentifier(input))
+            : [];
+        mergedInputsMap.set(key, inputKeys);
     }
 
     const topoList = topologicalSortFromMap(mergedInputsMap);

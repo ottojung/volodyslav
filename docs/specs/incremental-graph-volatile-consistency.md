@@ -106,23 +106,34 @@ operation. It contains:
   allocations made during this transaction. At commit time this becomes the new committed lookup.
 
 A transaction is created at the start of a top-level operation, used throughout (including by
-nested dependency pulls), and then either committed or discarded. It never outlives a single graph
-mutex acquisition.
+nested dependency pulls), and then either committed or discarded. It never outlives the concurrency
+scope that protects its node writes and identifier allocations.
 
-### Graph mutex
+### Concurrency requirements
 
-There is a single **graph mutex** per graph instance. All operations that mutate persisted or
-volatile state acquire this mutex before creating a transaction. The mutex ensures:
+The specification does not require one particular locking implementation. A valid implementation
+may use a single graph mutex, finer-grained node locks plus a commit lock, or another equivalent
+scheme. It must satisfy these semantic requirements:
 
-- Only one transaction is active at any time, eliminating identifier allocation races.
-- The volatile `identifierLookup` is never observed in a partially-updated state.
+- Two transactions that can write the same concrete node cannot concurrently mutate that node's
+  persisted records.
+- Identifier allocation for a semantic node key is serialized with any other transaction that could
+  allocate or publish an identifier for the same key.
+- Identifier publication is atomic at observable boundaries: callers never observe a partially
+  updated volatile `identifierLookup`.
+- Commit publication is ordered disk-first: durable writes complete before the volatile lookup is
+  updated.
+- Exclusive operations such as migration and replica cutover suspend incompatible graph activity.
+
+The implementation should be as fine-grained as practical, but fine-grained locking must not weaken
+the observable consistency guarantees above.
 
 ### Transaction lifecycle
 
 Every top-level graph operation follows this pattern:
 
 ```
-withGraphMutex(async () => {
+withGraphConcurrencyScope(async () => {
     const tx = createTransaction()        // load committed lookup; create empty batch
     const result = await runOperation(tx) // pull / invalidate / inspect
     await commitTransaction(tx)           // flush batch, then update volatile state
@@ -131,15 +142,17 @@ withGraphMutex(async () => {
 ```
 
 `createTransaction()` reads `_computed.identifierLookup` (the committed lookup guaranteed by the
-mutex to be exactly the disk state) and creates a fresh batch accumulator.
+concurrency protocol to be exactly the disk state at that observable boundary) and creates a fresh
+batch accumulator.
 
 `commitTransaction(tx)` implements the disk-first ordering described in the next section.
 
 ### Nested pulls and explicit context propagation
 
 When computing a node's value, the computor may pull additional dependencies. These nested pulls
-**reuse the current transaction** — they must not acquire the graph mutex again (that would
-deadlock) and must not create a new batch (their writes must be part of the same atomic commit).
+**reuse the current transaction** — they must not create a new transaction or a new batch (their
+writes must be part of the same atomic commit). They also must not acquire locks in a way that
+violates the implementation's lock-ordering rules.
 
 Reuse is achieved by passing the transaction as an explicit argument all the way through the call
 stack. There is no ambient context, no global variable, and no `async_hooks`. The computor
@@ -163,12 +176,13 @@ between the two paths.
 
 ### The invariant
 
-At every observable point (outside the mutex), `_computed.identifierLookup` contains **exactly**
-the same entries as the persisted `identifiers_keys_map` — no more and no fewer.
+At every observable point (outside an active commit publication), `_computed.identifierLookup`
+contains **exactly** the same entries as the persisted `identifiers_keys_map` — no more and no
+fewer.
 
 ### Commit sequence
 
-When the operation completes inside the mutex:
+When the operation completes inside its concurrency scope:
 
 1. If any new identifier allocations were made during the transaction, append the updated
    `identifiers_keys_map` (the full working lookup) to the batch.
@@ -205,7 +219,9 @@ When the database is first opened:
 1. Read the replica pointer from `_meta/current_replica`. This is the authoritative record of
    which replica is active.
 2. Construct the `namespaceSublevel`, `globalSublevel`, and `schemaStorage` for that replica.
-3. Load `identifiers_keys_map` from the `globalSublevel`. If absent, start with an empty lookup.
+3. Load `identifiers_keys_map` from the `globalSublevel`. If absent, start with an empty lookup only
+   for a fresh replica that has no stored version yet; a versioned identifier-native replica without
+   this record is malformed and must fail during open.
 4. Assign `_computed = { replicaName, namespaceSublevel, globalSublevel, schemaStorage,
    identifierLookup }`.
 
@@ -287,8 +303,9 @@ in `_computed.identifierLookup` returns the same identifier.
 ### P2 — No concurrent allocation conflict
 
 Two concurrent top-level pulls for the same fresh node key K both complete successfully and
-produce the same identifier for K. The graph mutex ensures they run sequentially; the second pull
-sees the identifier allocated by the first.
+produce the same identifier for K. The concurrency protocol ensures the relevant allocation and
+publication steps are serialized; the later allocation attempt sees the identifier allocated by the
+earlier one.
 
 *Verification:* start two concurrent pulls for a fresh key. Assert that after both complete,
 `_computed.identifierLookup` contains exactly one entry for K and both pulls saw the same identifier.
@@ -314,8 +331,8 @@ after-snapshot is a superset of the before-snapshot.
 At every observable point, `_computed.identifierLookup` contains **exactly** the same entries as
 the persisted `identifiers_keys_map` — no more and no fewer.
 
-*Verification:* after any operation completes (mutex released), read the persisted map directly
-from LevelDB. Assert that the two sets are equal in both directions.
+*Verification:* after any operation completes and its concurrency scope is released, read the
+persisted map directly from LevelDB. Assert that the two sets are equal in both directions.
 
 ### P6 — Disk before memory
 

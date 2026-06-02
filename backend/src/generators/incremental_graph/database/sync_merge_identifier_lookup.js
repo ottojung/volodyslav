@@ -4,20 +4,21 @@ const {
 const {
     IdentifierLookupConflictError,
     MalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
 } = require('./replica_errors');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 /**
  * Parse a persisted identifier lookup value from replica global metadata.
- * Missing metadata is treated as an empty lookup so legacy/unit-test fixtures
- * that write identifier-addressed nodes directly can still merge by identity.
+ * A missing record is a hard error for identifier-native sync snapshots.
  *
  * @param {unknown} rawEntries
+ * @param {string} context
  * @returns {IdentifierLookup}
  */
-function parseIdentifierLookup(rawEntries) {
-    if (rawEntries === undefined) throw new MalformedIdentifierLookupError(rawEntries);
+function parseIdentifierLookup(rawEntries, context) {
+    if (rawEntries === undefined) throw new MissingIdentifierLookupError(context);
     if (!Array.isArray(rawEntries)) throw new MalformedIdentifierLookupError(rawEntries);
     return makeIdentifierLookup(rawEntries);
 }
@@ -25,12 +26,10 @@ function parseIdentifierLookup(rawEntries) {
 /**
  * Detect conflicts between host and target lookup snapshots.
  *
- * The merge path currently does not resolve cross-host identifier conflicts.
- * If the same semantic node key is mapped to different identifiers, we fail
- * fast with a readable error and leave resolution to a future policy.
- *
- * We also fail if the same identifier string maps to different semantic keys
- * between host and target.
+ * Volodyslav intentionally does not resolve identifier conflicts during sync.
+ * The persisted identifier is part of the graph snapshot identity: if two
+ * snapshots disagree, the user must manually repair the stored snapshots before
+ * synchronizing again.
  *
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
@@ -43,7 +42,9 @@ function assertNoIdentifierLookupConflicts(targetLookup, hostLookup) {
         if (hostIdentifier !== undefined && hostIdentifier !== targetIdentifier) {
             throw new IdentifierLookupConflictError(
                 `Conflicting identifier assignment for node key ${nodeKeyString}: `
-                + `target=${String(targetIdentifier)}, host=${String(hostIdentifier)}`
+                + `target=${String(targetIdentifier)}, host=${String(hostIdentifier)}. `
+                + `Volodyslav will not resolve this automatically; manually fix the `
+                + `identifiers_keys_map records before synchronizing again.`
             );
         }
     }
@@ -53,7 +54,9 @@ function assertNoIdentifierLookupConflicts(targetLookup, hostLookup) {
         if (hostNodeKey !== undefined && hostNodeKey !== targetNodeKey) {
             throw new IdentifierLookupConflictError(
                 `Conflicting node key assignment for identifier ${identifierString}: `
-                + `target=${String(targetNodeKey)}, host=${String(hostNodeKey)}`
+                + `target=${String(targetNodeKey)}, host=${String(hostNodeKey)}. `
+                + `Volodyslav will not resolve this automatically; manually fix the `
+                + `identifiers_keys_map records before synchronizing again.`
             );
         }
     }

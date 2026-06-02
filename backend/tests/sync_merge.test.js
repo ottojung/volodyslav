@@ -16,6 +16,7 @@
 const {
     getRootDatabase,
     isMalformedIdentifierLookupError,
+    isMissingIdentifierLookupError,
     makeIdentifierLookup,
     nodeIdentifierFromString,
     serializeIdentifierLookup,
@@ -255,6 +256,8 @@ describe('mergeHostIntoReplica', () => {
             expect(isIdentifierLookupConflictError(error)).toBe(true);
             expect(String(error?.message)).toContain('Conflicting identifier assignment for node key');
             expect(String(error?.message)).toContain(String(childKey));
+            expect(String(error?.message)).toContain('Volodyslav will not resolve this automatically');
+            expect(String(error?.message)).toContain('manually fix the identifiers_keys_map records');
 
             expect(db.currentReplicaName()).toBe('x');
         } finally {
@@ -680,6 +683,39 @@ describe('mergeHostIntoReplica', () => {
             }
 
             expect(isMalformedIdentifierLookupError(error)).toBe(true);
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('rejects missing host identifiers lookup during host merge', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS2, [], remoteValue);
+            const L = db.schemaStorageForReplica('x');
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            let error;
+            try {
+                await mergeHostIntoReplica(logger, db, hostname);
+            } catch (caught) {
+                error = caught;
+            }
+
+            expect(isMissingIdentifierLookupError(error)).toBe(true);
+            expect(String(error?.message)).toContain('Missing identifiers_keys_map record in staged host snapshot');
             expect(db.currentReplicaName()).toBe('x');
         } finally {
             if (db) await db.close();
