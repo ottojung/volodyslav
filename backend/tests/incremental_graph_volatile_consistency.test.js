@@ -768,7 +768,7 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
 // ---------------------------------------------------------------------------
 
 describe("Invariant 3 — Independent pull concurrency", () => {
-    test("pulls on different independent nodes are serialized safely", async () => {
+    test("pulls on different independent nodes can overlap safely", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const released = makeDeferredPromise();
@@ -808,15 +808,12 @@ describe("Invariant 3 — Independent pull concurrency", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        // Mutation bodies are serialized, so only the first computor enters until
-        // it finishes.
-        expect(started).toEqual(["n1"]);
+        // Both computors should enter while the shared release gate is still held.
+        expect(started.sort()).toEqual(["n1", "n2"]);
 
         // Release both computors and allow both transactions to commit.
         released.resolve(undefined);
         await Promise.all([p1, p2]);
-
-        expect(started.sort()).toEqual(["n1", "n2"]);
 
         await db.close();
     });

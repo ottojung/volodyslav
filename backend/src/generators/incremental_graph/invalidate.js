@@ -143,7 +143,7 @@ async function internalUnsafeInvalidate(
         );
     };
 
-    await incrementalGraph.storage.withMutationMutex(() => incrementalGraph.withTransaction(run));
+    await incrementalGraph.withTransaction(run);
 }
 
 /**

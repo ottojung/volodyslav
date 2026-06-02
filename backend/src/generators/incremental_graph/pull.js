@@ -115,9 +115,7 @@ async function pullNode(graph, nodeKeyStr, tx) {
         return runDeduplicatedInTransaction(tx);
     }
 
-    return graph.storage.withMutationMutex(() =>
-        graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx))
-    );
+    return graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
 }
 
 /**
