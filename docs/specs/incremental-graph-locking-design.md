@@ -2,19 +2,9 @@
 
 ## Status
 
-This document describes the locking model that the incremental graph SHOULD use
-in the follow-up implementation PR.
+This document describes the locking model that the incremental graph MUST.
 
-This PR only adds the sleeper primitives needed by the design and removes the
-unsafe `withoutMutex` mechanism. The graph itself still uses its existing coarse
-mutex until the follow-up PR wires in the design below.
-
-## Problem
-
-The old design relied on a single graph-wide mutex plus `withoutMutex`, which
-temporarily dropped the mutex while a computor ran. That gave concurrency, but
-it also created a gap where unrelated graph work could interleave with an
-in-flight recomputation and observe or produce inconsistent intermediate states.
+## Summary
 
 The target behavior is:
 
@@ -42,7 +32,7 @@ It remains the right primitive for **per-node pull exclusion**.
 
 ### `withModeMutex(key, mode, procedure)`
 
-This PR adds a new grouped lock:
+This is a grouped lock:
 
 - callers with the same `(key, mode)` may run concurrently;
 - callers with the same `key` but a different `mode` are mutually exclusive;
@@ -55,7 +45,7 @@ other.
 
 ## Lock Keys
 
-The future implementation SHOULD derive two families of keys.
+The implementation SHOULD derive two families of keys.
 
 ### 1. Graph activity key
 
@@ -142,7 +132,7 @@ keys, so they may proceed concurrently.
 
 ## Deadlock Discipline
 
-The follow-up implementation MUST keep this acquisition discipline:
+The implementation MUST keep this acquisition discipline:
 
 1. acquire the graph activity mode lock first;
 2. acquire any per-node pull mutexes after that;
