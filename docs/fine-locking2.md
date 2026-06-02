@@ -47,28 +47,7 @@ identifier allocation for input keys.
 
 ## 1.  Deadlock Freedom Analysis
 
-### 1.1  Why the earlier deadlock example does not apply
-
-The claim was:
-
-> `A -> {B, C}`, `B -> {C}`, with `C < B`. One transaction holds C and waits
-> on B while the other holds B and waits on C.
-
-Under the **current** acquisition order (target → sorted direct inputs),
-transaction T1 pulling `A` acquires `A` then `B` (since `B < C` for `A`'s
-inputs).  Transaction T2 pulling `B` acquires `B` then `C`.  T2 cannot hold
-`B` while T1 also waits for `B` because `acquireConcreteNodeLock` is
-exclusive.  So the cycle does not arise.
-
-Under the **proposed** design, Phase 1 only ever holds one node lock at a
-time (the current target in the recursion stack).  Each nested pull acquires
-its own target, computes, and releases before control returns to the parent.
-Hence there is exactly one application-level "active target" at any moment.
-No multi-lock wait-for chain forms at the node level in Phase 1.
-
-Phase 2 acquires input locks one at a time in a deterministic sorted order
-and holds no other lock while doing so.  Two concurrent Phase‑2 sequences
-cannot deadlock because they contend on the same global order.
+### 1.1  **Skipped**
 
 ### 1.2  Formal argument
 
