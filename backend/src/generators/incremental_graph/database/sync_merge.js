@@ -51,6 +51,7 @@ const { compareNodeIdentifier, nodeIdentifierToString } = require('./node_identi
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
 const {
+    makeEmptyIdentifierLookup,
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
@@ -344,7 +345,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const H = rootDatabase.hostnameSchemaStorage(hostname);
 
     const hostLookup = parseIdentifierLookup(await H.global.get('identifiers_keys_map'));
-    const targetLookup = parseIdentifierLookup(await T.global.get('identifiers_keys_map'));
+    const targetRawLookup = await T.global.get('identifiers_keys_map');
+    // Fresh local replicas may not have persisted lookup metadata yet.
+    // Treat missing local target metadata as an empty lookup while keeping
+    // strict parsing for host snapshots.
+    const targetLookup = targetRawLookup === undefined
+        ? makeEmptyIdentifierLookup()
+        : parseIdentifierLookup(targetRawLookup);
     assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
 
     /**
