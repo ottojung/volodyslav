@@ -65,7 +65,7 @@ const {
  * @property {GlobalSublevelType} globalSublevel
  * @property {SchemaStorage} schemaStorage
  * @property {IdentifierLookup} identifierLookup
- * @property {Set<string>} inFlightIdentifiers
+
  */
 
 /**
@@ -341,7 +341,6 @@ class RootDatabaseClass {
             globalSublevel,
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
-            inFlightIdentifiers: new Set(),
         };
     }
 
@@ -370,21 +369,6 @@ class RootDatabaseClass {
      */
     getActiveIdentifierLookup() {
         return this._computed.identifierLookup;
-    }
-
-    /**
-     * @returns {Set<string>}
-     */
-    getInFlightIdentifiers() {
-        return this._computed.inFlightIdentifiers;
-    }
-
-    /**
-     * @param {string} identifier
-     * @returns {void}
-     */
-    releaseInFlightIdentifier(identifier) {
-        this._computed.inFlightIdentifiers.delete(identifier);
     }
 
     /**
@@ -490,7 +474,6 @@ class RootDatabaseClass {
                 globalSublevel,
                 schemaStorage,
                 identifierLookup,
-                inFlightIdentifiers: new Set(),
             };
         } catch (err) {
             throw new SwitchReplicaError(name, err);
@@ -565,7 +548,6 @@ class RootDatabaseClass {
                     `replica '${name}'`,
                     buildSchemaStorage(namespaceSublevel, globalSublevel, this.version)
                 ),
-                inFlightIdentifiers: new Set(),
             };
         }
     }

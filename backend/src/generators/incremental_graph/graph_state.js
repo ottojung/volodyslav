@@ -20,7 +20,6 @@ const {
     IDENTIFIERS_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
-    stringToNodeKeyString,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,
@@ -107,7 +106,6 @@ const {
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
- * @property {(node: NodeIdentifier, nextInputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} reconcileReverseDeps - Reconcile reverse dependencies against the node's previously materialized inputs.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
@@ -257,50 +255,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
     }
 
     /**
-     * Reconcile reverse dependencies for one node by removing stale edges from
-     * previously materialized inputs and indexing current edges.
-     * @param {NodeIdentifier} node
-     * @param {NodeIdentifier[]} nextInputs
-     * @param {BatchBuilder} batch
-     * @returns {Promise<void>}
-     */
-    async function reconcileReverseDeps(node, nextInputs, batch) {
-        const previousInputs = await getInputs(node, batch);
-        const nextInputSet = new Set(nextInputs.map(nodeIdentifierToString));
-
-        if (previousInputs !== null) {
-            for (const previousInput of previousInputs) {
-                const previousInputString = nodeIdentifierToString(previousInput);
-                if (nextInputSet.has(previousInputString)) {
-                    continue;
-                }
-
-                const existingDependents = await batch.revdeps.get(previousInput);
-                if (existingDependents === undefined) {
-                    continue;
-                }
-
-                const { index, found } = findInsertionIndex(existingDependents, node);
-                if (!found) {
-                    continue;
-                }
-
-                const remainingDependents = [
-                    ...existingDependents.slice(0, index),
-                    ...existingDependents.slice(index + 1),
-                ];
-                if (remainingDependents.length === 0) {
-                    batch.revdeps.del(previousInput);
-                    continue;
-                }
-                batch.revdeps.put(previousInput, remainingDependents);
-            }
-        }
-
-        await ensureReverseDepsIndexed(node, nextInputs, batch);
-    }
-
-    /**
      * @param {NodeIdentifier} input
      * @param {BatchBuilder} batch
      * @returns {Promise<NodeIdentifier[]>}
@@ -414,29 +368,12 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
                 const hasPendingOperations = operations.length > 0;
                 const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                const hasPersistentDelta = hasPendingOperations || hasPendingAllocations;
 
-                if (!hasPersistentDelta) {
+                if (!hasPendingOperations && !hasPendingAllocations) {
                     return;
                 }
 
                 if (hasPendingAllocations) {
-                    for (const [keyString, identifier] of tx.identifierLookup.keyToId.entries()) {
-                        const committedIdentifier = rootDatabase.nodeKeyToId(stringToNodeKeyString(keyString));
-                        if (committedIdentifier !== undefined && committedIdentifier !== identifier) {
-                            throw new Error(
-                                `Identifier lookup conflict: node key ${keyString} is already mapped to ${nodeIdentifierToString(committedIdentifier)}`
-                            );
-                        }
-                    }
-                    for (const [identifierString, nodeKey] of tx.identifierLookup.idToKey.entries()) {
-                        const committedNodeKey = rootDatabase.nodeIdToKey(stringToNodeIdentifier(identifierString));
-                        if (committedNodeKey !== undefined && committedNodeKey !== nodeKey) {
-                            throw new Error(
-                                `Identifier lookup conflict: identifier ${identifierString} is already mapped to ${String(committedNodeKey)}`
-                            );
-                        }
-                    }
                     operations.push(
                         activeSchemaStorage.global.rawPutOp(
                             IDENTIFIERS_KEY,
@@ -456,7 +393,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
-        reconcileReverseDeps,
         listDependents,
         getInputs,
         listMaterializedNodes,
@@ -484,15 +420,12 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
- * The caller is responsible for releasing identifiers in `reserved` on failure.
- *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
- * @param {Set<string>} [reserved]
  * @returns {NodeIdentifier}
  */
-function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey, reserved = new Set()) {
+function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
     const existing = lookupNodeIdentifier(tx, nodeKey);
     if (existing !== undefined) {
         return existing;
@@ -501,8 +434,6 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey, reserved = new S
         tx.identifierLookup,
         nodeKey,
         () => rootDatabase.generateNodeIdentifier(),
-        rootDatabase.getInFlightIdentifiers(),
-        reserved
     );
 }
 

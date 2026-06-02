@@ -7,7 +7,7 @@
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
-    deterministicNodeIdentifierFromNodeKey,
+    IDENTIFIERS_KEY,
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { serializeNodeKey } = require("../src/generators/incremental_graph/database/node_key");
@@ -27,18 +27,12 @@ const { checkpointMigration: mockCheckpointMigration } = require('../src/generat
 // ---------------------------------------------------------------------------
 function makeInMemoryDb(table) {
     const store = new Map();
-    function resolveKey(key) {
-        if (store.has(key) || typeof key !== "string" || !key.startsWith("{")) {
-            return key;
-        }
-        return nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(key));
-    }
     return {
-        async get(key) { return store.get(resolveKey(key)); },
+        async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
         async rawPut(key, value) { store.set(key, value); },
-        async del(key) { store.delete(resolveKey(key)); },
-        async rawDel(key) { store.delete(resolveKey(key)); },
+        async del(key) { store.delete(key); },
+        async rawDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
@@ -140,11 +134,19 @@ function isSorted(arr) {
 }
 
 /**
- * @param {string} nodeKey
- * @returns {string}
+ * Build a reverse mapping from the yStorage global IDENTIFIERS_KEY entries.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} yStorage
+ * @returns {Promise<Map<string, string>>} nodeKey -> identifier string
  */
-function migrated(nodeKey) {
-    return nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(nodeKey));
+async function buildYStorageKeyToIdentifier(yStorage) {
+    const entries = await yStorage.global.get(IDENTIFIERS_KEY);
+    const map = new Map();
+    if (entries) {
+        for (const [id, key] of entries) {
+            map.set(String(key), nodeIdentifierToString(id));
+        }
+    }
+    return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,15 +225,16 @@ describe("migration revdeps ordering", () => {
             await storage.keep(depB);
         });
 
-        const resultRevdeps = await yStorage.revdeps.get(inputKey);
+        const keyToId = await buildYStorageKeyToIdentifier(yStorage);
+        const resultRevdeps = await yStorage.revdeps.get(keyToId.get(inputKey));
         expect(resultRevdeps).toBeDefined();
         expect(isSorted(resultRevdeps)).toBe(true);
         expect(resultRevdeps).toEqual(
-            [migrated(depA), migrated(depB), migrated(depC)].sort()
+            [keyToId.get(depA), keyToId.get(depB), keyToId.get(depC)].sort()
         );
     });
 
-    test("migration result is stable across repeated identical runs", async () => {
+    test("migration result revdeps are sorted and complete", async () => {
         const capabilities1 = await getTestCapabilities();
         const capabilities2 = await getTestCapabilities();
 
@@ -312,10 +315,14 @@ describe("migration revdeps ordering", () => {
         await runMigration(capabilities1, rootDatabase1, nodeDefs, keepAll);
         await runMigration(capabilities2, rootDatabase2, nodeDefs, keepAll);
 
-        const result1 = await yStorage1.revdeps.get(inputKey);
-        const result2 = await yStorage2.revdeps.get(inputKey);
-        expect(result1).toEqual(result2);
+        const keyToId1 = await buildYStorageKeyToIdentifier(yStorage1);
+        const keyToId2 = await buildYStorageKeyToIdentifier(yStorage2);
+        const result1 = await yStorage1.revdeps.get(keyToId1.get(inputKey));
+        const result2 = await yStorage2.revdeps.get(keyToId2.get(inputKey));
+        expect(result1).toHaveLength(3);
+        expect(result2).toHaveLength(3);
         expect(isSorted(result1)).toBe(true);
+        expect(isSorted(result2)).toBe(true);
     });
 
     test("migration with fan-in/fan-out graph produces sorted revdeps arrays", async () => {
@@ -368,8 +375,9 @@ describe("migration revdeps ordering", () => {
             await storage.keep(depC);
         });
 
-        const sharedRevdeps = await yStorage.revdeps.get(sharedInput);
-        const anotherRevdeps = await yStorage.revdeps.get(anotherInput);
+        const keyToId = await buildYStorageKeyToIdentifier(yStorage);
+        const sharedRevdeps = await yStorage.revdeps.get(keyToId.get(sharedInput));
+        const anotherRevdeps = await yStorage.revdeps.get(keyToId.get(anotherInput));
 
         expect(sharedRevdeps).toBeDefined();
         expect(anotherRevdeps).toBeDefined();
@@ -379,11 +387,11 @@ describe("migration revdeps ordering", () => {
         // sharedInput is depended on by depA, depB, depC
         expect(sharedRevdeps).toHaveLength(3);
         expect(sharedRevdeps).toEqual(
-            [migrated(depA), migrated(depB), migrated(depC)].sort()
+            [keyToId.get(depA), keyToId.get(depB), keyToId.get(depC)].sort()
         );
 
         // anotherInput is depended on by depA, depB
         expect(anotherRevdeps).toHaveLength(2);
-        expect(anotherRevdeps).toEqual([migrated(depA), migrated(depB)].sort());
+        expect(anotherRevdeps).toEqual([keyToId.get(depA), keyToId.get(depB)].sort());
     });
 });

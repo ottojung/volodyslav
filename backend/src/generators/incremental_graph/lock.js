@@ -14,7 +14,6 @@ const { makeUniqueFunctor } = require("../../unique_functor");
  */
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
-const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state");
 const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
 
 
@@ -60,28 +59,6 @@ function withPullMode(sleeper, procedure) {
 }
 
 /**
- * Serialize writes to the active replica computed state.
- *
- * This mutex is **non-reentrant**: callers that already hold it must not
- * attempt to re-acquire it. Nested operations (e.g. a pull triggered inside a
- * computor) must share the outer batch and identifier resolver instead of
- * calling withComputedStateMutex recursively; attempting to do so would
- * deadlock.
- *
- * @template T
- * @param {SleepCapability} sleeper
- * @param {string} computedStateIdentifier - Active replica/computed-state identifier.
- * @param {() => Promise<T>} procedure
- * @returns {Promise<T>}
- */
-function withComputedStateMutex(sleeper, computedStateIdentifier, procedure) {
-    return sleeper.withMutex(
-        COMPUTED_STATE_KEY.instantiate([computedStateIdentifier]),
-        procedure
-    );
-}
-
-/**
  * @template T
  * @param {SleepCapability} sleeper
  * @param {string} replicaName
@@ -121,6 +98,5 @@ module.exports = {
     withExclusiveMode,
     withObserveMode,
     withPullMode,
-    withComputedStateMutex,
     withCommitMutex,
 };

@@ -13,7 +13,7 @@
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./types').NodeName} NodeName */
+/** @typedef {import('./database/types').NodeName} NodeName */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
@@ -34,7 +34,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @property {import('./database/root_database').RootDatabase} rootDatabase
  * @property {<T>(procedure: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>) => Promise<T>} withTransaction
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction, inFlightIdentifiers: Set<string>, reserved: Set<string>) => Promise<ResolvedConcreteNode>} resolveConcreteNode
+ * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: ResolvedConcreteNode, tx: Transaction, reportRevdepDiff: (diff: import('./graph_state').RevdepDiff) => void) => Promise<RecomputeResult>} maybeRecalculate
  */
@@ -71,57 +71,48 @@ async function pullNode(graph, nodeKeyStr) {
     }
 
     // Full computation with its own Transaction
-    const reserved = new Set();
-    try {
-        const result = await graph.withTransaction(async (tx) => {
+    const result = await graph.withTransaction(async (tx) => {
             const nodeDefinition = await graph.resolveConcreteNode(
                 concreteNode,
                 tx,
-                new Set(),  // Deterministic — no global in-flight check needed
-                reserved
             );
 
-            /** @type {Array<import('./graph_state').RevdepDiff>} */
-            const revdepDiffs = [];
 
-            const nodeFreshness = await tx.batch.freshness.get(nodeDefinition.outputIdentifier);
-            if (nodeFreshness === "up-to-date") {
-                const storedValue = await tx.batch.values.get(nodeDefinition.outputIdentifier);
-                if (storedValue !== undefined) {
-                    /** @type {RecomputeResult} */
-                    const cachedResult = { value: storedValue, status: "cached" };
-                    return {
-                        value: cachedResult,
-                        revdepDiffs,
-                    };
-                }
+        /** @type {Array<import('./graph_state').RevdepDiff>} */
+        const revdepDiffs = [];
+
+        const nodeFreshness = await tx.batch.freshness.get(nodeDefinition.outputIdentifier);
+        if (nodeFreshness === "up-to-date") {
+            const storedValue = await tx.batch.values.get(nodeDefinition.outputIdentifier);
+            if (storedValue !== undefined) {
+                /** @type {RecomputeResult} */
+                const cachedResult = { value: storedValue, status: "cached" };
+                return {
+                    value: cachedResult,
+                    revdepDiffs,
+                };
             }
-
-            const computeResult = await graph.maybeRecalculate(
-                nodeDefinition,
-                tx,
-                (diff) => revdepDiffs.push(diff)
-            );
-
-            const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
-            if (counter === undefined) {
-                throw new Error(
-                    `Impossible: recomputed node has no stored counter: ${String(nodeKeyStr)}`
-                );
-            }
-
-            return {
-                value: computeResult,
-                revdepDiffs,
-            };
-        });
-        return result;
-    } catch (e) {
-        for (const id of reserved) {
-            graph.rootDatabase.releaseInFlightIdentifier(id);
         }
-        throw e;
-    }
+
+        const computeResult = await graph.maybeRecalculate(
+            nodeDefinition,
+            tx,
+            (diff) => revdepDiffs.push(diff)
+        );
+
+        const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
+        if (counter === undefined) {
+            throw new Error(
+                `Impossible: recomputed node has no stored counter: ${String(nodeKeyStr)}`
+            );
+        }
+
+        return {
+            value: computeResult,
+            revdepDiffs,
+        };
+    });
+    return result;
 }
 
 /**
@@ -132,12 +123,9 @@ async function pullNode(graph, nodeKeyStr) {
  * @returns {Promise<ComputedValue>}
  */
 async function internalPull(graph, nodeName, bindings = []) {
-    return withPullMode(graph.sleeper, async () => {
-        ensureNodeNameIsHead(nodeName);
-        const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-        const { value } = await pullNode(graph, nodeKeyStr);
-        return value;
-    });
+    ensureNodeNameIsHead(nodeName);
+    const { value } = await internalSafePullWithStatus(graph, nodeName, bindings);
+    return value;
 }
 
 /**
@@ -155,13 +143,14 @@ async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
 /**
  * Top-level pull with status. Acquires the pull-mode lock.
  * @param {IncrementalGraphPullAccess} graph
- * @param {NodeName} nodeName
+ * @param {string} nodeName
  * @param {Array<ConstValue>} [bindings=[]]
  * @returns {Promise<RecomputeResult>}
  */
 async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
+    ensureNodeNameIsHead(nodeName);
     return withPullMode(graph.sleeper, () => {
-        const nodeKeyStr = serializeNodeKey({ head: nodeName, args: bindings });
+        const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
         return pullNode(graph, nodeKeyStr);
     });
 }

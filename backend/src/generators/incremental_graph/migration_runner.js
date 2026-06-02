@@ -14,7 +14,6 @@ const { compileNodeDef } = require("./compiled_node");
 const {
     allocateNodeIdentifier,
     compareNodeIdentifier,
-    deterministicNodeIdentifierFromNodeKey,
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
     nodeIdentifierFromString,
@@ -130,6 +129,19 @@ function canonicalizeMigrationNodeKey(nodeKey) {
 }
 
 /**
+ * Generate a random node identifier for migration.
+ * @returns {NodeIdentifier}
+ */
+function migrationNodeIdentifier() {
+    const chars = "abcdefghijklmnopqrstuvwxyz";
+    let result = "";
+    for (let i = 0; i < 9; i++) {
+        result += chars[Math.floor(Math.random() * 26)];
+    }
+    return nodeIdentifierFromString(result);
+}
+
+/**
  * @param {SchemaStorage} prevStorage
  * @param {NodeIdentifier[]} materializedNodes
  * @returns {Promise<{
@@ -167,7 +179,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
                 const allocatedIdentifier = allocateNodeIdentifier(
                     lookup,
                     semanticNodeKey,
-                    (attempt) => deterministicNodeIdentifierFromNodeKey(semanticNodeKey, attempt)
+                    () => migrationNodeIdentifier(),
                 );
                 decisionKeyByOutputKey.set(String(allocatedIdentifier), nodeKey);
                 return stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
@@ -199,7 +211,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
     const decisionKeyByOutputKey = new Map();
     for (const nodeKey of materializedNodes) {
         const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
-        const nodeIdentifier = deterministicNodeIdentifierFromNodeKey(canonicalKey);
+        const nodeIdentifier = migrationNodeIdentifier();
         const outputKey = stringToNodeIdentifier(nodeIdentifierToString(nodeIdentifier));
         initialOutputEntries.push([nodeIdentifier, canonicalKey]);
         decisionKeyByOutputKey.set(String(outputKey), nodeKey);
@@ -214,7 +226,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
             const allocatedIdentifier = allocateNodeIdentifier(
                 legacyLookup,
                 canonicalKey,
-                (attempt) => deterministicNodeIdentifierFromNodeKey(canonicalKey, attempt)
+                () => migrationNodeIdentifier(),
             );
             const outputKey = stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
             decisionKeyByOutputKey.set(String(outputKey), nodeKey);

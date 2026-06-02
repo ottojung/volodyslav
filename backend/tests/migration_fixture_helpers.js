@@ -55,19 +55,20 @@ async function collectFiles(dir) {
 /**
  * @param {string} actualDir
  * @param {string} expectedDir
+ * @param {Set<string>} [excludePaths]
  * @returns {Promise<void>}
  */
-async function assertDirectoriesExactlyEqual(actualDir, expectedDir) {
+async function assertDirectoriesExactlyEqual(actualDir, expectedDir, excludePaths) {
     const actualFiles = await collectFiles(actualDir);
     const expectedFiles = await collectFiles(expectedDir);
 
     const actualPaths = [...actualFiles.keys()].sort();
     const expectedPaths = [...expectedFiles.keys()].sort();
 
-    const missing = expectedPaths.filter((p) => !actualFiles.has(p));
-    const extra = actualPaths.filter((p) => !expectedFiles.has(p));
+    const missing = expectedPaths.filter((p) => !actualFiles.has(p) && !excludePaths?.has(p));
+    const extra = actualPaths.filter((p) => !expectedFiles.has(p) && !excludePaths?.has(p));
     const changed = expectedPaths.filter((p) => {
-        if (!actualFiles.has(p)) {
+        if (!actualFiles.has(p) || excludePaths?.has(p)) {
             return false;
         }
         return !actualFiles.get(p).equals(expectedFiles.get(p));

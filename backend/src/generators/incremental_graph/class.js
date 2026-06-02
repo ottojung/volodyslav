@@ -63,7 +63,7 @@ const {
     internalUnsafePull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
-const { deterministicNodeIdentifierFromNodeKey, txAllocateNodeIdentifier } = require("./database");
+const { txAllocateNodeIdentifier } = require("./database");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -195,23 +195,16 @@ class IncrementalGraphClass {
 
     /**
      * Resolve the target identifier.
-     * Identifiers are derived deterministically from the node key so
-     * concurrent same-node pulls converge on the same identifier without
-     * extra lock bookkeeping.
      *
      * @param {ConcreteNode} concreteNode
      * @param {Transaction} tx
-     * @param {Set<string>} inFlightIdentifiers - Global in-flight set for collision avoidance.
-     * @param {Set<string>} reserved - Local set to track reserved identifiers for cleanup on failure.
      * @returns {Promise<ResolvedConcreteNode>}
      */
-    async resolveConcreteNode(concreteNode, tx, inFlightIdentifiers, reserved) {
+    async resolveConcreteNode(concreteNode, tx) {
         const outputIdentifier = txAllocateNodeIdentifier(
             tx.identifierLookup,
             concreteNode.output,
-            (attempt) => deterministicNodeIdentifierFromNodeKey(concreteNode.output, attempt),
-            inFlightIdentifiers,
-            reserved
+            () => this.rootDatabase.generateNodeIdentifier(),
         );
 
         return {
@@ -251,7 +244,7 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {import('./types').NodeName} nodeName
+     * @param {string} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<RecomputeResult>}
      */

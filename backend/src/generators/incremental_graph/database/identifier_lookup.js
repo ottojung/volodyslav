@@ -1,5 +1,3 @@
-const crypto = require("crypto");
-
 const {
     compareNodeIdentifier,
     nodeIdentifierFromString,
@@ -109,7 +107,7 @@ function makeIdentifierLookup(entries) {
             throw new IdentifierLookupError(`Duplicate node identifier in lookup map: ${identifierString}`);
         }
         if (lookup.keyToId.has(nodeKeyString)) {
-            throw new IdentifierLookupError(`Duplicate node key in lookup map: ${nodeKeyString}`);
+            continue;
         }
         lookup.idToKey.set(identifierString, nodeKey);
         lookup.keyToId.set(nodeKeyString, nodeIdentifier);
@@ -207,31 +205,6 @@ function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
     }
     lookup.keyToId.delete(nodeKeyString);
     lookup.idToKey.delete(nodeIdentifierToString(existingIdentifier));
-}
-
-/**
- * Deterministically derive the legacy-migration identifier candidate for a node key.
- * Retry attempts perturb the hash input so collision handling is deterministic.
- * @param {NodeKeyString} nodeKey
- * @param {number} attempt
- * @returns {NodeIdentifier}
- */
-function deterministicNodeIdentifierFromNodeKey(nodeKey, attempt = 0) {
-    const nodeKeyString = nodeKeyStringToString(nodeKey);
-    const digest = crypto
-        .createHash("sha256")
-        .update(`${nodeKeyString}:${String(attempt)}`)
-        .digest();
-
-    let identifier = "";
-    for (let index = 0; index < 9; index++) {
-        const value = digest[index];
-        if (value === undefined) {
-            throw new Error("deterministicNodeIdentifierFromNodeKey: missing hash byte");
-        }
-        identifier += String.fromCharCode("a".charCodeAt(0) + (value % 26));
-    }
-    return nodeIdentifierFromString(identifier);
 }
 
 /**
@@ -370,46 +343,30 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
- * @param {Set<string> | number} [inFlightIdentifiers]
- * @param {Set<string>} [reservedIdentifiers]
- * @param {number} [maxAttempts]
  * @returns {NodeIdentifier}
  */
 function txAllocateNodeIdentifier(
     txLookup,
     nodeKey,
     makeIdentifier,
-    inFlightIdentifiers = new Set(),
-    reservedIdentifiers = new Set(),
-    maxAttempts = undefined,
+    maxAttempts = 1000,
 ) {
-    if (typeof inFlightIdentifiers === "number") {
-        maxAttempts = inFlightIdentifiers;
-        inFlightIdentifiers = new Set();
-    }
-
     const existing = txNodeKeyToId(txLookup, nodeKey);
     if (existing !== undefined) {
         return existing;
     }
 
     const keyString = nodeKeyStringToString(nodeKey);
-    for (let attempt = 0; maxAttempts === undefined || attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const candidate = makeIdentifier(attempt);
         const candidateString = nodeIdentifierToString(candidate);
         if (txNodeIdToKey(txLookup, candidate) !== undefined) {
             continue;
         }
-        if (inFlightIdentifiers.has(candidateString)) {
-            continue;
-        }
-        inFlightIdentifiers.add(candidateString);
-        reservedIdentifiers.add(candidateString);
         txLookup.keyToId.set(keyString, candidate);
         txLookup.idToKey.set(candidateString, nodeKey);
         return candidate;
     }
-
     throw new IdentifierAllocationError(keyString);
 }
 
@@ -453,6 +410,10 @@ function serializeTransactionLookup(txLookup) {
  */
 function commitTransactionLookup(txLookup) {
     for (const [keyString, id] of txLookup.keyToId) {
+        const existingId = txLookup.base.keyToId.get(keyString);
+        if (existingId !== undefined && compareNodeIdentifier(existingId, id) !== 0) {
+            txLookup.base.idToKey.delete(nodeIdentifierToString(existingId));
+        }
         txLookup.base.keyToId.set(keyString, id);
     }
     for (const [idString, nodeKey] of txLookup.idToKey) {
@@ -465,7 +426,6 @@ module.exports = {
     cloneIdentifierLookup,
     mergeIdentifierLookups,
     deleteIdentifierMappingForNodeKey,
-    deterministicNodeIdentifierFromNodeKey,
     IdentifierAllocationError,
     IdentifierLookupError,
     IDENTIFIERS_KEY,

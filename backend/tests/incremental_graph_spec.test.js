@@ -53,7 +53,6 @@ class InMemoryDatabase {
         /** @type {string} */
         this.version = 'test-version';
         this._identifierLookup = makeEmptyIdentifierLookup();
-        this._inFlightIdentifiers = new Set();
         this._identifierCounter = 0;
     }
 
@@ -65,14 +64,6 @@ class InMemoryDatabase {
 
     getActiveIdentifierLookup() {
         return this._identifierLookup;
-    }
-
-    getInFlightIdentifiers() {
-        return this._inFlightIdentifiers;
-    }
-
-    releaseInFlightIdentifier(identifier) {
-        this._inFlightIdentifiers.delete(identifier);
     }
 
     replaceActiveIdentifierLookup(lookup) {

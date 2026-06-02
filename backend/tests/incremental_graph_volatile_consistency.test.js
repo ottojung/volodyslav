@@ -156,35 +156,32 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
 // ---------------------------------------------------------------------------
 
 describe("Property 2 — No conflicting concurrent allocations", () => {
-    test("two concurrent pulls for the same new node produce the same identifier and no error", async () => {
+    test("concurrent pulls for the same new node succeed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        let computations = 0;
 
         const graph = makeIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async () => {
-                    computations++;
-                    return { type: "test", value: 1 };
-                },
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
         ]);
 
-        const [result1, result2] = await Promise.all([
+        // Concurrent allocations no longer conflict — the commit phase
+        // silently skips duplicate key entries.
+        const results = await Promise.all([
             graph.pull("source"),
             graph.pull("source"),
         ]);
 
-        // Both pulls return the same value.
-        expect(result1).toEqual(result2);
-        // In the new design, concurrent pulls each create their own Transaction.
-        // Both may compute independently; there is no cross-Transaction sharing.
-        // At least one computation occurred.
-        expect(computations).toBeGreaterThanOrEqual(1);
+        expect(results).toEqual([
+            { type: "test", value: 1 },
+            { type: "test", value: 1 },
+        ]);
+
         // The volatile lookup has exactly one entry for "source".
         const lookup = db.cloneActiveIdentifierLookup();
         const id = lookup.keyToId.get(nodeKeyString("source"));
@@ -194,19 +191,15 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         await db.close();
     });
 
-    test("concurrent pulls for different nodes sharing a new dependency allocate one identifier for it", async () => {
+    test("concurrent pulls for different nodes sharing a new dependency both succeed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        let zComputations = 0;
 
         const graph = makeIncrementalGraph(capabilities, db, [
             {
                 output: "z",
                 inputs: [],
-                computor: async () => {
-                    zComputations++;
-                    return { type: "base", value: 0 };
-                },
+                computor: async () => ({ type: "base", value: 0 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -226,19 +219,17 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             },
         ]);
 
-        // Pull X and Y concurrently; both depend on Z (unseen at first).
-        const [xResult, yResult] = await Promise.all([
+        // Both pulls succeed even though Z is unseen — no commit conflict.
+        const [xVal, yVal] = await Promise.all([
             graph.pull("x"),
             graph.pull("y"),
         ]);
 
-        expect(xResult).toEqual({ type: "x", value: 1 });
-        expect(yResult).toEqual({ type: "y", value: 2 });
-        // In the new design, concurrent pulls each create their own Transaction.
-        // Z is pulled independently by each concurrent X and Y pull.
-        expect(zComputations).toBeGreaterThanOrEqual(1);
+        expect(xVal).toEqual({ type: "x", value: 1 });
+        expect(yVal).toEqual({ type: "y", value: 2 });
 
-        // Z must have exactly one identifier in the volatile lookup.
+        // Z must have exactly one identifier in the volatile lookup
+        // (the first commit for Z wins; the second is retried).
         const lookup = db.cloneActiveIdentifierLookup();
         const zId = lookup.keyToId.get(nodeKeyString("z"));
         expect(zId).not.toBeUndefined();

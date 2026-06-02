@@ -23,11 +23,7 @@ const {
 function makeRootDatabase() {
     const generated = ["allocaaaa", "allocaaab", "allocaaac", "allocaaad"];
     let counter = 0;
-    const inFlightIdentifiers = new Set();
     return {
-        getInFlightIdentifiers() {
-            return inFlightIdentifiers;
-        },
         generateNodeIdentifier() {
             const value = generated[counter] ?? "allocaaaz";
             counter += 1;

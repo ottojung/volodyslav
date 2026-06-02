@@ -1,6 +1,6 @@
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
-    deterministicNodeIdentifierFromNodeKey,
+    IDENTIFIERS_KEY,
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const {
@@ -16,6 +16,19 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
     checkpointMigration: jest.fn(),
 }));
 const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
+
+/**
+ * Get the migrated identifier for a given node key from the storage's global IDENTIFIERS_KEY.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {string} nodeKey
+ * @returns {Promise<string>}
+ */
+async function getMigratedKey(storage, nodeKey) {
+    const entries = await storage.global.get(IDENTIFIERS_KEY);
+    if (!entries) return nodeKey;
+    const entry = entries.find(([, key]) => String(key) === nodeKey);
+    return entry ? nodeIdentifierToString(entry[0]) : nodeKey;
+}
 
 function makeInMemoryDb(table) {
     const store = new Map();
@@ -206,9 +219,7 @@ describe("runMigration", () => {
             await storage.invalidate(nodeKey);
         });
 
-        const migratedKey = nodeIdentifierToString(
-            deterministicNodeIdentifierFromNodeKey(nodeKey)
-        );
+        const migratedKey = await getMigratedKey(currentStorage, nodeKey);
         await expect(currentStorage.counters.get(migratedKey)).resolves.toBe(5);
         await expect(currentStorage.freshness.get(migratedKey)).resolves.toBe("potentially-outdated");
     });
@@ -330,9 +341,8 @@ describe("runMigration", () => {
             });
 
             // y namespace is populated with the migrated node's inputs record.
-            const migratedInputs = await yStorage.inputs.get(
-                nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(nodeKey))
-            );
+            const migratedKey = await getMigratedKey(yStorage, nodeKey);
+            const migratedInputs = await yStorage.inputs.get(migratedKey);
             expect(migratedInputs).toBeDefined();
         });
 

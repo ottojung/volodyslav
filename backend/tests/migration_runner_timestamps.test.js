@@ -8,7 +8,7 @@
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
-    deterministicNodeIdentifierFromNodeKey,
+    IDENTIFIERS_KEY,
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { toJsonKey } = require("./test_json_key_helper");
@@ -24,20 +24,30 @@ const { checkpointMigration: mockCheckpointMigration } = require('../src/generat
 // Shared test infrastructure
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Read an entry from yStorage using the migrated identifier for the given node key.
+ * @template T
+ * @param {{ get: (key: string) => Promise<T | undefined> }} sublevel
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} yStorage
+ * @param {string} nodeKey
+ * @returns {Promise<T | undefined>}
+ */
+async function yGet(sublevel, yStorage, nodeKey) {
+    const entries = await yStorage.global.get(IDENTIFIERS_KEY);
+    if (!entries) return sublevel.get(nodeKey);
+    const entry = entries.find(([, key]) => String(key) === nodeKey);
+    const id = entry ? nodeIdentifierToString(entry[0]) : nodeKey;
+    return sublevel.get(id);
+}
+
 function makeInMemoryDb(table) {
     const store = new Map();
-    function resolveKey(key) {
-        if (store.has(key) || typeof key !== "string" || !key.startsWith("{")) {
-            return key;
-        }
-        return nodeIdentifierToString(deterministicNodeIdentifierFromNodeKey(key));
-    }
     return {
-        async get(key) { return store.get(resolveKey(key)); },
+        async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
         async rawPut(key, value) { store.set(key, value); },
-        async del(key) { store.delete(resolveKey(key)); },
-        async rawDel(key) { store.delete(resolveKey(key)); },
+        async del(key) { store.delete(key); },
+        async rawDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
         rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
@@ -172,7 +182,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("createdAt is preserved exactly after keep", async () => {
@@ -190,7 +200,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(OLD_TIMESTAMP.createdAt);
     });
 
@@ -209,7 +219,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.modifiedAt).toBe(OLD_TIMESTAMP.modifiedAt);
     });
 
@@ -228,7 +238,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("multiple nodes: all timestamps copied correctly on keep", async () => {
@@ -254,8 +264,8 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 });
 
@@ -279,7 +289,7 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("override without previous timestamp leaves timestamps absent", async () => {
@@ -297,7 +307,7 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("override createdAt survives when modifiedAt differs", async () => {
@@ -316,7 +326,7 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(ts.createdAt);
     });
 });
@@ -341,7 +351,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("invalidate without previous timestamp leaves timestamps absent", async () => {
@@ -359,7 +369,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("invalidate preserves createdAt even though value is stale", async () => {
@@ -378,7 +388,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             await storage.invalidate(nodeKey);
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(ts.createdAt);
     });
 });
@@ -412,8 +422,8 @@ describe("delete decision: timestamps not present in new storage", () => {
             await storage.delete(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toBeUndefined();
-        await expect(yStorage.timestamps.get(nkB)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toBeUndefined();
     });
 });
 
@@ -448,8 +458,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.keep(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("keep A, invalidate B: both timestamps preserved", async () => {
@@ -464,8 +474,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.invalidate(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("keep A, override B: A timestamp preserved; B timestamp preserved (createdAt unchanged)", async () => {
@@ -480,8 +490,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.override(nkB, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        const bResult = await yStorage.timestamps.get(nkB);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        const bResult = await yGet(yStorage.timestamps, yStorage, nkB);
         expect(bResult.createdAt).toBe(NEW_TIMESTAMP.createdAt);
     });
 
@@ -498,8 +508,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             // nkB is auto-invalidated by override(nkA)
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("invalidate A, invalidate B: both timestamps preserved", async () => {
@@ -514,8 +524,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.invalidate(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 });
 
