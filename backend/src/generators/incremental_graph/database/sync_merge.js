@@ -44,17 +44,17 @@
  *   the size of arbitrary computation output.
  */
 
-const { topologicalSortFromMap, isTopologicalSortCycleError } = require('./topo_sort');
-const { compareIsoTimestamps } = require('./sync_merge_timestamps');
+const { isTopologicalSortCycleError } = require('./topo_sort');
 const { stringToNodeIdentifier, versionToString } = require('./types');
-const { compareNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
-const { makeDbToDbAdapter, unifyStores } = require('./unification');
 const {
     makeEmptyIdentifierLookup,
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
+const { buildMergePlan } = require('./sync_merge_plan');
+const { unifyRevdeps } = require('./sync_merge_revdeps');
+const { buildTakeOps, copyReplicaGently } = require('./sync_merge_transfer');
 const {
     assertNoIdentifierLookupConflicts,
     parseIdentifierLookup,
@@ -124,176 +124,6 @@ class SyncMergeAggregateError extends Error {
  */
 function isSyncMergeAggregateError(object) {
     return object instanceof SyncMergeAggregateError;
-}
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-
-/**
- * Gently unify the entire contents of replica `from` into replica `to`.
- * Only keys whose value differs are written; keys absent from the source
- * are deleted from the target.  This replaces the previous clear-then-copy
- * approach, minimising unnecessary writes.
- *
- * The `global/version` sublevel is included in the unification, so the
- * target's version is updated atomically with the rest of the replica data.
- *
- * @param {RootDatabase} rootDatabase
- * @param {ReplicaName} from
- * @param {ReplicaName} to
- * @returns {Promise<void>}
- */
-async function copyReplicaGently(rootDatabase, from, to) {
-    const src = rootDatabase.schemaStorageForReplica(from);
-    const dst = rootDatabase.schemaStorageForReplica(to);
-
-    // Exclude revdeps: they will be recomputed from mergedInputsMap by
-    // unifyRevdeps() after the merge.  Copying them here wastes I/O.
-    await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
-
-    // One final fsync: all unification writes use sync:false for performance;
-    // _rawSync() issues an empty batch with sync:true to durably flush the
-    // WAL/database state without mutating any keys.
-    await rootDatabase._rawSync();
-}
-
-/**
- * Build "take" batch operations that copy a node's full data from H into T.
- * Copies value, freshness, timestamps, inputs, and counters.
- * revdeps are NOT copied here; they are rebuilt from scratch at the end.
- *
- * @param {SchemaStorage} T - Target (inactive) replica storage.
- * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeIdentifier} targetKey - Identifier to write in the target replica.
- * @param {NodeIdentifier} hostKey - Identifier to read from the host staging storage.
- * @param {(hostIdentifier: NodeIdentifier) => NodeIdentifier} targetIdentifierForHostIdentifier
- * @returns {Promise<Array<*>>}
- */
-async function buildTakeOps(T, H, targetKey, hostKey, targetIdentifierForHostIdentifier) {
-    /** @type {Array<*>} */
-    const ops = [];
-
-    const hValue = await H.values.get(hostKey);
-    if (hValue !== undefined) {
-        ops.push(T.values.putOp(targetKey, hValue));
-    } else {
-        ops.push(T.values.delOp(targetKey));
-    }
-
-    const hFreshness = await H.freshness.get(hostKey);
-    ops.push(T.freshness.putOp(targetKey, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
-
-    const hTimestamps = await H.timestamps.get(hostKey);
-    if (hTimestamps !== undefined) {
-        ops.push(T.timestamps.putOp(targetKey, hTimestamps));
-    } else {
-        ops.push(T.timestamps.delOp(targetKey));
-    }
-
-    const hInputs = await H.inputs.get(hostKey);
-    if (hInputs !== undefined) {
-        ops.push(T.inputs.putOp(targetKey, {
-            inputs: hInputs.inputs.map(input => nodeIdentifierToString(targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))),
-            inputCounters: hInputs.inputCounters,
-        }));
-    } else {
-        ops.push(T.inputs.delOp(targetKey));
-    }
-
-    const hCounter = await H.counters.get(hostKey);
-    if (hCounter !== undefined) {
-        ops.push(T.counters.putOp(targetKey, hCounter));
-    } else {
-        ops.push(T.counters.delOp(targetKey));
-    }
-
-    return ops;
-}
-
-
-/**
- * Gently update the revdeps index in `T` to match the desired state derived
- * from `mergedInputsMap`.  Only entries that differ are written; stale entries
- * are deleted.
- *
- * This implements the same algorithm as unifyStores() but operates directly on
- * typed revdeps to avoid unsafe value coercions.
- *
- * @param {SchemaStorage} T
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
- * @returns {Promise<void>}
- */
-async function unifyRevdeps(T, mergedInputsMap) {
-    // Compute the desired revdeps state from the merged inputs map.
-    // Use a Set per input key to automatically deduplicate dependents — an
-    // InputsRecord may contain the same input key more than once, and writing
-    // duplicate entries would trigger spurious downstream recomputation.
-    //
-    // Memory: O(num_edges) — we hold the full desired revdeps map before
-    // writing.  This is bounded by the number of nodes+edges in the graph,
-    // not by value sizes, so it fits within the O(n) target where
-    // n = max(max_value_size, num_nodes + num_edges).
-    /** @type {Map<string, Set<NodeIdentifier>>} */
-    const desiredSets = new Map();
-
-    for (const [node, inputKeys] of mergedInputsMap) {
-        for (const inputKey of inputKeys) {
-            const inputStr = String(inputKey);
-            const existing = desiredSets.get(inputStr);
-            if (existing) {
-                existing.add(node);
-            } else {
-                desiredSets.set(inputStr, new Set([node]));
-            }
-        }
-    }
-
-    // Convert to sorted arrays for determinism and stable serialisation.
-    /** @type {Map<string, NodeIdentifier[]>} */
-    const desired = new Map();
-    for (const [key, depSet] of desiredSets) {
-        desired.set(key, [...depSet].sort(compareNodeIdentifier));
-    }
-
-    // Materialise the current target key set.
-    /** @type {Set<string>} */
-    const targetKeys = new Set();
-    for await (const key of T.revdeps.keys()) {
-        targetKeys.add(String(key));
-    }
-
-    // Accumulate ops for batch writes chunked by RAW_BATCH_CHUNK_SIZE.
-    // Memory: O(RAW_BATCH_CHUNK_SIZE × avg_revdep_size) per chunk — revdep
-    // values are small (arrays of node-key strings), so each chunk is bounded.
-    /** @type {Array<*>} */
-    const ops = [];
-    for (const [inputStr, dependents] of desired) {
-        const inputKey = stringToNodeIdentifier(inputStr);
-        if (!targetKeys.has(inputStr)) {
-            ops.push(T.revdeps.putOp(inputKey, dependents));
-        } else {
-            const existing = await T.revdeps.get(inputKey);
-            if (JSON.stringify(existing) !== JSON.stringify(dependents)) {
-                ops.push(T.revdeps.putOp(inputKey, dependents));
-            }
-        }
-        if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
-            await T.batch(ops.splice(0, ops.length));
-        }
-    }
-
-    // Delete stale entries.
-    for (const existingKey of targetKeys) {
-        if (!desired.has(existingKey)) {
-            ops.push(T.revdeps.delOp(stringToNodeIdentifier(existingKey)));
-        }
-        if (ops.length >= RAW_BATCH_CHUNK_SIZE) {
-            await T.batch(ops.splice(0, ops.length));
-        }
-    }
-
-    if (ops.length > 0) {
-        await T.batch(ops);
-    }
 }
 
 /**
