@@ -81,6 +81,9 @@ const {
  *   **new** allocations made during this transaction in a small overlay map,
  *   backed by a read-only reference to the committed `_computed.identifierLookup`.
  *   Lookups check the overlay first and fall through to the base.
+ * - inFlight: shared in-transaction pull promises keyed by node key string.
+ * - pullPromise: the transaction's shared top-level pull promise, used so
+ *   other transactions only observe a node after commit.
  *   At commit time, the overlay is applied to the base in-place after a
  *   successful disk flush (disk-first invariant).
  * - revdepDiffs: diffs collected during computation, applied at commit time
@@ -89,11 +92,10 @@ const {
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
+ * @property {Map<string, Promise<any>>} inFlight - In-transaction pull dedupe by node key.
+ * @property {Promise<any> | undefined} pullPromise - Shared top-level pull promise for this transaction.
  * @property {Set<string>} reservedIdentifiers - Generated identifiers reserved by this transaction.
  * @property {Array<RevdepDiff>} revdepDiffs - Diffs collected during computation, applied at commit time.
- * @property {Set<string>} heldNodeLocks - Concrete node keys whose locks are already held by this transaction.
- * @property {Array<() => void>} pendingLockReleases - Per-node lock release callbacks; flushed after commit.
- * @property {Map<import('./types').NodeKeyString, Promise<import('./types').RecomputeResult>>} inFlight - Per-key in-flight pull promises for deduplication of concurrent nested pulls.
  */
 
 /**
@@ -385,11 +387,10 @@ function makeGraphStorage(rootDatabase, sleeper) {
             const tx = {
                 batch,
                 identifierLookup: txLookup,
+                inFlight: new Map(),
+                pullPromise: undefined,
                 reservedIdentifiers: new Set(),
                 revdepDiffs: [],
-                heldNodeLocks: new Set(),
-                pendingLockReleases: [],
-                inFlight: new Map(),
             };
 
             let transactionCommitted = false;
@@ -479,14 +480,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
                 return value;
             } finally {
-                // Release per-node locks acquired during this transaction.
-                // Locks are held for the full transaction duration to prevent
-                // concurrent identifier allocation races (two transactions
-                // allocating different identifiers for the same node key).
-                for (const release of tx.pendingLockReleases) {
-                    release();
-                }
-
                 // Clean up reserved identifiers on error; on success they are
                 // sunk into the base in-memory lookup after the disk flush.
                 if (!transactionCommitted) {
@@ -495,9 +488,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
                     }
                 }
                 tx.reservedIdentifiers.clear();
-                if (!transactionCommitted) {
-                    tx.inFlight.clear();
-                }
             }
         },
         ensureMaterialized,
@@ -531,10 +521,9 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * disk flush via `commitTransactionLookup`.
  *
  * Note: this helper no longer checks for a held node lock. The caller
- * (`resolveConcreteNode`) now acquires the target lock via
- * `acquireConcreteNodeLock` before calling `txAllocateNodeIdentifier`
- * directly, and input identifiers are resolved post-pull via
- * `lookupNodeIdentifier` instead of being pre-allocated.
+ * (`resolveConcreteNode`) now allocates identifiers directly, and input
+ * identifiers are resolved post-pull via `lookupNodeIdentifier` instead of
+ * being pre-allocated.
  *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase

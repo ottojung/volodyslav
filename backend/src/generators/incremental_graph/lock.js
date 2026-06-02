@@ -18,52 +18,6 @@ const COMPUTED_STATE_KEY = makeUniqueFunctor("incremental-graph-computed-state")
 const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
 
 
-/**
- * @typedef {{ promise: Promise<void>, release: () => void }} ManualLockEntry
- */
-
-/** @type {Map<string, ManualLockEntry>} */
-const concreteNodeLocks = new Map();
-
-/**
- * Acquire a process-local concrete node lock and return a release callback.
- * @param {import('./types').NodeKeyString} nodeKey
- * @returns {Promise<() => void>}
- */
-async function acquireConcreteNodeLock(nodeKey) {
-    const stringKey = String(nodeKey);
-    for (;;) {
-        const existing = concreteNodeLocks.get(stringKey);
-        if (existing === undefined) {
-            break;
-        }
-        await existing.promise;
-    }
-    /** @type {() => void} */
-    let releasePromise = () => undefined;
-    const promise = new Promise((resolve) => {
-        releasePromise = () => resolve(undefined);
-    });
-    let released = false;
-    concreteNodeLocks.set(stringKey, {
-        promise,
-        release() {
-            if (released) {
-                return;
-            }
-            released = true;
-            concreteNodeLocks.delete(stringKey);
-            releasePromise();
-        },
-    });
-    return () => {
-        const entry = concreteNodeLocks.get(stringKey);
-        if (entry !== undefined) {
-            entry.release();
-        }
-    };
-}
-
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
@@ -169,5 +123,4 @@ module.exports = {
     withPullMode,
     withComputedStateMutex,
     withCommitMutex,
-    acquireConcreteNodeLock,
 };

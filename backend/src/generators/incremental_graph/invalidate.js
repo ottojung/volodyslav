@@ -135,14 +135,14 @@ async function internalUnsafeInvalidate(
             inputCounters.push(counter !== undefined ? counter : 0);
         }
 
-            // Collect revdep diff — applied during commit phase under commit mutex
-            const oldInputsRecord = await tx.batch.inputs.get(nodeDefinition.outputIdentifier);
-            const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
-            tx.revdepDiffs.push({
-                dependant: nodeDefinition.outputIdentifier,
-                oldDependencies,
-                newDependencies: staticInputIdentifiers,
-            });
+        // Collect revdep diff — applied during commit phase under commit mutex
+        const oldInputsRecord = await tx.batch.inputs.get(nodeDefinition.outputIdentifier);
+        const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
+        tx.revdepDiffs.push({
+            dependant: nodeDefinition.outputIdentifier,
+            oldDependencies,
+            newDependencies: staticInputIdentifiers,
+        });
 
         await incrementalGraph.storage.ensureMaterialized(
             nodeDefinition.outputIdentifier,

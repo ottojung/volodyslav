@@ -63,8 +63,7 @@ const {
     internalUnsafePull,
 } = require("./pull");
 const { internalMaybeRecalculate } = require("./recompute");
-const { acquireConcreteNodeLock } = require("./lock");
-const { txAllocateNodeIdentifier } = require("./database");
+const { deterministicNodeIdentifierFromNodeKey, txAllocateNodeIdentifier } = require("./database");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -195,59 +194,20 @@ class IncrementalGraphClass {
     }
 
     /**
-     * Acquire the target lock and resolve the target identifier.
-     * Pre-acquires input locks in sorted order to prevent ABBA deadlock
-     * when two nodes share inputs in opposite order.
-     *
-     * Input locks are not needed for correctness of the computation itself
-     * (revdep writes happen at commit time under the commit mutex), but they
-     * are needed to order concurrent pulls of shared inputs that would
-     * otherwise deadlock when nested pulls acquire locks in arbitrary order.
-     *
-     * All locks (target + inputs) are released by graph_state.js after the
-     * commit phase (in the withTransaction finally block via
-     * tx.pendingLockReleases).
+     * Resolve the target identifier.
+     * Identifiers are derived deterministically from the node key so
+     * concurrent same-node pulls converge on the same identifier without
+     * extra lock bookkeeping.
      *
      * @param {ConcreteNode} concreteNode
      * @param {Transaction} tx
      * @returns {Promise<ResolvedConcreteNode>}
      */
     async resolveConcreteNode(concreteNode, tx) {
-        // Acquire target lock (skip if already held — re-entrant calls happen when
-        // a nested pull's resolveConcreteNode is called for the same output)
-        if (!tx.heldNodeLocks.has(String(concreteNode.output))) {
-            const releaseTargetLock = await acquireConcreteNodeLock(concreteNode.output);
-            tx.heldNodeLocks.add(String(concreteNode.output));
-            tx.pendingLockReleases.push(releaseTargetLock);
-        }
-
-        // Pre-acquire input locks in sorted order to prevent ABBA deadlock
-        // when two nodes share inputs in opposite order.
-        /** @type {Set<NodeKeyString>} */
-        const uniqueInputs = new Set();
-        for (const inputKey of concreteNode.inputs) {
-            if (inputKey === undefined) {
-                throw new Error(`Missing concrete input for node ${String(concreteNode.output)}`);
-            }
-            if (inputKey === concreteNode.output) continue;
-            uniqueInputs.add(inputKey);
-        }
-        const sortedInputs = Array.from(uniqueInputs).sort((left, right) =>
-            String(left).localeCompare(String(right))
-        );
-        for (const inputKey of sortedInputs) {
-            const keyString = String(inputKey);
-            if (tx.heldNodeLocks.has(keyString)) continue;
-            const release = await acquireConcreteNodeLock(inputKey);
-            tx.heldNodeLocks.add(keyString);
-            tx.pendingLockReleases.push(release);
-        }
-
         const outputIdentifier = txAllocateNodeIdentifier(
             tx.identifierLookup,
             concreteNode.output,
-            () => this.rootDatabase.generateNodeIdentifier(),
-            this.rootDatabase.getInFlightIdentifiers(),
+            (attempt) => deterministicNodeIdentifierFromNodeKey(concreteNode.output, attempt),
             tx.reservedIdentifiers
         );
 
