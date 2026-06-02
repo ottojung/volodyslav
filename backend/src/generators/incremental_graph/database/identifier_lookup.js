@@ -107,7 +107,7 @@ function makeIdentifierLookup(entries) {
             throw new IdentifierLookupError(`Duplicate node identifier in lookup map: ${identifierString}`);
         }
         if (lookup.keyToId.has(nodeKeyString)) {
-            continue;
+            throw new IdentifierLookupError(`Duplicate node key in lookup map: ${nodeKeyString}`);
         }
         lookup.idToKey.set(identifierString, nodeKey);
         lookup.keyToId.set(nodeKeyString, nodeIdentifier);
