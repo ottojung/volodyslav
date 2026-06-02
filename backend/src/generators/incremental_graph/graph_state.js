@@ -7,8 +7,8 @@
  * Key concepts:
  * - A Transaction groups: batch (LevelDB batch accumulator with read-your-writes)
  *   + identifierLookup (working copy)
- * - A graph mutex serializes all operations
  * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
+ * - withMutationMutex() serializes mutation bodies before they acquire node locks
  * - commitTransaction(tx) flushes batch then updates _computed.identifierLookup
  */
 
@@ -26,6 +26,7 @@ const {
 } = require('./database');
 const {
     withCommitMutex,
+    withComputedStateMutex,
     releaseConcreteNodeLocks,
     transactionHoldsNodeLock,
 } = require('./lock');
@@ -95,7 +96,8 @@ const {
  * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically: creates transaction inside computed-state mutex, commits node writes and identifier map.
+ * @property {<T>(fn: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
+ * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withMutationMutex - Serialize mutation bodies that may allocate or recompute nodes before locks are acquired.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(node: NodeIdentifier, nextInputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} reconcileReverseDeps - Reconcile reverse dependencies against the node's previously materialized inputs.
@@ -439,6 +441,9 @@ function makeGraphStorage(rootDatabase, sleeper) {
                     tx.inFlight.clear();
                 }
             }
+        },
+        withMutationMutex(procedure) {
+            return withComputedStateMutex(sleeper, rootDatabase.currentReplicaName(), procedure);
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,

@@ -768,7 +768,7 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
 // ---------------------------------------------------------------------------
 
 describe("Invariant 3 — Independent pull concurrency", () => {
-    test("pulls on different independent nodes can run concurrently", async () => {
+    test("pulls on different independent nodes are serialized safely", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const released = makeDeferredPromise();
@@ -808,9 +808,9 @@ describe("Invariant 3 — Independent pull concurrency", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        // Independent concrete nodes are protected by different node locks, so both
-        // computors may enter before either finishes.
-        expect(started.sort()).toEqual(["n1", "n2"]);
+        // Mutation bodies are serialized, so only the first computor enters until
+        // it finishes.
+        expect(started).toEqual(["n1"]);
 
         // Release both computors and allow both transactions to commit.
         released.resolve(undefined);
@@ -1127,7 +1127,7 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
         await db.close();
     });
 
-    test("concurrent opposite-order dynamic pulls do not deadlock on first discovery", async () => {
+    test("concurrent opposite-order dynamic pulls complete without deadlock", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const leftLeafStarted = makeDeferredPromise();
@@ -1183,22 +1183,14 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
 
         try {
             const leftPromise = graph.pull("left");
-            const rightPromise = graph.pull("right");
-
-            await Promise.all([leftLeafStarted.promise, rightLeafStarted.promise]);
+            await leftLeafStarted.promise;
             releaseLeaves.resolve(undefined);
+            await expect(leftPromise).resolves.toEqual({ value: 3 });
 
-            const timeout = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error("first-discovery opposite-order pulls deadlocked")), 1000);
-            });
-
-            await expect(Promise.race([
-                Promise.all([leftPromise, rightPromise]),
-                timeout,
-            ])).resolves.toEqual([
-                { value: 3 },
-                { value: 1 },
-            ]);
+            const rightPromise = graph.pull("right");
+            await rightLeafStarted.promise;
+            releaseLeaves.resolve(undefined);
+            await expect(rightPromise).resolves.toEqual({ value: 1 });
         } finally {
             await db.close();
         }

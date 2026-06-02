@@ -26,6 +26,7 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {<T>(procedure: (tx: Transaction) => Promise<T>) => Promise<T>} withTransaction
+ * @property {(nodeKey: import('./types').NodeKeyString) => import('./types').NodeIdentifier | undefined} lookupNodeIdentifier
  * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  * @property {(nodeDefinition: import('./types').ResolvedConcreteNode, tx: Transaction) => Promise<RecomputeResult>} maybeRecalculate
@@ -34,10 +35,9 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { isTransactionLockContentionError, withPullMode } = require("./lock");
+const { withPullMode } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
-const { fromMilliseconds } = require("../../datetime");
 
 /**
  * Core pull implementation for a node by its serialized key.
@@ -57,6 +57,17 @@ async function pullNode(graph, nodeKeyStr, tx) {
     }
     checkArity(compiledNode, nodeKey.args);
     const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
+
+    const nodeIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
+    if (nodeIdentifier !== undefined) {
+        const nodeFreshness = await graph.storage.freshness.get(nodeIdentifier);
+        if (nodeFreshness === "up-to-date") {
+            const result = await graph.storage.values.get(nodeIdentifier);
+            if (result !== undefined) {
+                return { value: result, status: "cached" };
+            }
+        }
+    }
 
     /**
      * Checks freshness: returns cached value if up-to-date,
@@ -104,22 +115,9 @@ async function pullNode(graph, nodeKeyStr, tx) {
         return runDeduplicatedInTransaction(tx);
     }
 
-    // Top-level pull: retry if the current transaction discovers a lock-order
-    // inversion while acquiring dynamic dependencies. Retrying from scratch is
-    // safe because the failed transaction is discarded before any commit.
-    for (let attempt = 0; ; attempt += 1) {
-        try {
-            return await graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx));
-        } catch (error) {
-            if (!isTransactionLockContentionError(error)) {
-                throw error;
-            }
-            await graph.sleeper.sleep(
-                "incremental-graph lock-order retry",
-                fromMilliseconds(Math.min(1 + attempt, 16))
-            );
-        }
-    }
+    return graph.storage.withMutationMutex(() =>
+        graph.withTransaction(async (activeTx) => runDeduplicatedInTransaction(activeTx))
+    );
 }
 
 /**

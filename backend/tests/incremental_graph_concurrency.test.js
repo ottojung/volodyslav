@@ -612,7 +612,7 @@ describe("IncrementalGraph concurrency", () => {
             return { promise, resolve };
         }
 
-        test("concurrent invalidates can overlap (observe mode is shared)", async () => {
+        test("concurrent invalidates are serialized by the mutation gate", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const source1Cell = { value: { type: "test", value: 1 } };
@@ -653,7 +653,7 @@ describe("IncrementalGraph concurrency", () => {
             const invalidate1 = graph.invalidate("source1");
             const invalidate2 = graph.invalidate("source2");
             await new Promise((resolve) => setTimeout(resolve, 20));
-            expect(maxActive).toBe(2);
+            expect(maxActive).toBe(1);
 
             releaseBoth.resolve(undefined);
             await Promise.all([invalidate1, invalidate2]);
@@ -777,7 +777,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(maxActiveComputations).toBe(1);
         });
 
-        test("concurrent pulls on different nodes overlap", async () => {
+        test("concurrent pulls on different nodes are serialized safely", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const source1Cell = { value: { type: "test", value: 1 } };
@@ -813,9 +813,9 @@ describe("IncrementalGraph concurrency", () => {
             const pull1 = graph.pull("source1");
             const pull2 = graph.pull("source2");
             await new Promise((resolve) => setTimeout(resolve, 20));
-            // Pulls on different concrete nodes overlap: both computors enter
-            // before either one finishes.
-            expect(started.sort()).toEqual(["source1", "source2"]);
+            // Only the first computor enters until it finishes; the second waits
+            // behind the mutation gate.
+            expect(started).toEqual(["source1"]);
 
             releaseBoth.resolve(undefined);
             await Promise.all([pull1, pull2]);
