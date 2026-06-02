@@ -1,47 +1,41 @@
 /**
- * Per-host graph merge algorithm for incremental-graph sync.
+ * Per-host graph merge for incremental-graph synchronization.
  *
- * This module implements the structured, LevelDB-level merge that replaces the
- * previous git-textual merge.  For each remote hostname, the algorithm:
+ * Synchronization stages each remote hostname into `hostnames/<hostname>` (the
+ * host storage, `H`). This module merges that staged graph into the inactive
+ * local replica (`T`) and, only when the merge changes graph data, makes `T` the
+ * active replica. The currently-active local replica (`L`) is never modified by
+ * this function.
  *
- *   1. Copies the active local replica L into the inactive replica T
- *      bit-identically (L and T become identical).
- *   2. Collects all nodes from T and H; computes initial per-node decisions
- *      from modification timestamps:
- *      - T-newer (or H absent) → 'keep'; if strictly newer, flag as force-keep root.
- *      - H-newer → 'take'; flag as force-take root.
- *      - Equal timestamps → 'keep'.
- *      Builds a merged dependency map using H.inputs for 'take' and H-only nodes,
- *      T.inputs for all others.
- *   3. Builds a stable topological ordering of the merged graph, which also
- *      detects cycles across the full merged structure (T + H-only additions +
- *      rewired edges from taken nodes).
- *   4. Propagates force-keep and force-take flags through the merged topological
- *      order using the merged inputs map, so each node inherits the taint of its
- *      most-upstream forced ancestor (even across rewired edges).
- *   5. Nodes tainted by both force-keep and force-take are 'invalidate'.
- *   6. H-only nodes are always 'take'; those with keepTainted ancestors get
- *      freshness overridden to `potentially-outdated`.
- *   7. Applies all decisions to T in one atomic batch, rebuilding the revdeps
- *      index from scratch.
- *   8. Switches the active replica pointer to T only when the merge produced
- *      graph changes; for pure no-op merges, keep the current replica.
+ * The merge is intentionally graph-aware rather than a textual/database-file
+ * merge:
+ *
+ * 1. Verify that `H` was written by the same schema version as the local
+ *    database.
+ * 2. Copy `L` into `T`, excluding reverse dependencies because they are derived
+ *    data and are rebuilt after decisions are applied.
+ * 3. Parse and compare the target/host identifier lookup metadata. The current
+ *    policy is deliberately conservative: equivalent semantic node keys must
+ *    already use the same persisted identifier on both sides, and an identifier
+ *    may not name different semantic keys.
+ * 4. Build a merge plan from timestamps and the merged dependency graph. Newer
+ *    local nodes are kept, newer host nodes are taken, and descendants of both a
+ *    local-newer and host-newer ancestor are invalidated so they recompute from
+ *    the merged inputs.
+ * 5. Apply the plan to `T`, rebuilding `revdeps` from the same merged inputs map
+ *    used by the planner.
+ * 6. Persist the merged identifier lookup and switch the active replica pointer
+ *    only if the plan took or invalidated at least one node.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
- * - Graph cycles throw TopologicalSortCycleError (re-exported from topo_sort).
- * - All other errors propagate as-is to the caller.
+ * - Identifier metadata conflicts/malformed records throw the specific errors
+ *   defined by the identifier lookup modules.
+ * - Graph cycles throw TopologicalSortCycleError from `topo_sort`.
+ * - Unexpected storage failures propagate as-is to the caller.
  *
- * The caller (synchronize.js) is responsible for clearing the hostname staging
- * storage after each host merge completes (regardless of success/failure).
- *
- * Batching policy:
- * - We only chunk batch writes for entries whose values are potentially
- *   unbounded in size (e.g. node computation results stored in `values`).
- * - Keys and bounded-size metadata (freshness strings, timestamps, inputs
- *   records, revdeps key lists, counters) may be accumulated in RAM without
- *   chunking — their total size is proportional to the number of nodes, not
- *   the size of arbitrary computation output.
+ * The caller (`synchronize.js`) owns hostname staging cleanup after this function
+ * returns or throws.
  */
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
@@ -60,21 +54,19 @@ const {
     parseIdentifierLookup,
 } = require('./sync_merge_identifier_translation');
 
+/** @typedef {import('../../../logger').Logger} Logger */
+/** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
+/** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
 
 /**
- * @typedef {import('../../../logger').Logger} Logger
- */
-
-/**
- * Thrown when the remote hostname's stored `global/version` does not match the
- * local application version.  This means the two databases are at different
- * schema versions and cannot be safely merged.  Sync continues with the
- * remaining hostnames; only this host's merge is skipped.
+ * Thrown when the staged host graph was produced by a different schema version
+ * than the local database. A version mismatch is expected to be isolated to one
+ * hostname: synchronization can skip this host and continue with others.
  */
 class HostVersionMismatchError extends Error {
     /**
@@ -103,7 +95,7 @@ function isHostVersionMismatchError(object) {
 }
 
 /**
- * Thrown when one or more per-host merges fail.  Contains per-host failure
+ * Thrown when one or more per-host merges fail. Contains per-host failure
  * records so callers can report exactly which hosts failed and which succeeded.
  */
 class SyncMergeAggregateError extends Error {
@@ -127,38 +119,396 @@ function isSyncMergeAggregateError(object) {
 }
 
 /**
- * Run the per-host graph merge algorithm for a single remote hostname.
+ * Small helper around SchemaStorage.batch() that guarantees batch sizes never
+ * exceed RAW_BATCH_CHUNK_SIZE while still allowing callers to build operations
+ * incrementally.
+ */
+class ReplicaBatchWriter {
+    /**
+     * @param {SchemaStorage} storage
+     */
+    constructor(storage) {
+        this._storage = storage;
+        /** @type {Array<*>} */
+        this._pendingOps = [];
+    }
+
+    /**
+     * @param {Array<*>} operations
+     * @returns {Promise<void>}
+     */
+    async pushAll(operations) {
+        this._pendingOps.push(...operations);
+        await this.flushCompleteChunks();
+    }
+
+    /**
+     * @param {*} operation
+     * @returns {Promise<void>}
+     */
+    async push(operation) {
+        this._pendingOps.push(operation);
+        await this.flushCompleteChunks();
+    }
+
+    /**
+     * Flush full chunks and leave any partial chunk queued.
+     * @returns {Promise<void>}
+     */
+    async flushCompleteChunks() {
+        while (this._pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
+            const chunk = this._pendingOps.slice(0, RAW_BATCH_CHUNK_SIZE);
+            await this._storage.batch(chunk);
+            this._pendingOps = this._pendingOps.slice(RAW_BATCH_CHUNK_SIZE);
+        }
+    }
+
+    /**
+     * Flush all queued operations. No-op when the queue is empty.
+     * @returns {Promise<void>}
+     */
+    async flush() {
+        await this.flushCompleteChunks();
+        if (this._pendingOps.length === 0) {
+            return;
+        }
+        await this._storage.batch(this._pendingOps);
+        this._pendingOps = [];
+    }
+}
+
+/**
+ * @param {Version | undefined} version
+ * @returns {string | undefined}
+ */
+function formatOptionalVersion(version) {
+    return version === undefined ? undefined : versionToString(version);
+}
+
+/**
+ * @param {string | undefined} version
+ * @returns {string}
+ */
+function formatVersionForError(version) {
+    return version ?? '(none)';
+}
+
+/**
+ * Verify that the staged host graph and local graph use the same schema version.
  *
- * Pre-conditions (caller must ensure):
- * - The hostname's `r/` snapshot has been scanned into `hostnames/<hostname>`.
+ * @param {RootDatabase} rootDatabase
+ * @param {string} hostname
+ * @returns {Promise<void>}
+ * @throws {HostVersionMismatchError}
+ */
+async function assertHostVersionMatches(rootDatabase, hostname) {
+    const localVersion = formatOptionalVersion(await rootDatabase.getGlobalVersion());
+    const remoteVersion = formatOptionalVersion(await rootDatabase.getHostnameGlobalVersion(hostname));
+
+    if (localVersion !== remoteVersion) {
+        throw new HostVersionMismatchError(
+            hostname,
+            formatVersionForError(localVersion),
+            formatVersionForError(remoteVersion)
+        );
+    }
+}
+
+/**
+ * Load and validate identifier lookup metadata for the merge target and host.
+ * Missing target metadata is allowed for fresh/legacy local replicas; missing
+ * host metadata is malformed because each staged host snapshot must carry its
+ * own semantic identifier mapping.
+ *
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} hostStorage
+ * @returns {Promise<{ targetLookup: IdentifierLookup, hostLookup: IdentifierLookup }>}
+ */
+async function loadMergeIdentifierLookups(targetStorage, hostStorage) {
+    const hostLookup = parseIdentifierLookup(await hostStorage.global.get('identifiers_keys_map'));
+    const targetRawLookup = await targetStorage.global.get('identifiers_keys_map');
+    const targetLookup = targetRawLookup === undefined
+        ? makeEmptyIdentifierLookup()
+        : parseIdentifierLookup(targetRawLookup);
+
+    assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
+    return { targetLookup, hostLookup };
+}
+
+/**
+ * Host-to-target identifier translation for the current conservative merge
+ * policy. Conflicts are rejected before this translator is used, so any host
+ * identifier that survives validation can be written into the target namespace
+ * unchanged.
+ *
+ * @param {NodeIdentifier} hostIdentifier
+ * @returns {NodeIdentifier}
+ */
+function targetIdentifierForHostIdentifier(hostIdentifier) {
+    return hostIdentifier;
+}
+
+/**
+ * Target-to-host identifier translation for the current conservative merge
+ * policy. See targetIdentifierForHostIdentifier for the policy rationale.
+ *
+ * @param {NodeIdentifier} targetIdentifier
+ * @returns {NodeIdentifier}
+ */
+function hostIdentifierForTargetIdentifier(targetIdentifier) {
+    return targetIdentifier;
+}
+
+/**
+ * Convert a host inputs record into target-namespace node identifiers.
+ * Missing input records are treated as empty because `inputs` is the canonical
+ * materialized-node registry: a missing record means the node has no tracked
+ * dependencies in that snapshot.
+ *
+ * @param {import('./root_database').InputsRecord | undefined} record
+ * @returns {NodeIdentifier[]}
+ */
+function translatedHostInputs(record) {
+    return record
+        ? record.inputs.map(input => targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))
+        : [];
+}
+
+/**
+ * Apply a host-newer node to the target replica. If the planner determined the
+ * host-only node is downstream of a locally-newer ancestor, the host's structure
+ * is kept but freshness is overridden so the node recomputes locally.
+ *
+ * @param {ReplicaBatchWriter} writer
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} hostStorage
+ * @param {NodeIdentifier} node
+ * @param {Set<NodeIdentifier>} hostOnlyNodesNeedingInvalidation
+ * @returns {Promise<void>}
+ */
+async function applyTakeDecision(
+    writer,
+    targetStorage,
+    hostStorage,
+    node,
+    hostOnlyNodesNeedingInvalidation
+) {
+    await writer.pushAll(await buildTakeOps(
+        targetStorage,
+        hostStorage,
+        node,
+        hostIdentifierForTargetIdentifier(node),
+        targetIdentifierForHostIdentifier
+    ));
+
+    if (hostOnlyNodesNeedingInvalidation.has(node)) {
+        await writer.push(targetStorage.freshness.putOp(node, 'potentially-outdated'));
+    }
+}
+
+/**
+ * Copy a host-newer node's structural state before invalidating it. This keeps
+ * `inputs`, counters, values, and timestamps aligned with the merged dependency
+ * graph while forcing recomputation of the final value.
+ *
+ * @param {ReplicaBatchWriter} writer
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} hostStorage
+ * @param {NodeIdentifier} node
+ * @returns {Promise<void>}
+ */
+async function copyHostStateForInvalidatedTake(writer, targetStorage, hostStorage, node) {
+    await writer.pushAll(await buildTakeOps(
+        targetStorage,
+        hostStorage,
+        node,
+        hostIdentifierForTargetIdentifier(node),
+        targetIdentifierForHostIdentifier
+    ));
+}
+
+/**
+ * Advance modifiedAt for a host-newer invalidated node so a later sync does not
+ * repeatedly rediscover the same host timestamp as newer. The node remains
+ * `potentially-outdated`, so the next read/recompute still derives a local value
+ * from the merged inputs.
+ *
+ * @param {ReplicaBatchWriter} writer
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} hostStorage
+ * @param {NodeIdentifier} node
+ * @returns {Promise<void>}
+ */
+async function advanceInvalidatedTakeTimestamp(writer, targetStorage, hostStorage, node) {
+    const hostTimestamps = await hostStorage.timestamps.get(hostIdentifierForTargetIdentifier(node));
+    if (hostTimestamps === undefined) {
+        return;
+    }
+
+    const targetTimestamps = await targetStorage.timestamps.get(node);
+    await writer.push(targetStorage.timestamps.putOp(node, {
+        createdAt: targetTimestamps?.createdAt ?? hostTimestamps.createdAt,
+        modifiedAt: hostTimestamps.modifiedAt,
+    }));
+}
+
+/**
+ * Apply an invalidate decision to the target replica.
+ *
+ * A node that was initially `take` has newer host structural data. The merge must
+ * copy that host state before invalidating freshness; otherwise the rebuilt
+ * revdeps index and the node's stored inputs would disagree. A node initially
+ * kept already has the target structure that the planner used.
+ *
+ * @param {ReplicaBatchWriter} writer
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} hostStorage
+ * @param {Map<NodeIdentifier, 'keep' | 'take'>} initialDecisions
+ * @param {NodeIdentifier} node
+ * @returns {Promise<void>}
+ */
+async function applyInvalidateDecision(writer, targetStorage, hostStorage, initialDecisions, node) {
+    const initiallyTaken = initialDecisions.get(node) === 'take';
+    if (initiallyTaken) {
+        await copyHostStateForInvalidatedTake(writer, targetStorage, hostStorage, node);
+    }
+
+    await writer.push(targetStorage.freshness.putOp(node, 'potentially-outdated'));
+
+    if (initiallyTaken) {
+        await advanceInvalidatedTakeTimestamp(writer, targetStorage, hostStorage, node);
+    }
+}
+
+/**
+ * Apply all node decisions to the target replica. Reverse dependencies and
+ * global identifier metadata are intentionally excluded; callers update those
+ * after node records are coherent.
+ *
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} hostStorage
+ * @param {Map<NodeIdentifier, 'keep' | 'take'>} initialDecisions
+ * @param {Map<NodeIdentifier, MergeDecision>} decisions
+ * @param {Set<NodeIdentifier>} hostOnlyNodesNeedingInvalidation
+ * @returns {Promise<void>}
+ */
+async function applyNodeDecisions(
+    targetStorage,
+    hostStorage,
+    initialDecisions,
+    decisions,
+    hostOnlyNodesNeedingInvalidation
+) {
+    const writer = new ReplicaBatchWriter(targetStorage);
+
+    for (const [node, decision] of decisions) {
+        if (decision === 'take') {
+            await applyTakeDecision(
+                writer,
+                targetStorage,
+                hostStorage,
+                node,
+                hostOnlyNodesNeedingInvalidation
+            );
+        } else if (decision === 'invalidate') {
+            await applyInvalidateDecision(
+                writer,
+                targetStorage,
+                hostStorage,
+                initialDecisions,
+                node
+            );
+        }
+    }
+
+    await writer.flush();
+}
+
+/**
+ * @param {Iterable<MergeDecision>} decisions
+ * @returns {{ kept: number, taken: number, invalidated: number, hasChanges: boolean }}
+ */
+function summarizeDecisions(decisions) {
+    let kept = 0;
+    let taken = 0;
+    let invalidated = 0;
+
+    for (const decision of decisions) {
+        if (decision === 'keep') {
+            kept += 1;
+        } else if (decision === 'take') {
+            taken += 1;
+        } else {
+            invalidated += 1;
+        }
+    }
+
+    return {
+        kept,
+        taken,
+        invalidated,
+        hasChanges: taken + invalidated > 0,
+    };
+}
+
+/**
+ * Persist metadata and derived indexes that are updated only when graph records
+ * changed. `mergedInputsMap` must be the exact map produced by the planner so
+ * invalidated host-newer nodes get revdeps for their copied host inputs.
+ *
+ * @param {RootDatabase} rootDatabase
+ * @param {SchemaStorage} targetStorage
+ * @param {ReplicaName} targetReplica
+ * @param {IdentifierLookup} targetLookup
+ * @param {IdentifierLookup} hostLookup
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @returns {Promise<void>}
+ */
+async function commitChangedMerge(
+    rootDatabase,
+    targetStorage,
+    targetReplica,
+    targetLookup,
+    hostLookup,
+    mergedInputsMap
+) {
+    const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
+    const writer = new ReplicaBatchWriter(targetStorage);
+    await writer.push(targetStorage.global.putOp(
+        'identifiers_keys_map',
+        serializeIdentifierLookup(mergedLookup)
+    ));
+    await writer.flush();
+
+    await unifyRevdeps(targetStorage, mergedInputsMap);
+    await rootDatabase.setCurrentReplicaPointer(targetReplica);
+}
+
+/**
+ * Run the graph-aware merge algorithm for one staged remote hostname.
+ *
+ * Pre-conditions:
+ * - The hostname's remote snapshot has already been scanned into hostname
+ *   staging storage.
  * - The live database is locked for the duration of this call.
  *
- * Post-conditions (on success):
- * - The inactive replica contains the merged result.
- * - The active replica pointer is switched to the (previously inactive) replica.
- * - Hostname staging storage is NOT cleared here; the caller is responsible.
+ * Post-conditions on success:
+ * - If the merge took or invalidated any node, the inactive replica contains the
+ *   merged graph and is made active.
+ * - If every node was kept, the active replica pointer is unchanged. The
+ *   inactive replica may still have been refreshed as a copy of the active
+ *   replica, but callers must continue reading from the active pointer.
+ * - Hostname staging storage is not cleared here; the caller owns cleanup.
  *
  * @param {Logger} logger
  * @param {RootDatabase} rootDatabase
  * @param {string} hostname
  * @returns {Promise<boolean>} Whether the active replica pointer changed.
- * @throws {HostVersionMismatchError} If the remote's schema version differs from local.
- * @throws {import('./topo_sort').TopologicalSortCycleError} If the graph has a cycle.
+ * @throws {HostVersionMismatchError} If the remote schema version differs from local.
+ * @throws {import('./topo_sort').TopologicalSortCycleError} If the merged graph has a cycle.
  */
 async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
-    // ── Step 0: Version check ────────────────────────────────────────────────
-    const localVersionRaw = await rootDatabase.getGlobalVersion();
-    const localVersion = localVersionRaw !== undefined ? versionToString(localVersionRaw) : undefined;
-    const remoteVersionRaw = await rootDatabase.getHostnameGlobalVersion(hostname);
-    const remoteVersion = remoteVersionRaw !== undefined ? versionToString(remoteVersionRaw) : undefined;
-
-    if (localVersion !== remoteVersion) {
-        throw new HostVersionMismatchError(
-            hostname,
-            localVersion ?? '(none)',
-            remoteVersion ?? '(none)'
-        );
-    }
+    await assertHostVersionMatches(rootDatabase, hostname);
 
     const fromReplica = rootDatabase.currentReplicaName();
     const toReplica = rootDatabase.otherReplicaName();
@@ -168,47 +518,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         'Starting graph merge for host'
     );
 
-    // ── Step 1: Gently copy L → T ────────────────────────────────────────────
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
-    const T = rootDatabase.schemaStorageForReplica(toReplica);
-    const H = rootDatabase.hostnameSchemaStorage(hostname);
-
-    const hostLookup = parseIdentifierLookup(await H.global.get('identifiers_keys_map'));
-    const targetRawLookup = await T.global.get('identifiers_keys_map');
-    // Fresh local replicas may not have persisted lookup metadata yet.
-    // Treat missing local target metadata as an empty lookup while keeping
-    // strict parsing for host snapshots.
-    const targetLookup = targetRawLookup === undefined
-        ? makeEmptyIdentifierLookup()
-        : parseIdentifierLookup(targetRawLookup);
-    assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
-
-    /**
-     * @param {NodeIdentifier} hostIdentifier
-     * @returns {NodeIdentifier}
-     */
-    function targetIdentifierForHostIdentifier(hostIdentifier) {
-        return hostIdentifier;
-    }
-
-    /**
-     * @param {NodeIdentifier} targetIdentifier
-     * @returns {NodeIdentifier}
-     */
-    function hostIdentifierForTargetIdentifier(targetIdentifier) {
-        return targetIdentifier;
-    }
-
-    /**
-     * @param {import('./root_database').InputsRecord | undefined} record
-     * @returns {NodeIdentifier[]}
-     */
-    function translatedHostInputs(record) {
-        return record
-            ? record.inputs.map(input => targetIdentifierForHostIdentifier(stringToNodeIdentifier(input)))
-            : [];
-    }
+    const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
+    const hostStorage = rootDatabase.hostnameSchemaStorage(hostname);
+    const { targetLookup, hostLookup } = await loadMergeIdentifierLookups(targetStorage, hostStorage);
 
     const {
         initialDecisions,
@@ -216,119 +530,45 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         decisions,
         hOnlyNeedsInvalidate,
     } = await buildMergePlan(
-        T,
-        H,
+        targetStorage,
+        hostStorage,
         hostIdentifierForTargetIdentifier,
         translatedHostInputs
     );
 
-    // ── Step 7: Apply decisions to T in chunks ──────────────────────────────
-    /** @type {Array<*>} */
-    let pendingOps = [];
+    await applyNodeDecisions(
+        targetStorage,
+        hostStorage,
+        initialDecisions,
+        decisions,
+        hOnlyNeedsInvalidate
+    );
 
-    /**
-     * Flush full chunks of `pendingOps` to T, leaving any partial chunk queued.
-     * Uses a while loop so that pushing several ops at once (e.g. via
-     * `pendingOps.push(...takeOps)`) never produces a batch larger than
-     * RAW_BATCH_CHUNK_SIZE entries.
-     * @returns {Promise<void>}
-     */
-    async function flushPendingOps() {
-        while (pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
-            await T.batch(pendingOps.slice(0, RAW_BATCH_CHUNK_SIZE));
-            pendingOps = pendingOps.slice(RAW_BATCH_CHUNK_SIZE);
-        }
+    const summary = summarizeDecisions(decisions.values());
+    if (summary.hasChanges) {
+        await commitChangedMerge(
+            rootDatabase,
+            targetStorage,
+            toReplica,
+            targetLookup,
+            hostLookup,
+            mergedInputsMap
+        );
     }
 
-    for (const [node, decision] of decisions) {
-        if (decision === 'take') {
-            const takeOps = await buildTakeOps(T, H, node, hostIdentifierForTargetIdentifier(node), targetIdentifierForHostIdentifier);
-            pendingOps.push(...takeOps);
-            // H-only nodes whose ancestors include a locally-kept (T-newer) node
-            // were computed on the remote with stale inputs.  Copy the structural
-            // data from H so the node exists in T and the revdeps index is
-            // correct, but override freshness to force recomputation.
-            if (hOnlyNeedsInvalidate.has(node)) {
-                pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
-            }
-        } else if (decision === 'invalidate') {
-            // If the node was initially 'take' (H newer) but got tainted to
-            // 'invalidate', we must still apply H's structural state first
-            // (inputs/counters/values/timestamps) so T stays consistent with
-            // mergedInputsMap and rebuilt revdeps. We then force freshness to
-            // potentially-outdated to trigger recomputation.
-            if (initialDecisions.get(node) === 'take') {
-                const takeOps = await buildTakeOps(T, H, node, hostIdentifierForTargetIdentifier(node), targetIdentifierForHostIdentifier);
-                pendingOps.push(...takeOps);
-            }
-            pendingOps.push(T.freshness.putOp(node, 'potentially-outdated'));
-            // Advance modifiedAt to H's value so the next sync does not see H as
-            // newer and re-invalidate this node in an endless cycle.
-            //
-            // Background: without this fix, T.modifiedAt < H.modifiedAt still holds
-            // after the merge, so compareIsoTimestamps keeps selecting the node as a
-            // force-take candidate and the invalidate decision repeats on every sync
-            // (even when local recomputation returns unchanged output and does not
-            // bump the timestamp).
-            //
-            // This only applies when the initial decision was 'take' (H was strictly
-            // newer).  For 'keep'-initial nodes that were tainted to 'invalidate' via
-            // an ancestor, T.modifiedAt >= H.modifiedAt already — overwriting would
-            // regress the timestamp.
-            if (initialDecisions.get(node) === 'take') {
-                const hTimestamps = await H.timestamps.get(hostIdentifierForTargetIdentifier(node));
-                if (hTimestamps !== undefined) {
-                    const tTimestamps = await T.timestamps.get(node);
-                    // Preserve T's createdAt; advance only modifiedAt to H's value.
-                    // tTimestamps can theoretically be undefined when the node was
-                    // created before the timestamps feature was added (no record yet).
-                    // In that case we fall back to H's createdAt as the best available
-                    // approximation — the node exists in T (it was in T.inputs during
-                    // step 2a) so it is not a truly new node.
-                    const advanced = {
-                        createdAt: tTimestamps?.createdAt ?? hTimestamps.createdAt,
-                        modifiedAt: hTimestamps.modifiedAt,
-                    };
-                    pendingOps.push(T.timestamps.putOp(node, advanced));
-                }
-            }
-        }
-        // 'keep': no write operations needed; T already has the correct data.
-        await flushPendingOps();
-    }
-
-    // Flush any remaining decisions ops before updating revdeps.
-    if (pendingOps.length > 0) {
-        await T.batch(pendingOps);
-        pendingOps = [];
-    }
-
-    const decisionValues = [...decisions.values()];
-    const kept = decisionValues.filter(d => d === 'keep').length, taken = decisionValues.filter(d => d === 'take').length, invalidated = decisionValues.filter(d => d === 'invalidate').length;
-    const hasChanges = taken + invalidated > 0;
-
-    if (hasChanges) {
-        const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
-
-        pendingOps.push(T.global.putOp('identifiers_keys_map', serializeIdentifierLookup(mergedLookup)));
-        await flushPendingOps();
-        await T.batch(pendingOps);
-        pendingOps = [];
-
-        // Gently update revdeps using the merged inputs map.  Only changed entries
-        // are written; stale entries are deleted.  unifyRevdeps uses mergedInputsMap
-        // directly, ensuring nodes that were initially 'take' (H.inputs) but
-        // taint-propagated to 'invalidate' still use H.inputs for revdeps.
-        await unifyRevdeps(T, mergedInputsMap);
-
-        // ── Step 8: Persist active replica pointer ───────────────────────────
-        await rootDatabase.setCurrentReplicaPointer(toReplica);
-    }
     logger.logInfo(
-        { hostname, fromReplica, toReplica, kept, taken, invalidated, switchedReplica: hasChanges },
+        {
+            hostname,
+            fromReplica,
+            toReplica,
+            kept: summary.kept,
+            taken: summary.taken,
+            invalidated: summary.invalidated,
+            switchedReplica: summary.hasChanges,
+        },
         'Graph merge completed for host'
     );
-    return hasChanges;
+    return summary.hasChanges;
 }
 
 module.exports = {
