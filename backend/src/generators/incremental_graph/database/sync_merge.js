@@ -210,139 +210,17 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             : [];
     }
 
-    // ── Step 2: Collect nodes and build merged dependency map ────────────────
-    //
-    // Initial timestamp decisions are computed for all T nodes.  Then the
-    // merged inputs map is built using H.inputs for every node whose initial
-    // decision is 'take' and T.inputs for all others.  H-only nodes use
-    // H.inputs.  This merged map is the single source of truth for both the
-    // topological sort and the taint-propagation pass, which guarantees:
-    //
-    //   a) Cycle detection covers the full merged graph (including H-only
-    //      additions and changed edges in taken nodes).
-    //   b) Taint propagation correctly invalidates nodes whose ancestors
-    //      change because a taken node rewired its inputs.
-
-    // ── 2a: Per-node timestamp comparison for T nodes ─────────────────────────
-    /** @type {Map<NodeIdentifier, 'keep' | 'take'>} */
-    const initialDecisions = new Map();
-    /** @type {Set<NodeIdentifier>} */
-    const forceKeepRoots = new Set();
-    /** @type {Set<NodeIdentifier>} */
-    const forceTakeRoots = new Set();
-
-    for await (const node of T.inputs.keys()) {
-        const tTimestamps = await T.timestamps.get(node);
-        const hTimestamps = await H.timestamps.get(hostIdentifierForTargetIdentifier(node));
-
-        const cmp = compareIsoTimestamps(tTimestamps?.modifiedAt, hTimestamps?.modifiedAt);
-
-        if (hTimestamps === undefined || cmp >= 0) {
-            initialDecisions.set(node, 'keep');
-            if (cmp > 0) {
-                forceKeepRoots.add(node);
-            }
-        } else {
-            initialDecisions.set(node, 'take');
-            forceTakeRoots.add(node);
-        }
-    }
-
-    // ── 2b: Discover H-only nodes ─────────────────────────────────────────────
-    /** @type {Set<NodeIdentifier>} */
-    const hOnlyNodes = new Set();
-    for await (const hostKey of H.inputs.keys()) {
-        const targetKey = targetIdentifierForHostIdentifier(hostKey);
-        if (!initialDecisions.has(targetKey)) {
-            hOnlyNodes.add(targetKey);
-        }
-    }
-
-    // ── 2c: Build merged inputs map ──────────────────────────────────────────
-    // For 'take' nodes: use H.inputs (the remote may have rewired edges).
-    // For 'keep' nodes: use T.inputs.
-    // For H-only nodes: use H.inputs.
-    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
-    const mergedInputsMap = new Map();
-
-    for (const [node, decision] of initialDecisions) {
-        let record;
-        if (decision === 'take') {
-            // Use only H's inputs for taken nodes.  buildTakeOps deletes
-            // T.inputs when H.inputs is absent, so the merged map must match
-            // that: if H has no inputs record, this node has no inputs in the
-            // merged graph (empty list).  Falling back to T.inputs here would
-            // make mergedInputsMap inconsistent with the actual DB state after
-            // the merge, leaving revdeps pointing to inputs that no longer exist.
-            record = await H.inputs.get(hostIdentifierForTargetIdentifier(node));
-            mergedInputsMap.set(node, translatedHostInputs(record));
-        } else {
-            record = await T.inputs.get(node);
-            const inputKeys = record
-                ? record.inputs.map(input => stringToNodeIdentifier(input))
-                : [];
-            mergedInputsMap.set(node, inputKeys);
-        }
-    }
-
-    for (const key of hOnlyNodes) {
-        const record = await H.inputs.get(hostIdentifierForTargetIdentifier(key));
-        mergedInputsMap.set(key, translatedHostInputs(record));
-    }
-
-    // ── Step 3: Stable topological sort of the merged graph ──────────────────
-    // topologicalSortFromMap also detects cycles in the merged graph, covering
-    // both T→H edge changes (taken nodes) and H-only additions.
-    const topoList = topologicalSortFromMap(mergedInputsMap);
-
-    // ── Step 4: Propagate force-keep and force-take flags ─────────────────────
-    // Uses the merged inputs map so that rewired edges from taken nodes are
-    // correctly accounted for (e.g. a taken node that now depends on a
-    // force-kept ancestor will be tainted from both sides → 'invalidate').
-    /** @type {Set<NodeIdentifier>} */
-    const keepTainted = new Set(forceKeepRoots);
-    /** @type {Set<NodeIdentifier>} */
-    const takeTainted = new Set(forceTakeRoots);
-
-    for (const node of topoList) {
-        const inputKeys = mergedInputsMap.get(node) ?? [];
-        for (const inputKey of inputKeys) {
-            if (keepTainted.has(inputKey)) keepTainted.add(node);
-            if (takeTainted.has(inputKey)) takeTainted.add(node);
-        }
-    }
-
-    // ── Step 5: Assign final decisions ──────────────────────────────────────
-    /** @type {Map<NodeIdentifier, 'keep' | 'take' | 'invalidate'>} */
-    const decisions = new Map();
-
-    for (const [node, initial] of initialDecisions) {
-        const inKeep = keepTainted.has(node);
-        const inTake = takeTainted.has(node);
-
-        if (inKeep && inTake) {
-            decisions.set(node, 'invalidate');
-        } else if (inKeep) {
-            decisions.set(node, 'keep');
-        } else if (inTake) {
-            decisions.set(node, 'take');
-        } else {
-            decisions.set(node, initial);
-        }
-    }
-
-    // ── Step 6: Finalize H-only nodes ────────────────────────────────────────
-    // H-only nodes are always taken, but their cached value may be stale if
-    // any of their (merged-graph) ancestors were force-kept from T.
-    /** @type {Set<NodeIdentifier>} */
-    const hOnlyNeedsInvalidate = new Set();
-
-    for (const key of hOnlyNodes) {
-        decisions.set(key, 'take');
-        if (keepTainted.has(key)) {
-            hOnlyNeedsInvalidate.add(key);
-        }
-    }
+    const {
+        initialDecisions,
+        mergedInputsMap,
+        decisions,
+        hOnlyNeedsInvalidate,
+    } = await buildMergePlan(
+        T,
+        H,
+        hostIdentifierForTargetIdentifier,
+        translatedHostInputs
+    );
 
     // ── Step 7: Apply decisions to T in chunks ──────────────────────────────
     /** @type {Array<*>} */
