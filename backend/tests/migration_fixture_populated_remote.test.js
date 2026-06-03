@@ -20,6 +20,8 @@ function getTestCapabilities() {
 describe("populated rendered fixture migration", () => {
     test("migrating lastversion fixture reproduces current populated fixture exactly", async () => {
         const capabilities = getTestCapabilities();
+        let seedCounter = 0;
+        capabilities.seed = { generate: () => seedCounter++ };
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: capabilities.environment.hostname(),
@@ -44,7 +46,7 @@ describe("populated rendered fixture migration", () => {
             await assertDirectoriesExactlyEqual(
                 path.join(clonedRemote, DATABASE_SUBPATH),
                 path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH),
-                new Set(["r/global/identifiers_keys_map"])
+                new Set(["_meta/current_replica"])
             );
         } finally {
             await capabilities.deleter.deleteDirectory(clonedRemote);

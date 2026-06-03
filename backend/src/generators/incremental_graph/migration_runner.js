@@ -29,6 +29,7 @@ const {
     MissingIdentifierLookupError,
     getRootDatabase,
 } = require("./database");
+const random = require("../../random");
 const { withExclusiveMode } = require("./lock");
 const { makeMigrationStorage, legacyStringToNodeIdentifier } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
@@ -128,22 +129,12 @@ function canonicalizeMigrationNodeKey(nodeKey) {
     return zeroArgNodeNameToNodeKeyString(nodeKeyString);
 }
 
-/**
- * Generate a random node identifier for migration.
- * @returns {NodeIdentifier}
- */
-function migrationNodeIdentifier() {
-    const chars = "abcdefghijklmnopqrstuvwxyz";
-    let result = "";
-    for (let i = 0; i < 9; i++) {
-        result += chars[Math.floor(Math.random() * 26)];
-    }
-    return nodeIdentifierFromString(result);
-}
+
 
 /**
  * @param {SchemaStorage} prevStorage
  * @param {NodeIdentifier[]} materializedNodes
+ * @param {Capabilities} capabilities
  * @returns {Promise<{
  *   keyToSourceKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
  *   keyToOutputKey: (nodeKey: NodeIdentifier) => NodeIdentifier,
@@ -151,7 +142,7 @@ function migrationNodeIdentifier() {
  *   outputEntries: Array<[import('./database/types').NodeIdentifier, NodeKeyString]>,
  * }>}
  */
-async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
+async function makeMigrationKeyPlan(prevStorage, materializedNodes, capabilities) {
     const persistedEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
     if (Array.isArray(persistedEntries)) {
         const lookup = makeIdentifierLookup(persistedEntries);
@@ -179,7 +170,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
                 const allocatedIdentifier = allocateNodeIdentifier(
                     lookup,
                     semanticNodeKey,
-                    () => migrationNodeIdentifier(),
+                    () => nodeIdentifierFromString(random.basicString(capabilities, 9)),
                 );
                 decisionKeyByOutputKey.set(String(allocatedIdentifier), nodeKey);
                 return stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
@@ -211,7 +202,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
     const decisionKeyByOutputKey = new Map();
     for (const nodeKey of materializedNodes) {
         const canonicalKey = canonicalizeMigrationNodeKey(nodeKey);
-        const nodeIdentifier = migrationNodeIdentifier();
+        const nodeIdentifier = nodeIdentifierFromString(random.basicString(capabilities, 9));
         const outputKey = stringToNodeIdentifier(nodeIdentifierToString(nodeIdentifier));
         initialOutputEntries.push([nodeIdentifier, canonicalKey]);
         decisionKeyByOutputKey.set(String(outputKey), nodeKey);
@@ -226,7 +217,7 @@ async function makeMigrationKeyPlan(prevStorage, materializedNodes) {
             const allocatedIdentifier = allocateNodeIdentifier(
                 legacyLookup,
                 canonicalKey,
-                () => migrationNodeIdentifier(),
+                () => nodeIdentifierFromString(random.basicString(capabilities, 9)),
             );
             const outputKey = stringToNodeIdentifier(nodeIdentifierToString(allocatedIdentifier));
             decisionKeyByOutputKey.set(String(outputKey), nodeKey);
@@ -651,7 +642,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Load previous-version materialized nodes.
             const materializedNodes = await loadMaterializedNodes(prevStorage);
-            const keyPlan = await makeMigrationKeyPlan(prevStorage, materializedNodes);
+            const keyPlan = await makeMigrationKeyPlan(prevStorage, materializedNodes, capabilities);
             const decisionNodes = materializedNodes.map((nodeKey) =>
                 keyPlan.outputKeyToDecisionKey(nodeKey)
             );

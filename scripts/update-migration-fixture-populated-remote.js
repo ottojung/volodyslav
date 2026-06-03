@@ -41,10 +41,11 @@ async function main() {
     const populatedFixture = path.join(repoRoot, "backend/tests/mock-incremental-database-remote-populated");
     const lastVersionFixture = path.join(repoRoot, "backend/tests/mock-incremental-database-remote-populated-lastversion");
 
-    await copyDirectoryRecursively(populatedFixture, lastVersionFixture);
     await fs.writeFile(path.join(lastVersionFixture, DATABASE_SUBPATH, "r/global/version"), JSON.stringify("0.0.0-dev-previous"));
 
     const capabilities = makeRootCapabilities();
+    let seedCounter = 0;
+    capabilities.seed = { generate: () => seedCounter++ };
     forceVersion(capabilities, "0.0.0-dev");
     await stubIncrementalDatabaseRemoteBranches(capabilities, [{ hostname: capabilities.environment.hostname(), fixtureName: "populated-lastversion" }]);
 
