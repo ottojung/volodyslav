@@ -473,28 +473,6 @@ function isMissingTimestamp(object) {
     return object instanceof MissingTimestamp;
 }
 
-/**
- * Error for commit conflicts (two transactions allocated different identifiers for the same key).
- */
-class CommitConflict extends Error {
-    /**
-     * @param {string} message
-     */
-    constructor(message) {
-        super(message);
-        this.name = "CommitConflictError";
-    }
-}
-
-/**
- * Type guard for CommitConflict.
- * @param {unknown} object
- * @returns {object is CommitConflict}
- */
-function isCommitConflict(object) {
-    return object instanceof CommitConflict;
-}
-
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -522,6 +500,4 @@ module.exports = {
     isInvalidNodeDef,
     makeMissingTimestampError,
     isMissingTimestamp,
-    CommitConflict,
-    isCommitConflict,
 };

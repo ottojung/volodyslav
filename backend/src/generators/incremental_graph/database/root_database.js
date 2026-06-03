@@ -59,13 +59,23 @@ const {
 /** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /**
+ * Compiled active-replica state that CAN be reconstructed from a database
+ * snapshot. Every field in this struct is derivable from the persisted on-disk
+ * state: opening any replica's sublevels and reading its `identifiers_keys_map`
+ * yields the same `ActiveReplicaComputed`. Nothing here is ephemeral or
+ * in-process-only — it is an *injection* of the durable database into memory.
+ *
+ * This matters because replica switches (`setCurrentReplicaPointer`) and
+ * database reopens rebuild `_computed` from scratch. Any field that cannot be
+ * reloaded from disk (e.g. in-flight transaction state) must live outside this
+ * struct so it is not lost on every pointer change.
+ *
  * @typedef {object} ActiveReplicaComputed
  * @property {ReplicaName} replicaName
  * @property {SchemaSublevelType} namespaceSublevel
  * @property {GlobalSublevelType} globalSublevel
  * @property {SchemaStorage} schemaStorage
  * @property {IdentifierLookup} identifierLookup
-
  */
 
 /**
@@ -291,6 +301,16 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
  *
  * Maintains a cached `_meta/current_replica` pointer (always "x" or "y").
  * All active, replica-derived runtime state is represented by `_computed`.
+ *
+ * `_computed` is an *injection* of the durable database into memory: every
+ * field can be reconstructed by opening the replica's sublevels and reading
+ * its persisted metadata (version, identifiers_keys_map).  Because of this,
+ * `setCurrentReplicaPointer` and `clearReplicaStorage` rebuild `_computed`
+ * from the on-disk state each time.
+ *
+ * Ephemeral, in-process-only state (such as `_inFlightIdentifiers` for
+ * concurrent identifier allocation) lives directly on the class, NOT inside
+ * `_computed`, so it is never discarded on a pointer switch.
  */
 class RootDatabaseClass {
     /**
@@ -307,16 +327,28 @@ class RootDatabaseClass {
     _rootMetaSublevel;
 
     /**
-     * @private
-     * @type {import('../../../random/seed').NonDeterministicSeed}
-     */
+      * @private
+      * @type {import('../../../random/seed').NonDeterministicSeed}
+      */
     _seed;
 
     /**
-     * @private
-     * @type {ActiveReplicaComputed}
-     */
+      * Active-replica state that is an injection from the durable database.
+      * Reconstructed on every replica switch / reopen — never holds ephemeral data.
+      * @private
+      * @type {ActiveReplicaComputed}
+      */
     _computed;
+
+    /**
+      * Identifiers that have been reserved by in-flight (not-yet-committed)
+      * transactions but are not yet in the committed `identifierLookup`.
+      * Lives outside `_computed` because it is purely ephemeral — it must NOT
+      * be reconstructed from a database snapshot.
+      * @private
+      * @type {Set<string>}
+      */
+    _inFlightIdentifiers;
 
     /**
      * @constructor
@@ -342,6 +374,10 @@ class RootDatabaseClass {
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
         };
+
+        // In-flight identifier set: purely ephemeral, lives outside _computed
+        // because it must not be reconstructed from a database snapshot.
+        this._inFlightIdentifiers = new Set();
     }
 
     /**
@@ -400,6 +436,34 @@ class RootDatabaseClass {
      */
     generateNodeIdentifier() {
         return makeNodeIdentifier({ seed: this._seed });
+    }
+
+    /**
+     * Atomically reserve an identifier for the current transaction.
+     * Returns true if the identifier was successfully reserved (was not already
+     * in the set). Safe to call from within the allocation loop because it is
+     * synchronous (no await) — no concurrent task can interleave between the
+     * has-check and the add.
+     * @param {string} identifierString
+     * @returns {boolean}
+     */
+    reserveIdentifier(identifierString) {
+        if (this._inFlightIdentifiers.has(identifierString)) {
+            return false;
+        }
+        this._inFlightIdentifiers.add(identifierString);
+        return true;
+    }
+
+    /**
+     * Release a batch of identifiers after a transaction completes.
+     * @param {Iterable<string>} identifierStrings
+     * @returns {void}
+     */
+    releaseIdentifiers(identifierStrings) {
+        for (const id of identifierStrings) {
+            this._inFlightIdentifiers.delete(id);
+        }
     }
 
     /**

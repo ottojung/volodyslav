@@ -54,6 +54,8 @@ class InMemoryDatabase {
         this.version = 'test-version';
         this._identifierLookup = makeEmptyIdentifierLookup();
         this._identifierCounter = 0;
+        /** @type {Set<string>} */
+        this._inFlightIdentifiers = new Set();
     }
 
     currentReplicaName() { return 'x'; }
@@ -87,6 +89,20 @@ class InMemoryDatabase {
             n = Math.floor(n / 26);
         }
         return nodeIdentifierFromString(id);
+    }
+
+    reserveIdentifier(identifierString) {
+        if (this._inFlightIdentifiers.has(identifierString)) {
+            return false;
+        }
+        this._inFlightIdentifiers.add(identifierString);
+        return true;
+    }
+
+    releaseIdentifiers(identifierStrings) {
+        for (const id of identifierStrings) {
+            this._inFlightIdentifiers.delete(id);
+        }
     }
 
     getSchemaStorage() {

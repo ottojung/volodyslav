@@ -330,66 +330,79 @@ function makeGraphStorage(rootDatabase, sleeper) {
             /** @type {Transaction} */
             const tx = { batch, identifierLookup: txLookup };
 
-            const result = await fn(tx);
-            const value = result.value;
-            const revdepDiffs = result.revdepDiffs ?? [];
+            try {
+                const result = await fn(tx);
+                const value = result.value;
+                const revdepDiffs = result.revdepDiffs ?? [];
 
-            await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
-                for (const diff of revdepDiffs) {
-                    const { dependant, oldDependencies, newDependencies } = diff;
-                    const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
-                    const newSet = new Set(newDependencies.map(nodeIdentifierToString));
+                await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                    for (const diff of revdepDiffs) {
+                        const { dependant, oldDependencies, newDependencies } = diff;
+                        const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
+                        const newSet = new Set(newDependencies.map(nodeIdentifierToString));
 
-                    for (const removed of oldDependencies) {
-                        const idStr = nodeIdentifierToString(removed);
-                        if (newSet.has(idStr)) continue;
-                        const committed = (await batch.revdeps.get(removed)) ?? [];
-                        const filtered = committed.filter(
-                            id => nodeIdentifierToString(id) !== nodeIdentifierToString(dependant)
+                        for (const removed of oldDependencies) {
+                            const idStr = nodeIdentifierToString(removed);
+                            if (newSet.has(idStr)) continue;
+                            const committed = (await batch.revdeps.get(removed)) ?? [];
+                            const filtered = committed.filter(
+                                id => nodeIdentifierToString(id) !== nodeIdentifierToString(dependant)
+                            );
+                            if (filtered.length === 0) {
+                                batch.revdeps.del(removed);
+                            } else if (filtered.length < committed.length) {
+                                batch.revdeps.put(removed, filtered);
+                            }
+                        }
+
+                        for (const added of newDependencies) {
+                            const idStr = nodeIdentifierToString(added);
+                            if (oldSet.has(idStr)) continue;
+                            const committed = (await batch.revdeps.get(added)) ?? [];
+                            if (!committed.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(dependant))) {
+                                committed.push(dependant);
+                                committed.sort(compareNodeIdentifier);
+                                batch.revdeps.put(added, committed);
+                            }
+                        }
+                    }
+
+                    const hasPendingOperations = operations.length > 0;
+                    const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+
+                    if (!hasPendingOperations && !hasPendingAllocations) {
+                        return;
+                    }
+
+                    if (hasPendingAllocations) {
+                        operations.push(
+                            activeSchemaStorage.global.rawPutOp(
+                                IDENTIFIERS_KEY,
+                                serializeTransactionLookup(tx.identifierLookup)
+                            )
                         );
-                        if (filtered.length === 0) {
-                            batch.revdeps.del(removed);
-                        } else if (filtered.length < committed.length) {
-                            batch.revdeps.put(removed, filtered);
-                        }
                     }
 
-                    for (const added of newDependencies) {
-                        const idStr = nodeIdentifierToString(added);
-                        if (oldSet.has(idStr)) continue;
-                        const committed = (await batch.revdeps.get(added)) ?? [];
-                        if (!committed.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(dependant))) {
-                            committed.push(dependant);
-                            committed.sort(compareNodeIdentifier);
-                            batch.revdeps.put(added, committed);
-                        }
+                    await activeSchemaStorage.batch(operations);
+
+                    if (hasPendingAllocations) {
+                        commitTransactionLookup(tx.identifierLookup);
                     }
+                });
+
+                return value;
+            } finally {
+                // Release all identifiers allocated by this transaction from
+                // the shared in-flight set. After a successful commit the
+                // identifiers are in the base lookup and no longer need the
+                // reservation; after a failure they must be released so the
+                // pool does not leak.
+                const allocatedIds = [];
+                for (const idString of txLookup.idToKey.keys()) {
+                    allocatedIds.push(idString);
                 }
-
-                const hasPendingOperations = operations.length > 0;
-                const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-
-                if (!hasPendingOperations && !hasPendingAllocations) {
-                    return;
-                }
-
-                if (hasPendingAllocations) {
-                    operations.push(
-                        activeSchemaStorage.global.rawPutOp(
-                            IDENTIFIERS_KEY,
-                            serializeTransactionLookup(tx.identifierLookup)
-                        )
-                    );
-                }
-
-                await activeSchemaStorage.batch(operations);
-
-                if (hasPendingAllocations) {
-                    commitTransactionLookup(tx.identifierLookup);
-                }
-            });
-
-            return value;
+                rootDatabase.releaseIdentifiers(allocatedIds);
+            }
         },
         ensureMaterialized,
         ensureReverseDepsIndexed,
@@ -420,6 +433,9 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
+ * Reservation via `rootDatabase.reserveIdentifier` prevents concurrent
+ * transactions from selecting the same random identifier.
+ *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
  * @param {NodeKeyString} nodeKey
@@ -434,6 +450,8 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
         tx.identifierLookup,
         nodeKey,
         () => rootDatabase.generateNodeIdentifier(),
+        undefined,
+        (candidateString) => rootDatabase.reserveIdentifier(candidateString),
     );
 }
 

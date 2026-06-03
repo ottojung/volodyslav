@@ -340,16 +340,24 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * generated identifiers are guaranteed to be globally unique within this
  * transaction.
  *
+ * When `tryReserve` is provided, it is called synchronously for each candidate
+ * before committing to it. If `tryReserve` returns false the candidate is
+ * skipped (used to avoid collisions with other concurrent transactions that
+ * have reserved the same identifier in `inFlightIdentifiers`).
+ *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
+ * @param {number} [maxAttempts]
+ * @param {(candidateString: string) => boolean} [tryReserve] - Synchronous callback that must return true to claim the identifier.
  * @returns {NodeIdentifier}
  */
 function txAllocateNodeIdentifier(
     txLookup,
     nodeKey,
     makeIdentifier,
-    maxAttempts = 1000,
+    maxAttempts = undefined,
+    tryReserve = undefined,
 ) {
     const existing = txNodeKeyToId(txLookup, nodeKey);
     if (existing !== undefined) {
@@ -357,10 +365,13 @@ function txAllocateNodeIdentifier(
     }
 
     const keyString = nodeKeyStringToString(nodeKey);
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; maxAttempts === undefined || attempt < maxAttempts; attempt++) {
         const candidate = makeIdentifier(attempt);
         const candidateString = nodeIdentifierToString(candidate);
         if (txNodeIdToKey(txLookup, candidate) !== undefined) {
+            continue;
+        }
+        if (tryReserve !== undefined && !tryReserve(candidateString)) {
             continue;
         }
         txLookup.keyToId.set(keyString, candidate);

@@ -23,11 +23,23 @@ const {
 function makeRootDatabase() {
     const generated = ["allocaaaa", "allocaaab", "allocaaac", "allocaaad"];
     let counter = 0;
+    /** @type {Set<string>} */
+    const inFlight = new Set();
     return {
         generateNodeIdentifier() {
             const value = generated[counter] ?? "allocaaaz";
             counter += 1;
             return nodeIdentifierFromString(value);
+        },
+        reserveIdentifier(candidateString) {
+            if (inFlight.has(candidateString)) {
+                return false;
+            }
+            inFlight.add(candidateString);
+            return true;
+        },
+        releaseIdentifiers(_identifierStrings) {
+            // No-op in test stub; identifiers are isolated per test.
         },
     };
 }
