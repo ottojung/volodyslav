@@ -1081,4 +1081,269 @@ describe("IncrementalGraph concurrency", () => {
             expect(trace.sort()).toEqual(["pull1", "pull2"]);
         });
     });
+
+    describe("concurrent pull with inverse sibling-dependency order", () => {
+        test("static inputs in inverse order do not deadlock", async () => {
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "x",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 30));
+                        return { type: "test", value: 1 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 30));
+                        return { type: "test", value: 2 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                // A pulls [x, y] — x first, then y
+                {
+                    output: "a",
+                    inputs: ["x", "y"],
+                    computor: async ([x, y]) => {
+                        return { type: "sum", value: x.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                // B pulls [y, x] — y first, then x (inverse order)
+                {
+                    output: "b",
+                    inputs: ["y", "x"],
+                    computor: async ([y, x]) => {
+                        return { type: "sum", value: x.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Force fresh computation for both leaves
+            await graph.invalidate("x");
+            await graph.invalidate("y");
+
+            // Concurrent pulls with inverse dependency order
+            const [resultA, resultB] = await Promise.all([
+                graph.pull("a"),
+                graph.pull("b"),
+            ]);
+
+            expect(resultA.value).toBe(3);
+            expect(resultB.value).toBe(3);
+        });
+
+        test("dynamic pullCallback in inverse order does not deadlock", async () => {
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "x",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 30));
+                        return { type: "test", value: 1 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 30));
+                        return { type: "test", value: 2 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                // A has no static inputs; its computor pulls x then y dynamically
+                {
+                    output: "a",
+                    inputs: [],
+                    computor: async (_inputs, _oldValue, _bindings, pull) => {
+                        const x = await pull("x", []);
+                        const y = await pull("y", []);
+                        return { type: "sum", value: x.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                // B has no static inputs; its computor pulls y then x (inverse order)
+                {
+                    output: "b",
+                    inputs: [],
+                    computor: async (_inputs, _oldValue, _bindings, pull) => {
+                        const y = await pull("y", []);
+                        const x = await pull("x", []);
+                        return { type: "sum", value: x.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await Promise.all([
+                graph.pull("a"),
+                graph.pull("b"),
+            ]);
+
+            const [resultA, resultB] = await Promise.all([
+                graph.pull("a"),
+                graph.pull("b"),
+            ]);
+            expect(resultA.value).toBe(3);
+            expect(resultB.value).toBe(3);
+        });
+
+        test("inverse dynamic pull order with interleaved async yields between pulls", async () => {
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "x",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                        return { type: "test", value: 10 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                        return { type: "test", value: 20 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "a",
+                    inputs: [],
+                    computor: async (_inputs, _oldValue, _bindings, pull) => {
+                        const x = await pull("x", []);
+                        // Yield event loop between pulls
+                        await new Promise((resolve) => setTimeout(resolve, 5));
+                        const y = await pull("y", []);
+                        return { type: "sum", value: x.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "b",
+                    inputs: [],
+                    computor: async (_inputs, _oldValue, _bindings, pull) => {
+                        const y = await pull("y", []);
+                        await new Promise((resolve) => setTimeout(resolve, 5));
+                        const x = await pull("x", []);
+                        return { type: "sum", value: x.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await Promise.all([
+                graph.pull("a"),
+                graph.pull("b"),
+            ]);
+
+            const resultA = await graph.pull("a");
+            const resultB = await graph.pull("b");
+            expect(resultA.value).toBe(30);
+            expect(resultB.value).toBe(30);
+        });
+
+        test("deep diamond with inverse order at inner level does not deadlock", async () => {
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "z",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                        return { type: "test", value: 3 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: [],
+                    computor: async () => {
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                        return { type: "test", value: 2 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                // x depends on [y, z] — y first, then z
+                {
+                    output: "x",
+                    inputs: ["y", "z"],
+                    computor: async ([y, z]) => {
+                        return { type: "sum", value: y.value + z.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                // u depends on [z, y] — z first, then y (inverse of x's order)
+                {
+                    output: "u",
+                    inputs: ["z", "y"],
+                    computor: async ([z, y]) => {
+                        return { type: "sum", value: z.value + y.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "a",
+                    inputs: ["x"],
+                    computor: async ([x]) => {
+                        return { type: "val", value: x.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "b",
+                    inputs: ["u"],
+                    computor: async ([u]) => {
+                        return { type: "val", value: u.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Force fresh computation
+            await graph.invalidate("y");
+            await graph.invalidate("z");
+
+            // Pull a (→ x → y then z) and b (→ u → z then y) concurrently
+            const [resultA, resultB] = await Promise.all([
+                graph.pull("a"),
+                graph.pull("b"),
+            ]);
+
+            expect(resultA.value).toBe(5);
+            expect(resultB.value).toBe(5);
+        });
+    });
 });
