@@ -15,6 +15,7 @@ const { makeUniqueFunctor } = require("../../unique_functor");
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
 const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
+const PULL_NODE_FUNCTOR = makeUniqueFunctor("incremental-graph-pull-node");
 
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
@@ -59,6 +60,29 @@ function withPullMode(sleeper, procedure) {
 }
 
 /**
+ * Serialize same-node pulls so concurrent calls on the same node do not
+ * allocate duplicate identifiers or overwrite each other's results.
+ *
+ * This mutex is acquired **inside** the `withPullMode` scope and **outside**
+ * the transaction commit mutex. The acquisition order is:
+ *
+ *   GRAPH_ACTIVITY_KEY("pull") → PULL_NODE_FUNCTOR(nodeKeyStr)
+ *
+ * Recursive pulls acquire PULL_NODE_FUNCTOR for each dependency node;
+ * different keys never contend, and a self-deadlock would require a
+ * dependency cycle (which the graph constructor rejects).
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {string} nodeKeyStr - Serialized node key string identifying the concrete node.
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
+    return sleeper.withMutex(PULL_NODE_FUNCTOR.instantiate([nodeKeyStr]), procedure);
+}
+
+/**
  * @template T
  * @param {SleepCapability} sleeper
  * @param {string} replicaName
@@ -98,5 +122,6 @@ module.exports = {
     withExclusiveMode,
     withObserveMode,
     withPullMode,
+    withPullNodeMutex,
     withCommitMutex,
 };

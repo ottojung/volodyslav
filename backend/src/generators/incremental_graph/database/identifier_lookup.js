@@ -372,9 +372,12 @@ function txAllocateNodeIdentifier(
 
 /**
  * Serialize the combined (base + overlay) lookup into the sorted-array format
- * used for disk persistence. The overlay entries are appended to the base
- * entries before sorting, so the result reflects all allocations made during
- * this transaction without requiring a separate merge step.
+ * used for disk persistence.
+ *
+ * Base entries that are overridden by the overlay (same node key, different
+ * identifier) are excluded so the result never contains duplicate node keys.
+ * This prevents a data corruption scenario where two concurrent transactions
+ * allocate different identifiers for the same node key.
  *
  * Call this **before** `commitTransactionLookup` so that the base is still
  * unmodified while serializing.
@@ -385,8 +388,14 @@ function txAllocateNodeIdentifier(
 function serializeTransactionLookup(txLookup) {
     /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
     const entries = [];
+    const overriddenKeys = new Set();
+    for (const [keyString] of txLookup.keyToId) {
+        overriddenKeys.add(keyString);
+    }
     for (const [idString, nodeKey] of txLookup.base.idToKey.entries()) {
-        entries.push([nodeIdentifierFromString(idString), nodeKey]);
+        if (!overriddenKeys.has(nodeKeyStringToString(nodeKey))) {
+            entries.push([nodeIdentifierFromString(idString), nodeKey]);
+        }
     }
     for (const [idString, nodeKey] of txLookup.idToKey.entries()) {
         entries.push([nodeIdentifierFromString(idString), nodeKey]);

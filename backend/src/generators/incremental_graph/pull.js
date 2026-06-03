@@ -22,7 +22,7 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withPullMode } = require("./lock");
+const { withPullMode, withPullNodeMutex } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
@@ -50,69 +50,70 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @returns {Promise<RecomputeResult>}
  */
 async function pullNode(graph, nodeKeyStr) {
-    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
-    const compiledNode = graph.headIndex.get(nodeKey.head);
-    if (!compiledNode) {
-        throw makeInvalidNodeError(nodeKey.head);
-    }
-    checkArity(compiledNode, nodeKey.args);
-    const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
+    return withPullNodeMutex(graph.sleeper, String(nodeKeyStr), async () => {
+        const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
+        const compiledNode = graph.headIndex.get(nodeKey.head);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(nodeKey.head);
+        }
+        checkArity(compiledNode, nodeKey.args);
+        const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
 
-    // Early freshness check against committed storage — no Transaction needed.
-    const committedIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
-    if (committedIdentifier !== undefined) {
-        const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
-        if (nodeFreshness === "up-to-date") {
-            const result = await graph.storage.values.get(committedIdentifier);
-            if (result !== undefined) {
-                return { value: result, status: "cached" };
+        // Early freshness check against committed storage — no Transaction needed.
+        const committedIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
+        if (committedIdentifier !== undefined) {
+            const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
+            if (nodeFreshness === "up-to-date") {
+                const result = await graph.storage.values.get(committedIdentifier);
+                if (result !== undefined) {
+                    return { value: result, status: "cached" };
+                }
             }
         }
-    }
 
-    // Full computation with its own Transaction
-    const result = await graph.withTransaction(async (tx) => {
+        // Full computation with its own Transaction
+        const result = await graph.withTransaction(async (tx) => {
             const nodeDefinition = await graph.resolveConcreteNode(
                 concreteNode,
                 tx,
             );
 
+            /** @type {Array<import('./graph_state').RevdepDiff>} */
+            const revdepDiffs = [];
 
-        /** @type {Array<import('./graph_state').RevdepDiff>} */
-        const revdepDiffs = [];
-
-        const nodeFreshness = await tx.batch.freshness.get(nodeDefinition.outputIdentifier);
-        if (nodeFreshness === "up-to-date") {
-            const storedValue = await tx.batch.values.get(nodeDefinition.outputIdentifier);
-            if (storedValue !== undefined) {
-                /** @type {RecomputeResult} */
-                const cachedResult = { value: storedValue, status: "cached" };
-                return {
-                    value: cachedResult,
-                    revdepDiffs,
-                };
+            const nodeFreshness = await tx.batch.freshness.get(nodeDefinition.outputIdentifier);
+            if (nodeFreshness === "up-to-date") {
+                const storedValue = await tx.batch.values.get(nodeDefinition.outputIdentifier);
+                if (storedValue !== undefined) {
+                    /** @type {RecomputeResult} */
+                    const cachedResult = { value: storedValue, status: "cached" };
+                    return {
+                        value: cachedResult,
+                        revdepDiffs,
+                    };
+                }
             }
-        }
 
-        const computeResult = await graph.maybeRecalculate(
-            nodeDefinition,
-            tx,
-            (diff) => revdepDiffs.push(diff)
-        );
-
-        const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
-        if (counter === undefined) {
-            throw new Error(
-                `Impossible: recomputed node has no stored counter: ${String(nodeKeyStr)}`
+            const computeResult = await graph.maybeRecalculate(
+                nodeDefinition,
+                tx,
+                (diff) => revdepDiffs.push(diff)
             );
-        }
 
-        return {
-            value: computeResult,
-            revdepDiffs,
-        };
+            const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
+            if (counter === undefined) {
+                throw new Error(
+                    `Impossible: recomputed node has no stored counter: ${String(nodeKeyStr)}`
+                );
+            }
+
+            return {
+                value: computeResult,
+                revdepDiffs,
+            };
+        });
+        return result;
     });
-    return result;
 }
 
 /**
