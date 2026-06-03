@@ -23,7 +23,7 @@
 
 const { stringToNodeName, nodeIdentifierToString, nodeIdentifierFromString, serializeNodeKey } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withObserveMode } = require("./lock");
+const { locks } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { lookupNodeIdentifier, getOrAllocateNodeIdentifier } = require("./graph_state");
 
@@ -170,7 +170,7 @@ async function internalInvalidate(
     nodeName,
     bindings = []
 ) {
-    return withObserveMode(incrementalGraph.sleeper, () =>
+    return locks.withObserveLock(incrementalGraph.sleeper, () =>
         internalUnsafeInvalidate(incrementalGraph, nodeName, bindings)
     );
 }

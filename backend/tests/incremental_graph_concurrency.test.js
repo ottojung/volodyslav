@@ -14,7 +14,7 @@ const {
     nodeKeyToIdFromLookup,
     nodeIdentifierFromString,
 } = require("../src/generators/incremental_graph/database");
-const { withExclusiveMode, withPullMode, withObserveMode } = require("../src/generators/incremental_graph/lock");
+const { locks } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
 
 const testCapabilities = getMockedRootCapabilities();
@@ -896,7 +896,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseFirst = makeDeferred();
             const enteredFirst = makeDeferred();
 
-            const first = withExclusiveMode(sleeper, async () => {
+            const first = locks.withExclusiveLock(sleeper, async () => {
                 trace.push("first-start");
                 enteredFirst.resolve(undefined);
                 await releaseFirst.promise;
@@ -906,7 +906,7 @@ describe("IncrementalGraph concurrency", () => {
             // Wait deterministically until the first operation has entered the exclusive section
             await enteredFirst.promise;
 
-            const second = withExclusiveMode(sleeper, async () => {
+            const second = locks.withExclusiveLock(sleeper, async () => {
                 trace.push("second-start");
                 trace.push("second-end");
             });
@@ -929,7 +929,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseExclusive = makeDeferred();
             const exclusiveEntered = makeDeferred();
 
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = locks.withExclusiveLock(sleeper, async () => {
                 exclusiveEntered.resolve(undefined);
                 await releaseExclusive.promise;
             });
@@ -942,7 +942,7 @@ describe("IncrementalGraph concurrency", () => {
                 pullEnteredResolved = true;
             });
 
-            const pull = withPullMode(sleeper, async () => {
+            const pull = locks.withPullLock(sleeper, "test-node", async () => {
                 pullEntered.resolve(undefined);
             });
 
@@ -963,7 +963,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseExclusive = makeDeferred();
             const exclusiveEntered = makeDeferred();
 
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = locks.withExclusiveLock(sleeper, async () => {
                 exclusiveEntered.resolve(undefined);
                 await releaseExclusive.promise;
             });
@@ -976,7 +976,7 @@ describe("IncrementalGraph concurrency", () => {
                 observeEnteredResolved = true;
             });
 
-            const observe = withObserveMode(sleeper, async () => {
+            const observe = locks.withObserveLock(sleeper, async () => {
                 observeEntered.resolve(undefined);
             });
 
@@ -997,7 +997,7 @@ describe("IncrementalGraph concurrency", () => {
             const releasePull = makeDeferred();
             const pullEntered = makeDeferred();
 
-            const pull = withPullMode(sleeper, async () => {
+            const pull = locks.withPullLock(sleeper, "test-node", async () => {
                 pullEntered.resolve(undefined);
                 await releasePull.promise;
             });
@@ -1005,7 +1005,7 @@ describe("IncrementalGraph concurrency", () => {
             await pullEntered.promise;
 
             let exclusiveDone = false;
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = locks.withExclusiveLock(sleeper, async () => {
                 exclusiveDone = true;
             });
 
@@ -1026,7 +1026,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseObserve = makeDeferred();
             const observeEntered = makeDeferred();
 
-            const observe = withObserveMode(sleeper, async () => {
+            const observe = locks.withObserveLock(sleeper, async () => {
                 observeEntered.resolve(undefined);
                 await releaseObserve.promise;
             });
@@ -1034,7 +1034,7 @@ describe("IncrementalGraph concurrency", () => {
             await observeEntered.promise;
 
             let exclusiveDone = false;
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = locks.withExclusiveLock(sleeper, async () => {
                 exclusiveDone = true;
             });
 
@@ -1055,7 +1055,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseExclusive = makeDeferred();
             const exclusiveEntered = makeDeferred();
 
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = locks.withExclusiveLock(sleeper, async () => {
                 exclusiveEntered.resolve(undefined);
                 await releaseExclusive.promise;
             });
@@ -1063,10 +1063,10 @@ describe("IncrementalGraph concurrency", () => {
             await exclusiveEntered.promise;
 
             const trace = [];
-            const pull1 = withPullMode(sleeper, async () => {
+            const pull1 = locks.withPullLock(sleeper, "test-node", async () => {
                 trace.push("pull1");
             });
-            const pull2 = withPullMode(sleeper, async () => {
+            const pull2 = locks.withPullLock(sleeper, "test-node", async () => {
                 trace.push("pull2");
             });
 

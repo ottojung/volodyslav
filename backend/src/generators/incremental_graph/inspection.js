@@ -24,7 +24,7 @@ const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError, makeMissingTimestampError } = require("./errors");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");
-const { withObserveMode } = require("./lock");
+const { locks } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
@@ -38,7 +38,7 @@ async function internalGetFreshness(
     head,
     bindings = []
 ) {
-    return withObserveMode(incrementalGraph.sleeper, async () => {
+    return locks.withObserveLock(incrementalGraph.sleeper, async () => {
         const nodeName = stringToNodeName(head);
         const compiledNode = incrementalGraph.headIndex.get(nodeName);
         if (!compiledNode) {
@@ -68,7 +68,7 @@ async function internalGetFreshness(
  * @returns {Promise<import('./types').ComputedValue | undefined>}
  */
 async function internalGetValue(incrementalGraph, head, bindings = []) {
-    return withObserveMode(incrementalGraph.sleeper, async () => {
+    return locks.withObserveLock(incrementalGraph.sleeper, async () => {
         const nodeName = stringToNodeName(head);
         const compiledNode = incrementalGraph.headIndex.get(nodeName);
         if (!compiledNode) {
@@ -110,7 +110,7 @@ function internalGetSchemaByHead(incrementalGraph, head) {
  * @returns {Promise<Array<[string, Array<ConstValue>]>>}
  */
 async function internalListMaterializedNodes(incrementalGraph) {
-    return withObserveMode(incrementalGraph.sleeper, async () =>
+    return locks.withObserveLock(incrementalGraph.sleeper, async () =>
         incrementalGraph.storage.withCommitSnapshot(async () => {
             const materializedNodes = await incrementalGraph.storage.listMaterializedNodes();
             return materializedNodes.map((nodeIdentifier) => {
@@ -146,7 +146,7 @@ async function internalGetCreationTime(
     nodeName,
     bindings = []
 ) {
-    return withObserveMode(incrementalGraph.sleeper, async () => {
+    return locks.withObserveLock(incrementalGraph.sleeper, async () => {
         ensureNodeNameIsHead(nodeName);
         const nodeNameTyped = stringToNodeName(nodeName);
         const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);
@@ -181,7 +181,7 @@ async function internalGetModificationTime(
     nodeName,
     bindings = []
 ) {
-    return withObserveMode(incrementalGraph.sleeper, async () => {
+    return locks.withObserveLock(incrementalGraph.sleeper, async () => {
         ensureNodeNameIsHead(nodeName);
         const nodeNameTyped = stringToNodeName(nodeName);
         const compiledNode = incrementalGraph.headIndex.get(nodeNameTyped);

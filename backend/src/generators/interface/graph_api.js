@@ -4,7 +4,7 @@
 
 /** @typedef {import('./types').GeneratorsCapabilities} GeneratorsCapabilities */
 
-const { withMutex } = require("../incremental_graph");
+const { withExclusiveMutex } = require("../incremental_graph");
 
 /**
  * @typedef {object} InterfaceGraphAccess
@@ -29,7 +29,7 @@ async function internalUpdate(interfaceInstance, newEntries) {
     // (which also acquires MUTEX_KEY via withExclusiveMode) cannot run between
     // the invalidate and pull calls and set _incrementalGraph to null.
     const capabilities = interfaceInstance._getCapabilities();
-    await withMutex(capabilities.sleeper, async () => {
+    await withExclusiveMutex(capabilities.sleeper, async () => {
         if (interfaceInstance._allEventsBox === null) {
             throw new Error("Impossible: expected all_events box to be initialized");
         }
@@ -52,7 +52,7 @@ async function internalSetConfig(interfaceInstance, config) {
     // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
     // cannot run between the invalidate and pull calls.
     const capabilities = interfaceInstance._getCapabilities();
-    await withMutex(capabilities.sleeper, async () => {
+    await withExclusiveMutex(capabilities.sleeper, async () => {
         if (interfaceInstance._configBox === null) {
             throw new Error("Impossible: expected config box to be initialized");
         }
@@ -73,7 +73,7 @@ async function internalSetDiarySummary(interfaceInstance, value) {
     // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
     // cannot run between the invalidate and pull calls.
     const capabilities = interfaceInstance._getCapabilities();
-    await withMutex(capabilities.sleeper, async () => {
+    await withExclusiveMutex(capabilities.sleeper, async () => {
         if (interfaceInstance._diarySummaryBox === null) {
             throw new Error("Impossible: expected diary summary box to be initialized");
         }
@@ -94,7 +94,7 @@ async function internalSetOntology(interfaceInstance, ontology) {
     // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
     // cannot run between the invalidate and pull calls.
     const capabilities = interfaceInstance._getCapabilities();
-    await withMutex(capabilities.sleeper, async () => {
+    await withExclusiveMutex(capabilities.sleeper, async () => {
         if (interfaceInstance._ontologyBox === null) {
             throw new Error("Impossible: expected ontology box to be initialized");
         }

@@ -30,7 +30,7 @@ const {
     getRootDatabase,
 } = require("./database");
 const random = require("../../random");
-const { withExclusiveMode } = require("./lock");
+const { locks } = require("./lock");
 const { makeMigrationStorage, legacyStringToNodeIdentifier } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
@@ -559,7 +559,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
  * @returns {Promise<RootDatabase>}
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
-    return await withExclusiveMode(capabilities.sleeper, async () => {
+    return await locks.withExclusiveLock(capabilities.sleeper, async () => {
         return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }
