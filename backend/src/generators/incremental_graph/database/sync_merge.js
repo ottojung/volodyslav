@@ -215,28 +215,20 @@ async function assertHostVersionMatches(rootDatabase, hostname) {
 }
 
 /**
- * Load and validate identifier lookup metadata for the merge target and host.
- * Missing host metadata is always an error because each staged identifier-native
- * host snapshot must carry its own semantic identifier mapping. Missing target
- * metadata is allowed only for a genuinely fresh local replica with no version.
+ * Load and validate the merge target's identifier lookup.
+ * Returns an empty lookup when the target is a genuinely fresh replica (no
+ * version either).  Missing metadata on a replica that already has a version
+ * is a hard error.
  *
  * @param {SchemaStorage} targetStorage
- * @param {SchemaStorage} hostStorage
- * @returns {Promise<{ targetLookup: IdentifierLookup, hostLookup: IdentifierLookup }>}
+ * @returns {Promise<IdentifierLookup>}
  */
-async function loadMergeIdentifierLookups(targetStorage, hostStorage) {
-    const hostLookup = parseIdentifierLookup(
-        await hostStorage.global.get('identifiers_keys_map'),
-        'staged host snapshot'
-    );
+async function loadTargetLookup(targetStorage) {
     const targetRawLookup = await targetStorage.global.get('identifiers_keys_map');
     const targetVersion = await targetStorage.global.get('version');
-    const targetLookup = targetRawLookup === undefined && targetVersion === undefined
+    return targetRawLookup === undefined && targetVersion === undefined
         ? makeEmptyIdentifierLookup()
         : parseIdentifierLookup(targetRawLookup, 'merge target replica');
-
-    assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
-    return { targetLookup, hostLookup };
 }
 
 /**
@@ -471,6 +463,13 @@ async function commitChangedMerge(
 async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     await assertHostVersionMatches(rootDatabase, hostname);
 
+    // Fail-fast: validate host metadata before expensive copy.
+    const hostStorage = rootDatabase.hostnameSchemaStorage(hostname);
+    const hostLookup = parseIdentifierLookup(
+        await hostStorage.global.get('identifiers_keys_map'),
+        'staged host snapshot'
+    );
+
     const fromReplica = rootDatabase.currentReplicaName();
     const toReplica = rootDatabase.otherReplicaName();
 
@@ -482,8 +481,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
     const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
-    const hostStorage = rootDatabase.hostnameSchemaStorage(hostname);
-    const { targetLookup, hostLookup } = await loadMergeIdentifierLookups(targetStorage, hostStorage);
+    const targetLookup = await loadTargetLookup(targetStorage);
+    assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
 
     const {
         initialDecisions,

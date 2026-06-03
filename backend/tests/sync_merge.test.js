@@ -23,6 +23,7 @@ const {
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
 const {
+    IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
 } = require('../src/generators/incremental_graph/database/replica_errors');
 const {
@@ -716,6 +717,59 @@ describe('mergeHostIntoReplica', () => {
 
             expect(isMissingIdentifierLookupError(error)).toBe(true);
             expect(String(error?.message)).toContain('Missing identifiers_keys_map record in staged host snapshot');
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('isIdentifierLookupConflictError identifies the error', () => {
+        const err = new IdentifierLookupConflictError('test conflict');
+        expect(isIdentifierLookupConflictError(err)).toBe(true);
+        expect(isIdentifierLookupConflictError(new Error('other'))).toBe(false);
+    });
+
+    test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const idA = nodeIdentifierFromString('aaaaaaaaa');
+            const idB = nodeIdentifierFromString('bbbbbbbbb');
+            const keyA = stringToNodeKeyString('{"head":"event","args":["a"]}');
+            const keyB = stringToNodeKeyString('{"head":"event","args":["b"]}');
+            const keyC = stringToNodeKeyString('{"head":"event","args":["c"]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeIdentifierLookup(L, [
+                [idA, keyA],
+                [idB, keyB],
+            ]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeIdentifierLookup(H, [
+                [idA, keyA],
+                [idB, keyC],
+            ]);
+
+            let error;
+            try {
+                await mergeHostIntoReplica(logger, db, hostname);
+            } catch (caught) {
+                error = caught;
+            }
+
+            expect(isIdentifierLookupConflictError(error)).toBe(true);
+            expect(String(error?.message)).toContain('Conflicting node key assignment for identifier');
+            expect(String(error?.message)).toContain(String(idB));
+            expect(String(error?.message)).toContain('Volodyslav will not resolve this automatically');
+            expect(String(error?.message)).toContain('manually fix the identifiers_keys_map records');
             expect(db.currentReplicaName()).toBe('x');
         } finally {
             if (db) await db.close();
