@@ -1080,6 +1080,40 @@ describe("IncrementalGraph concurrency", () => {
             // Both pulls ran after exclusive released
             expect(trace.sort()).toEqual(["pull1", "pull2"]);
         });
+
+        test("withExclusiveMutex is available via locks", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            // Verify that withExclusiveMutex is a function on the locks object
+            expect(typeof locks.withExclusiveMutex).toBe("function");
+
+            // Verify it acquires the same mutex as withExclusiveLock
+            const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
+
+            const first = locks.withExclusiveLock(sleeper, async () => {
+                enteredFirst.resolve(undefined);
+                await releaseFirst.promise;
+            });
+
+            await enteredFirst.promise;
+
+            let secondRan = false;
+            const second = locks.withExclusiveMutex(sleeper, async () => {
+                secondRan = true;
+            });
+
+            await Promise.resolve();
+            // withExclusiveMutex shares the EXCLUSIVE_KEY mutex, so it must
+            // wait until withExclusiveLock releases
+            expect(secondRan).toBe(false);
+
+            releaseFirst.resolve(undefined);
+            await first;
+            await second;
+            expect(secondRan).toBe(true);
+        });
     });
 
     describe("concurrent pull with inverse sibling-dependency order", () => {

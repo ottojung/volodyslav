@@ -23,12 +23,14 @@ const locks = {
     withObserveLock,
     withPullLock,
     withExclusiveLock,
+    withPullNodeLock,
+    withCommitMutex,
 };
 
-module.exports = { locks };
+module.exports = { locks, withExclusiveMutex, withCommitMutex };
 ```
 
-The module MUST export the `locks` aggregate object. It MUST NOT export the individual lock functions directly.
+The module MUST export the `locks` aggregate object. It also exports `withExclusiveMutex` and `withCommitMutex` as standalone functions for call sites that need them directly (e.g. `graph_api.js` uses `withExclusiveMutex`, `graph_state.js` uses `withCommitMutex`).
 
 The intended call sites are:
 
@@ -43,6 +45,14 @@ await locks.withPullLock(sleeper, nodeKeyString, async () => {
 
 await locks.withExclusiveLock(sleeper, async () => {
     // migration, database open/reset, or other whole-graph exclusive operation
+});
+
+await locks.withPullNodeLock(sleeper, nodeKeyString, async () => {
+    // recursive/dynamic pull during an already-active pull operation
+});
+
+await locks.withCommitMutex(sleeper, replicaName, async () => {
+    // serialize commits for a given replica name
 });
 ```
 
@@ -182,7 +192,7 @@ If a separate exclusive-operation mutex remains necessary, it must be acquired a
 
 ## Internal Model
 
-The implementation should define a small scheduler, tentatively named `LockNet`.
+The implementation provides a standalone scheduler module at `backend/src/locknet/class.js`, completely independent of any incremental graph business.
 
 ```js
 class LockNet {
@@ -198,18 +208,20 @@ class LockNet {
 }
 ```
 
+The module exports only `makeLockNet()` factory function. The class itself is not exported, following the project's encapsulation convention.
+
 A resource request is a list of resource requirements:
 
 ```js
 /**
  * @typedef {
- *   | { kind: "mode", key: UniqueTerm, mode: "observe" | "pull" | "exclusive" }
- *   | { kind: "mutex", key: UniqueTerm }
+ *   | { kind: "mode", key: string, mode: "observe" | "pull" | "exclusive" }
+ *   | { kind: "mutex", key: string }
  * } LockResource
  */
 ```
 
-A request may run only when all requested resources are available according to the compatibility rules.
+Keys are plain strings in the standalone LockNet. The callers (e.g. `lock.js`) are responsible for serializing `UniqueTerm` keys via `.serialize()` before passing them to `LockNet.run`.
 
 The scheduler MUST be the only place that knows how to admit lock requests. Call sites should not manually compose lock acquisition with nested calls.
 
@@ -644,10 +656,11 @@ module.exports = { locks };
 
 ## Target Module Shape
 
-The final `lock.js` module should have this shape:
+The `lock.js` module has this shape, importing `LockNet` from the standalone module at `backend/src/locknet`:
 
 ```js
 const { makeUniqueFunctor } = require("../../unique_functor");
+const { makeLockNet } = require("../../locknet");
 
 const GRAPH_ACTIVITY_KEY =
     makeUniqueFunctor("incremental-graph-activity").instantiate([]);
@@ -658,6 +671,8 @@ const EXCLUSIVE_KEY =
 const PULL_NODE_FUNCTOR =
     makeUniqueFunctor("incremental-graph-pull-node");
 
+const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
+
 const lockNet = makeLockNet();
 
 function pullNodeKey(nodeKeyString) {
@@ -665,35 +680,54 @@ function pullNodeKey(nodeKeyString) {
 }
 
 async function withObserveLock(sleeper, procedure) {
-    return lockNet.run(sleeper, [
-        { kind: "mode", key: GRAPH_ACTIVITY_KEY, mode: "observe" },
+    return lockNet.run([
+        { kind: "mode", key: GRAPH_ACTIVITY_KEY.serialize(), mode: "observe" },
     ], procedure);
 }
 
 async function withPullLock(sleeper, nodeKeyString, procedure) {
-    return lockNet.run(sleeper, [
-        { kind: "mode", key: GRAPH_ACTIVITY_KEY, mode: "pull" },
-        { kind: "mutex", key: pullNodeKey(nodeKeyString) },
-    ], procedure);
+    return lockNet.run([
+        { kind: "mode", key: GRAPH_ACTIVITY_KEY.serialize(), mode: "pull" },
+    ], async () => {
+        return sleeper.withMutex(pullNodeKey(nodeKeyString), procedure);
+    });
 }
 
 async function withExclusiveLock(sleeper, procedure) {
-    return lockNet.run(sleeper, [
-        { kind: "mode", key: GRAPH_ACTIVITY_KEY, mode: "exclusive" },
-        { kind: "mutex", key: EXCLUSIVE_KEY },
+    return lockNet.run([
+        { kind: "mode", key: GRAPH_ACTIVITY_KEY.serialize(), mode: "exclusive" },
+        { kind: "mutex", key: EXCLUSIVE_KEY.serialize() },
+    ], procedure);
+}
+
+async function withPullNodeLock(sleeper, nodeKeyString, procedure) {
+    return sleeper.withMutex(pullNodeKey(nodeKeyString), procedure);
+}
+
+async function withExclusiveMutex(sleeper, procedure) {
+    return lockNet.run([
+        { kind: "mutex", key: EXCLUSIVE_KEY.serialize() },
+    ], procedure);
+}
+
+async function withCommitMutex(sleeper, replicaName, procedure) {
+    return lockNet.run([
+        { kind: "mutex", key: COMMIT_KEY.instantiate([replicaName]).serialize() },
     ], procedure);
 }
 
 const locks = {
     withObserveLock,
     withPullLock,
+    withPullNodeLock,
     withExclusiveLock,
+    withCommitMutex,
 };
 
-module.exports = { locks };
+module.exports = { locks, withExclusiveMutex, withCommitMutex };
 ```
 
-The exact internal names may change, but the exported shape should not.
+Keys are strings in LockNet resources; `UniqueTerm.serialize()` is called at the call site.
 
 ## Acceptance Criteria
 
