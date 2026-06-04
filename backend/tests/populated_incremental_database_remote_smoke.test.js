@@ -74,7 +74,7 @@ describe("populated incremental-database remote smoke", () => {
         await iface.ensureInitialized();
 
         const events = await iface.getAllEvents();
-        expect(events).toHaveLength(24);
+        expect(events).toHaveLength(26);
         for (const anchorId of Object.values(ANCHOR_IDS)) {
             expect(events.some((e) => e.id.identifier === anchorId)).toBe(true);
         }
@@ -113,7 +113,7 @@ describe("populated incremental-database remote smoke", () => {
 
         const countEntry = await iface._incrementalGraph.pull("events_count");
         expect(countEntry.type).toBe("events_count");
-        expect(countEntry.count).toBe(24);
+        expect(countEntry.count).toBe(26);
 
         const desc = await collectAll(iface.getSortedEvents("dateDescending"));
         const asc = await collectAll(iface.getSortedEvents("dateAscending"));
@@ -133,8 +133,8 @@ describe("populated incremental-database remote smoke", () => {
 
         const lastEntries = await iface._incrementalGraph.pull("last_entries", [SORTED_EVENTS_CACHE_SIZE]);
         const firstEntries = await iface._incrementalGraph.pull("first_entries", [SORTED_EVENTS_CACHE_SIZE]);
-        expect(lastEntries.events).toHaveLength(24);
-        expect(firstEntries.events).toHaveLength(24);
+        expect(lastEntries.events).toHaveLength(26);
+        expect(firstEntries.events).toHaveLength(26);
         expect(lastEntries.events.map((e) => e.id)).toEqual(desc.map((e) => e.id.identifier));
         expect(firstEntries.events.map((e) => e.id)).toEqual(asc.map((e) => e.id.identifier));
 
@@ -156,7 +156,7 @@ describe("populated incremental-database remote smoke", () => {
         ];
 
         await iface.update([...allEvents, ...newEvents]);
-        expect(await iface.getEventsCount()).toBe(26);
+        expect(await iface.getEventsCount()).toBe(28);
         expect(await iface.getEvent(ANCHOR_IDS.focusA)).toBeTruthy();
         expect(await iface.getEvent("fx-smoke-new-1")).toBeTruthy();
 
@@ -169,7 +169,7 @@ describe("populated incremental-database remote smoke", () => {
         expect(focusContextEvents.some((e) => e.id.identifier === ANCHOR_IDS.noTags)).toBe(false);
 
         await iface.synchronizeDatabase();
-        expect(await iface.getEventsCount()).toBe(26);
+        expect(await iface.getEventsCount()).toBe(28);
         expect((await iface.getConfig()).help).toBe("Event logging help text");
         expect(await iface.getEvent("fx-smoke-new-1")).toBeTruthy();
     });
