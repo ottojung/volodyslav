@@ -59,6 +59,17 @@ function makeSchemaStorage() {
     const revdeps = makeInMemoryDb("revdeps");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
+    const originalGlobalGet = global.get.bind(global);
+    global.get = async (key) => {
+        if (key !== IDENTIFIERS_KEY) {
+            return await originalGlobalGet(key);
+        }
+        const stored = await originalGlobalGet(key);
+        if (stored !== undefined) return stored;
+        return [...inputs.store.keys()]
+            .sort()
+            .map((nodeKey) => [nodeKey, nodeKey]);
+    };
 
     return {
         values,
@@ -68,14 +79,6 @@ function makeSchemaStorage() {
         revdeps,
         counters,
         timestamps,
-        global: {
-            async get(key) {
-                if (key !== IDENTIFIERS_KEY) return undefined;
-                return [...inputs.store.keys()]
-                    .sort()
-                    .map((nodeKey) => [nodeKey, nodeKey]);
-            },
-        },
         async batch(operations) {
             for (const operation of operations) {
                 values.apply(operation);

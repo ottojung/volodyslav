@@ -44,20 +44,25 @@ function makeInMemorySchemaStorage() {
     const inputs = makeInMemoryDb();
     const revdeps = makeInMemoryDb();
     const counters = makeInMemoryDb();
+    const global = makeInMemoryDb();
+    const originalGlobalGet = global.get.bind(global);
+    global.get = async (key) => {
+        if (key !== IDENTIFIERS_KEY) {
+            return await originalGlobalGet(key);
+        }
+        const stored = await originalGlobalGet(key);
+        if (stored !== undefined) return stored;
+        return [...inputs.store.keys()]
+            .sort()
+            .map((nodeKey) => [nodeKey, nodeKey]);
+    };
     return {
         values,
         freshness,
         inputs,
         revdeps,
         counters,
-        global: {
-            async get(key) {
-                if (key !== IDENTIFIERS_KEY) return undefined;
-                return [...inputs.store.keys()]
-                    .sort()
-                    .map((nodeKey) => [nodeKey, nodeKey]);
-            },
-        },
+        global,
         async batch(_ops) {},
     };
 }
@@ -614,6 +619,10 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.global.put(IDENTIFIERS_KEY, [
+                [A, A],
+                [nk("NEW"), nk("NEW")],
+            ]);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
