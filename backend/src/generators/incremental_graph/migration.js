@@ -2,8 +2,6 @@
 // This file contains the current migration callback.
 
 const { stringToNodeName } = require("./database");
-const { deserializeNodeKey } = require("./database");
-const { stringToNodeKeyString } = require("./database");
 
 /**
  * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities
@@ -18,21 +16,6 @@ const { stringToNodeKeyString } = require("./database");
  */
 
 /**
- * Extract the node head (functor name) from an identifier that may be in
- * modern 9-letter format or one of the legacy formats (serialised JSON
- * node key or bare zero-arg name).
- * @param {NodeIdentifier} identifier
- * @returns {import('./types').NodeName}
- */
-function extractNodeHead(identifier) {
-    const str = String(identifier);
-    if (str.startsWith("{")) {
-        return deserializeNodeKey(stringToNodeKeyString(str)).head;
-    }
-    return stringToNodeName(str);
-}
-
-/**
  * A migration callback that keeps all nodes of a certain type.
  *
  * @param {string} nodeName - The name of the node type to keep (e.g., "meta_events")
@@ -43,7 +26,8 @@ async function keepNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        if (extractNodeHead(nodeKey) === nodeNameTyped) {
+        const resolved = await storage.resolveNodeKey(nodeKey);
+        if (resolved !== undefined && resolved.head === nodeNameTyped) {
             await storage.keep(nodeKey);
         }
     }
@@ -60,7 +44,8 @@ async function deleteNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        if (extractNodeHead(nodeKey) === nodeNameTyped) {
+        const resolved = await storage.resolveNodeKey(nodeKey);
+        if (resolved !== undefined && resolved.head === nodeNameTyped) {
             await storage.delete(nodeKey);
         }
     }
@@ -113,5 +98,4 @@ module.exports = {
     migrationCallback,
     keepNodeType,
     deleteNodeType,
-    extractNodeHead,
 };

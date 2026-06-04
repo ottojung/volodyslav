@@ -4,6 +4,7 @@
 
 const { makeMigrationStorage } = require("../src/generators/incremental_graph/migration_storage");
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
+const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
     isDecisionConflict,
     isOverrideConflict,
@@ -24,6 +25,7 @@ const { toJsonKey } = require("./test_json_key_helper");
 function makeInMemoryDb() {
     const store = new Map();
     return {
+        store,
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
         async noFlushPut(key, value) { store.set(key, value); },
@@ -37,12 +39,30 @@ function makeInMemoryDb() {
 }
 
 function makeInMemorySchemaStorage() {
+    const values = makeInMemoryDb();
+    const freshness = makeInMemoryDb();
+    const inputs = makeInMemoryDb();
+    const revdeps = makeInMemoryDb();
+    const counters = makeInMemoryDb();
+    const global = makeInMemoryDb();
+    const originalGlobalGet = global.get.bind(global);
+    global.get = async (key) => {
+        if (key !== IDENTIFIERS_KEY) {
+            return await originalGlobalGet(key);
+        }
+        const stored = await originalGlobalGet(key);
+        if (stored !== undefined) return stored;
+        return [...inputs.store.keys()]
+            .sort()
+            .map((nodeKey) => [nodeKey, nodeKey]);
+    };
     return {
-        values: makeInMemoryDb(),
-        freshness: makeInMemoryDb(),
-        inputs: makeInMemoryDb(),
-        revdeps: makeInMemoryDb(),
-        counters: makeInMemoryDb(),
+        values,
+        freshness,
+        inputs,
+        revdeps,
+        counters,
+        global,
         async batch(_ops) {},
     };
 }
@@ -599,6 +619,10 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.global.put(IDENTIFIERS_KEY, [
+                [A, A],
+                [nk("NEW"), nk("NEW")],
+            ]);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);

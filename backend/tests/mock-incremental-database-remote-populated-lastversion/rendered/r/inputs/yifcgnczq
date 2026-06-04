@@ -1,6 +1,6 @@
 {
   "inputs": [
-    "{\"head\":\"all_events\",\"args\":[]}"
+    "gafdmopql"
   ],
   "inputCounters": [
     1

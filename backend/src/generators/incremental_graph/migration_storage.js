@@ -3,9 +3,8 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeKeyString, unsafeStringToNodeIdentifier } = require("./database");
+const { stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY } = require("./database");
 const { deserializeNodeKey } = require("./database");
-const { stringToNodeName } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -49,78 +48,42 @@ const {
 
 
 
-const LEGACY_ZERO_ARG_NODE_KEY_REGEX = /^[a-z][a-z0-9_-]*$/;
-
 /**
- * @param {string} value
- * @returns {boolean}
- */
-function isLegacySerializedNodeKey(value) {
-    if (!value.startsWith("{") || !value.endsWith("}")) {
-        return false;
-    }
-    try {
-        const parsed = JSON.parse(value);
-        return (
-            typeof parsed === "object" &&
-            parsed !== null &&
-            typeof parsed.head === "string" &&
-            Array.isArray(parsed.args)
-        );
-    } catch (_err) {
-        return false;
-    }
-}
-
-const NODE_IDENTIFIER_REGEX = /^[a-z]{9}$/;
-
-/**
- * Parse a node identifier string that may be in either the current strict
- * format (/^[a-z]{9}$/) or one of the two legacy formats:
- *   - Serialised node key JSON: {"head":"...","args":[...]}
- *   - Zero-argument bare node name: /^[a-z][a-z0-9_-]*$/
- *
- * Use this function only inside the migration path (migration_runner.js,
- * migration_storage.js).  All runtime read/write/sync code must use the strict
- * stringToNodeIdentifier() instead.
- * @param {string} nodeIdentifierStr
- * @returns {NodeIdentifier}
- */
-function legacyStringToNodeIdentifier(nodeIdentifierStr) {
-    if (
-        !NODE_IDENTIFIER_REGEX.test(nodeIdentifierStr) &&
-        !isLegacySerializedNodeKey(nodeIdentifierStr) &&
-        !LEGACY_ZERO_ARG_NODE_KEY_REGEX.test(nodeIdentifierStr)
-    ) {
-        throw new Error(
-            `Invalid node identifier string: ${nodeIdentifierStr}`
-        );
-    }
-    return unsafeStringToNodeIdentifier(nodeIdentifierStr);
-}
-
-
-/**
+ * Resolve a node key to its parsed form using the identifiers keys map.
  * @param {NodeIdentifier} nodeKey
- * @returns {{ head: NodeName, args: Array<unknown> }}
+ * @param {ReadableMigrationStorage} prevStorage
+ * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
  */
-function parseMigrationNodeKey(nodeKey) {
-    const nodeKeyString = String(nodeKey);
-    if (nodeKeyString.startsWith("{")) {
-        return deserializeNodeKey(stringToNodeKeyString(nodeKeyString));
+async function resolveNodeKey(nodeKey, prevStorage) {
+    const nodeKeyStr = String(nodeKey);
+
+    if (prevStorage.global !== undefined) {
+        const entries = await prevStorage.global.get(IDENTIFIERS_KEY);
+        if (Array.isArray(entries)) {
+            const entry = entries.find((e) => e[0] === nodeKeyStr);
+            if (entry !== undefined) {
+                return deserializeNodeKey(stringToNodeKeyString(entry[1]));
+            }
+        }
     }
-    return { head: stringToNodeName(nodeKeyString), args: [] };
+
+    return undefined;
 }
 
 /**
  * Checks whether a node is compatible with the new schema.
+ * Requires the node to be resolvable through the identifiers keys map.
  * @param {NodeIdentifier} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
- * @returns {void}
+ * @param {ReadableMigrationStorage} prevStorage
+ * @returns {Promise<void>}
  */
-function checkSchemaCompatibility(nodeKey, newHeadIndex) {
-    const { head, args } = parseMigrationNodeKey(nodeKey);
-    const arity = args.length;
+async function checkSchemaCompatibility(nodeKey, newHeadIndex, prevStorage) {
+    const parsed = await resolveNodeKey(nodeKey, prevStorage);
+    if (parsed === undefined) return;
+
+    const head = parsed.head;
+    const arity = parsed.args.length;
     const compiled = newHeadIndex.get(head);
     if (!compiled) {
         throw makeSchemaCompatibilityError(
@@ -148,7 +111,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return record.inputs.map(legacyStringToNodeIdentifier);
+    return record.inputs.map(unsafeStringToNodeIdentifier);
 }
 
 /**
@@ -242,7 +205,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        checkSchemaCompatibility(nodeKey, this.newHeadIndex);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "keep") return;
@@ -261,7 +224,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        checkSchemaCompatibility(nodeKey, this.newHeadIndex);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
@@ -283,7 +246,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        checkSchemaCompatibility(nodeKey, this.newHeadIndex);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "invalidate") return;
@@ -325,7 +288,7 @@ class MigrationStorageClass {
         if (this.materializedNodes.has(nodeKey)) {
             throw makeCreateExistingNodeError(nodeKey);
         }
-        checkSchemaCompatibility(nodeKey, this.newHeadIndex);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             throw makeDecisionConflictError(nodeKey, existing.kind, "create");
@@ -368,6 +331,16 @@ class MigrationStorageClass {
     }
 
     /**
+     * Resolve a node identifier to the parsed node key used by the previous
+     * replica, if possible.
+     * @param {NodeIdentifier} nodeKey
+     * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
+     */
+    async resolveNodeKey(nodeKey) {
+        return await resolveNodeKey(nodeKey, this.prevStorage);
+    }
+
+    /**
      * Propagate INVALIDATE to all dependents of a node recursively.
      * Stops at already-invalidated or deleted nodes.
      * Throws on conflict with KEEP/OVERRIDE decisions.
@@ -389,7 +362,7 @@ class MigrationStorageClass {
                 }
                 throw makeDecisionConflictError(dep, existing.kind, "invalidate");
             }
-            checkSchemaCompatibility(dep, this.newHeadIndex);
+            await checkSchemaCompatibility(dep, this.newHeadIndex, this.prevStorage);
             this.decisions.set(dep, { kind: "invalidate" });
             await this._propagateInvalidate(dep, visited);
         }
@@ -501,5 +474,4 @@ function isMigrationStorage(object) {
 module.exports = {
     makeMigrationStorage,
     isMigrationStorage,
-    legacyStringToNodeIdentifier,
 };
