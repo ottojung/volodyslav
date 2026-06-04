@@ -27,7 +27,6 @@ const {
     stringToNodeName,
     isValidNodeIdentifier,
     MissingIdentifierLookupError,
-    getRootDatabase,
 } = require("./database");
 const random = require("../../random");
 const { withExclusiveMode } = require("./lock");
@@ -623,7 +622,6 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         prevVersion, currentVersion
     }, `Starting migration from ${String(prevVersion)} to ${String(currentVersion)}`);
 
-    let switchedReplica = false;
     await checkpointMigration(
         capabilities,
         rootDatabase,
@@ -694,19 +692,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);
-            switchedReplica = true;
         }
     );
-
-    if (switchedReplica && typeof rootDatabase.close === 'function') {
-        await rootDatabase.close();
-        const rebuiltDatabase = await getRootDatabase(capabilities);
-        capabilities.logger.logDebug(
-            { activeReplica: rebuiltDatabase.currentReplicaName() },
-            'Migration cutover completed with rebuilt root database'
-        );
-        return rebuiltDatabase;
-    }
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion

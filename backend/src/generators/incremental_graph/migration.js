@@ -18,15 +18,18 @@ const { stringToNodeKeyString } = require("./database");
  */
 
 /**
- * @param {NodeIdentifier} nodeKey
+ * Extract the node head (functor name) from an identifier that may be in
+ * modern 9-letter format or one of the legacy formats (serialised JSON
+ * node key or bare zero-arg name).
+ * @param {NodeIdentifier} identifier
  * @returns {import('./types').NodeName}
  */
-function nodeHeadForMigrationNode(nodeKey) {
-    const nodeKeyString = String(nodeKey);
-    if (nodeKeyString.startsWith("{")) {
-        return deserializeNodeKey(stringToNodeKeyString(nodeKeyString)).head;
+function extractNodeHead(identifier) {
+    const str = String(identifier);
+    if (str.startsWith("{")) {
+        return deserializeNodeKey(stringToNodeKeyString(str)).head;
     }
-    return stringToNodeName(nodeKeyString);
+    return stringToNodeName(str);
 }
 
 /**
@@ -40,7 +43,7 @@ async function keepNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        if (nodeHeadForMigrationNode(nodeKey) === nodeNameTyped) {
+        if (extractNodeHead(nodeKey) === nodeNameTyped) {
             await storage.keep(nodeKey);
         }
     }
@@ -57,7 +60,7 @@ async function deleteNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        if (nodeHeadForMigrationNode(nodeKey) === nodeNameTyped) {
+        if (extractNodeHead(nodeKey) === nodeNameTyped) {
             await storage.delete(nodeKey);
         }
     }
@@ -110,4 +113,5 @@ module.exports = {
     migrationCallback,
     keepNodeType,
     deleteNodeType,
+    extractNodeHead,
 };
