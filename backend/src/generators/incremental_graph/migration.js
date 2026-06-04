@@ -33,6 +33,23 @@ function extractNodeHead(identifier) {
 }
 
 /**
+ * Resolve a node head name from the storage when possible.
+ * Falls back to the identifier itself for legacy callers.
+ * @param {NodeIdentifier} identifier
+ * @param {MigrationStorage} storage
+ * @returns {Promise<import('./types').NodeName>}
+ */
+async function resolveNodeHead(identifier, storage) {
+    if (typeof storage.resolveNodeKey === "function") {
+        const resolved = await storage.resolveNodeKey(identifier);
+        if (resolved !== undefined) {
+            return resolved.head;
+        }
+    }
+    return extractNodeHead(identifier);
+}
+
+/**
  * A migration callback that keeps all nodes of a certain type.
  *
  * @param {string} nodeName - The name of the node type to keep (e.g., "meta_events")
@@ -43,7 +60,7 @@ async function keepNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        if (extractNodeHead(nodeKey) === nodeNameTyped) {
+        if (await resolveNodeHead(nodeKey, storage) === nodeNameTyped) {
             await storage.keep(nodeKey);
         }
     }
@@ -60,7 +77,7 @@ async function deleteNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        if (extractNodeHead(nodeKey) === nodeNameTyped) {
+        if (await resolveNodeHead(nodeKey, storage) === nodeNameTyped) {
             await storage.delete(nodeKey);
         }
     }
