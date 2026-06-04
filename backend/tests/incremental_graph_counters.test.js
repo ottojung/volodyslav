@@ -469,4 +469,103 @@ describe("generators/incremental_graph counters", () => {
             await db.close();
         });
     });
+
+    describe("Invariant enforcement: up-to-date node must have stored value", () => {
+        test("throws when up-to-date node has no stored value (corruption)", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const graphDef = [
+                {
+                    output: "src",
+                    inputs: [],
+                    computor: async () => ({ type: "all_events", events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+
+            // Pull src to populate the database with a value and "up-to-date" freshness
+            await graph.pull("src");
+
+            // Corrupt: delete the stored value, leaving freshness as "up-to-date"
+            const storage = makeSemanticStorage(graph);
+            await storage.values.del("src");
+
+            // Pulling again should detect the corruption and throw
+            await expect(graph.pull("src")).rejects.toThrow(/Impossible/);
+
+            await db.close();
+        });
+
+        test("throws when up-to-date node has no stored value for graph with dependencies", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const srcCell = { value: null };
+
+            const graphDef = [
+                {
+                    output: "src",
+                    inputs: [],
+                    computor: async () => srcCell.value,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "derived",
+                    inputs: ["src"],
+                    computor: async (inputs) => ({
+                        type: "meta_events",
+                        value: inputs.src,
+                    }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+
+            // Pull derived to trigger a full computation
+            srcCell.value = { type: "all_events", events: [1] };
+            await graph.invalidate("src");
+            await graph.pull("derived");
+
+            // Corrupt: delete derived's value, leave freshness as "up-to-date"
+            const storage = makeSemanticStorage(graph);
+            await storage.values.del("derived");
+
+            // Pulling derived should detect the corruption and throw
+            await expect(graph.pull("derived")).rejects.toThrow(/Impossible/);
+
+            await db.close();
+        });
+
+        test("does not throw when node is up-to-date and has a stored value (no corruption)", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const graphDef = [
+                {
+                    output: "src",
+                    inputs: [],
+                    computor: async () => ({ type: "all_events", events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+
+            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+
+            // Normal pull — value exists, freshness is "up-to-date"
+            const result = await graph.pull("src");
+
+            // Should succeed without error
+            expect(result).toEqual({ type: "all_events", events: [] });
+
+            await db.close();
+        });
+    });
 });

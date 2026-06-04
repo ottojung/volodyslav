@@ -68,6 +68,9 @@ async function pullNode(graph, nodeKeyStr) {
                 if (result !== undefined) {
                     return { value: result, status: "cached" };
                 }
+                throw new Error(
+                    `Impossible: up-to-date node has no stored value (committed): ${String(nodeKeyStr)}`
+                );
             }
         }
 
@@ -92,6 +95,9 @@ async function pullNode(graph, nodeKeyStr) {
                         revdepDiffs,
                     };
                 }
+                throw new Error(
+                    `Impossible: up-to-date node has no stored value: ${String(nodeKeyStr)}`
+                );
             }
 
             const computeResult = await graph.maybeRecalculate(
