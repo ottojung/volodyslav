@@ -27,49 +27,7 @@
 
 const path = require("path");
 const fs = require("fs/promises");
-
-// ─── Deterministic identifier generation (matches backend/src/random/) ──────
-
-const CHAR_OPTIONS = "abcdefghijklmnopqrstuvwxyz";
-
-/**
- * Mulberry32 PRNG (matches backend/src/random/mulberry32.js).
- * @param {number} seed
- * @returns {() => number} Function returning a pseudo-random number in (0,1).
- */
-function mulberry32(seed) {
-    let t = seed >>> 0;
-    function inclusive() {
-        t += 0x6d2b79f5;
-        let r = Math.imul(t ^ (t >>> 15), t | 1);
-        r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
-        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-    }
-    function exclusive() {
-        let ret = 0;
-        while (ret <= 0 || ret >= 1) {
-            ret = inclusive();
-        }
-        return ret;
-    }
-    return exclusive;
-}
-
-/**
- * Generate a deterministic 9-letter identifier from a counter value.
- * Matches the algorithm in backend/src/random/basic_string.js.
- * @param {number} counter
- * @returns {string}
- */
-function generateIdentifier(counter) {
-    const rng = mulberry32(counter);
-    const result = new Array(9);
-    for (let i = 0; i < 9; i++) {
-        const idx = Math.floor(rng() * 26);
-        result[i] = CHAR_OPTIONS[idx];
-    }
-    return result.join("");
-}
+const { basicString } = require("../backend/src/random/basic_string");
 
 // ─── Old-format path parsing ────────────────────────────────────────────────
 
@@ -308,14 +266,23 @@ async function migrateSnapshot(snapshotDir) {
         }
     }
 
-    // Assign identifiers in key-discovery order
+    // Assign identifiers in key-discovery order using seeded basicString.
+    // The capabilities seed counter provides a deterministic sequence (0, 1, 2, ...).
+    let seedCounter = 0;
+    /** @type {{ seed: { generate: () => number } }} */
+    const capabilities = {
+        seed: {
+            generate: () => seedCounter++,
+        },
+    };
+
     const keyToId = new Map();
     const idToKey = new Map();
 
-    for (let i = 0; i < orderedKeys.length; i++) {
-        const id = generateIdentifier(i);
-        keyToId.set(orderedKeys[i], id);
-        idToKey.set(id, orderedKeys[i]);
+    for (const keyJson of orderedKeys) {
+        const id = basicString(capabilities, 9);
+        keyToId.set(keyJson, id);
+        idToKey.set(id, keyJson);
     }
 
     console.log(`  Found ${orderedKeys.length} unique nodes, assigned identifiers.`);
