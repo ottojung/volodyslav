@@ -72,24 +72,10 @@ async function deleteNodeType(nodeName, storage) {
  */
 function migrationCallback(capabilities) {
     return async (storage) => {
-        capabilities.logger.logInfo({}, "Migration tries to keep everything.");
-        await keepNodeType("all_events", storage);
-        await keepNodeType("sorted_events_descending", storage);
-        await keepNodeType("sorted_events_ascending", storage);
-        await keepNodeType("last_entries", storage);
-        await keepNodeType("first_entries", storage);
-        await keepNodeType("events_count", storage);
-        await keepNodeType("config", storage);
-        await keepNodeType("meta_events", storage);
-        await keepNodeType("event", storage);
-        await keepNodeType("basic_context", storage);
-        await keepNodeType("calories", storage);
-        await keepNodeType("event_transcription", storage);
-        await keepNodeType("transcription", storage);
-        await keepNodeType("event_audios_list", storage);
-        await keepNodeType("diary_most_important_info_summary", storage);
-        await keepNodeType("entry_description", storage);
-        await keepNodeType("ontology", storage);
+        capabilities.logger.logInfo({}, "Migration: keeping all materialized nodes.");
+        for await (const nodeKey of storage.listMaterializedNodes()) {
+            await storage.keep(nodeKey);
+        }
     };
 }
 

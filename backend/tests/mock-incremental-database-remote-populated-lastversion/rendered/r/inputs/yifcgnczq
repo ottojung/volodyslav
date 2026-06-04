@@ -1,8 +1,10 @@
 {
   "inputs": [
-    "{\"head\":\"all_events\",\"args\":[]}"
+    "gafdmopql",
+    "tihnwqmju"
   ],
   "inputCounters": [
+    1,
     1
   ]
 }
