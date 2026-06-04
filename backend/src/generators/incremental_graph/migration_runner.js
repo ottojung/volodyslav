@@ -279,15 +279,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 yield 'version';
                 yield IDENTIFIERS_KEY;
             },
-            async get(key) {
-                if (key === IDENTIFIERS_KEY && prevStorage.global !== undefined) {
-                    const entries = await prevStorage.global.get(IDENTIFIERS_KEY);
-                    if (!Array.isArray(entries)) return entries;
-                    return [...entries].sort((a, b) => compareNodeIdentifier(
-                        stringToNodeIdentifier(a[0]),
-                        stringToNodeIdentifier(b[0])
-                    ));
-                }
+            async get(_key) {
                 return newVersion;
             },
         },
