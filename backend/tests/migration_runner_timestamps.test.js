@@ -40,6 +40,15 @@ async function yGet(sublevel, yStorage, nodeKey) {
     return sublevel.get(id);
 }
 
+/** Collect all keys from a sublevel (preserves whether a key exists even if its value is `undefined`). */
+async function collectKeys(sublevel) {
+    const out = [];
+    for await (const key of sublevel.keys()) {
+        out.push(key);
+    }
+    return out;
+}
+
 function makeInMemoryDb(table) {
     const store = new Map();
     return {
@@ -423,6 +432,55 @@ describe("delete decision: timestamps not present in new storage", () => {
 
         await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toBeUndefined();
         await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toBeUndefined();
+    });
+});
+
+describe("delete decision: sublevels do not retain deleted keys", () => {
+    test("deleted nodes are removed from inputs/counters/timestamps key lists", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
+
+        await seedNode(xStorage, nkA, {
+            timestamps: OLD_TIMESTAMP,
+            inputs: [],
+            inputCounters: [],
+            counter: 11,
+            freshness: "up-to-date",
+        });
+        await seedNode(xStorage, nkB, {
+            timestamps: NEW_TIMESTAMP,
+            inputs: [nkA],
+            inputCounters: [1],
+            counter: 22,
+            freshness: "up-to-date",
+        });
+        await xStorage.revdeps.put(nkA, [nkB]);
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1",
+            currentVersion: "2",
+            xStorage,
+            yStorage,
+        });
+
+        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
+            await storage.delete(nkA);
+            await storage.delete(nkB);
+        });
+
+        const inputKeys = await collectKeys(yStorage.inputs);
+        const counterKeys = await collectKeys(yStorage.counters);
+        const timestampKeys = await collectKeys(yStorage.timestamps);
+
+        expect(inputKeys).not.toContain(nkA);
+        expect(inputKeys).not.toContain(nkB);
+        expect(counterKeys).not.toContain(nkA);
+        expect(counterKeys).not.toContain(nkB);
+        expect(timestampKeys).not.toContain(nkA);
+        expect(timestampKeys).not.toContain(nkB);
     });
 });
 
