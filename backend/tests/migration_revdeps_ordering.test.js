@@ -28,6 +28,7 @@ const { checkpointMigration: mockCheckpointMigration } = require('../src/generat
 function makeInMemoryDb(table) {
     const store = new Map();
     return {
+        store,
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
         async noFlushPut(key, value) { store.set(key, value); },
@@ -67,6 +68,14 @@ function makeSchemaStorage() {
         revdeps,
         counters,
         timestamps,
+        global: {
+            async get(key) {
+                if (key !== IDENTIFIERS_KEY) return undefined;
+                return [...inputs.store.keys()]
+                    .sort()
+                    .map((nodeKey) => [nodeKey, nodeKey]);
+            },
+        },
         async batch(operations) {
             for (const operation of operations) {
                 values.apply(operation);

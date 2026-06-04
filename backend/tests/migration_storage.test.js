@@ -4,6 +4,7 @@
 
 const { makeMigrationStorage } = require("../src/generators/incremental_graph/migration_storage");
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
+const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
     isDecisionConflict,
     isOverrideConflict,
@@ -24,6 +25,7 @@ const { toJsonKey } = require("./test_json_key_helper");
 function makeInMemoryDb() {
     const store = new Map();
     return {
+        store,
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
         async noFlushPut(key, value) { store.set(key, value); },
@@ -37,12 +39,25 @@ function makeInMemoryDb() {
 }
 
 function makeInMemorySchemaStorage() {
+    const values = makeInMemoryDb();
+    const freshness = makeInMemoryDb();
+    const inputs = makeInMemoryDb();
+    const revdeps = makeInMemoryDb();
+    const counters = makeInMemoryDb();
     return {
-        values: makeInMemoryDb(),
-        freshness: makeInMemoryDb(),
-        inputs: makeInMemoryDb(),
-        revdeps: makeInMemoryDb(),
-        counters: makeInMemoryDb(),
+        values,
+        freshness,
+        inputs,
+        revdeps,
+        counters,
+        global: {
+            async get(key) {
+                if (key !== IDENTIFIERS_KEY) return undefined;
+                return [...inputs.store.keys()]
+                    .sort()
+                    .map((nodeKey) => [nodeKey, nodeKey]);
+            },
+        },
         async batch(_ops) {},
     };
 }

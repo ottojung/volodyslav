@@ -49,9 +49,7 @@ const {
 
 
 /**
- * Resolve a node key to its parsed form.
- * Prefers the identifiers keys map when available, and falls back to
- * direct JSON parsing for test helpers that still pass serialized keys.
+ * Resolve a node key to its parsed form using the identifiers keys map.
  * @param {NodeIdentifier} nodeKey
  * @param {ReadableMigrationStorage} prevStorage
  * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
@@ -69,18 +67,12 @@ async function resolveNodeKey(nodeKey, prevStorage) {
         }
     }
 
-    if (nodeKeyStr.startsWith("{")) {
-        return deserializeNodeKey(stringToNodeKeyString(nodeKeyStr));
-    }
-
     return undefined;
 }
 
 /**
  * Checks whether a node is compatible with the new schema.
- * Resolves the node key through the identifiers keys map when available and
- * falls back to direct JSON parsing when the identifier is already serialized.
- * Opaque identifiers without a map are left unchecked.
+ * Requires the node to be resolvable through the identifiers keys map.
  * @param {NodeIdentifier} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @param {ReadableMigrationStorage} prevStorage
