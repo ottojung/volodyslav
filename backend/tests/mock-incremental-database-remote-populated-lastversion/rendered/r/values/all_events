@@ -38,6 +38,30 @@
       }
     },
     {
+      "id": "id123",
+      "date": "2025-01-15T08:20:00+0000",
+      "original": "test event 123",
+      "input": "test event 123",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
+      "id": "id456",
+      "date": "2025-01-16T09:00:00+0000",
+      "original": "test event 456",
+      "input": "test event 456",
+      "creator": {
+        "name": "Volodyslav",
+        "uuid": "81c3188c-d2cc-4879-a237-cdd0f1121346",
+        "version": "0.0.0-dev",
+        "hostname": "fixturehost"
+      }
+    },
+    {
       "id": "evtalphabb",
       "date": "2025-03-28T12:00:00+0000",
       "original": "Lunch walk felt good #health",
