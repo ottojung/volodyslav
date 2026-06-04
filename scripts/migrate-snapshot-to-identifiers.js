@@ -118,14 +118,6 @@ function parseOldPath(relPath) {
     return { sublevel, nodeKeyJson };
 }
 
-/**
- * Serialize a node key JSON string back to a file path in the new format.
- * New format: r/{sublevel}/{identifier} (single segment)
- */
-function newFormatPath(sublevel, identifier) {
-    return `r/${sublevel}/${identifier}`;
-}
-
 // ─── Reference conversion ───────────────────────────────────────────────────
 
 /**
@@ -134,23 +126,6 @@ function newFormatPath(sublevel, identifier) {
 function isOldFormatReference(str) {
     if (typeof str !== "string") return false;
     return str.startsWith('{"head":');
-}
-
-/**
- * Parse an old-format node key JSON string back to {head, args}.
- * @param {string} jsonStr
- * @returns {{ head: string, args: string[] }}
- */
-function parseNodeKeyJson(jsonStr) {
-    const parsed = JSON.parse(jsonStr);
-    return { head: parsed.head, args: parsed.args };
-}
-
-/**
- * Serialize {head, args} back to the canonical node key JSON.
- */
-function serializeNodeKeyJson(head, args) {
-    return JSON.stringify({ head, args });
 }
 
 /**
