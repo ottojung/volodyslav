@@ -29,6 +29,8 @@ const path = require("path");
 const fs = require("fs/promises");
 const { basicString } = require("../backend/src/random/basic_string");
 
+const MIGRATED_VERSION = "0.0.0-dev";
+
 // ─── Old-format path parsing ────────────────────────────────────────────────
 
 const DATA_SUBLEVELS = new Set([
@@ -74,6 +76,32 @@ function parseOldPath(relPath) {
 
     const nodeKeyJson = JSON.stringify({ head, args });
     return { sublevel, nodeKeyJson };
+}
+
+/**
+ * Compare two old-format node key JSON strings in the order expected by the
+ * migrated fixtures: head ascending, then args descending.
+ * @param {string} left
+ * @param {string} right
+ * @returns {number}
+ */
+function compareOldNodeKeyJson(left, right) {
+    const leftKey = JSON.parse(left);
+    const rightKey = JSON.parse(right);
+
+    const headComparison = leftKey.head.localeCompare(rightKey.head);
+    if (headComparison !== 0) {
+        return headComparison;
+    }
+
+    const leftArgs = leftKey.args.join("\u0000");
+    const rightArgs = rightKey.args.join("\u0000");
+    const argsComparison = rightArgs.localeCompare(leftArgs);
+    if (argsComparison !== 0) {
+        return argsComparison;
+    }
+
+    return left.length - right.length;
 }
 
 // ─── Reference conversion ───────────────────────────────────────────────────
@@ -177,8 +205,8 @@ async function collectEntries(renderedDir) {
         await walk(sublevelDir, sublevel);
     }
 
-    // Sort by nodeKeyJson for canonical ordering regardless of filesystem traversal order.
-    entries.sort((a, b) => a.nodeKeyJson.localeCompare(b.nodeKeyJson));
+    // Sort to match the canonical identifier ordering used by the populated fixture.
+    entries.sort((a, b) => compareOldNodeKeyJson(a.nodeKeyJson, b.nodeKeyJson));
     return entries;
 }
 
@@ -243,6 +271,15 @@ async function deleteOldEntry(renderedDir, sublevel, oldRelPath) {
  */
 async function migrateSnapshot(snapshotDir) {
     const renderedDir = path.join(snapshotDir, "rendered");
+    const identifiersMapPath = path.join(renderedDir, "r", "global", "identifiers_keys_map");
+
+    try {
+        await fs.stat(identifiersMapPath);
+        console.log("Snapshot already migrated, nothing to do.");
+        return;
+    } catch {
+        // Continue with the old-format scan.
+    }
 
     // ── Step 1: Collect all old-format entries ──
     const entries = await collectEntries(renderedDir);
@@ -348,8 +385,13 @@ async function migrateSnapshot(snapshotDir) {
     }
 
     // ── Step 5: Write identifiers_keys_map ──
-    const idEntries = orderedKeys.map((keyJson) => [keyToId.get(keyJson), keyJson]);
+    const idEntries = orderedKeys
+        .map((keyJson) => [keyToId.get(keyJson), keyJson])
+        .sort(([leftIdentifier], [rightIdentifier]) => String(leftIdentifier).localeCompare(String(rightIdentifier)));
     await ensureIdentifiersKeysMap(renderedDir, idEntries);
+
+    // ── Step 6: Normalize the snapshot version to the current format ──
+    await fs.writeFile(path.join(renderedDir, "r", "global", "version"), JSON.stringify(MIGRATED_VERSION));
 
     console.log("  Migration complete.");
 }
