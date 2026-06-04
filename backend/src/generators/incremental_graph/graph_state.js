@@ -376,7 +376,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
                     if (hasPendingAllocations) {
                         operations.push(
-                            activeSchemaStorage.global.rawPutOp(
+                            activeSchemaStorage.global.putOp(
                                 IDENTIFIERS_KEY,
                                 serializeTransactionLookup(tx.identifierLookup)
                             )

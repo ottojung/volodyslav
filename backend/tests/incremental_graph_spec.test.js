@@ -152,9 +152,6 @@ class InMemoryDatabase {
                 putOp: (key, value) => {
                     return { type: 'put', sublevel, key, value };
                 },
-                rawPutOp: (key, value) => {
-                    return { type: 'put', sublevel, key, value };
-                },
                 delOp: (key) => {
                     return { type: 'del', sublevel, key };
                 },

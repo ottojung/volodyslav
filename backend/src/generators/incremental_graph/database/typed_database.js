@@ -35,11 +35,10 @@
  * @typedef {object} GenericDatabase
  * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: TKey, value: unknown) => Promise<void>} rawPut - Store a value with sync:false (for unification adapters where runtime type is guaranteed by schema invariant)
+ * @property {(key: TKey, value: TValue) => Promise<void>} noFlushPut - Store a value with sync:false (for bulk unification; caller must _rawSync() after)
  * @property {(key: TKey) => Promise<void>} del - Delete a value
- * @property {(key: TKey) => Promise<void>} rawDel - Delete a value with sync:false (for unification adapters; mirrors rawPut)
+ * @property {(key: TKey) => Promise<void>} noFlushDel - Delete a value with sync:false (mirrors noFlushPut)
  * @property {(key: TKey, value: TValue) => DatabasePutOperation<TValue, TKey>} putOp - Store a value operation
- * @property {(key: TKey, value: unknown) => DatabasePutOperation<TValue, TKey>} rawPutOp - Store a value operation accepting a value guaranteed by the caller's schema invariant
  * @property {(key: TKey) => DatabaseDelOperation<TValue, TKey>} delOp - Delete a value operation
  * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
@@ -90,42 +89,24 @@ class TypedDatabaseClass {
     }
 
     /**
-     * Store a value in the database, accepting an untyped value, using sync:false.
-     * For use only in unification adapters where values originate from the same
-     * schema and are therefore the correct runtime type despite being typed as
-     * unknown at the call site.  Keeping this separate from put preserves
-     * the typed boundary for normal callers.
-     *
-     * sync:false means the OS may buffer the write before flushing to disk.
+     * Store a value with sync:false for bulk unification.
      * Callers must invoke rootDatabase._rawSync() once after all unification
      * writes are complete to ensure durability.
      * @param {TKey} key - The key to store
-     * @param {unknown} value - The value to store (type guaranteed by caller's schema invariant)
+     * @param {TValue} value - The value to store
      * @returns {Promise<void>}
      */
-    async rawPut(key, value) {
-        // Pass sync:false to avoid per-write fsyncs during bulk unification.
-        // classic-level supports sync at runtime; abstract-level's type for
-        // AbstractPutOptions is a "weak type" (all-optional properties) so
-        // TypeScript requires at least one recognised property to be present.
-        // keyEncoding:undefined is a valid AbstractPutOptions property (means
-        // "use default encoding") and satisfies the weak-type check without
-        // changing runtime behaviour.
+    async noFlushPut(key, value) {
         const opts = { sync: false, keyEncoding: undefined };
-        await this.sublevel.put(key, convertUnknownToAny(value), opts);
+        await this.sublevel.put(key, value, opts);
     }
 
     /**
-     * Delete a value from the database using sync:false.
-     * Mirrors rawPut(): for use only in unification adapters.
-     * Callers must invoke rootDatabase._rawSync() once after all unification
-     * writes are complete to ensure durability.
+     * Delete a value with sync:false for bulk unification.
      * @param {TKey} key - The key to delete
      * @returns {Promise<void>}
      */
-    async rawDel(key) {
-        // Pass sync:false to avoid per-write fsyncs during bulk unification.
-        // See rawPut() for the keyEncoding:undefined weak-type-check workaround.
+    async noFlushDel(key) {
         const opts = { sync: false, keyEncoding: undefined };
         await this.sublevel.del(key, opts);
     }
@@ -147,20 +128,6 @@ class TypedDatabaseClass {
      */
     putOp(key, value) {
         return { sublevel: this.sublevel, type: "put", key, value };
-    }
-
-    /**
-     * Create a put operation for batch processing, accepting an untyped value.
-     * For use only in unification adapters where values originate from the same
-     * schema and are therefore the correct runtime type despite being typed as
-     * unknown at the call site.  Keeping this separate from putOp preserves
-     * the typed boundary for normal callers.
-     * @param {TKey} key - The key to store
-     * @param {unknown} value - The value to store (type guaranteed by caller's schema invariant)
-     * @returns {DatabasePutOperation<TValue, TKey>}
-     */
-    rawPutOp(key, value) {
-        return { sublevel: this.sublevel, type: "put", key, value: convertUnknownToAny(value) };
     }
 
     /**
@@ -193,18 +160,6 @@ class TypedDatabaseClass {
     async clear() {
         await this.sublevel.clear();
     }
-}
-
-/**
- * Narrow `unknown` to `any` so it can be passed to a generic typed sublevel put.
- * This is needed because rawPut intentionally accepts an untyped value from
- * unification adapters. The generic type system cannot express "pass unknown
- * through to TValue", so the narrow is explicit and localised.
- * @param {unknown} value
- * @returns {*}
- */
-function convertUnknownToAny(value) {
-    return value;
 }
 
 /**

@@ -35,6 +35,18 @@
 const { stringToNodeIdentifier } = require('../types');
 
 /**
+ * Narrow unknown to the typed value expected by the target sublevel.
+ * This conversion happens here, at the source of the unknown value (the
+ * unification adapter's readSource), not in typed_database.js which exposes the
+ * typed noFlushPut interface.
+ * @param {unknown} value
+ * @returns {*}
+ */
+function convertUnknownToStoredValue(value) {
+    return value;
+}
+
+/**
  * Read-only view of a single sublevel — the minimum interface required by the
  * source side of the DB→DB adapter.  Both GenericDatabase<T> and the
  * InMemorySchemaStorage sublevels satisfy this interface.
@@ -215,16 +227,16 @@ function makeDbToDbAdapter(source, target, options = {}) {
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') {
-                await target.global.rawPut(nodeKey, value);
+                await target.global.noFlushPut(nodeKey, convertUnknownToStoredValue(value));
                 return;
             }
             switch (sublevel) {
-                case 'values': await target.values.rawPut(stringToNodeIdentifier(nodeKey), value); return;
-                case 'freshness': await target.freshness.rawPut(stringToNodeIdentifier(nodeKey), value); return;
-                case 'inputs': await target.inputs.rawPut(stringToNodeIdentifier(nodeKey), value); return;
-                case 'revdeps': await target.revdeps.rawPut(stringToNodeIdentifier(nodeKey), value); return;
-                case 'counters': await target.counters.rawPut(stringToNodeIdentifier(nodeKey), value); return;
-                case 'timestamps': await target.timestamps.rawPut(stringToNodeIdentifier(nodeKey), value); return;
+                case 'values': await target.values.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'freshness': await target.freshness.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'inputs': await target.inputs.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'revdeps': await target.revdeps.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'counters': await target.counters.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'timestamps': await target.timestamps.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -232,16 +244,16 @@ function makeDbToDbAdapter(source, target, options = {}) {
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') {
-                await target.global.rawDel(nodeKey);
+                await target.global.noFlushDel(nodeKey);
                 return;
             }
             switch (sublevel) {
-                case 'values': await target.values.rawDel(stringToNodeIdentifier(nodeKey)); return;
-                case 'freshness': await target.freshness.rawDel(stringToNodeIdentifier(nodeKey)); return;
-                case 'inputs': await target.inputs.rawDel(stringToNodeIdentifier(nodeKey)); return;
-                case 'revdeps': await target.revdeps.rawDel(stringToNodeIdentifier(nodeKey)); return;
-                case 'counters': await target.counters.rawDel(stringToNodeIdentifier(nodeKey)); return;
-                case 'timestamps': await target.timestamps.rawDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'values': await target.values.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'freshness': await target.freshness.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'inputs': await target.inputs.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'revdeps': await target.revdeps.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'counters': await target.counters.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'timestamps': await target.timestamps.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -314,25 +326,17 @@ function makeInMemorySchemaStorage() {
             async put(/** @type {string} */ key, /** @type {unknown} */ value) {
                 store.set(String(key), value);
             },
-            // rawPut() is identical to put() at runtime — the distinction exists
-            // only at the JSDoc/type level so unification adapters can call it
-            // without the TValue constraint while normal callers keep the typed API.
-            async rawPut(/** @type {string} */ key, /** @type {unknown} */ value) {
+            async noFlushPut(/** @type {string} */ key, /** @type {unknown} */ value) {
                 store.set(String(key), value);
             },
             async del(/** @type {string} */ key) {
                 store.delete(String(key));
             },
-            // rawDel() is identical to del() at runtime — mirrors rawPut().
-            async rawDel(/** @type {string} */ key) {
+            async noFlushDel(/** @type {string} */ key) {
                 store.delete(String(key));
             },
             /** @returns {InMemoryPutOp} */
             putOp(/** @type {string} */ key, /** @type {unknown} */ value) {
-                return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
-            },
-            /** @returns {InMemoryPutOp} */
-            rawPutOp(/** @type {string} */ key, /** @type {unknown} */ value) {
                 return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
             },
             /** @returns {InMemoryDelOp} */

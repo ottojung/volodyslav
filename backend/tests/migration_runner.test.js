@@ -35,11 +35,10 @@ function makeInMemoryDb(table) {
     return {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
-        async rawPut(key, value) { store.set(key, value); },
+        async noFlushPut(key, value) { store.set(key, value); },
         async del(key) { store.delete(key); },
-        async rawDel(key) { store.delete(key); },
+        async noFlushDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
-        rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
         async *keys() {
             for (const key of [...store.keys()].sort()) yield key;
@@ -356,11 +355,11 @@ describe("runMigration", () => {
             let setCurrentReplicaPointerCalled = false;
             const yStorage = makeSchemaStorage();
 
-            // Intercept yStorage.global.rawPut to record when version is written.
-            const originalRawPut = yStorage.global.rawPut.bind(yStorage.global);
-            yStorage.global.rawPut = async (key, value) => {
+            // Intercept yStorage.global.noFlushPut to record when version is written.
+            const originalNoFlushPut = yStorage.global.noFlushPut.bind(yStorage.global);
+            yStorage.global.noFlushPut = async (key, value) => {
                 callOrder.push({ action: "globalRawPut", key: String(key), value });
-                return originalRawPut(key, value);
+                return originalNoFlushPut(key, value);
             };
 
             const rootDatabase = {
@@ -932,19 +931,19 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("rawPut() throws during unification into y: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
+    test("noFlushPut() throws during unification into y: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 99 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        // Build a yStorage whose rawPut throws on all sublevels
+        // Build a yStorage whose noFlushPut throws on all sublevels
         const yStorage = makeSchemaStorage();
         const writeError = new Error("write failure");
         for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
-            yStorage[name].rawPut = async () => { throw writeError; };
-            yStorage[name].rawDel = async () => { throw writeError; };
+            yStorage[name].noFlushPut = async () => { throw writeError; };
+            yStorage[name].noFlushDel = async () => { throw writeError; };
         }
 
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -958,18 +957,18 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("global.rawPut throws during version write: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
+    test("global.noFlushPut throws during version write: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 7 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        const globalWriteError = new Error("global rawPut failure");
+        const globalWriteError = new Error("global noFlushPut failure");
         const yStorage = makeSchemaStorage();
-        // Make yStorage.global.rawPut throw so the version write during unification fails.
-        yStorage.global.rawPut = async () => { throw globalWriteError; };
-        yStorage.global.rawDel = async () => { throw globalWriteError; };
+        // Make yStorage.global.noFlushPut throw so the version write during unification fails.
+        yStorage.global.noFlushPut = async () => { throw globalWriteError; };
+        yStorage.global.noFlushDel = async () => { throw globalWriteError; };
 
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
@@ -1302,7 +1301,7 @@ describe("infrastructure failures", () => {
         expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
     });
 
-    test("unification rawPut throws: error propagates, callback was run, setCurrentReplicaPointer not called", async () => {
+    test("unification noFlushPut throws: error propagates, callback was run, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -1311,8 +1310,8 @@ describe("infrastructure failures", () => {
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
         for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
-            yStorage[name].rawPut = async () => { throw unificationError; };
-            yStorage[name].rawDel = async () => { throw unificationError; };
+            yStorage[name].noFlushPut = async () => { throw unificationError; };
+            yStorage[name].noFlushDel = async () => { throw unificationError; };
         }
         const rootDatabase = {
             version: "2",
