@@ -32,7 +32,7 @@ const {
  * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} revdeps
  * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
- * @property {{ get(key: string): Promise<unknown> }} [global]
+ * @property {{ get(key: string): Promise<unknown> }} global
  * @property {(operations: import('./database/types').DatabaseBatchOperation[]) => Promise<void>} [batch]
  */
 
