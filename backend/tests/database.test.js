@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const {
+    IDENTIFIERS_KEY,
     getRootDatabase,
     isRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
@@ -533,7 +534,7 @@ describe('generators/database', () => {
                 await rawDb.open();
                 const xGlobal = rawDb.sublevel('x').sublevel('global', { valueEncoding: 'json' });
                 await xGlobal.put('version', '0.1.0');
-                await xGlobal.put('identifiers_keys_map', 'not-an-array');
+                await xGlobal.put(IDENTIFIERS_KEY, 'not-an-array');
                 await rawDb.close();
 
                 const error = await getRootDatabase(capabilities).catch(e => e);
@@ -574,7 +575,7 @@ describe('generators/database', () => {
 
                 const yStorage = db.schemaStorageForReplica('y');
                 await yStorage.global.put('version', db.version);
-                await yStorage.global.put('identifiers_keys_map', 12345);
+                await yStorage.global.put(IDENTIFIERS_KEY, 12345);
 
                 await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
                 expect(db.currentReplicaName()).toBe('x');
@@ -597,7 +598,7 @@ describe('generators/database', () => {
 
                 const yStorage = db.schemaStorageForReplica('y');
                 await yStorage.global.put('version', db.version);
-                await yStorage.global.put('identifiers_keys_map', [['aaaaaaaaa', 'bbbbbbbbb'], ['aaaaaaaaa', 'ccccccccc']]);
+                await yStorage.global.put(IDENTIFIERS_KEY, [['aaaaaaaaa', 'bbbbbbbbb'], ['aaaaaaaaa', 'ccccccccc']]);
 
                 await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
                 expect(db.currentReplicaName()).toBe('x');
@@ -705,6 +706,147 @@ describe('generators/database', () => {
                 }
 
                 expect(isSchemaBatchVersionError(thrownError)).toBe(true);
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe('concurrent replica cutover + operations', () => {
+        test('setCurrentReplicaPointer completes after in-flight operations', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // Populate y replica with data so the cutover target is valid.
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.batch([
+                    yStorage.values.putOp('nodeA', { result: 42 }),
+                ]);
+                await yStorage.global.put(IDENTIFIERS_KEY, []);
+
+                // Start an async operation that yields mid-way.
+                const operation = (async () => {
+                    const storage = db.getSchemaStorage();
+                    await storage.values.get('nodeA');
+                })();
+
+                // Trigger cutover while operation is in-flight.
+                await db.setCurrentReplicaPointer('y');
+
+                // The cutover should have completed (operations are reads,
+                // so exclusive mode waits for them to finish).
+                expect(db.currentReplicaName()).toBe('y');
+
+                // The in-flight operation's captured storage reference refers
+                // to the old replica — this is expected (see stale-reference
+                // warning on _computed). It should not crash.
+                await operation;
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('operations started after cutover use new replica', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // Write different data to x and y replicas.
+                const xStorage = db.schemaStorageForReplica('x');
+                await xStorage.batch([
+                    xStorage.values.putOp('data', { replica: 'x' }),
+                ]);
+
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.batch([
+                    yStorage.values.putOp('data', { replica: 'y' }),
+                    yStorage.global.putOp(IDENTIFIERS_KEY, []),
+                ]);
+
+                // Read from x (active).
+                let value = await db.getSchemaStorage().values.get('data');
+                expect(value).toEqual({ replica: 'x' });
+
+                // Cut over to y.
+                await db.setCurrentReplicaPointer('y');
+                expect(db.currentReplicaName()).toBe('y');
+
+                // Read again — should now see y's data.
+                value = await db.getSchemaStorage().values.get('data');
+                expect(value).toEqual({ replica: 'y' });
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('cutover with malformed identifier lookup leaves current replica unchanged', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // Populate y with a version but a malformed identifiers_keys_map.
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.batch([
+                    yStorage.values.putOp('node', { val: 1 }),
+                ]);
+                await yStorage.global.put(IDENTIFIERS_KEY, 12345);
+
+                // Start an operation, then try cutover — should fail.
+                const operation = db.getSchemaStorage().values.get('node');
+
+                await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
+                expect(db.currentReplicaName()).toBe('x');
+
+                await operation;
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('multiple cutovers toggling between replicas', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // Populate both replicas.
+                const xStorage = db.schemaStorageForReplica('x');
+                const yStorage = db.schemaStorageForReplica('y');
+
+                await xStorage.batch([xStorage.values.putOp('count', 1)]);
+                await xStorage.global.put(IDENTIFIERS_KEY, []);
+
+                await yStorage.batch([yStorage.values.putOp('count', 2)]);
+                await yStorage.global.put(IDENTIFIERS_KEY, []);
+
+                // Toggle x -> y.
+                await db.setCurrentReplicaPointer('y');
+                expect(db.currentReplicaName()).toBe('y');
+                let count = await db.getSchemaStorage().values.get('count');
+                expect(count).toEqual(2);
+
+                // Toggle y -> x.
+                await db.setCurrentReplicaPointer('x');
+                expect(db.currentReplicaName()).toBe('x');
+                count = await db.getSchemaStorage().values.get('count');
+                expect(count).toEqual(1);
+
+                // Toggle x -> y again (idempotent cutover).
+                await db.setCurrentReplicaPointer('y');
+                expect(db.currentReplicaName()).toBe('y');
+                count = await db.getSchemaStorage().values.get('count');
+                expect(count).toEqual(2);
+
                 await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);

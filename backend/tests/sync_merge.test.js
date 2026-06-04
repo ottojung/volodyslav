@@ -14,6 +14,7 @@
  */
 
 const {
+    IDENTIFIERS_KEY,
     getRootDatabase,
     isMalformedIdentifierLookupError,
     isMissingIdentifierLookupError,
@@ -87,7 +88,7 @@ async function writeNode(storage, nodeKey, modifiedAt, inputKeys, valuePayload) 
  * @returns {Promise<void>}
  */
 async function writeIdentifierLookup(storage, entries) {
-    await storage.global.put('identifiers_keys_map', serializeIdentifierLookup(makeIdentifierLookup(entries)));
+    await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(entries)));
 }
 
 /**
@@ -674,7 +675,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS2, [], remoteValue);
             const L = db.schemaStorageForReplica('x');
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
-            await H.global.put('identifiers_keys_map', 'not-an-array');
+            await H.global.put(IDENTIFIERS_KEY, 'not-an-array');
 
             let error;
             try {

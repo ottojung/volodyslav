@@ -42,6 +42,7 @@ const { isTopologicalSortCycleError } = require('./topo_sort');
 const { versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
+    IDENTIFIERS_KEY,
     makeEmptyIdentifierLookup,
     mergeIdentifierLookups,
     serializeIdentifierLookup,
@@ -224,7 +225,7 @@ async function assertHostVersionMatches(rootDatabase, hostname) {
  * @returns {Promise<IdentifierLookup>}
  */
 async function loadTargetLookup(targetStorage) {
-    const targetRawLookup = await targetStorage.global.get('identifiers_keys_map');
+    const targetRawLookup = await targetStorage.global.get(IDENTIFIERS_KEY);
     const targetVersion = await targetStorage.global.get('version');
     return targetRawLookup === undefined && targetVersion === undefined
         ? makeEmptyIdentifierLookup()
@@ -428,7 +429,7 @@ async function commitChangedMerge(
     mergeIdentifierLookups(targetLookup, hostLookup);
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(
-        'identifiers_keys_map',
+        IDENTIFIERS_KEY,
         serializeIdentifierLookup(targetLookup)
     ));
     await writer.flush();
@@ -466,7 +467,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     // Fail-fast: validate host metadata before expensive copy.
     const hostStorage = rootDatabase.hostnameSchemaStorage(hostname);
     const hostLookup = parseIdentifierLookup(
-        await hostStorage.global.get('identifiers_keys_map'),
+        await hostStorage.global.get(IDENTIFIERS_KEY),
         'staged host snapshot'
     );
 

@@ -70,6 +70,15 @@ const {
  * reloaded from disk (e.g. in-flight transaction state) must live outside this
  * struct so it is not lost on every pointer change.
  *
+ * **Stale-reference warning:** Callers must not capture sub-properties of an
+ * `ActiveReplicaComputed` (e.g. `_computed.schemaStorage`,
+ * `_computed.identifierLookup`) across `await` boundaries without holding the
+ * appropriate lock. A concurrent `setCurrentReplicaPointer` replaces
+ * `_computed` atomically, leaving any captured sub-property pointing at the old
+ * replica's state. Use `getSchemaStorage()` / `getActiveIdentifierLookup()` /
+ * `cloneActiveIdentifierLookup()` inside each async tick instead of storing
+ * references in local variables that cross `await`.
+ *
  * @typedef {object} ActiveReplicaComputed
  * @property {ReplicaName} replicaName
  * @property {SchemaSublevelType} namespaceSublevel
@@ -388,6 +397,10 @@ class RootDatabaseClass {
      * The caller must treat it as read-only; only `commitTransactionLookup`
      * (called inside `withComputedStateMutex` after a successful flush) may
      * mutate it.
+     *
+     * This reads `_computed` at call time, so it is safe to call across `await`
+     * boundaries. Do NOT capture the returned reference across `await` if a
+     * concurrent `setCurrentReplicaPointer` could replace `_computed`.
      * @returns {IdentifierLookup}
      */
     getActiveIdentifierLookup() {
@@ -577,6 +590,10 @@ class RootDatabaseClass {
     /**
      * Get the SchemaStorage for the currently active replica.
      * Reflects the currently cached active replica pointer.
+     *
+     * This reads `_computed` at call time — it is safe to call across `await`
+     * boundaries. Do NOT capture the returned reference across `await` if a
+     * concurrent `setCurrentReplicaPointer` could replace `_computed`.
      * @returns {SchemaStorage}
      */
     getSchemaStorage() {

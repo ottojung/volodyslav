@@ -318,6 +318,13 @@ function makeGraphStorage(rootDatabase, sleeper) {
          *
          * Reserved identifiers are managed by the caller (e.g. pullNode).
          *
+         * **Stale-reference note:** `getSchemaStorage()` and
+         * `getActiveIdentifierLookup()` are called at entry to re-acquire fresh
+         * references from `_computed`. Do NOT capture these references across
+         * `await` in calling code — a concurrent replica cutover
+         * (`setCurrentReplicaPointer`) replaces `_computed` and would leave your
+         * captured references pointing at the old replica.
+         *
          * @template T
          * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>} fn
          * @returns {Promise<T>}

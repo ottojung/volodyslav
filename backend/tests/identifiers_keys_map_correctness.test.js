@@ -17,15 +17,26 @@
  */
 
 const {
+    IdentifierLookupError,
+    isIdentifierLookupError,
+    isMalformedIdentifierLookupError,
+    isMissingIdentifierLookupError,
     makeIdentifierLookup,
     makeEmptyIdentifierLookup,
     makeTransactionIdentifierLookup,
+    MissingIdentifierLookupError,
     txAllocateNodeIdentifier,
     serializeTransactionLookup,
     commitTransactionLookup,
     nodeIdentifierFromString,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
+const {
+    parseIdentifierLookup,
+} = require('../src/generators/incremental_graph/database/sync_merge_identifier_lookup');
+const {
+    MalformedIdentifierLookupError,
+} = require('../src/generators/incremental_graph/database/replica_errors');
 
 /**
  * Create a minimal rootDatabase mock for txAllocateNodeIdentifier.
@@ -278,12 +289,86 @@ describe('commitTransactionLookup merges overlay into base', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Error conditions
+// 5. Error conditions — parseIdentifierLookup negative tests
 // ---------------------------------------------------------------------------
 
-describe('error conditions', () => {
-    test('stringToNodeIdentifier accepts a valid 9-character lowercase string', () => {
-        const { stringToNodeIdentifier } = require('../src/generators/incremental_graph/database');
-        expect(() => stringToNodeIdentifier('aaaaaaaaa')).not.toThrow();
+describe('parseIdentifierLookup negative tests', () => {
+    test('undefined rawEntries throws MissingIdentifierLookupError', () => {
+        expect(() => parseIdentifierLookup(undefined, 'test context'))
+            .toThrow(MissingIdentifierLookupError);
+    });
+
+    test('undefined rawEntries message includes context', () => {
+        let error;
+        try { parseIdentifierLookup(undefined, 'test context'); } catch (e) { error = e; }
+        expect(isMissingIdentifierLookupError(error)).toBe(true);
+        expect(String(error.message)).toContain('test context');
+    });
+
+    test('non-array rawEntries throws MalformedIdentifierLookupError', () => {
+        expect(() => parseIdentifierLookup(12345, 'test'))
+            .toThrow(MalformedIdentifierLookupError);
+    });
+
+    test('non-array rawEntries is caught by isMalformedIdentifierLookupError guard', () => {
+        let error;
+        try { parseIdentifierLookup('not-an-array', 'test'); } catch (e) { error = e; }
+        expect(isMalformedIdentifierLookupError(error)).toBe(true);
+    });
+
+    test('string rawEntries throws MalformedIdentifierLookupError', () => {
+        expect(() => parseIdentifierLookup('some-string', 'test'))
+            .toThrow(MalformedIdentifierLookupError);
+    });
+
+    test('null rawEntries throws MalformedIdentifierLookupError', () => {
+        expect(() => parseIdentifierLookup(null, 'test'))
+            .toThrow(MalformedIdentifierLookupError);
+    });
+
+    test('duplicate identifiers in entries throws IdentifierLookupError', () => {
+        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const keyA = stringToNodeKeyString('keyA');
+        const keyB = stringToNodeKeyString('keyB');
+        const entries = [[idA, keyA], [idA, keyB]];
+        expect(() => makeIdentifierLookup(entries)).toThrow(IdentifierLookupError);
+    });
+
+    test('duplicate identifiers error message mentions the identifier', () => {
+        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const keyA = stringToNodeKeyString('keyA');
+        const keyB = stringToNodeKeyString('keyB');
+        const entries = [[idA, keyA], [idA, keyB]];
+        let error;
+        try { makeIdentifierLookup(entries); } catch (e) { error = e; }
+        expect(isIdentifierLookupError(error)).toBe(true);
+        expect(String(error.message)).toContain('aaaaaaaaa');
+    });
+
+    test('duplicate keys in entries throws IdentifierLookupError', () => {
+        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idB = nodeIdentifierFromString('bbbbbbbbb');
+        const keyA = stringToNodeKeyString('keyA');
+        const entries = [[idA, keyA], [idB, keyA]];
+        expect(() => makeIdentifierLookup(entries)).toThrow(IdentifierLookupError);
+    });
+
+    test('duplicate keys error message mentions the key', () => {
+        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idB = nodeIdentifierFromString('bbbbbbbbb');
+        const keyA = stringToNodeKeyString('keyA');
+        const entries = [[idA, keyA], [idB, keyA]];
+        let error;
+        try { makeIdentifierLookup(entries); } catch (e) { error = e; }
+        expect(isIdentifierLookupError(error)).toBe(true);
+        expect(String(error.message)).toContain('keyA');
+    });
+
+    test('parseIdentifierLookup forwards duplicate-identifier error from makeIdentifierLookup', () => {
+        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const keyA = stringToNodeKeyString('keyA');
+        const keyB = stringToNodeKeyString('keyB');
+        expect(() => parseIdentifierLookup([[idA, keyA], [idA, keyB]], 'test'))
+            .toThrow(IdentifierLookupError);
     });
 });
