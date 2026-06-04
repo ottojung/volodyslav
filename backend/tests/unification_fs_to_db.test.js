@@ -91,12 +91,13 @@ describe('makeFsToDbAdapter', () => {
             const stats = await unifyStores(adapter);
 
             expect(stats.putCount).toBe(1);
-            expect(stats.deleteCount).toBe(0);
+            expect(stats.deleteCount).toBe(1);
             expect(stats.unchangedCount).toBe(0);
             expect(stats.sourceCount).toBe(1);
 
             const entries = await collectRawEntries(db);
             expect(entries.get(X_VALUES_KEY)).toEqual({ items: [] });
+            expect(entries.has('!x!!global!identifiers_keys_map')).toBe(false);
         } finally {
             await db.close();
         }
@@ -115,11 +116,12 @@ describe('makeFsToDbAdapter', () => {
             const adapter = makeFsToDbAdapter(capabilities, db, inputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.deleteCount).toBe(1);
+            expect(stats.deleteCount).toBe(2);
             expect(stats.putCount).toBe(0);
 
             const entries = await collectRawEntries(db);
             expect(entries.has(X_VALUES_KEY)).toBe(false);
+            expect(entries.has('!x!!global!identifiers_keys_map')).toBe(false);
         } finally {
             await db.close();
         }
@@ -143,7 +145,7 @@ describe('makeFsToDbAdapter', () => {
 
             expect(stats.unchangedCount).toBe(1);
             expect(stats.putCount).toBe(0);
-            expect(stats.deleteCount).toBe(0);
+            expect(stats.deleteCount).toBe(1);
         } finally {
             await db.close();
         }

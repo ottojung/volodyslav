@@ -35,6 +35,8 @@ const {
 function makeMockRootDatabase() {
     /** @type {Map<string, string>} */
     const pendingAllocations = new Map();
+    /** @type {Set<string>} */
+    const pendingAllocationIdentifiers = new Set();
     return {
         _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
             const existingIdStr = pendingAllocations.get(keyString);
@@ -49,12 +51,9 @@ function makeMockRootDatabase() {
                 const candidate = makeIdentifier(attempt);
                 const candidateStr = String(candidate);
                 if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
-                let idCollision = false;
-                for (const idStr of pendingAllocations.values()) {
-                    if (idStr === candidateStr) { idCollision = true; break; }
-                }
-                if (idCollision) continue;
+                if (pendingAllocationIdentifiers.has(candidateStr)) continue;
                 pendingAllocations.set(keyString, candidateStr);
+                pendingAllocationIdentifiers.add(candidateStr);
                 return { source: 'new', identifier: candidate };
             }
         },

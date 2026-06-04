@@ -415,6 +415,7 @@ describe('renderToFilesystem()', () => {
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
                 { relPath: '_meta/current_replica', content: JSON.stringify('x') },
+                { relPath: 'x/global/identifiers_keys_map', content: '[]' },
                 { relPath: 'x/values/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
         } finally {
@@ -642,8 +643,9 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const entries = await collectRawEntries(db);
 
         // scanned key is replaced; non-scanned sublevel key survives
-        expect(entries.size).toBe(2);
+        expect(entries.size).toBe(3);
         expect(entries.get('!_meta!current_replica')).toBe('x');
+        expect(entries.has('!x!!global!identifiers_keys_map')).toBe(true);
         expect(entries.has('!x!!values!{"head":"extra","args":[]}')).toBe(true);
 
         await db.close();
@@ -1258,7 +1260,7 @@ describe('additional reliability tests', () => {
             await db._rawPutAll(entries);
             expect(batchSpy).toHaveBeenCalledTimes(2);
             const storedEntries = await collectRawEntries(db);
-            expect(storedEntries.size).toBe(entriesCount + 1);
+            expect(storedEntries.size).toBe(entriesCount + 2);
             expect(
                 storedEntries.get(
                     `!x!!values!{"head":"event","args":["${entriesCount - 1}"]}`

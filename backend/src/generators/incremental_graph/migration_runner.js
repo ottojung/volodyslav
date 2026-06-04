@@ -143,7 +143,7 @@ function canonicalizeMigrationNodeKey(nodeKey) {
  */
 async function makeMigrationKeyPlan(prevStorage, materializedNodes, capabilities) {
     const persistedEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
-    if (Array.isArray(persistedEntries)) {
+    if (Array.isArray(persistedEntries) && persistedEntries.length > 0) {
         const lookup = makeIdentifierLookup(persistedEntries);
         /** @type {Map<string, NodeIdentifier>} */
         const decisionKeyByOutputKey = new Map();

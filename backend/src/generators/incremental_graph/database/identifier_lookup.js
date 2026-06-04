@@ -212,26 +212,28 @@ function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
 }
 
 /**
- * Merge two lookup snapshots by applying overlay mappings onto base.
- * Conflicting assignments throw `IdentifierLookupError` via `setIdentifierMapping`.
+ * Merge overlay mappings into base in-place. No clone is performed — the overlay
+ * entries are written directly into `base` via `setIdentifierMapping`.
+ *
+ * Conflicts are still caught by `setIdentifierMapping` (which throws
+ * on disagreement), but `assertNoIdentifierLookupConflicts` in the caller
+ * already guarantees no conflicts exist before this runs.
  *
  * Note: we intentionally do not add extra per-entry NodeIdentifier validation here,
  * because identifiers are already validated at construction boundaries and repeating
  * it on every merge would be wasted compute in a hot path.
  * @param {IdentifierLookup} base
  * @param {IdentifierLookup} overlay
- * @returns {IdentifierLookup}
+ * @returns {void}
  */
 function mergeIdentifierLookups(base, overlay) {
-    const merged = cloneIdentifierLookup(base);
     for (const [identifierString, nodeKey] of overlay.idToKey.entries()) {
         setIdentifierMapping(
-            merged,
+            base,
             nodeIdentifierFromString(identifierString),
             nodeKey
         );
     }
-    return merged;
 }
 
 /**

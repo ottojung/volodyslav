@@ -250,9 +250,11 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "empty repo checkpoint", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(capabilities, gitDir)).toBe(1);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual([]);
-            expect(allTrackedFiles(capabilities, gitDir)).toEqual([]);
+            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(allTrackedFiles(capabilities, gitDir)).toEqual([
+                `${DATABASE_SUBPATH}/r/global/identifiers_keys_map`,
+            ]);
         } finally {
             await db.close();
         }

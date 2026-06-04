@@ -425,11 +425,11 @@ async function commitChangedMerge(
     hostLookup,
     mergedInputsMap
 ) {
-    const mergedLookup = mergeIdentifierLookups(targetLookup, hostLookup);
+    mergeIdentifierLookups(targetLookup, hostLookup);
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(
         'identifiers_keys_map',
-        serializeIdentifierLookup(mergedLookup)
+        serializeIdentifierLookup(targetLookup)
     ));
     await writer.flush();
 

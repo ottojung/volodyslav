@@ -105,14 +105,16 @@ describe('makeDbToFsAdapter', () => {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.putCount).toBe(1);
+            expect(stats.putCount).toBe(2);
             expect(stats.deleteCount).toBe(0);
-            expect(stats.sourceCount).toBe(1);
+            expect(stats.sourceCount).toBe(2);
 
             const files = collectFiles(outputDir);
-            expect(files).toHaveLength(1);
-            expect(files[0].relPath).toBe(X_VALUES_REL);
-            expect(JSON.parse(files[0].content)).toEqual({ items: [] });
+            expect(files).toHaveLength(2);
+            expect(files[0].relPath).toBe('global/identifiers_keys_map');
+            expect(JSON.parse(files[0].content)).toEqual([]);
+            expect(files[1].relPath).toBe(X_VALUES_REL);
+            expect(JSON.parse(files[1].content)).toEqual({ items: [] });
         } finally {
             await db.close();
         }
@@ -134,8 +136,11 @@ describe('makeDbToFsAdapter', () => {
             const stats = await unifyStores(adapter);
 
             expect(stats.deleteCount).toBe(1);
-            expect(stats.putCount).toBe(0);
-            expect(collectFiles(outputDir)).toHaveLength(0);
+            expect(stats.putCount).toBe(1);
+            const afterFiles = collectFiles(outputDir);
+            expect(afterFiles).toHaveLength(1);
+            expect(afterFiles[0].relPath).toBe('global/identifiers_keys_map');
+            expect(JSON.parse(afterFiles[0].content)).toEqual([]);
         } finally {
             await db.close();
         }
@@ -159,8 +164,11 @@ describe('makeDbToFsAdapter', () => {
             const stats = await unifyStores(adapter);
 
             expect(stats.unchangedCount).toBe(1);
-            expect(stats.putCount).toBe(0);
+            expect(stats.putCount).toBe(1);
             expect(stats.deleteCount).toBe(0);
+            const afterFiles = collectFiles(outputDir);
+            expect(afterFiles).toHaveLength(2);
+            expect(afterFiles.find(f => f.relPath === 'global/identifiers_keys_map')).toBeTruthy();
         } finally {
             await db.close();
         }
@@ -182,9 +190,10 @@ describe('makeDbToFsAdapter', () => {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.putCount).toBe(1);
+            expect(stats.putCount).toBe(2);
             const files = collectFiles(outputDir);
-            expect(JSON.parse(files[0].content)).toEqual({ items: [1, 2, 3] });
+            expect(JSON.parse(files[0].content)).toEqual([]);
+            expect(JSON.parse(files[1].content)).toEqual({ items: [1, 2, 3] });
         } finally {
             await db.close();
         }
@@ -203,10 +212,12 @@ describe('makeDbToFsAdapter', () => {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.sourceCount).toBe(1); // only the 'x' entry, not _meta entries
+            expect(stats.sourceCount).toBe(2); // 'x' values entry + global identifiers_keys_map, not _meta entries
             const files = collectFiles(outputDir);
-            expect(files).toHaveLength(1);
-            expect(files[0].relPath).toBe(X_VALUES_REL);
+            expect(files).toHaveLength(2);
+            expect(files[0].relPath).toBe('global/identifiers_keys_map');
+            expect(JSON.parse(files[0].content)).toEqual([]);
+            expect(files[1].relPath).toBe(X_VALUES_REL);
         } finally {
             await db.close();
         }
@@ -226,7 +237,7 @@ describe('makeDbToFsAdapter', () => {
 
             expect(stats2.putCount).toBe(0);
             expect(stats2.deleteCount).toBe(0);
-            expect(stats2.unchangedCount).toBe(1);
+            expect(stats2.unchangedCount).toBe(2);
         } finally {
             await db.close();
         }

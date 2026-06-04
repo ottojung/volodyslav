@@ -532,6 +532,7 @@ describe('generators/database', () => {
                 );
                 await rawDb.open();
                 const xGlobal = rawDb.sublevel('x').sublevel('global', { valueEncoding: 'json' });
+                await xGlobal.put('version', '0.1.0');
                 await xGlobal.put('identifiers_keys_map', 'not-an-array');
                 await rawDb.close();
 
@@ -572,6 +573,7 @@ describe('generators/database', () => {
                 expect(db.currentReplicaName()).toBe('x');
 
                 const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.global.put('version', db.version);
                 await yStorage.global.put('identifiers_keys_map', 12345);
 
                 await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
@@ -594,6 +596,7 @@ describe('generators/database', () => {
                 expect(db.currentReplicaName()).toBe('x');
 
                 const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.global.put('version', db.version);
                 await yStorage.global.put('identifiers_keys_map', [['aaaaaaaaa', 'bbbbbbbbb'], ['aaaaaaaaa', 'ccccccccc']]);
 
                 await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();

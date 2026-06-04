@@ -165,6 +165,7 @@ describe("synchronizeNoLock", () => {
         await seedRemoteRepository(capabilities, [
                         [remoteKey, { source: "remote" }],
             ["!x!!global!version", "remote-version"],
+            ["!x!!global!identifiers_keys_map", []],
         ]);
 
         const db = await getRootDatabase(capabilities);

@@ -22,7 +22,7 @@ const {
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
 const { makeNodeIdentifier, nodeIdentifierToString, nodeIdentifierFromString } = require('./node_identifier');
-const { isValidNodeIdentifier } = require('./node_identifier');
+
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -180,47 +180,23 @@ function assertNeverReplicaName(name) {
  */
 
 /**
+ * Read the persisted identifier lookup from a replica's global sublevel.
+ * Missing or malformed records cause immediate hard failure — no fallback,
+ * no scanning, no self-healing.
+ *
  * @param {GlobalSublevelType} globalSublevel
  * @param {string} context
- * @param {SchemaStorage | undefined} schemaStorage
  * @returns {Promise<IdentifierLookup>}
  */
-async function loadIdentifierLookupFromGlobal(globalSublevel, context, schemaStorage = undefined) {
+async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
     const rawEntries = await globalSublevel.get(IDENTIFIERS_KEY);
     if (rawEntries === undefined) {
-        const version = await globalSublevel.get('version');
-        if (version !== undefined && schemaStorage !== undefined && await hasIdentifierNativeNodeData(schemaStorage)) {
-            throw new MissingIdentifierLookupError(context);
-        }
-        return makeEmptyIdentifierLookup();
+        throw new MissingIdentifierLookupError(context);
     }
     if (!Array.isArray(rawEntries)) {
         throw new MalformedIdentifierLookupError(rawEntries);
     }
     return makeIdentifierLookup(rawEntries);
-}
-
-/**
- * @param {SchemaStorage} schemaStorage
- * @returns {Promise<boolean>}
- */
-async function hasIdentifierNativeNodeData(schemaStorage) {
-    const databases = [
-        schemaStorage.values,
-        schemaStorage.freshness,
-        schemaStorage.inputs,
-        schemaStorage.revdeps,
-        schemaStorage.counters,
-        schemaStorage.timestamps,
-    ];
-    for (const database of databases) {
-        for await (const key of database.keys()) {
-            if (isValidNodeIdentifier(String(key))) {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 /**
@@ -352,6 +328,15 @@ class RootDatabaseClass {
     _pendingAllocations;
 
     /**
+      * Reverse map of _pendingAllocations: identifierString → keyString.
+      * Maintained alongside the forward map for O(1) collision checks during
+      * identifier reservation — never iterate _pendingAllocations.values().
+      * @private
+      * @type {Map<string, string>}
+      */
+    _pendingAllocationsById;
+
+    /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
      * @param {Version} version - The current application version
@@ -379,6 +364,7 @@ class RootDatabaseClass {
         // Pending allocations map: purely ephemeral, lives outside _computed
         // because it must not be reconstructed from a database snapshot.
         this._pendingAllocations = new Map();
+        this._pendingAllocationsById = new Map();
     }
 
     /**
@@ -472,14 +458,10 @@ class RootDatabaseClass {
             const candidateStr = nodeIdentifierToString(candidate);
 
             if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
-
-            let idCollision = false;
-            for (const idStr of this._pendingAllocations.values()) {
-                if (idStr === candidateStr) { idCollision = true; break; }
-            }
-            if (idCollision) continue;
+            if (this._pendingAllocationsById.has(candidateStr)) continue;
 
             this._pendingAllocations.set(keyString, candidateStr);
+            this._pendingAllocationsById.set(candidateStr, keyString);
             return { source: 'new', identifier: candidate };
         }
     }
@@ -492,8 +474,22 @@ class RootDatabaseClass {
      */
     _releaseAllocations(txLookup) {
         for (const keyString of txLookup.ownedKeys) {
+            const idStr = this._pendingAllocations.get(keyString);
             this._pendingAllocations.delete(keyString);
+            if (idStr !== undefined) {
+                this._pendingAllocationsById.delete(idStr);
+            }
         }
+    }
+
+    /**
+     * Write an empty identifiers_keys_map for a fresh replica.
+     * Used by makeRootDatabase to ensure loadIdentifierLookupFromGlobal
+     * never encounters a missing map.
+     * @returns {Promise<void>}
+     */
+    async writeEmptyIdentifierLookup() {
+        await this._computed.globalSublevel.put(IDENTIFIERS_KEY, []);
     }
 
     /**
@@ -502,8 +498,7 @@ class RootDatabaseClass {
     async initializeActiveIdentifierLookup() {
         this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(
             this._computed.globalSublevel,
-            `active replica '${this.currentReplicaName()}'`,
-            this._computed.schemaStorage
+            `active replica '${this.currentReplicaName()}'`
         );
     }
 
@@ -512,11 +507,9 @@ class RootDatabaseClass {
      * @returns {Promise<IdentifierLookup>}
      */
     async loadIdentifierLookupForReplica(name) {
-        const schemaStorage = this.schemaStorageForReplica(name);
         return loadIdentifierLookupFromGlobal(
             this.replicaGlobalSublevel(name),
-            `replica '${name}'`,
-            schemaStorage
+            `replica '${name}'`
         );
     }
 
@@ -556,11 +549,18 @@ class RootDatabaseClass {
             const namespaceSublevel = this.replicaNamespaceSublevel(name);
             const globalSublevel = this.replicaGlobalSublevel(name);
             const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
-            const identifierLookup = await loadIdentifierLookupFromGlobal(
-                globalSublevel,
-                `replica '${name}'`,
-                schemaStorage
-            );
+            const hasVersion = await globalSublevel.get('version');
+            let identifierLookup;
+            if (hasVersion === undefined) {
+                identifierLookup = makeEmptyIdentifierLookup();
+                // Write an empty map so makeRootDatabase will find it on next open.
+                await globalSublevel.put(IDENTIFIERS_KEY, []);
+            } else {
+                identifierLookup = await loadIdentifierLookupFromGlobal(
+                    globalSublevel,
+                    `replica '${name}'`
+                );
+            }
             await this._rootMetaSublevel.put('current_replica', name);
             this._computed = {
                 replicaName: name,
@@ -637,11 +637,7 @@ class RootDatabaseClass {
                 namespaceSublevel,
                 globalSublevel,
                 schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
-                identifierLookup: await loadIdentifierLookupFromGlobal(
-                    globalSublevel,
-                    `replica '${name}'`,
-                    buildSchemaStorage(namespaceSublevel, globalSublevel, this.version)
-                ),
+                identifierLookup: makeEmptyIdentifierLookup(),
             };
         }
     }
@@ -975,8 +971,19 @@ async function makeRootDatabase(capabilities, databasePath) {
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
     const storedReplica = await rootMetaSublevel.get('current_replica');
     if (storedReplica === undefined) {
-        await rootMetaSublevel.put('current_replica', 'x');
-        const rootDatabase = new RootDatabaseClass(db, version, 'x', capabilities.seed);
+        const replicaName = 'x';
+        await rootMetaSublevel.put('current_replica', replicaName);
+        const rootDatabase = new RootDatabaseClass(db, version, replicaName, capabilities.seed);
+        // Check whether the replica already has a version (i.e. was used
+        // before even though current_replica was missing). If it does, let
+        // the fail-fast in loadIdentifierLookupFromGlobal decide whether
+        // the identifiers_keys_map is valid. If it does not, write an empty
+        // map so a truly fresh database can start without crashing.
+        const hasVersion = await rootDatabase.getGlobalVersion();
+        if (hasVersion === undefined) {
+            await rootDatabase.writeEmptyIdentifierLookup();
+            return rootDatabase;
+        }
         await rootDatabase.initializeActiveIdentifierLookup();
         return rootDatabase;
     }
