@@ -205,7 +205,6 @@ class IncrementalGraphClass {
             tx.identifierLookup,
             concreteNode.output,
             () => this.rootDatabase.generateNodeIdentifier(),
-            undefined,
             (candidateString) => this.rootDatabase.reserveIdentifier(candidateString),
         );
 

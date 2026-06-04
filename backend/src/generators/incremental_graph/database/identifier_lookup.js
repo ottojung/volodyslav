@@ -233,19 +233,19 @@ function mergeIdentifierLookups(base, overlay) {
 /**
  * Allocate a fresh identifier for a node key, retrying on collisions.
  * If the key already has an identifier, the existing identifier is reused.
+ * Retries indefinitely until a collision-free identifier is produced.
  * @param {IdentifierLookup} lookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
- * @param {number} [maxAttempts]
  * @returns {NodeIdentifier}
  */
-function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = undefined) {
+function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier) {
     const existing = nodeKeyToIdFromLookup(lookup, nodeKey);
     if (existing !== undefined) {
         return existing;
     }
 
-    for (let attempt = 0; maxAttempts === undefined || attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; ; attempt++) {
         const candidate = makeIdentifier(attempt);
         const existingKey = nodeIdToKeyFromLookup(lookup, candidate);
         if (existingKey === undefined) {
@@ -253,8 +253,6 @@ function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier, maxAttempts = u
             return candidate;
         }
     }
-
-    throw new IdentifierAllocationError(nodeKeyStringToString(nodeKey));
 }
 
 /**
@@ -334,30 +332,29 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
 
 /**
  * Return the existing identifier for a node key, or allocate a new one and
- * record it in the overlay (never in the base).
+ * record it in the overlay (never in the base). Retries indefinitely until a
+ * collision-free identifier is produced.
  *
  * Collision detection checks both the overlay and the base so that newly
  * generated identifiers are guaranteed to be globally unique within this
  * transaction.
  *
- * When `tryReserve` is provided, it is called synchronously for each candidate
- * before committing to it. If `tryReserve` returns false the candidate is
- * skipped (used to avoid collisions with other concurrent transactions that
- * have reserved the same identifier in `inFlightIdentifiers`).
+ * The `tryReserve` callback is called synchronously for each candidate before
+ * committing to it. If `tryReserve` returns false the candidate is skipped
+ * (used to avoid collisions with other concurrent transactions that have
+ * reserved the same identifier in `inFlightIdentifiers`).
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
- * @param {number} [maxAttempts]
- * @param {(candidateString: string) => boolean} [tryReserve] - Synchronous callback that must return true to claim the identifier.
+ * @param {(candidateString: string) => boolean} tryReserve - Synchronous callback that must return true to claim the identifier.
  * @returns {NodeIdentifier}
  */
 function txAllocateNodeIdentifier(
     txLookup,
     nodeKey,
     makeIdentifier,
-    maxAttempts = undefined,
-    tryReserve = undefined,
+    tryReserve,
 ) {
     const existing = txNodeKeyToId(txLookup, nodeKey);
     if (existing !== undefined) {
@@ -365,20 +362,19 @@ function txAllocateNodeIdentifier(
     }
 
     const keyString = nodeKeyStringToString(nodeKey);
-    for (let attempt = 0; maxAttempts === undefined || attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; ; attempt++) {
         const candidate = makeIdentifier(attempt);
         const candidateString = nodeIdentifierToString(candidate);
         if (txNodeIdToKey(txLookup, candidate) !== undefined) {
             continue;
         }
-        if (tryReserve !== undefined && !tryReserve(candidateString)) {
+        if (!tryReserve(candidateString)) {
             continue;
         }
         txLookup.keyToId.set(keyString, candidate);
         txLookup.idToKey.set(candidateString, nodeKey);
         return candidate;
     }
-    throw new IdentifierAllocationError(keyString);
 }
 
 /**

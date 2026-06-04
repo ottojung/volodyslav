@@ -450,7 +450,6 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
         tx.identifierLookup,
         nodeKey,
         () => rootDatabase.generateNodeIdentifier(),
-        undefined,
         (candidateString) => rootDatabase.reserveIdentifier(candidateString),
     );
 }
