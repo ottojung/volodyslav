@@ -279,8 +279,12 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 yield 'version';
                 yield IDENTIFIERS_KEY;
             },
-            async get(_key) {
-                return newVersion;
+            async get(key) {
+                if (key === 'version') {
+                    return newVersion;
+                } else {
+                    return await prevStorage.global.get(key);
+                }
             },
         },
     };
