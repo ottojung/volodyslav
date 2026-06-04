@@ -112,7 +112,7 @@ class TypedDatabaseClass {
         // "use default encoding") and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.sublevel.put(key, passthrough(value), opts);
+        await this.sublevel.put(key, convertUnknownToAny(value), opts);
     }
 
     /**
@@ -160,7 +160,7 @@ class TypedDatabaseClass {
      * @returns {DatabasePutOperation<TValue, TKey>}
      */
     rawPutOp(key, value) {
-        return { sublevel: this.sublevel, type: "put", key, value: passthrough(value) };
+        return { sublevel: this.sublevel, type: "put", key, value: convertUnknownToAny(value) };
     }
 
     /**
@@ -196,10 +196,14 @@ class TypedDatabaseClass {
 }
 
 /**
- * @param {*} value
+ * Narrow `unknown` to `any` so it can be passed to a generic typed sublevel put.
+ * This is needed because rawPut intentionally accepts an untyped value from
+ * unification adapters. The generic type system cannot express "pass unknown
+ * through to TValue", so the narrow is explicit and localised.
+ * @param {unknown} value
  * @returns {*}
  */
-function passthrough(value) {
+function convertUnknownToAny(value) {
     return value;
 }
 

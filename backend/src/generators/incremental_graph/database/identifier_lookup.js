@@ -117,12 +117,15 @@ function makeIdentifierLookup(entries) {
 }
 
 /**
- * Clone the lookup through the persisted representation so validation stays centralized.
+ * Clone a lookup by direct Map iteration.
  * @param {IdentifierLookup} lookup
  * @returns {IdentifierLookup}
  */
 function cloneIdentifierLookup(lookup) {
-    return makeIdentifierLookup(serializeIdentifierLookup(lookup));
+    return {
+        keyToId: new Map(lookup.keyToId),
+        idToKey: new Map(lookup.idToKey),
+    };
 }
 
 /**

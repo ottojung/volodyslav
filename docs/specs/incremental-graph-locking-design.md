@@ -16,6 +16,11 @@ The target behavior is:
 3. `pull()` is exclusive with inspection reads.
 4. `pull()` is exclusive with other `pull()` calls on the same node.
 5. `pull()` calls on different nodes should not block each other.
+6. Migration and replica cutover suspend all graph activity (pulls,
+   invalidates, inspection reads).
+7. Transaction commits for the same replica are serialized (the commit
+   mutex is per-replica, not global, so commits to different replicas
+   proceed concurrently).
 
 ## Sleeper Primitives
 
@@ -97,10 +102,34 @@ No per-node mutex is needed.
 ### `pull(node)`
 
 1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "pull", ...)`.
-2. Acquire `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`.
-3. Pull dependencies and compute/write back the node value while holding both.
-4. Release the node mutex.
-5. Release the mode lock.
+2. Acquire `withMutex(PULL_NODE_KEY(nodeKeyString), ...)` (the per-node
+   mutex).
+3. Open a transaction (acquires `withCommitMutex` for the active replica).
+4. Pull dependencies and compute/write back the node value while holding
+   the graph-activity mode lock, the per-node mutex, and the commit mutex.
+5. Flush the batch and release the commit mutex.
+6. Release the per-node mutex.
+7. Release the graph-activity mode lock.
+
+The commit mutex is per-replica, so commits to different replicas never
+contend. Nested pulls (dependencies) reuse the same graph-activity mode
+("pull") but acquire their own per-node mutex for each dependency node.
+They reuse the callers's transaction (no new commit mutex acquisition).
+
+### `migration / replica cutover`
+
+1. Acquire `withMutex(MUTEX_KEY, ...)` (global exclusive key — serializes
+   exclusive operations with each other).
+2. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "exclusive", ...)` (waits
+   for all in-flight pulls, invalidates, and inspection reads to finish,
+   then blocks new ones from starting).
+3. Run the migration or cutover.
+4. Release the exclusive mode lock.
+5. Release `MUTEX_KEY`.
+
+The two-step acquisition (`MUTEX_KEY` → `GRAPH_ACTIVITY_KEY("exclusive")`)
+is deadlock-free because pull/observe operations only ever acquire
+`GRAPH_ACTIVITY_KEY`.
 
 The computor stays inside the pull critical section. This is safe because the
 critical section is no longer graph-global: other pulls may still proceed on
