@@ -16,6 +16,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     nodeIdentifierFromString,
+    nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { makeSemanticStorage } = require("./test_database_helper");
 const { toJsonKey } = require("./test_json_key_helper");
@@ -54,8 +55,8 @@ class InMemoryDatabase {
         this.version = 'test-version';
         this._identifierLookup = makeEmptyIdentifierLookup();
         this._identifierCounter = 0;
-        /** @type {Set<string>} */
-        this._inFlightIdentifiers = new Set();
+        /** @type {Map<string, string>} */
+        this._pendingAllocations = new Map();
     }
 
     currentReplicaName() { return 'x'; }
@@ -91,17 +92,32 @@ class InMemoryDatabase {
         return nodeIdentifierFromString(id);
     }
 
-    reserveIdentifier(identifierString) {
-        if (this._inFlightIdentifiers.has(identifierString)) {
-            return false;
+    _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
+        const existingIdStr = this._pendingAllocations.get(keyString);
+        if (existingIdStr !== undefined) {
+            return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
         }
-        this._inFlightIdentifiers.add(identifierString);
-        return true;
+        const committedId = committedLookup.keyToId.get(keyString);
+        if (committedId !== undefined) {
+            return { source: 'shared', identifier: committedId };
+        }
+        for (let attempt = 0; ; attempt++) {
+            const candidate = makeIdentifier(attempt);
+            const candidateStr = nodeIdentifierToString(candidate);
+            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
+            let idCollision = false;
+            for (const idStr of this._pendingAllocations.values()) {
+                if (idStr === candidateStr) { idCollision = true; break; }
+            }
+            if (idCollision) continue;
+            this._pendingAllocations.set(keyString, candidateStr);
+            return { source: 'new', identifier: candidate };
+        }
     }
 
-    releaseIdentifiers(identifierStrings) {
-        for (const id of identifierStrings) {
-            this._inFlightIdentifiers.delete(id);
+    _releaseAllocations(txLookup) {
+        for (const keyString of txLookup.ownedKeys) {
+            this._pendingAllocations.delete(keyString);
         }
     }
 

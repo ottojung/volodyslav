@@ -25,16 +25,41 @@ const {
     commitTransactionLookup,
     nodeIdentifierFromString,
     stringToNodeKeyString,
-
 } = require('../src/generators/incremental_graph/database');
 
 /**
- * Default tryReserve callback for isolated tests — always accepts the candidate.
- * @param {string} _candidateString
- * @returns {boolean}
+ * Create a minimal rootDatabase mock for txAllocateNodeIdentifier.
+ * Uses a simple deterministic identifier factory that yields fixed strings.
+ * @returns {import('../src/generators/incremental_graph/database').RootDatabase}
  */
-function acceptReservation(_candidateString) {
-    return true;
+function makeMockRootDatabase() {
+    /** @type {Map<string, string>} */
+    const pendingAllocations = new Map();
+    return {
+        _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
+            const existingIdStr = pendingAllocations.get(keyString);
+            if (existingIdStr !== undefined) {
+                return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
+            }
+            const committedId = committedLookup.keyToId.get(keyString);
+            if (committedId !== undefined) {
+                return { source: 'shared', identifier: committedId };
+            }
+            for (let attempt = 0; ; attempt++) {
+                const candidate = makeIdentifier(attempt);
+                const candidateStr = String(candidate);
+                if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
+                let idCollision = false;
+                for (const idStr of pendingAllocations.values()) {
+                    if (idStr === candidateStr) { idCollision = true; break; }
+                }
+                if (idCollision) continue;
+                pendingAllocations.set(keyString, candidateStr);
+                return { source: 'new', identifier: candidate };
+            }
+        },
+        _releaseAllocations(_txLookup) {},
+    };
 }
 
 /**
@@ -82,7 +107,7 @@ describe('serializeTransactionLookup includes both base and overlay entries', ()
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const keyB = stringToNodeKeyString('keyB');
-        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['bbbbbbbbb']), acceptReservation);
+        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['bbbbbbbbb']), makeMockRootDatabase());
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
         expect(result).toEqual([['bbbbbbbbb', 'keyB']]);
@@ -97,7 +122,7 @@ describe('serializeTransactionLookup includes both base and overlay entries', ()
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const keyB = stringToNodeKeyString('keyB');
-        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['bbbbbbbbb']), acceptReservation);
+        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['bbbbbbbbb']), makeMockRootDatabase());
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
         // Sorted ascending by identifier string.
@@ -115,7 +140,7 @@ describe('serializeTransactionLookup includes both base and overlay entries', ()
 
         // Allocate 'aaaaaaaaa' in the overlay — lexicographically before base entry.
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), acceptReservation);
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
         expect(result[0][0]).toBe('aaaaaaaaa');
@@ -134,7 +159,7 @@ describe('sequential commits accumulate all entries without loss', () => {
         // Transaction T1: allocate keyA → 'aaaaaaaaa'
         const tx1 = makeTransactionIdentifierLookup(base);
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['aaaaaaaaa']), acceptReservation);
+        txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
 
         // Simulate disk flush: serialize (verifies full state captured).
         const t1Serialized = toStringPairs(serializeTransactionLookup(tx1));
@@ -146,7 +171,7 @@ describe('sequential commits accumulate all entries without loss', () => {
         // Transaction T2: base now has keyA; allocate keyB → 'bbbbbbbbb'
         const tx2 = makeTransactionIdentifierLookup(base);
         const keyB = stringToNodeKeyString('keyB');
-        txAllocateNodeIdentifier(tx2, keyB, makeIdFactory(['bbbbbbbbb']), acceptReservation);
+        txAllocateNodeIdentifier(tx2, keyB, makeIdFactory(['bbbbbbbbb']), makeMockRootDatabase());
 
         // Serialize T2: must contain BOTH keyA (from base) AND keyB (new).
         const t2Serialized = toStringPairs(serializeTransactionLookup(tx2));
@@ -161,7 +186,7 @@ describe('sequential commits accumulate all entries without loss', () => {
         // Transaction T3: allocate keyC → 'ccccccccc'
         const tx3 = makeTransactionIdentifierLookup(base);
         const keyC = stringToNodeKeyString('keyC');
-        txAllocateNodeIdentifier(tx3, keyC, makeIdFactory(['ccccccccc']), acceptReservation);
+        txAllocateNodeIdentifier(tx3, keyC, makeIdFactory(['ccccccccc']), makeMockRootDatabase());
 
         const t3Serialized = toStringPairs(serializeTransactionLookup(tx3));
         expect(t3Serialized).toEqual([
@@ -175,12 +200,12 @@ describe('sequential commits accumulate all entries without loss', () => {
         const base = makeEmptyIdentifierLookup();
         const tx1 = makeTransactionIdentifierLookup(base);
         const keyA = stringToNodeKeyString('keyA');
-        const id1 = txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['aaaaaaaaa']), acceptReservation);
+        const id1 = txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
         commitTransactionLookup(tx1);
 
         // Second transaction: re-request the same key — must get the same identifier.
         const tx2 = makeTransactionIdentifierLookup(base);
-        const id2 = txAllocateNodeIdentifier(tx2, keyA, makeIdFactory(['zzzzzzzzz']), acceptReservation);
+        const id2 = txAllocateNodeIdentifier(tx2, keyA, makeIdFactory(['zzzzzzzzz']), makeMockRootDatabase());
         expect(String(id2)).toBe(String(id1));
     });
 });
@@ -198,21 +223,22 @@ describe('collision detection covers base and overlay simultaneously', () => {
 
         // First candidate 'aaaaaaaaa' collides with base; second 'bbbbbbbbb' is free.
         const keyB = stringToNodeKeyString('keyB');
-        const idB = txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa', 'bbbbbbbbb']), acceptReservation);
+        const idB = txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa', 'bbbbbbbbb']), makeMockRootDatabase());
         expect(String(idB)).toBe('bbbbbbbbb');
     });
 
     test('a candidate identifier already in the overlay triggers a retry', () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
+        const overlayMock = makeMockRootDatabase();
 
         // Allocate 'aaaaaaaaa' to keyA in the overlay.
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), acceptReservation);
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), overlayMock);
 
         // Now allocate keyB: first candidate 'aaaaaaaaa' collides with overlay.
         const keyB = stringToNodeKeyString('keyB');
-        const idB = txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa', 'bbbbbbbbb']), acceptReservation);
+        const idB = txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa', 'bbbbbbbbb']), overlayMock);
         expect(String(idB)).toBe('bbbbbbbbb');
     });
 });
@@ -227,7 +253,7 @@ describe('commitTransactionLookup merges overlay into base', () => {
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), acceptReservation);
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
 
         expect(base.keyToId.size).toBe(0); // base unchanged before commit
 

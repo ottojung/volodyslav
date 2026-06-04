@@ -23,23 +23,40 @@ const {
 function makeRootDatabase() {
     const generated = ["allocaaaa", "allocaaab", "allocaaac", "allocaaad"];
     let counter = 0;
-    /** @type {Set<string>} */
-    const inFlight = new Set();
+    /** @type {Map<string, string>} */
+    const pendingAllocations = new Map();
     return {
         generateNodeIdentifier() {
             const value = generated[counter] ?? "allocaaaz";
             counter += 1;
             return nodeIdentifierFromString(value);
         },
-        reserveIdentifier(candidateString) {
-            if (inFlight.has(candidateString)) {
-                return false;
+        _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
+            const existingIdStr = pendingAllocations.get(keyString);
+            if (existingIdStr !== undefined) {
+                return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
             }
-            inFlight.add(candidateString);
-            return true;
+            const committedId = committedLookup.keyToId.get(keyString);
+            if (committedId !== undefined) {
+                return { source: 'shared', identifier: committedId };
+            }
+            for (let attempt = 0; ; attempt++) {
+                const candidate = makeIdentifier(attempt);
+                const candidateStr = String(candidate);
+                if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
+                let idCollision = false;
+                for (const idStr of pendingAllocations.values()) {
+                    if (idStr === candidateStr) { idCollision = true; break; }
+                }
+                if (idCollision) continue;
+                pendingAllocations.set(keyString, candidateStr);
+                return { source: 'new', identifier: candidate };
+            }
         },
-        releaseIdentifiers(_identifierStrings) {
-            // No-op in test stub; identifiers are isolated per test.
+        _releaseAllocations(txLookup) {
+            for (const keyString of txLookup.ownedKeys) {
+                pendingAllocations.delete(keyString);
+            }
         },
     };
 }

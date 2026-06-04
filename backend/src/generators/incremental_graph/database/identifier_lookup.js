@@ -80,6 +80,7 @@ function isIdentifierAllocationError(object) {
  * @property {Map<string, NodeIdentifier>} keyToId - New allocations in this transaction only.
  * @property {Map<string, NodeKeyString>} idToKey  - New allocations in this transaction only (inverse).
  * @property {IdentifierLookup} base               - Read-only reference to the committed lookup.
+ * @property {Set<string>} ownedKeys              - Key strings for which this transaction is the 'new' source in _pendingAllocations.
  */
 
 /**
@@ -303,6 +304,7 @@ function makeTransactionIdentifierLookup(baseLookup) {
         keyToId: new Map(),
         idToKey: new Map(),
         base: baseLookup,
+        ownedKeys: new Set(),
     };
 }
 
@@ -332,29 +334,27 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
 
 /**
  * Return the existing identifier for a node key, or allocate a new one and
- * record it in the overlay (never in the base). Retries indefinitely until a
- * collision-free identifier is produced.
+ * record it in the overlay (never in the base).
  *
- * Collision detection checks both the overlay and the base so that newly
- * generated identifiers are guaranteed to be globally unique within this
- * transaction.
+ * Allocation is delegated to `rootDatabase._reserveKeyIdentifier` which
+ * atomically claims a key→identifier mapping on a shared `_pendingAllocations`
+ * map, making it impossible for two concurrent transactions to get different
+ * identifiers for the same key.
  *
- * The `tryReserve` callback is called synchronously for each candidate before
- * committing to it. If `tryReserve` returns false the candidate is skipped
- * (used to avoid collisions with other concurrent transactions that have
- * reserved the same identifier in `inFlightIdentifiers`).
+ * When `source === 'new'` the key is added to `txLookup.ownedKeys` so the
+ * transaction's finally block can release the reservation.
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
  * @param {(attempt: number) => NodeIdentifier} makeIdentifier
- * @param {(candidateString: string) => boolean} tryReserve - Synchronous callback that must return true to claim the identifier.
+ * @param {import('./root_database').RootDatabase} rootDatabase
  * @returns {NodeIdentifier}
  */
 function txAllocateNodeIdentifier(
     txLookup,
     nodeKey,
     makeIdentifier,
-    tryReserve,
+    rootDatabase,
 ) {
     const existing = txNodeKeyToId(txLookup, nodeKey);
     if (existing !== undefined) {
@@ -362,29 +362,29 @@ function txAllocateNodeIdentifier(
     }
 
     const keyString = nodeKeyStringToString(nodeKey);
-    for (let attempt = 0; ; attempt++) {
-        const candidate = makeIdentifier(attempt);
-        const candidateString = nodeIdentifierToString(candidate);
-        if (txNodeIdToKey(txLookup, candidate) !== undefined) {
-            continue;
-        }
-        if (!tryReserve(candidateString)) {
-            continue;
-        }
-        txLookup.keyToId.set(keyString, candidate);
-        txLookup.idToKey.set(candidateString, nodeKey);
-        return candidate;
+    const { source, identifier } = rootDatabase._reserveKeyIdentifier(
+        keyString,
+        makeIdentifier,
+        txLookup.base,
+    );
+
+    txLookup.keyToId.set(keyString, identifier);
+    txLookup.idToKey.set(nodeIdentifierToString(identifier), nodeKey);
+
+    if (source === 'new') {
+        txLookup.ownedKeys.add(keyString);
     }
+
+    return identifier;
 }
 
 /**
  * Serialize the combined (base + overlay) lookup into the sorted-array format
  * used for disk persistence.
  *
- * Base entries that are overridden by the overlay (same node key, different
- * identifier) are excluded so the result never contains duplicate node keys.
- * This prevents a data corruption scenario where two concurrent transactions
- * allocate different identifiers for the same node key.
+ * Conflicting key→identifier mappings are impossible because reservation is
+ * handled by the shared `_pendingAllocations` map, so no exclusion logic is
+ * needed — every overlay entry is guaranteed to match (or complement) the base.
  *
  * Call this **before** `commitTransactionLookup` so that the base is still
  * unmodified while serializing.
@@ -393,17 +393,7 @@ function txAllocateNodeIdentifier(
  * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
 function serializeTransactionLookup(txLookup) {
-    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
-    const entries = [];
-    const overriddenKeys = new Set();
-    for (const [keyString] of txLookup.keyToId) {
-        overriddenKeys.add(keyString);
-    }
-    for (const [idString, nodeKey] of txLookup.base.idToKey.entries()) {
-        if (!overriddenKeys.has(nodeKeyStringToString(nodeKey))) {
-            entries.push([nodeIdentifierFromString(idString), nodeKey]);
-        }
-    }
+    const entries = serializeIdentifierLookup(txLookup.base);
     for (const [idString, nodeKey] of txLookup.idToKey.entries()) {
         entries.push([nodeIdentifierFromString(idString), nodeKey]);
     }
@@ -421,15 +411,14 @@ function serializeTransactionLookup(txLookup) {
  * After this call the overlay is exhausted into the base and should not be
  * used again; the transaction object itself is discarded.
  *
+ * Conflicting mappings are impossible because the shared reservation map
+ * guarantees every key maps to exactly one identifier across all transactions.
+ *
  * @param {TransactionIdentifierLookup} txLookup
  * @returns {void}
  */
 function commitTransactionLookup(txLookup) {
     for (const [keyString, id] of txLookup.keyToId) {
-        const existingId = txLookup.base.keyToId.get(keyString);
-        if (existingId !== undefined && compareNodeIdentifier(existingId, id) !== 0) {
-            txLookup.base.idToKey.delete(nodeIdentifierToString(existingId));
-        }
         txLookup.base.keyToId.set(keyString, id);
     }
     for (const [idString, nodeKey] of txLookup.idToKey) {

@@ -392,16 +392,11 @@ function makeGraphStorage(rootDatabase, sleeper) {
 
                 return value;
             } finally {
-                // Release all identifiers allocated by this transaction from
-                // the shared in-flight set. After a successful commit the
-                // identifiers are in the base lookup and no longer need the
-                // reservation; after a failure they must be released so the
-                // pool does not leak.
-                const allocatedIds = [];
-                for (const idString of txLookup.idToKey.keys()) {
-                    allocatedIds.push(idString);
-                }
-                rootDatabase.releaseIdentifiers(allocatedIds);
+                // Release identifier reservations owned by this transaction.
+                // After a successful commit the identifiers are in the base
+                // lookup; after a failure they must be released so the map
+                // does not leak.
+                rootDatabase._releaseAllocations(txLookup);
             }
         },
         ensureMaterialized,
@@ -433,8 +428,9 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
- * Reservation via `rootDatabase.reserveIdentifier` prevents concurrent
- * transactions from selecting the same random identifier.
+ * Allocation coordination is handled by `rootDatabase._reserveKeyIdentifier`
+ * which atomically claims a key→identifier mapping on a shared
+ * `_pendingAllocations` map.
  *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
@@ -450,7 +446,7 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
         tx.identifierLookup,
         nodeKey,
         () => rootDatabase.generateNodeIdentifier(),
-        (candidateString) => rootDatabase.reserveIdentifier(candidateString),
+        rootDatabase,
     );
 }
 

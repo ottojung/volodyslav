@@ -21,7 +21,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { makeNodeIdentifier } = require('./node_identifier');
+const { makeNodeIdentifier, nodeIdentifierToString, nodeIdentifierFromString } = require('./node_identifier');
 const { isValidNodeIdentifier } = require('./node_identifier');
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -308,7 +308,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
  * `setCurrentReplicaPointer` and `clearReplicaStorage` rebuild `_computed`
  * from the on-disk state each time.
  *
- * Ephemeral, in-process-only state (such as `_inFlightIdentifiers` for
+ * Ephemeral, in-process-only state (such as `_pendingAllocations` for
  * concurrent identifier allocation) lives directly on the class, NOT inside
  * `_computed`, so it is never discarded on a pointer switch.
  */
@@ -341,14 +341,15 @@ class RootDatabaseClass {
     _computed;
 
     /**
-      * Identifiers that have been reserved by in-flight (not-yet-committed)
-      * transactions but are not yet in the committed `identifierLookup`.
+      * Key→identifier mappings that have been reserved by in-flight
+      * (not-yet-committed) transactions but are not yet in the committed
+      * `identifierLookup`.
       * Lives outside `_computed` because it is purely ephemeral — it must NOT
       * be reconstructed from a database snapshot.
       * @private
-      * @type {Set<string>}
+      * @type {Map<string, string>}
       */
-    _inFlightIdentifiers;
+    _pendingAllocations;
 
     /**
      * @constructor
@@ -375,9 +376,9 @@ class RootDatabaseClass {
             identifierLookup: makeEmptyIdentifierLookup(),
         };
 
-        // In-flight identifier set: purely ephemeral, lives outside _computed
+        // Pending allocations map: purely ephemeral, lives outside _computed
         // because it must not be reconstructed from a database snapshot.
-        this._inFlightIdentifiers = new Set();
+        this._pendingAllocations = new Map();
     }
 
     /**
@@ -439,30 +440,59 @@ class RootDatabaseClass {
     }
 
     /**
-     * Atomically reserve an identifier for the current transaction.
-     * Returns true if the identifier was successfully reserved (was not already
-     * in the set). Safe to call from within the allocation loop because it is
-     * synchronous (no await) — no concurrent task can interleave between the
-     * has-check and the add.
-     * @param {string} identifierString
-     * @returns {boolean}
+     * Atomically claim a key-to-identifier mapping for an in-flight transaction.
+     * Synchronous — no await between the read and write, so JavaScript's
+     * single-threaded execution guarantees atomicity.
+     *
+     * @param {string} keyString - Serialized node key string.
+     * @param {(attempt: number) => NodeIdentifier} makeIdentifier - Deterministic/synchronous identifier factory.
+     * @param {IdentifierLookup} committedLookup - The current committed lookup (for collision detection).
+     * @returns {{ source: 'new' | 'shared', identifier: NodeIdentifier }}
+     *
+     * Guarantees:
+     * - Every caller for the same keyString gets the same identifier (determined by the first caller).
+     * - The identifier is globally unique (not in committedLookup, not in any other pending allocation).
      */
-    reserveIdentifier(identifierString) {
-        if (this._inFlightIdentifiers.has(identifierString)) {
-            return false;
+    _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
+        const existingIdStr = this._pendingAllocations.get(keyString);
+        if (existingIdStr !== undefined) {
+            return {
+                source: 'shared',
+                identifier: nodeIdentifierFromString(existingIdStr),
+            };
         }
-        this._inFlightIdentifiers.add(identifierString);
-        return true;
+
+        const committedId = committedLookup.keyToId.get(keyString);
+        if (committedId !== undefined) {
+            return { source: 'shared', identifier: committedId };
+        }
+
+        for (let attempt = 0; ; attempt++) {
+            const candidate = makeIdentifier(attempt);
+            const candidateStr = nodeIdentifierToString(candidate);
+
+            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
+
+            let idCollision = false;
+            for (const idStr of this._pendingAllocations.values()) {
+                if (idStr === candidateStr) { idCollision = true; break; }
+            }
+            if (idCollision) continue;
+
+            this._pendingAllocations.set(keyString, candidateStr);
+            return { source: 'new', identifier: candidate };
+        }
     }
 
     /**
-     * Release a batch of identifiers after a transaction completes.
-     * @param {Iterable<string>} identifierStrings
+     * Release reservations for keys that this transaction owned.
+     * Called in the finally block after commit success or failure.
+     * @param {import('./identifier_lookup').TransactionIdentifierLookup} txLookup
      * @returns {void}
      */
-    releaseIdentifiers(identifierStrings) {
-        for (const id of identifierStrings) {
-            this._inFlightIdentifiers.delete(id);
+    _releaseAllocations(txLookup) {
+        for (const keyString of txLookup.ownedKeys) {
+            this._pendingAllocations.delete(keyString);
         }
     }
 
