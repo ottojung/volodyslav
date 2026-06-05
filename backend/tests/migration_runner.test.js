@@ -64,6 +64,25 @@ function makeSchemaStorage() {
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
+    // Tests use simplified mocks where the "NodeIdentifier" string is the same
+    // as the semantic node key JSON string. When identifiers_keys_map is not
+    // explicitly seeded, fall back to an identity mapping derived from the
+    // currently materialized inputs keys.
+    const originalGlobalGet = global.get.bind(global);
+    global.get = async (key) => {
+        if (key !== IDENTIFIERS_KEY) {
+            return await originalGlobalGet(key);
+        }
+        const stored = await originalGlobalGet(key);
+        if (stored !== undefined) return stored;
+
+        const out = [];
+        for await (const k of inputs.keys()) {
+            out.push([k, k]);
+        }
+        return out;
+    };
+
     return {
         values,
         freshness,

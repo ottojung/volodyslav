@@ -86,7 +86,7 @@ function resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, decisions) {
  */
 async function checkSchemaCompatibility(nodeKey, newHeadIndex, identifiersKeysIndex, decisions) {
     const parsed = resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, decisions);
-    if (parsed === undefined) return;
+    if (parsed === undefined) throw makeSchemaCompatibilityError(nodeKey, "cannot resolve node key via identifiers_keys_map (missing entry) or create decisions");
 
     const head = parsed.head;
     const arity = parsed.args.length;

@@ -547,6 +547,19 @@ describe("MigrationStorage", () => {
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
+        test("keep() fails hard when identifiers_keys_map cannot resolve node", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
+
+            // Force an empty identifiers_keys_map so schema compatibility cannot
+            // resolve semantic node keys for materialized nodes.
+            await storage.global.put(IDENTIFIERS_KEY, []);
+
+            const ms = await setupStandardGraph(storage, headIndex);
+            const err = await ms.keep(nk("A")).catch((e) => e);
+            expect(isSchemaCompatibility(err)).toBe(true);
+        });
+
         test("invalidate() on incompatible node throws SchemaCompatibilityError", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["B", "C", "D"]);

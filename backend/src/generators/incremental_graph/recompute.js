@@ -189,7 +189,15 @@ async function internalMaybeRecalculate(
         }
     }
 
-    // Create a pull callback bound to the current transaction.
+    // Create a pull callback that uses the parent transaction for dependency
+    // bookkeeping (identifier lookups + materialized dependency accumulator).
+    //
+    // Dynamic dependencies are obtained via nested pulls, and nested pulls
+    // run and commit independently (each nested pull has its own Transaction
+    // and persists its writes before the parent continues). Therefore this is
+    // not an atomic parent transaction boundary — it only provides access to
+    // the parent's transient dependency metadata.
+    //
     // Computors must use this callback for any dynamic dependencies rather
     // than calling the graph's public pull method (which would deadlock).
     /**

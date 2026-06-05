@@ -871,6 +871,43 @@ describe("Dynamic pull dependencies and dependency lock ordering", () => {
         await db.close();
     });
 
+    test("dynamic dependency persists even if parent computor throws", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        let leafComputations = 0;
+        const graph = makeIncrementalGraph(capabilities, db, [
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async () => {
+                    leafComputations += 1;
+                    return { value: 1 };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "root",
+                inputs: [],
+                computor: async (_inputs, _oldValue, _bindings, pull) => {
+                    await pull("leaf", []);
+                    throw new Error("parent failed");
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await expect(graph.pull("root")).rejects.toThrow("parent failed");
+
+        const leafResult = await graph.pull("leaf");
+        expect(leafResult).toEqual({ value: 1 });
+        expect(leafComputations).toBe(1);
+
+        await db.close();
+    });
+
     test("concurrent pulls with shared fresh dependencies in opposite input orders complete", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
