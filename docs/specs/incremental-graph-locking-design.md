@@ -144,63 +144,6 @@ other nodes, while invalidates and inspection reads are excluded.
 
 Both use `GRAPH_ACTIVITY_KEY` in mode `"observe"`, so they are compatible.
 
-#### Safety proof for concurrent invalidates
-
-Concurrent invalidates are safe despite the absence of per-node locks:
-
-1. **Per-TX batch isolation**: Each invalidation creates its own `Transaction`
-   with a private `batch` (own `puts`/`dels` maps + `operations` array).
-   Reads from one TX's batch (`batch.freshness.get`, `batch.inputs.get`,
-   `batch.counters.get`) follow a **read-your-writes** protocol: check own
-   `dels` → check own `puts` → fall through to live LevelDB
-   (`graph_state.js:172-182`). In-flight writes from another TX are
-   invisible because each TX has its own `puts`/`dels` maps. The fall-
-   through to live DB only sees fully committed state.
-
-2. **Freshness writes are idempotent**: `batch.freshness.put(id,
-   "potentially-outdated")` writes the same value regardless of how many
-   concurrent invalidates target the same node. Re-writing
-   `"potentially-outdated"` is harmless.
-
-3. **Revdep diff application is idempotent under commit-mutex ordering**:
-   Each TX collects its revdep diffs during the callback (outside the
-   commit mutex), then applies them under `withCommitMutex`
-   (`graph_state.js:352-382`). The commit mutex serializes flushes per
-   replica. The second committer's `batch.revdeps.get(removed)` falls
-   through to live DB and sees the first committer's writes (read-
-   committed). Since the revdep operations (`Set.add` / `Set.filter`)
-   are idempotent, the second committer's additional no-op writes
-   converge to the same state regardless of commit order.
-
-4. **Materialization writes are idempotent**:
-   `ensureMaterialized(id, inputs, counters)` writes an `inputs` record.
-   Two concurrent invalidators resolving the same input key produce the
-   same `inputs`/`counters` values (same key → same identifier via
-   `_pendingAllocations` coordination). Writing the same record twice
-   is idempotent.
-
-5. **Identifier allocation is event-loop atomic**: `_reserveKeyIdentifier`
-   (`root_database.js:455-480`) uses synchronous Map operations on shared
-   in-memory state (`_pendingAllocations`). There is no `await` between
-   the `_pendingAllocations.get(keyString)` check and the
-   `_pendingAllocations.set(keyString, ...)` claim, so JavaScript's
-   single-threaded event loop guarantees atomicity. Two concurrent TXs
-   resolving the same key always get the same identifier (first claimant
-   wins, second returns `source: 'shared'`).
-
-6. **Commit mutex serializes LevelDB flushes**: The `withCommitMutex` at
-   `graph_state.js:352` ensures only one TX flushes to LevelDB at a time
-   per replica. The flush writes all operations (`operations` array)
-   atomically via `namespaceSublevel.batch(operations)`. Combined with
-   points 1-5, the final state is indistinguishable from sequential
-   execution.
-
-7. **Dependency graph is a DAG**: `internalPropagateOutdated` walks the
-   revdep graph forward. Concurrent walks may traverse overlapping nodes,
-   but each operates on its own batch (per-TX isolation) and writes
-   idempotent values. The commit mutex serializes the final writes, and
-   the idempotency guarantees convergence.
-
 ### Invalidates with reads
 
 Both use `GRAPH_ACTIVITY_KEY` in mode `"observe"`, so they are compatible.
