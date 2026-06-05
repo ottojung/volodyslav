@@ -1709,10 +1709,10 @@ describe("IncrementalGraph concurrency", () => {
                     const result = await fn(tx);
                     enteredCount += 1;
                     if (enteredCount === 1) {
-                        // TX1 collected diffs, pause before commit mutex
+                        // TX1 collected diffs, pause before darkroom commit
                         await tx1AfterCallback.promise;
                     } else {
-                        // TX2 collected diffs, pause before commit mutex
+                        // TX2 collected diffs, pause before darkroom commit
                         await tx2AfterCallback.promise;
                     }
                     return result;

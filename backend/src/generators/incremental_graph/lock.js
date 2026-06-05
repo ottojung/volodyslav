@@ -44,7 +44,9 @@ const { makeUniqueFunctor } = require("../../unique_functor");
  */
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
-const COMMIT_KEY = makeUniqueFunctor("incremental-graph-commit");
+// Darkroom lock: serializes per-replica finalization where finished work
+// becomes part of the settled replica record.
+const DARKROOM_KEY = makeUniqueFunctor("incremental-graph-darkroom");
 const PULL_NODE_FUNCTOR = makeUniqueFunctor("incremental-graph-pull-node");
 
 
@@ -78,7 +80,7 @@ function nighttimeActivity(sleeper, procedure) {
  * allocate duplicate identifiers or overwrite each other's results.
  *
  * This mutex is acquired **inside** the nighttime phase and **outside**
- * the transaction commit mutex. The acquisition order is:
+ * the per-replica darkroom lock. The acquisition order is:
  *
  *   GRAPH_ACTIVITY_KEY("pull") → PULL_NODE_FUNCTOR(nodeKeyStr)
  *
@@ -99,14 +101,27 @@ function telescopeActivity(sleeper, nodeKeyStr, procedure) {
 }
 
 /**
+ * Darkroom activity:
+ *   the short per-replica finalization step where finished graph work becomes
+ *   part of the settled replica record.
+ *
+ * Observations may happen at many telescopes, but finished plates from the
+ * same observatory copy pass through one darkroom. The darkroom does not
+ * control whether the dome is in daytime, nighttime, or holiday mode; it only
+ * ensures that one replica's commit/publication step happens one transaction
+ * at a time.
+ *
+ * This lock is also used for commit-snapshot reads, so readers do not inspect
+ * a replica while a transaction is being developed into the settled record.
+ *
  * @template T
  * @param {SleepCapability} sleeper
  * @param {string} replicaName
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withCommitMutex(sleeper, replicaName, procedure) {
-    return sleeper.withMutex(COMMIT_KEY.instantiate([replicaName]), procedure);
+function darkroomActivity(sleeper, replicaName, procedure) {
+    return sleeper.withMutex(DARKROOM_KEY.instantiate([replicaName]), procedure);
 }
 
 /**
@@ -135,19 +150,10 @@ function holidayActivity(sleeper, procedure) {
     );
 }
 
-/**
- * Full observation activity: enter nighttime phase, then acquire the per-node
- * telescope mutex.
- * @template T
- * @param {SleepCapability} sleeper
- * @param {NodeKeyString} nodeKeyString
- * @param {() => Promise<T>} procedure
- * @returns {Promise<T>}
- */
 module.exports = {
     holidayActivity,
     daytimeActivity,
     nighttimeActivity,
     telescopeActivity,
-    withCommitMutex,
+    darkroomActivity,
 };

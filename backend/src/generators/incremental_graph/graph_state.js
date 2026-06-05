@@ -29,7 +29,7 @@ const {
     compareNodeIdentifier,
 } = require('./database');
 const {
-    withCommitMutex,
+    darkroomActivity,
 } = require('./lock');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -52,7 +52,7 @@ const {
 
 /**
  * A revdep diff records the old and new dependencies of a dependant node,
- * so the commit phase can compute the add/remove delta under the commit mutex.
+ * so the darkroom finalization phase can compute the add/remove delta.
  * @typedef {object} RevdepDiff
  * @property {NodeIdentifier} dependant - The node whose dependencies changed.
  * @property {NodeIdentifier[]} oldDependencies - Previously materialized dependency identifiers.
@@ -109,7 +109,7 @@ const {
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
- * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while commit publication is paused.
+ * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
  */
 
 /**
@@ -309,10 +309,10 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * - Creates an overlay-based TransactionIdentifierLookup backed by a direct
          *   (non-cloned) reference to the committed lookup, then creates a fresh
          *   batch accumulator. No full-copy clone is performed.
-         * - The operation callback runs WITHOUT the commit mutex.
-         * - The callback must return an object with optional `value` and `revdepDiffs`
-         *   fields. revdepDiffs are applied under the commit mutex where no per-input
-         *   lock is needed.
+          * - The operation callback runs WITHOUT the darkroom lock.
+          * - The callback must return an object with optional `value` and `revdepDiffs`
+          *   fields. revdepDiffs are applied under the darkroom lock where no per-input
+          *   lock is needed.
          * - At commit time batch is flushed to disk, then the identifier overlay is
          *   applied to the base in-place (disk-first ordering).
          *
@@ -349,7 +349,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 const value = result.value;
                 const revdepDiffs = result.revdepDiffs ?? [];
 
-                await withCommitMutex(sleeper, rootDatabase.currentReplicaName(), async () => {
+                await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
                     for (const diff of revdepDiffs) {
                         const { dependant, oldDependencies, newDependencies } = diff;
                         const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
@@ -419,7 +419,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
         getInputs,
         listMaterializedNodes,
         withCommitSnapshot(procedure) {
-            return withCommitMutex(sleeper, rootDatabase.currentReplicaName(), procedure);
+            return darkroomActivity(sleeper, rootDatabase.currentReplicaName(), procedure);
         },
     };
 }

@@ -238,7 +238,7 @@ async function internalMaybeRecalculate(
         );
     }
 
-    // Collect revdep diff — applied during commit phase under commit mutex
+    // Collect revdep diff — applied during darkroom finalization (per-replica)
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
     const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
     reportRevdepDiff({
