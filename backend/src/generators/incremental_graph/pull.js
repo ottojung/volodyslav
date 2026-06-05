@@ -14,9 +14,9 @@
  *
  * Async-boundary safety:
  * Every `await` in this module is protected by GRAPH_ACTIVITY_KEY held in
- * "pull" mode (acquired by withPullMode in internalSafePullWithStatus).
+ * nighttime observation phase (acquired by observationActivity).
  * This prevents any concurrent setCurrentReplicaPointer (which needs
- * withExclusiveMode on the same key).  GraphStorage getters
+ * with holidayActivity on the same key).  GraphStorage getters
  * (graph.storage.freshness, graph.storage.values, etc.) call
  * rootDatabase.getSchemaStorage() at each access, so property access chains
  * like `graph.storage.freshness.get(key)` always resolve against the
@@ -40,7 +40,7 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withPullMode, withPullNodeMutex } = require("./lock");
+const { observationActivity, telescopeActivity } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
@@ -67,15 +67,14 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @param {NodeKeyString} nodeKeyStr
  * @returns {Promise<RecomputeResult>}
  */
-async function pullNode(graph, nodeKeyStr) {
-    return withPullNodeMutex(graph.sleeper, String(nodeKeyStr), async () => {
-        const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
-        const compiledNode = graph.headIndex.get(nodeKey.head);
-        if (!compiledNode) {
-            throw makeInvalidNodeError(nodeKey.head);
-        }
-        checkArity(compiledNode, nodeKey.args);
-        const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
+async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
+    const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
+    const compiledNode = graph.headIndex.get(nodeKey.head);
+    if (!compiledNode) {
+        throw makeInvalidNodeError(nodeKey.head);
+    }
+    checkArity(compiledNode, nodeKey.args);
+    const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
 
         // Early freshness check against committed storage — no Transaction needed.
         // await sites below: graph.storage.freshness and .values are getters that
@@ -99,7 +98,7 @@ async function pullNode(graph, nodeKeyStr) {
         // withTransaction captures fresh schemaStorage + identifierLookup at
         // entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
         // Protected by GRAPH_ACTIVITY_KEY("pull") — replica cannot change.
-        const result = await graph.withTransaction(async (tx) => {
+    const result = await graph.withTransaction(async (tx) => {
             const nodeDefinition = await graph.resolveConcreteNode(
                 concreteNode,
                 tx,
@@ -145,8 +144,7 @@ async function pullNode(graph, nodeKeyStr) {
                 revdepDiffs,
             };
         });
-        return result;
-    });
+    return result;
 }
 
 /**
@@ -170,7 +168,7 @@ async function internalPull(graph, nodeName, bindings = []) {
  * @returns {Promise<ComputedValue>}
  */
 async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
-    const { value } = await pullNode(graph, nodeKeyStr);
+    const { value } = await telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr));
     return value;
 }
 
@@ -183,10 +181,8 @@ async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
  */
 async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
     ensureNodeNameIsHead(nodeName);
-    return withPullMode(graph.sleeper, () => {
-        const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-        return pullNode(graph, nodeKeyStr);
-    });
+    const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
+    return observationActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr));
 }
 
 /**
@@ -199,7 +195,7 @@ async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
 async function internalUnsafePull(graph, nodeName, bindings) {
     ensureNodeNameIsHead(nodeName);
     const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-    const { value } = await pullNode(graph, nodeKeyStr);
+    const { value } = await telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr));
     return value;
 }
 

@@ -17,8 +17,8 @@ const {
     versionToString,
 } = require('../src/generators/incremental_graph/database');
 const {
-    withPullMode,
-    withExclusiveMode,
+    observationActivity,
+    holidayActivity,
 } = require('../src/generators/incremental_graph/lock');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
@@ -857,7 +857,7 @@ describe('generators/database', () => {
             }
         });
 
-        test('pending allocations are released before replica switch proceeds under blocked exclusive mode', async () => {
+        test('pending allocations are released before replica switch proceeds under blocked holiday activity', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
@@ -882,7 +882,7 @@ describe('generators/database', () => {
                     heldSectionEntered = resolve;
                 });
 
-                const holdPullMode = withPullMode(capabilities.sleeper, async () => {
+                const holdPullMode = observationActivity(capabilities.sleeper, 'holdNode', async () => {
                     heldSectionEntered(undefined);
 
                     // Simulate identifier allocation as a transaction would.
@@ -906,10 +906,10 @@ describe('generators/database', () => {
 
                 await heldSectionEnteredPromise;
 
-                // Trigger replica switch under withExclusiveMode — blocked by
-                // held withPullMode (same GRAPH_ACTIVITY_KEY).
+                // Trigger replica switch under holidayActivity — blocked by
+                // held observationActivity (same GRAPH_ACTIVITY_KEY).
                 let switchCompleted = false;
-                const switchPromise = withExclusiveMode(
+                const switchPromise = holidayActivity(
                     capabilities.sleeper,
                     async () => {
                         await db.setCurrentReplicaPointer('y');
@@ -918,7 +918,7 @@ describe('generators/database', () => {
                     switchCompleted = true;
                 });
 
-                // Verify switch is blocked while pull mode is held.
+                // Verify switch is blocked while observationActivity is held.
                 await new Promise((resolve) => setTimeout(resolve, 20));
                 expect(switchCompleted).toBe(false);
                 expect(db.currentReplicaName()).toBe('x');

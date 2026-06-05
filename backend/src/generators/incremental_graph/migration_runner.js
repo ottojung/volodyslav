@@ -17,7 +17,7 @@ const {
     nodeIdentifierToString,
     stringToNodeIdentifier,
 } = require("./database");
-const { withExclusiveMode } = require("./lock");
+const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
@@ -356,7 +356,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
  * @returns {Promise<RootDatabase>}
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
-    return await withExclusiveMode(capabilities.sleeper, async () => {
+    return await holidayActivity(capabilities.sleeper, async () => {
         return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }

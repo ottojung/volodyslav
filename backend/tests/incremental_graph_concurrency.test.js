@@ -17,7 +17,7 @@ const {
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
 } = require("../src/generators/incremental_graph/database");
-const { withExclusiveMode, withPullMode, withObserveMode } = require("../src/generators/incremental_graph/lock");
+const { holidayActivity, observationActivity, daytimeActivity } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
 
 const testCapabilities = getMockedRootCapabilities();
@@ -905,7 +905,7 @@ describe("IncrementalGraph concurrency", () => {
         });
     });
 
-    describe("exclusive mode locking semantics", () => {
+    describe("cosmic observatory locking semantics", () => {
         /**
          * @template T
          * @returns {{ promise: Promise<T>, resolve: (value: T) => void }}
@@ -919,7 +919,7 @@ describe("IncrementalGraph concurrency", () => {
             return { promise, resolve };
         }
 
-        test("concurrent exclusive operations are serialized", async () => {
+        test("concurrent holiday operations are serialized", async () => {
             const capabilities = getMockedRootCapabilities();
             const sleeper = capabilities.sleeper;
 
@@ -927,7 +927,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseFirst = makeDeferred();
             const enteredFirst = makeDeferred();
 
-            const first = withExclusiveMode(sleeper, async () => {
+            const first = holidayActivity(sleeper, async () => {
                 trace.push("first-start");
                 enteredFirst.resolve(undefined);
                 await releaseFirst.promise;
@@ -937,7 +937,7 @@ describe("IncrementalGraph concurrency", () => {
             // Wait deterministically until the first operation has entered the exclusive section
             await enteredFirst.promise;
 
-            const second = withExclusiveMode(sleeper, async () => {
+            const second = holidayActivity(sleeper, async () => {
                 trace.push("second-start");
                 trace.push("second-end");
             });
@@ -953,14 +953,14 @@ describe("IncrementalGraph concurrency", () => {
             ]);
         });
 
-        test("exclusive mode blocks concurrent pulls", async () => {
+        test("holiday blocks concurrent observations", async () => {
             const capabilities = getMockedRootCapabilities();
             const sleeper = capabilities.sleeper;
 
             const releaseExclusive = makeDeferred();
             const exclusiveEntered = makeDeferred();
 
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = holidayActivity(sleeper, async () => {
                 exclusiveEntered.resolve(undefined);
                 await releaseExclusive.promise;
             });
@@ -973,7 +973,7 @@ describe("IncrementalGraph concurrency", () => {
                 pullEnteredResolved = true;
             });
 
-            const pull = withPullMode(sleeper, async () => {
+            const pull = observationActivity(sleeper, "P", async () => {
                 pullEntered.resolve(undefined);
             });
 
@@ -987,14 +987,14 @@ describe("IncrementalGraph concurrency", () => {
             expect(pullEnteredResolved).toBe(true);
         });
 
-        test("exclusive mode blocks concurrent observe operations", async () => {
+        test("holiday blocks concurrent daytime activity", async () => {
             const capabilities = getMockedRootCapabilities();
             const sleeper = capabilities.sleeper;
 
             const releaseExclusive = makeDeferred();
             const exclusiveEntered = makeDeferred();
 
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = holidayActivity(sleeper, async () => {
                 exclusiveEntered.resolve(undefined);
                 await releaseExclusive.promise;
             });
@@ -1007,7 +1007,7 @@ describe("IncrementalGraph concurrency", () => {
                 observeEnteredResolved = true;
             });
 
-            const observe = withObserveMode(sleeper, async () => {
+            const observe = daytimeActivity(sleeper, async () => {
                 observeEntered.resolve(undefined);
             });
 
@@ -1021,14 +1021,14 @@ describe("IncrementalGraph concurrency", () => {
             expect(observeEnteredResolved).toBe(true);
         });
 
-        test("pull blocks a pending exclusive operation", async () => {
+        test("observation blocks a pending holiday operation", async () => {
             const capabilities = getMockedRootCapabilities();
             const sleeper = capabilities.sleeper;
 
             const releasePull = makeDeferred();
             const pullEntered = makeDeferred();
 
-            const pull = withPullMode(sleeper, async () => {
+            const pull = observationActivity(sleeper, "P", async () => {
                 pullEntered.resolve(undefined);
                 await releasePull.promise;
             });
@@ -1036,7 +1036,7 @@ describe("IncrementalGraph concurrency", () => {
             await pullEntered.promise;
 
             let exclusiveDone = false;
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = holidayActivity(sleeper, async () => {
                 exclusiveDone = true;
             });
 
@@ -1050,14 +1050,14 @@ describe("IncrementalGraph concurrency", () => {
             expect(exclusiveDone).toBe(true);
         });
 
-        test("observe blocks a pending exclusive operation", async () => {
+        test("daytime activity blocks a pending holiday operation", async () => {
             const capabilities = getMockedRootCapabilities();
             const sleeper = capabilities.sleeper;
 
             const releaseObserve = makeDeferred();
             const observeEntered = makeDeferred();
 
-            const observe = withObserveMode(sleeper, async () => {
+            const observe = daytimeActivity(sleeper, async () => {
                 observeEntered.resolve(undefined);
                 await releaseObserve.promise;
             });
@@ -1065,7 +1065,7 @@ describe("IncrementalGraph concurrency", () => {
             await observeEntered.promise;
 
             let exclusiveDone = false;
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = holidayActivity(sleeper, async () => {
                 exclusiveDone = true;
             });
 
@@ -1079,14 +1079,14 @@ describe("IncrementalGraph concurrency", () => {
             expect(exclusiveDone).toBe(true);
         });
 
-        test("exclusive blocks multiple queued pulls", async () => {
+        test("holiday blocks multiple queued observations", async () => {
             const capabilities = getMockedRootCapabilities();
             const sleeper = capabilities.sleeper;
 
             const releaseExclusive = makeDeferred();
             const exclusiveEntered = makeDeferred();
 
-            const exclusive = withExclusiveMode(sleeper, async () => {
+            const exclusive = holidayActivity(sleeper, async () => {
                 exclusiveEntered.resolve(undefined);
                 await releaseExclusive.promise;
             });
@@ -1094,10 +1094,10 @@ describe("IncrementalGraph concurrency", () => {
             await exclusiveEntered.promise;
 
             const trace = [];
-            const pull1 = withPullMode(sleeper, async () => {
+            const pull1 = observationActivity(sleeper, "A", async () => {
                 trace.push("pull1");
             });
-            const pull2 = withPullMode(sleeper, async () => {
+            const pull2 = observationActivity(sleeper, "B", async () => {
                 trace.push("pull2");
             });
 
@@ -1110,6 +1110,202 @@ describe("IncrementalGraph concurrency", () => {
             await Promise.all([pull1, pull2]);
             // Both pulls ran after exclusive released
             expect(trace.sort()).toEqual(["pull1", "pull2"]);
+        });
+    });
+
+    describe("cosmic observatory model enforcement", () => {
+        /**
+         * @returns {{ promise: Promise<unknown>, resolve: (value: unknown) => void }}
+         */
+        function makeDeferred() {
+            let resolve = () => undefined;
+            const promise = new Promise((resolveCallback) => {
+                resolve = resolveCallback;
+            });
+            return { promise, resolve };
+        }
+
+        test("daytime + daytime => allowed", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
+            let enteredSecondResolved = false;
+
+            const first = daytimeActivity(sleeper, async () => {
+                enteredFirst.resolve(undefined);
+                await releaseFirst.promise;
+            });
+            await enteredFirst.promise;
+
+            const second = daytimeActivity(sleeper, async () => {
+                enteredSecondResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredSecondResolved).toBe(true);
+
+            releaseFirst.resolve(undefined);
+            await Promise.all([first, second]);
+        });
+
+        test("daytime + observation => blocked", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseDay = makeDeferred();
+            const enteredDay = makeDeferred();
+            let enteredNightResolved = false;
+
+            const day = daytimeActivity(sleeper, async () => {
+                enteredDay.resolve(undefined);
+                await releaseDay.promise;
+            });
+            await enteredDay.promise;
+
+            const night = observationActivity(sleeper, "N", async () => {
+                enteredNightResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredNightResolved).toBe(false);
+
+            releaseDay.resolve(undefined);
+            await day;
+            await night;
+            expect(enteredNightResolved).toBe(true);
+        });
+
+        test("observation(A) + observation(A) => blocked", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
+            let enteredSecondResolved = false;
+
+            const first = observationActivity(sleeper, "A", async () => {
+                enteredFirst.resolve(undefined);
+                await releaseFirst.promise;
+            });
+            await enteredFirst.promise;
+
+            const second = observationActivity(sleeper, "A", async () => {
+                enteredSecondResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredSecondResolved).toBe(false);
+
+            releaseFirst.resolve(undefined);
+            await Promise.all([first, second]);
+            expect(enteredSecondResolved).toBe(true);
+        });
+
+        test("observation(A) + observation(B) => allowed", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
+            let enteredSecondResolved = false;
+
+            const first = observationActivity(sleeper, "A", async () => {
+                enteredFirst.resolve(undefined);
+                await releaseFirst.promise;
+            });
+            await enteredFirst.promise;
+
+            const second = observationActivity(sleeper, "B", async () => {
+                enteredSecondResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredSecondResolved).toBe(true);
+
+            releaseFirst.resolve(undefined);
+            await Promise.all([first, second]);
+        });
+
+        test("holiday + daytime => blocked", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseHoliday = makeDeferred();
+            const enteredHoliday = makeDeferred();
+            let enteredDayResolved = false;
+
+            const holiday = holidayActivity(sleeper, async () => {
+                enteredHoliday.resolve(undefined);
+                await releaseHoliday.promise;
+            });
+            await enteredHoliday.promise;
+
+            const day = daytimeActivity(sleeper, async () => {
+                enteredDayResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredDayResolved).toBe(false);
+
+            releaseHoliday.resolve(undefined);
+            await holiday;
+            await day;
+            expect(enteredDayResolved).toBe(true);
+        });
+
+        test("holiday + observation => blocked", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseHoliday = makeDeferred();
+            const enteredHoliday = makeDeferred();
+            let enteredNightResolved = false;
+
+            const holiday = holidayActivity(sleeper, async () => {
+                enteredHoliday.resolve(undefined);
+                await releaseHoliday.promise;
+            });
+            await enteredHoliday.promise;
+
+            const night = observationActivity(sleeper, "N", async () => {
+                enteredNightResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredNightResolved).toBe(false);
+
+            releaseHoliday.resolve(undefined);
+            await holiday;
+            await night;
+            expect(enteredNightResolved).toBe(true);
+        });
+
+        test("holiday + holiday => serialized", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const sleeper = capabilities.sleeper;
+
+            const releaseFirst = makeDeferred();
+            const enteredFirst = makeDeferred();
+            let enteredSecondResolved = false;
+
+            const first = holidayActivity(sleeper, async () => {
+                enteredFirst.resolve(undefined);
+                await releaseFirst.promise;
+            });
+            await enteredFirst.promise;
+
+            const second = holidayActivity(sleeper, async () => {
+                enteredSecondResolved = true;
+            });
+
+            await Promise.resolve();
+            expect(enteredSecondResolved).toBe(false);
+
+            releaseFirst.resolve(undefined);
+            await Promise.all([first, second]);
+            expect(enteredSecondResolved).toBe(true);
         });
     });
 

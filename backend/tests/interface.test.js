@@ -197,7 +197,7 @@ describe("generators/interface", () => {
             });
 
             // Intercept invalidate() to create a controlled pause: after invalidate
-            // completes (releasing observe mode), we signal that the race window is open,
+            // completes (releasing daytime activity), we signal that the race window is open,
             // then wait before returning so the test can inject a concurrent sync.
             const graph = iface._incrementalGraph;
             const originalInvalidate = graph.invalidate.bind(graph);
@@ -213,11 +213,11 @@ describe("generators/interface", () => {
             // Start update() — it will block inside our patched invalidate().
             const updatePromise = iface.update([makeEvent("event-1", "concurrent")]);
 
-            // Wait until invalidate has finished (observe mode released).
+            // Wait until invalidate has finished (daytime activity released).
             await invalidateDone;
 
             // Start synchronizeDatabase() NOW — this is the race: sync can acquire
-            // exclusive mode (since observe mode is released) and set _incrementalGraph
+            // holiday activity (since daytime activity is released) and set _incrementalGraph
             // to null before update() reaches pull().
             // With the fix (MUTEX_KEY held by update()), sync is blocked here.
             const syncPromise = iface.synchronizeDatabase();

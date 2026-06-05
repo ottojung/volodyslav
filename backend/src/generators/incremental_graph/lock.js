@@ -1,16 +1,46 @@
+/**
+ * Think of a cosmic observatory.
+ *
+ * During the day, people may walk around the dome. They may inspect
+ * instruments, update notebooks, and mark old observations as stale.
+ *
+ * During the night, the dome is dark and observations begin. Many telescopes
+ * may work at once, but each telescope may only perform one observation at a
+ * time.
+ *
+ * During a holiday, the observatory is closed. Nobody enters the dome.
+ *
+ * This is the locking model of the incremental graph.
+ */
+
 const { makeUniqueFunctor } = require("../../unique_functor");
+
+/**
+ * Daytime activity:
+ *   getValue()
+ *   getFreshness()
+ *   listMaterializedNodes()
+ *   invalidate()
+ *
+ * Nighttime activity:
+ *   pull()
+ *
+ * Holiday activity:
+ *   migrate()
+ *   cut over replica
+ *
+ * Telescope use:
+ *   one concrete node being pulled
+ */
+
 /**
  * Mutex key for serializing *exclusive* incremental-graph operations with
  * respect to each other (for example, database opens or migrations).
  *
- * Acquiring this key alone does *not* exclude pull/observe activity; it only
- * ensures that two exclusive callers do not run concurrently. To fully
- * exclude all graph activity (pulls, observes, and other exclusive work),
- * use {@link withExclusiveMode}, which combines this key with
- * GRAPH_ACTIVITY_KEY in "exclusive" mode.
- *
- * Regular pull/invalidate/inspection paths should use GRAPH_ACTIVITY_KEY
- * mode locking instead (see withObserveMode/withPullMode).
+ * Acquiring this key alone does *not* exclude pull/daytime activity; it only
+ * ensures that two exclusive callers do not run concurrently. To fully exclude
+ * all graph activity, use {@link holidayActivity}, which combines this key
+ * with GRAPH_ACTIVITY_KEY in "exclusive" mode.
  */
 const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
 const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
@@ -19,6 +49,7 @@ const PULL_NODE_FUNCTOR = makeUniqueFunctor("incremental-graph-pull-node");
 
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
  * Executes a procedure while holding the global incremental-graph mutex
@@ -28,7 +59,7 @@ const PULL_NODE_FUNCTOR = makeUniqueFunctor("incremental-graph-pull-node");
  * This helper only serializes callers that explicitly opt into using
  * `MUTEX_KEY`; it does *not* by itself block pull/observe activity. For a
  * higher-level primitive that prevents all concurrent graph activity (pulls,
- * observes, and other exclusive operations), use {@link withExclusiveMode}.
+ * daytime reads/invalidations, and other exclusive operations), use {@link holidayActivity}.
  *
  * @template T
  * @param {SleepCapability} sleeper - The sleeper capability used to acquire the mutex lock.
@@ -45,7 +76,8 @@ function withMutex(sleeper, procedure) {
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withObserveMode(sleeper, procedure) {
+function daytimeActivity(sleeper, procedure) {
+    // Mode "observe" is daytime/inspection/invalidate.
     return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "observe", procedure);
 }
 
@@ -55,7 +87,8 @@ function withObserveMode(sleeper, procedure) {
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withPullMode(sleeper, procedure) {
+function duringNighttime(sleeper, procedure) {
+    // Mode "pull" is nighttime/pull.
     return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "pull", procedure);
 }
 
@@ -63,7 +96,7 @@ function withPullMode(sleeper, procedure) {
  * Serialize same-node pulls so concurrent calls on the same node do not
  * allocate duplicate identifiers or overwrite each other's results.
  *
- * This mutex is acquired **inside** the `withPullMode` scope and **outside**
+ * This mutex is acquired **inside** the nighttime phase and **outside**
  * the transaction commit mutex. The acquisition order is:
  *
  *   GRAPH_ACTIVITY_KEY("pull") → PULL_NODE_FUNCTOR(nodeKeyStr)
@@ -74,12 +107,14 @@ function withPullMode(sleeper, procedure) {
  *
  * @template T
  * @param {SleepCapability} sleeper
- * @param {string} nodeKeyStr - Serialized node key string identifying the concrete node.
+ * @param {NodeKeyString} nodeKeyStr - Serialized node key string identifying the concrete node.
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
-    return sleeper.withMutex(PULL_NODE_FUNCTOR.instantiate([nodeKeyStr]), procedure);
+function telescopeActivity(sleeper, nodeKeyStr, procedure) {
+    // Per-node exclusive telescope use.
+    // Caller must already be in nighttime mode to satisfy lock ordering.
+    return sleeper.withMutex(PULL_NODE_FUNCTOR.instantiate([String(nodeKeyStr)]), procedure);
 }
 
 /**
@@ -111,17 +146,34 @@ function withCommitMutex(sleeper, replicaName, procedure) {
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withExclusiveMode(sleeper, procedure) {
+function holidayActivity(sleeper, procedure) {
+    // Holiday is globally exclusive: it blocks daytime and nighttime.
+    // Acquisition order: MUTEX_KEY -> GRAPH_ACTIVITY_KEY("exclusive").
     return sleeper.withMutex(MUTEX_KEY, () =>
         sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "exclusive", procedure)
     );
 }
 
+/**
+ * Full observation activity: enter nighttime phase, then acquire the per-node
+ * telescope mutex.
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {NodeKeyString} nodeKeyString
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function observationActivity(sleeper, nodeKeyString, procedure) {
+    return duringNighttime(sleeper, () =>
+        telescopeActivity(sleeper, nodeKeyString, procedure)
+    );
+}
+
 module.exports = {
     withMutex,
-    withExclusiveMode,
-    withObserveMode,
-    withPullMode,
-    withPullNodeMutex,
+    holidayActivity,
+    daytimeActivity,
+    observationActivity,
+    telescopeActivity,
     withCommitMutex,
 };

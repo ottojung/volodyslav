@@ -21,7 +21,7 @@
 
 const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withObserveMode } = require("./lock");
+const { daytimeActivity } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { lookupNodeIdentifier } = require("./graph_state");
 
@@ -127,7 +127,7 @@ async function internalInvalidate(
     nodeName,
     bindings = []
 ) {
-    return withObserveMode(incrementalGraph.sleeper, () =>
+    return daytimeActivity(incrementalGraph.sleeper, () =>
         internalUnsafeInvalidate(incrementalGraph, nodeName, bindings)
     );
 }

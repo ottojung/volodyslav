@@ -23,7 +23,7 @@ const {
     getRootDatabase,
     runMigrationUnsafe,
     synchronizeNoLock,
-    withExclusiveMode,
+    holidayActivity,
     migrationCallback,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
@@ -55,7 +55,7 @@ async function internalEnsureInitialized(interfaceInstance) {
         return;
     }
     const capabilities = interfaceInstance._getCapabilities();
-    await withExclusiveMode(capabilities.sleeper, async () => {
+    await holidayActivity(capabilities.sleeper, async () => {
         const liveDbPath = path.join(
             capabilities.environment.workingDirectory(),
             LIVE_DATABASE_WORKING_PATH
@@ -259,7 +259,7 @@ async function internalEnsureInitializedWithMigration(
  * @param {{ resetToHostname?: string }} [options]
  */
 async function internalSynchronizeDatabase(interfaceInstance, options) {
-    await withExclusiveMode(interfaceInstance._getCapabilities().sleeper, async () => {
+            await holidayActivity(interfaceInstance._getCapabilities().sleeper, async () => {
         await internalSynchronizeDatabaseNoLock(interfaceInstance, options);
     });
 }
