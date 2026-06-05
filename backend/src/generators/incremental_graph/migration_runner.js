@@ -152,9 +152,10 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredRevdeps
  * @param {import('./database/types').Version} newVersion
+ * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
@@ -298,7 +299,10 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create") continue;
+                    if (decision.kind === "create" || decision.kind === "override") {
+                        yield outputKey;
+                        continue;
+                    }
                     const ts = await prevStorage.timestamps.get(outputKey);
                     if (ts !== undefined) yield outputKey;
                 }
@@ -306,7 +310,16 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return undefined;
+                if (decision.kind === "create") {
+                    const nowIso = datetime.now().toISOString();
+                    return { createdAt: nowIso, modifiedAt: nowIso };
+                }
+                if (decision.kind === "override") {
+                    const old = await prevStorage.timestamps.get(key);
+                    const nowIso = datetime.now().toISOString();
+                    const createdAt = old !== undefined ? old.createdAt : nowIso;
+                    return { createdAt, modifiedAt: nowIso };
+                }
                 return await prevStorage.timestamps.get(key);
             },
         },
@@ -461,6 +474,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 decisions,
                 desiredRevdeps,
                 currentVersion,
+                capabilities.datetime,
             );
 
             // Gently unify the desired state into the target replica.
