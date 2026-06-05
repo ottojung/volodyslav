@@ -14,6 +14,8 @@ const {
     nodeKeyToIdFromLookup,
     nodeIdentifierFromString,
     nodeIdentifierToString,
+    IDENTIFIERS_KEY,
+    makeIdentifierLookup,
 } = require("../src/generators/incremental_graph/database");
 const { withExclusiveMode, withPullMode, withObserveMode } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
@@ -1672,6 +1674,67 @@ describe("IncrementalGraph concurrency", () => {
             // After both commit, dep should be "potentially-outdated"
             const result = await graph.pull("dep");
             expect(result.value).toBe(2);
+        });
+
+        test("serializeTransactionLookup deduplicates shared allocations from concurrent transactions", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Never pull "source" so its identifier hasn't been allocated yet.
+            // Two concurrent invalidates will both try to allocate the same output
+            // key via resolveConcreteNode → txAllocateNodeIdentifier.
+            //
+            // TX1 gets source: 'new' and claims the identifier in _pendingAllocations.
+            // TX2 gets source: 'shared' with the same identifier and stores it in its overlay.
+            // When TX2 commits second, serializeTransactionLookup serializes the base
+            // (which TX1 already updated via commitTransactionLookup) and then appends
+            // TX2's overlay — producing duplicate entries WITHOUT the fix.
+
+            const afterTx1Commit = makeDeferred();
+            let txCommitted = 0;
+
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (fn) => {
+                const result = await originalWithTransaction(fn);
+                txCommitted += 1;
+                if (txCommitted === 1) {
+                    // TX1 has committed and commitTransactionLookup updated the base.
+                    // Pause here so TX2's serializeTransactionLookup runs after base is dirty.
+                    await afterTx1Commit.promise;
+                }
+                return result;
+            };
+
+            const invalidate1 = graph.invalidate("source");
+            const invalidate2 = graph.invalidate("source");
+
+            // Release TX1 to commit first, then TX2
+            afterTx1Commit.resolve(undefined);
+
+            await Promise.all([invalidate1, invalidate2]);
+
+            // Read the persisted identifiers_keys_map
+            const schemaStorage = db.getSchemaStorage();
+            const persisted = await schemaStorage.global.get(IDENTIFIERS_KEY);
+
+            // makeIdentifierLookup throws IdentifierLookupError on duplicates
+            // This would crash if serializeTransactionLookup produced duplicates
+            expect(() => makeIdentifierLookup(persisted)).not.toThrow();
+
+            // Verify the lookup contains exactly one mapping for "source"
+            const lookup = makeIdentifierLookup(persisted);
+            const sourceKey = JSON.stringify({ head: "source", args: [] });
+            expect(lookup.keyToId.has(sourceKey)).toBe(true);
         });
     });
 });

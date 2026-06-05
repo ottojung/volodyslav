@@ -387,9 +387,11 @@ function txAllocateNodeIdentifier(
  * Serialize the combined (base + overlay) lookup into the sorted-array format
  * used for disk persistence.
  *
- * Conflicting key→identifier mappings are impossible because reservation is
- * handled by the shared `_pendingAllocations` map, so no exclusion logic is
- * needed — every overlay entry is guaranteed to match (or complement) the base.
+ * Overlay entries that are already present in the base are skipped — this
+ * prevents duplicate entries when a concurrent transaction committed the same
+ * shared allocation between the base being read and this transaction committing.
+ * The shared `_pendingAllocations` reservation guarantees that any overlaid
+ * identifier maps to the same nodeKey as the base entry, so skipping is safe.
  *
  * Call this **before** `commitTransactionLookup` so that the base is still
  * unmodified while serializing.
@@ -400,6 +402,12 @@ function txAllocateNodeIdentifier(
 function serializeTransactionLookup(txLookup) {
     const entries = serializeIdentifierLookup(txLookup.base);
     for (const [idString, nodeKey] of txLookup.idToKey.entries()) {
+        // Skip entries already committed to the base by another transaction
+        // (shared allocations from concurrent transactions). If the base already
+        // has this identifier it maps to the same nodeKey (guaranteed by the
+        // shared _pendingAllocations reservation), so duplicating it would
+        // produce a corrupt persisted array that makeIdentifierLookup rejects.
+        if (txLookup.base.idToKey.has(idString)) continue;
         entries.push([nodeIdentifierFromString(idString), nodeKey]);
     }
     entries.sort(([leftIdentifier], [rightIdentifier]) =>
