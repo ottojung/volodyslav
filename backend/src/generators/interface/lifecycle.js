@@ -259,7 +259,7 @@ async function internalEnsureInitializedWithMigration(
  * @param {{ resetToHostname?: string }} [options]
  */
 async function internalSynchronizeDatabase(interfaceInstance, options) {
-            await holidayActivity(interfaceInstance._getCapabilities().sleeper, async () => {
+    await holidayActivity(interfaceInstance._getCapabilities().sleeper, async () => {
         await internalSynchronizeDatabaseNoLock(interfaceInstance, options);
     });
 }
