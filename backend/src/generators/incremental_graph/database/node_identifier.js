@@ -10,7 +10,7 @@ const {
  * without any additional escaping layer.
  *
  * All identifiers are generated internally by `makeNodeIdentifier()` and are
- * never parsed from user input or external sources.  Therefore there is no
+ * never parsed from user input.  Therefore there is no
  * runtime validation of identifier strings — the pattern defined here exists
  * only as a specification / documentation constraint.
  */
