@@ -147,28 +147,32 @@ batch accumulator.
 
 `commitTransaction(tx)` implements the disk-first ordering described in the next section.
 
-### Nested pulls and explicit context propagation
+### Nested pulls and independent commits
 
-When computing a node's value, the computor may pull additional dependencies. These nested pulls
-**reuse the current transaction** — they must not create a new transaction or a new batch (their
-writes must be part of the same atomic commit). They also must not acquire locks in a way that
-violates the implementation's lock-ordering rules.
+When computing a node's value, the computor may pull additional dependencies. Each nested pull
+**creates its own Transaction** — it does not share a batch with the parent pull. Every nested
+pull submits its batch independently as soon as it finishes, before the parent continues.
 
-Reuse is achieved by passing the transaction as an explicit argument all the way through the call
-stack. There is no ambient context, no global variable, and no `async_hooks`. The computor
-receives a `pull` callback that is already bound to the current transaction:
+This ensures that a dependency's writes are committed to disk even if a later parent computor
+fails. It also means that each pull is self-contained: the identifier allocations, value writes,
+and metadata changes from one pull are never entangled with another.
+
+Each pull must be internally idempotent. Since a dependency's pull commits independently before
+the parent, a failure in the parent does not roll back the already-committed dependency.
+
+The computor receives a `pull` callback that may be used for dynamic dependencies:
 
 ```
 computor(inputValues, oldValue, bindings, pull)
     pull — (nodeName, bindings?) => Promise<ComputedValue>
-           Calls into the graph using the current transaction.
+           Calls into the graph.
            The computor must use this function for any dynamic dependencies.
-           It must not call the graph's public pull method.
+           It must not call the graph's public pull method (which would deadlock).
 ```
 
-A top-level pull creates a transaction and calls `pullInTransaction(nodeKey, tx)`. A nested pull
-is exactly the same call, same function, same transaction. There is no structural difference
-between the two paths.
+A top-level pull creates a transaction and calls `pullNode(nodeKey)`. A nested pull does the
+same: it calls `pullNode(nodeKey)` which creates its own fresh transaction. There is no structural
+difference between the two paths — both create independent transactions.
 
 ---
 
@@ -271,8 +275,8 @@ graph_state.js    Volatile state (_computed): mutex management, transaction
                   Depends only on database/.
 
 pull.js           Pull algorithm: resolve node keys, check freshness, recompute
-                  if needed, propagate dependency writes. Accepts a transaction
-                  explicitly; never acquires the mutex itself.
+                  if needed, propagate dependency writes. Creates its own
+                  Transaction for each pull; never acquires the mutex itself.
                   Depends on graph_state.js and database/.
 
 invalidate.js     Invalidation algorithm: mark nodes potentially-outdated and
@@ -360,12 +364,12 @@ After a cutover to replica R, `_computed.identifierLookup` contains exactly the 
 assert that `_computed.identifierLookup` matches replica B's lookup exactly and contains no replica
 A entries.
 
-### P9 — Nested pulls share the same atomic commit
+### P9 — Nested pulls submit independent batches
 
-If an outer pull for node X causes an inner pull for node Y (a dependency), then Y's identifier
-allocation and X's node data appear in the same LevelDB batch commit, and both are written to disk
-before either appears in `_computed.identifierLookup`.
+When an outer pull for node X causes an inner pull for node Y (a dependency), the inner pull
+creates its own Transaction and submits its batch independently. Y's writes are fully committed
+to disk before X's computor runs with Y's value.
 
-*Verification:* use a test graph where X depends on Y (both unseen); instrument the LevelDB batch
-to capture which keys are written in each batch; assert that Y's identifier entry and X's node
-data appear in the same batch, and that the volatile lookup is updated only after the flush.
+*Verification:* use a test graph where X depends on Y (both unseen); inline a spy in the
+LevelDB batch flush for the inner pull and assert that Y's data (identifier, value, counters,
+timestamps) is written in its own batch commit, separate from X's batch.

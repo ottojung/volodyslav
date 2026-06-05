@@ -10,7 +10,7 @@
  * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
  * - commitTransaction(tx) flushes batch then updates _computed.identifierLookup
  *
- * In the new design, Transaction is minimal — only batch and identifierLookup.
+ * Transaction is minimal — only batch and identifierLookup.
  * Each pull call creates its own Transaction; revdep diffs and reserved
  * identifiers are managed by the caller (pullNode, invalidate), not by the
  * Transaction itself.

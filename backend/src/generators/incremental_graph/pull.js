@@ -1,9 +1,14 @@
 /**
  * Pull operations for IncrementalGraph.
  *
- * Each pull creates its own Transaction — no shared Transaction context
- * between top-level and nested pulls. The old cross-transaction dedup
- * cache (nodePulls) and importSharedResolution are removed.
+ * Each pull creates its own Transaction and submits its batch independently.
+ * Top-level pulls and nested dependency pulls are structurally identical —
+ * every call to pullNode creates a fresh Transaction with its own batch.
+ * There is no shared Transaction context between caller and callee.
+ *
+ * Each nested pull commits its results as soon as it finishes, before the
+ * parent continues. This means a dependency's writes are visible on disk
+ * even if a later parent computor fails.
  *
  * pull() always returns ComputedValue (not RecomputeResult).
  */
@@ -41,7 +46,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
 /**
  * Core pull implementation for a node by its serialized key.
- * Always creates its own Transaction — no shared Transaction context.
+ * Creates its own Transaction and submits its batch independently.
  *
  * Returns RecomputeResult for internal use; public pull() extracts the value.
  *
