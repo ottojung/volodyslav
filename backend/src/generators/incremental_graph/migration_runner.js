@@ -172,14 +172,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
      */
     async function buildDecisionsMap(prevStorage, decisions) {
         const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
-        if (!Array.isArray(oldEntries)) return [];
 
         /** @type {Map<string, string>} */
         const idToKey = new Map();
-        for (const [id, nodeKeyJson] of oldEntries) {
-            const decision = decisions.get(stringToNodeIdentifier(id));
-            if (!decision || decision.kind !== "delete") {
-                idToKey.set(String(id), String(nodeKeyJson));
+        if (Array.isArray(oldEntries)) {
+            for (const [id, nodeKeyJson] of oldEntries) {
+                const decision = decisions.get(stringToNodeIdentifier(id));
+                if (!decision || decision.kind !== "delete") {
+                    idToKey.set(String(id), String(nodeKeyJson));
+                }
             }
         }
 
@@ -299,7 +300,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create" || decision.kind === "override") {
+                    if (decision.kind === "create") {
                         yield outputKey;
                         continue;
                     }
@@ -313,12 +314,6 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 if (decision.kind === "create") {
                     const nowIso = datetime.now().toISOString();
                     return { createdAt: nowIso, modifiedAt: nowIso };
-                }
-                if (decision.kind === "override") {
-                    const old = await prevStorage.timestamps.get(key);
-                    const nowIso = datetime.now().toISOString();
-                    const createdAt = old !== undefined ? old.createdAt : nowIso;
-                    return { createdAt, modifiedAt: nowIso };
                 }
                 return await prevStorage.timestamps.get(key);
             },
