@@ -26,7 +26,7 @@ const { withMutex } = require("../incremental_graph");
 async function internalUpdate(interfaceInstance, newEntries) {
     await interfaceInstance.ensureInitialized();
     // Hold MUTEX_KEY for the entire critical section so that synchronizeDatabase()
-    // (which also acquires MUTEX_KEY via withExclusiveMode) cannot run between
+     // (which also acquires MUTEX_KEY via holidayActivity) cannot run between
     // the invalidate and pull calls and set _incrementalGraph to null.
     const capabilities = interfaceInstance._getCapabilities();
     await withMutex(capabilities.sleeper, async () => {
