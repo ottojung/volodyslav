@@ -15,7 +15,7 @@ function getTestCapabilities() {
 }
 
 describe("incremental_graph atomicity without external batches", () => {
-    test("dependency writes are rolled back when derived computation fails (all-or-nothing atomicity)", async () => {
+    test("dependency writes remain committed when parent recomputation fails", async () => {
         let sourceComputations = 0;
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);

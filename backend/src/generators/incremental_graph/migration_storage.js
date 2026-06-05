@@ -50,15 +50,18 @@ const {
 
 
 /**
- * Resolve a node key to its parsed form using the identifiers keys map or a
- * create decision. Decisions take priority so that created nodes can also be
- * resolved before finalize().
+ * Resolve a node key to its parsed form using an indexed
+ * `identifiers_keys_map` record or a create decision.
+ *
+ * Decisions take priority so that created nodes can also be resolved before
+ * finalize().
+ *
  * @param {NodeIdentifier} nodeKey
- * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<string, string>} identifiersKeysIndex - idString -> nodeKeyString
  * @param {Map<NodeIdentifier, Decision>} [decisions]
- * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
+ * @returns {import('./database/node_key').NodeKey | undefined}
  */
-async function resolveNodeKey(nodeKey, prevStorage, decisions) {
+function resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, decisions) {
     const nodeKeyStr = String(nodeKey);
 
     const decision = decisions?.get(nodeKey);
@@ -66,17 +69,9 @@ async function resolveNodeKey(nodeKey, prevStorage, decisions) {
         return deserializeNodeKey(stringToNodeKeyString(decision.nodeKeyString));
     }
 
-    if (prevStorage.global !== undefined) {
-        const entries = await prevStorage.global.get(IDENTIFIERS_KEY);
-        if (Array.isArray(entries)) {
-            const entry = entries.find((e) => e[0] === nodeKeyStr);
-            if (entry !== undefined) {
-                return deserializeNodeKey(stringToNodeKeyString(entry[1]));
-            }
-        }
-    }
-
-    return undefined;
+    const nodeKeyString = identifiersKeysIndex.get(nodeKeyStr);
+    if (nodeKeyString === undefined) return undefined;
+    return deserializeNodeKey(stringToNodeKeyString(nodeKeyString));
 }
 
 /**
@@ -85,12 +80,12 @@ async function resolveNodeKey(nodeKey, prevStorage, decisions) {
  * through a create decision's stored nodeKeyString.
  * @param {NodeIdentifier} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
- * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<string, string>} identifiersKeysIndex - idString -> nodeKeyString
  * @param {Map<NodeIdentifier, Decision>} [decisions]
  * @returns {Promise<void>}
  */
-async function checkSchemaCompatibility(nodeKey, newHeadIndex, prevStorage, decisions) {
-    const parsed = await resolveNodeKey(nodeKey, prevStorage, decisions);
+async function checkSchemaCompatibility(nodeKey, newHeadIndex, identifiersKeysIndex, decisions) {
+    const parsed = resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, decisions);
     if (parsed === undefined) return;
 
     const head = parsed.head;
@@ -150,6 +145,12 @@ class MigrationStorageClass {
     _generator;
 
     /**
+     * @private
+     * @type {undefined | Map<string, string>}
+     */
+    _identifiersKeysIndex;
+
+    /**
      * @param {ReadableMigrationStorage} prevStorage
      * @param {Map<NodeName, CompiledNode>} newHeadIndex
      * @param {NodeIdentifier[]} materializedNodes
@@ -160,6 +161,34 @@ class MigrationStorageClass {
         this.materializedNodes = new Set(materializedNodes);
         this.decisions = new Map();
         this._generator = undefined;
+        this._identifiersKeysIndex = undefined;
+    }
+
+    /**
+     * Lazily load and index the persisted identifiers_keys_map record.
+     *
+     * This avoids repeatedly calling `prevStorage.global.get(IDENTIFIERS_KEY)`
+     * and linearly scanning the returned array during schema compatibility
+     * checks.
+     * @private
+     * @returns {Promise<Map<string, string>>}
+     */
+    async _getIdentifiersKeysIndex() {
+        if (this._identifiersKeysIndex !== undefined) return this._identifiersKeysIndex;
+
+        /** @type {Map<string, string>} */
+        const index = new Map();
+        const entries = this.prevStorage.global !== undefined
+            ? await this.prevStorage.global.get(IDENTIFIERS_KEY)
+            : undefined;
+        if (Array.isArray(entries)) {
+            for (const [id, nodeKeyJson] of entries) {
+                index.set(String(id), String(nodeKeyJson));
+            }
+        }
+
+        this._identifiersKeysIndex = index;
+        return index;
     }
 
     /**
@@ -199,7 +228,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, await this._getIdentifiersKeysIndex(), this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "keep") return;
@@ -218,7 +247,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, await this._getIdentifiersKeysIndex(), this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
@@ -240,7 +269,8 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
+        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "invalidate") return;
@@ -354,7 +384,8 @@ class MigrationStorageClass {
         await this._initSeed();
         const nodeKey = await this._generateIdentifier();
         this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value });
-        try { await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions); }
+        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        try { await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions); }
         catch (err) { this.decisions.delete(nodeKey); throw err; }
     }
 
@@ -401,7 +432,8 @@ class MigrationStorageClass {
      * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
      */
     async resolveNodeKey(nodeKey) {
-        return await resolveNodeKey(nodeKey, this.prevStorage, this.decisions);
+        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        return resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, this.decisions);
     }
 
     /**
@@ -426,7 +458,8 @@ class MigrationStorageClass {
                 }
                 throw makeDecisionConflictError(dep, existing.kind, "invalidate");
             }
-            await checkSchemaCompatibility(dep, this.newHeadIndex, this.prevStorage, this.decisions);
+            const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+            await checkSchemaCompatibility(dep, this.newHeadIndex, identifiersKeysIndex, this.decisions);
             this.decisions.set(dep, { kind: "invalidate" });
             await this._propagateInvalidate(dep, visited);
         }
