@@ -373,9 +373,6 @@ describe("create decision: timestamps written to new storage", () => {
         expect(result.createdAt).toBe("2024-01-01T00:00:00.000Z");
         expect(result.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
     });
-        expect(result.createdAt).toBe("2024-01-01T00:00:00.000Z");
-        expect(result.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
-    });
 
     test("create node timestamp is defined (not undefined)", async () => {
         const capabilities = await getTestCapabilities();
