@@ -340,7 +340,7 @@ class MigrationStorageClass {
         if (Array.isArray(existingEntries)) {
             for (const [, existingKey] of existingEntries) {
                 if (String(existingKey) === keyStr) {
-                    throw makeCreateExistingNodeError(unsafeStringToNodeIdentifier(keyStr));
+                    throw makeCreateExistingNodeError(nodeKeyString);
                 }
             }
         }

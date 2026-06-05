@@ -3,6 +3,8 @@
  */
 
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/node_key').NodeKey} NodeKey */
 
 /**
  * Thrown when two different decisions are assigned to the same node.
@@ -278,7 +280,7 @@ function isMissingDependencyMetadata(object) {
  */
 class CreateExistingNode extends Error {
     /**
-     * @param {NodeIdentifier} nodeKey
+     * @param {NodeIdentifier | NodeKeyString | NodeKey} nodeKey
      */
     constructor(nodeKey) {
         super(
@@ -291,7 +293,7 @@ class CreateExistingNode extends Error {
 }
 
 /**
- * @param {NodeIdentifier} nodeKey
+ * @param {NodeIdentifier | NodeKeyString | NodeKey} nodeKey
  * @returns {CreateExistingNode}
  */
 function makeCreateExistingNodeError(nodeKey) {
