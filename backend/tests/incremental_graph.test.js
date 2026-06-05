@@ -1752,6 +1752,7 @@ describe("generators/incremental_graph", () => {
             expect(await graph.getFreshness("node1")).toBe("missing");
 
             node1Cell.value = { val: 10 };
+            await graph.pull("node1");
             await graph.invalidate("node1");
             expect(await graph.getFreshness("node1")).toBe("potentially-outdated");
             
@@ -1794,6 +1795,7 @@ describe("generators/incremental_graph", () => {
             expect(await graph.listMaterializedNodes()).toEqual([]);
 
             node1Cell.value = { val: 10 };
+            await graph.pull("node1");
             await graph.invalidate("node1");
             
             const nodes = await graph.listMaterializedNodes();

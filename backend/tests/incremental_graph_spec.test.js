@@ -875,8 +875,9 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
             },
         ]);
 
-        db.resetLogs();
         aCell.value = { n: 123 };
+        await g.pull("a");
+        db.resetLogs();
         await g.invalidate("a");
         expect(db.batchLog.length).toBe(1);
     });
@@ -944,6 +945,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         aCell.value = { s: "a()" };
+        await g.pull("a");
         await g.invalidate("a");
 
         await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
@@ -1020,6 +1022,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         aCell.value = { s: "a()" };
+        await g.pull("a");
         await g.invalidate("a");
 
         await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
@@ -1488,7 +1491,7 @@ describe("Inspection interface", () => {
         expect(fb).toBe("up-to-date");
     });
 
-    test("invalidate() on source node must include it in listMaterializedNodes", async () => {
+    test("pull() on source node materializes it and invalidate() preserves materialization", async () => {
         const db = new InMemoryDatabase();
         const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
@@ -1505,12 +1508,18 @@ describe("Inspection interface", () => {
         const list0 = await g.listMaterializedNodes();
         expect(list0).not.toContainEqual(["source", []]);
 
-        // After set, source must be materialized
+        // Pull materializes source.
         sourceCell.value = { n: 42 };
-        await g.invalidate("source");
+        await g.pull("source");
 
         const list1 = await g.listMaterializedNodes();
         expect(list1).toContainEqual(["source", []]);
+
+        // Invalidate must only change freshness, not materialization.
+        await g.invalidate("source");
+
+        const list2 = await g.listMaterializedNodes();
+        expect(list2).toContainEqual(["source", []]);
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience

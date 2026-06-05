@@ -1676,7 +1676,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(result.value).toBe(2);
         });
 
-        test("serializeTransactionLookup deduplicates shared allocations from concurrent transactions", async () => {
+        test("serializeTransactionLookup deduplicates shared allocations from concurrent pulls", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
 
@@ -1691,8 +1691,7 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Never pull "source" so its identifier hasn't been allocated yet.
-            // Two concurrent invalidates will both try to allocate the same output
-            // key via resolveConcreteNode → txAllocateNodeIdentifier.
+            // Two concurrent pulls will both try to allocate the same output key.
             //
             // TX1 gets source: 'new' and claims the identifier in _pendingAllocations.
             // TX2 gets source: 'shared' with the same identifier and stores it in its overlay.
@@ -1715,13 +1714,13 @@ describe("IncrementalGraph concurrency", () => {
                 return result;
             };
 
-            const invalidate1 = graph.invalidate("source");
-            const invalidate2 = graph.invalidate("source");
+            const pull1 = graph.pull("source");
+            const pull2 = graph.pull("source");
 
             // Release TX1 to commit first, then TX2
             afterTx1Commit.resolve(undefined);
 
-            await Promise.all([invalidate1, invalidate2]);
+            await Promise.all([pull1, pull2]);
 
             // Read the persisted identifiers_keys_map
             const schemaStorage = db.getSchemaStorage();

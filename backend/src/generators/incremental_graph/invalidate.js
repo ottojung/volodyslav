@@ -16,16 +16,14 @@
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {<T>(procedure: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>) => Promise<T>} withTransaction
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<import('./types').ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
- * @property {import('./database/root_database').RootDatabase} rootDatabase
  */
 
-const { stringToNodeName, nodeIdentifierToString, nodeIdentifierFromString, serializeNodeKey } = require("./database");
+const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { withObserveMode } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
-const { lookupNodeIdentifier, getOrAllocateNodeIdentifier } = require("./graph_state");
+const { lookupNodeIdentifier } = require("./graph_state");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
@@ -99,63 +97,22 @@ async function internalUnsafeInvalidate(
 
     const nodeKey = { head: nodeNameTyped, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    const concreteNode = incrementalGraph.getOrCreateConcreteNode(
-        concreteKey,
-        compiledNode,
-        bindings
-    );
-
-    /** @type {Array<import('./graph_state').RevdepDiff>} */
-    const revdepDiffs = [];
 
     await incrementalGraph.withTransaction(async (tx) => {
-        const nodeDefinition = await incrementalGraph.resolveConcreteNode(
-            concreteNode,
-            tx,
-        );
-        tx.batch.freshness.put(nodeDefinition.outputIdentifier, "potentially-outdated");
-
-        // Resolve static input identifiers (allocate if first encounter).
-        const staticInputIdentifiers = [];
-        for (const inputKey of nodeDefinition.inputKeys) {
-            const existing = lookupNodeIdentifier(tx, inputKey);
-            if (existing !== undefined) {
-                staticInputIdentifiers.push(existing);
-            } else {
-                staticInputIdentifiers.push(
-                    getOrAllocateNodeIdentifier(tx, incrementalGraph.rootDatabase, inputKey)
-                );
-            }
+        const outputIdentifier = lookupNodeIdentifier(tx, concreteKey);
+        if (outputIdentifier === undefined) {
+            return { value: undefined, revdepDiffs: [] };
         }
 
-        const inputCounters = [];
-        for (const inputIdentifier of staticInputIdentifiers) {
-            const counter = await tx.batch.counters.get(inputIdentifier);
-            inputCounters.push(counter !== undefined ? counter : 0);
+        const inputsRecord = await tx.batch.inputs.get(outputIdentifier);
+        if (inputsRecord === undefined) {
+            return { value: undefined, revdepDiffs: [] };
         }
 
-        // Collect revdep diff
-        const oldInputsRecord = await tx.batch.inputs.get(nodeDefinition.outputIdentifier);
-        const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
-        revdepDiffs.push({
-            dependant: nodeDefinition.outputIdentifier,
-            oldDependencies,
-            newDependencies: staticInputIdentifiers,
-        });
+        tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
+        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
 
-        await incrementalGraph.storage.ensureMaterialized(
-            nodeDefinition.outputIdentifier,
-            staticInputIdentifiers,
-            inputCounters,
-            tx.batch
-        );
-        await internalPropagateOutdated(
-            incrementalGraph,
-            nodeDefinition.outputIdentifier,
-            tx.batch
-        );
-
-        return { value: undefined, revdepDiffs: [...revdepDiffs] };
+        return { value: undefined, revdepDiffs: [] };
     });
 }
 
