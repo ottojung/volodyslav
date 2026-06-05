@@ -671,6 +671,11 @@ function stubRsync(capabilities) {
     capabilities.rsync.ensureAvailable = jest.fn().mockResolvedValue(undefined);
 }
 
+function stubRandomSeed(capabilities, newSeed) {
+    let seedCounter = newSeed ?? 42;
+    capabilities.seed.generate = () => seedCounter++;
+}
+
 module.exports = {
     stubEnvironment,
     ensureLiveDatabaseDirectory,
@@ -696,4 +701,5 @@ module.exports = {
     isMockRuntimeStateStorage,
     stubWifiChecker,
     stubRsync,
+    stubRandomSeed,
 };

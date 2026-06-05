@@ -2,7 +2,7 @@ const path = require("path");
 const { makeInterface } = require("../src/generators/interface");
 const { DATABASE_SUBPATH } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
+const { stubEnvironment, stubDatetime, stubLogger, stubRandomSeed } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
 const { forceVersion, assertDirectoriesExactlyEqual } = require("./migration_fixture_helpers");
 
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubDatetime(capabilities);
     stubLogger(capabilities);
+    stubRandomSeed(capabilities);
     forceVersion(capabilities, "0.0.0-dev");
     return capabilities;
 }
@@ -20,8 +21,6 @@ function getTestCapabilities() {
 describe("populated rendered fixture migration", () => {
     test("migrating lastversion fixture reproduces current populated fixture exactly", async () => {
         const capabilities = getTestCapabilities();
-        let seedCounter = 0;
-        capabilities.seed = { generate: () => seedCounter++ };
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: capabilities.environment.hostname(),
