@@ -17,7 +17,7 @@ const {
     versionToString,
 } = require('../src/generators/incremental_graph/database');
 const {
-    observationActivity,
+    nighttimeActivity,
     holidayActivity,
 } = require('../src/generators/incremental_graph/lock');
 const { getMockedRootCapabilities } = require('./spies');
@@ -882,7 +882,7 @@ describe('generators/database', () => {
                     heldSectionEntered = resolve;
                 });
 
-                const holdPullMode = observationActivity(capabilities.sleeper, 'holdNode', async () => {
+                const holdPullMode = nighttimeActivity(capabilities.sleeper, async () => {
                     heldSectionEntered(undefined);
 
                     // Simulate identifier allocation as a transaction would.
@@ -907,7 +907,7 @@ describe('generators/database', () => {
                 await heldSectionEnteredPromise;
 
                 // Trigger replica switch under holidayActivity — blocked by
-                // held observationActivity (same GRAPH_ACTIVITY_KEY).
+                // held nighttimeActivity (same GRAPH_ACTIVITY_KEY).
                 let switchCompleted = false;
                 const switchPromise = holidayActivity(
                     capabilities.sleeper,
@@ -918,7 +918,7 @@ describe('generators/database', () => {
                     switchCompleted = true;
                 });
 
-                // Verify switch is blocked while observationActivity is held.
+                // Verify switch is blocked while nighttimeActivity is held.
                 await new Promise((resolve) => setTimeout(resolve, 20));
                 expect(switchCompleted).toBe(false);
                 expect(db.currentReplicaName()).toBe('x');

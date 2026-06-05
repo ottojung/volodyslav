@@ -8,16 +8,17 @@ This document describes the locking model that the incremental graph MUST.
 
 The target behavior is:
 
-1. `invalidate()` is exclusive with any `pull()`, but not with other
-   `invalidate()` calls.
-2. Inspection reads such as `getValue()` and
-   `listMaterializedNodes()` are allowed to run concurrently with
-   `invalidate()`.
-3. `pull()` is exclusive with inspection reads.
-4. `pull()` is exclusive with other `pull()` calls on the same node.
-5. `pull()` calls on different nodes should not block each other.
-6. Migration and replica cutover suspend all graph activity (pulls,
-   invalidates, inspection reads).
+1. Daytime activity (`getValue()`, `getFreshness()`, `listMaterializedNodes()`,
+   `invalidate()`) is exclusive with nighttime observation (`pull()`), but not
+   exclusive with other daytime activities.
+2. Inspection reads such as `getValue()` and `listMaterializedNodes()` are
+   allowed to run concurrently with `invalidate()`.
+3. Nighttime observation (`pull()`) is exclusive with daytime activity.
+4. Observations of the same concrete node must not coexist (telescope
+   mutex).
+5. Observations of different concrete nodes may coexist.
+6. Migration and replica cutover suspend all graph activity (daytime,
+   nighttime, and other exclusive work).
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
    proceed concurrently).
@@ -85,7 +86,7 @@ different nodes.
 
 ### `invalidate(node)`
 
-1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`.
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`).
 2. Run the invalidation logic.
 3. Release the mode lock.
 
@@ -93,7 +94,7 @@ No per-node mutex is needed.
 
 ### inspection read
 
-1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`.
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`).
 2. Read the requested inspection data.
 3. Release the mode lock.
 
@@ -101,9 +102,9 @@ No per-node mutex is needed.
 
 ### `pull(node)`
 
-1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "pull", ...)`.
-2. Acquire `withMutex(PULL_NODE_KEY(nodeKeyString), ...)` (the per-node
-   mutex).
+1. Acquire `nighttimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "pull", ...)`).
+2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
+   `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`).
 3. Open a transaction (acquires `withCommitMutex` for the active replica).
 4. Pull dependencies and compute/write back the node value while holding
    the graph-activity mode lock, the per-node mutex, and the commit mutex.
@@ -121,14 +122,9 @@ whether top-level or nested.
 
 ### `migration / replica cutover`
 
-1. Acquire `withMutex(MUTEX_KEY, ...)` (global exclusive key — serializes
-   exclusive operations with each other).
-2. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "exclusive", ...)` (waits
-   for all in-flight pulls, invalidates, and inspection reads to finish,
-   then blocks new ones from starting).
-3. Run the migration or cutover.
-4. Release the exclusive mode lock.
-5. Release `MUTEX_KEY`.
+1. Acquire `holidayActivity(...)`.
+2. Run the migration or cutover.
+3. Release the holiday lock.
 
 The two-step acquisition (`MUTEX_KEY` → `GRAPH_ACTIVITY_KEY("exclusive")`)
 is deadlock-free because pull/observe operations only ever acquire
@@ -142,16 +138,17 @@ other nodes, while invalidates and inspection reads are excluded.
 
 ### Invalidates with invalidates
 
-Both use `GRAPH_ACTIVITY_KEY` in mode `"observe"`, so they are compatible.
+Both use `daytimeActivity(...)`, so they are compatible.
 
 ### Invalidates with reads
 
-Both use `GRAPH_ACTIVITY_KEY` in mode `"observe"`, so they are compatible.
+Both use `daytimeActivity(...)`, so they are compatible.
 
 ### Pulls with reads or invalidates
 
-Pulls use mode `"pull"` while reads and invalidates use mode `"observe"`. Those
-modes conflict, so these operations are mutually exclusive.
+Nighttime observations (`pull()`) use mode `"pull"` while reads and invalidates
+use mode `"observe"` (daytime). Those modes conflict, so these operations are
+mutually exclusive.
 
 ### Pulls on the same node
 

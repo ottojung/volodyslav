@@ -87,7 +87,7 @@ function daytimeActivity(sleeper, procedure) {
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function duringNighttime(sleeper, procedure) {
+function nighttimeActivity(sleeper, procedure) {
     // Mode "pull" is nighttime/pull.
     return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "pull", procedure);
 }
@@ -163,17 +163,11 @@ function holidayActivity(sleeper, procedure) {
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function observationActivity(sleeper, nodeKeyString, procedure) {
-    return duringNighttime(sleeper, () =>
-        telescopeActivity(sleeper, nodeKeyString, procedure)
-    );
-}
-
 module.exports = {
     withMutex,
     holidayActivity,
     daytimeActivity,
-    observationActivity,
+    nighttimeActivity,
     telescopeActivity,
     withCommitMutex,
 };

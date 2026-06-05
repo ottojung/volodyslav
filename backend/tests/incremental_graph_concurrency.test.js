@@ -17,7 +17,7 @@ const {
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
 } = require("../src/generators/incremental_graph/database");
-const { holidayActivity, observationActivity, daytimeActivity } = require("../src/generators/incremental_graph/lock");
+const { holidayActivity, nighttimeActivity, telescopeActivity, daytimeActivity } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
 
 const testCapabilities = getMockedRootCapabilities();
@@ -973,9 +973,9 @@ describe("IncrementalGraph concurrency", () => {
                 pullEnteredResolved = true;
             });
 
-            const pull = observationActivity(sleeper, "P", async () => {
+            const pull = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "P", async () => {
                 pullEntered.resolve(undefined);
-            });
+            }));
 
             // Give pull a chance to run if it were not blocked (single microtask turn)
             await Promise.resolve();
@@ -1028,10 +1028,10 @@ describe("IncrementalGraph concurrency", () => {
             const releasePull = makeDeferred();
             const pullEntered = makeDeferred();
 
-            const pull = observationActivity(sleeper, "P", async () => {
+            const pull = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "P", async () => {
                 pullEntered.resolve(undefined);
                 await releasePull.promise;
-            });
+            }));
 
             await pullEntered.promise;
 
@@ -1094,12 +1094,12 @@ describe("IncrementalGraph concurrency", () => {
             await exclusiveEntered.promise;
 
             const trace = [];
-            const pull1 = observationActivity(sleeper, "A", async () => {
+            const pull1 = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "A", async () => {
                 trace.push("pull1");
-            });
-            const pull2 = observationActivity(sleeper, "B", async () => {
+            }));
+            const pull2 = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "B", async () => {
                 trace.push("pull2");
-            });
+            }));
 
             await new Promise((resolve) => setTimeout(resolve, 20));
             // Neither pull should have started while exclusive holds
@@ -1164,9 +1164,9 @@ describe("IncrementalGraph concurrency", () => {
             });
             await enteredDay.promise;
 
-            const night = observationActivity(sleeper, "N", async () => {
+            const night = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "N", async () => {
                 enteredNightResolved = true;
-            });
+            }));
 
             await Promise.resolve();
             expect(enteredNightResolved).toBe(false);
@@ -1185,15 +1185,15 @@ describe("IncrementalGraph concurrency", () => {
             const enteredFirst = makeDeferred();
             let enteredSecondResolved = false;
 
-            const first = observationActivity(sleeper, "A", async () => {
+            const first = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "A", async () => {
                 enteredFirst.resolve(undefined);
                 await releaseFirst.promise;
-            });
+            }));
             await enteredFirst.promise;
 
-            const second = observationActivity(sleeper, "A", async () => {
+            const second = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "A", async () => {
                 enteredSecondResolved = true;
-            });
+            }));
 
             await Promise.resolve();
             expect(enteredSecondResolved).toBe(false);
@@ -1211,15 +1211,15 @@ describe("IncrementalGraph concurrency", () => {
             const enteredFirst = makeDeferred();
             let enteredSecondResolved = false;
 
-            const first = observationActivity(sleeper, "A", async () => {
+            const first = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "A", async () => {
                 enteredFirst.resolve(undefined);
                 await releaseFirst.promise;
-            });
+            }));
             await enteredFirst.promise;
 
-            const second = observationActivity(sleeper, "B", async () => {
+            const second = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "B", async () => {
                 enteredSecondResolved = true;
-            });
+            }));
 
             await Promise.resolve();
             expect(enteredSecondResolved).toBe(true);
@@ -1269,9 +1269,9 @@ describe("IncrementalGraph concurrency", () => {
             });
             await enteredHoliday.promise;
 
-            const night = observationActivity(sleeper, "N", async () => {
+            const night = nighttimeActivity(sleeper, () => telescopeActivity(sleeper, "N", async () => {
                 enteredNightResolved = true;
-            });
+            }));
 
             await Promise.resolve();
             expect(enteredNightResolved).toBe(false);

@@ -14,7 +14,7 @@
  *
  * Async-boundary safety:
  * Every `await` in this module is protected by GRAPH_ACTIVITY_KEY held in
- * nighttime observation phase (acquired by observationActivity).
+ * nighttime observation phase (acquired by nighttimeActivity + telescopeActivity).
  * This prevents any concurrent setCurrentReplicaPointer (which needs
  * with holidayActivity on the same key).  GraphStorage getters
  * (graph.storage.freshness, graph.storage.values, etc.) call
@@ -40,7 +40,7 @@
 const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { observationActivity, telescopeActivity } = require("./lock");
+const { nighttimeActivity, telescopeActivity } = require("./lock");
 const { deserializeNodeKey, serializeNodeKey } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 
@@ -182,7 +182,7 @@ async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
 async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
     ensureNodeNameIsHead(nodeName);
     const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-    return observationActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr));
+    return nighttimeActivity(graph.sleeper, () => telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr)));
 }
 
 /**
