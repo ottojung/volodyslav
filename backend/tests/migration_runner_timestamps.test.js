@@ -282,7 +282,7 @@ describe("keep decision: timestamps copied to new storage", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("override decision: timestamps copied to new storage", () => {
-    test("modifiedAt is bumped to migration time; createdAt preserved", async () => {
+    test("both createdAt and modifiedAt are preserved after override", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -297,12 +297,10 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
-        expect(result.createdAt).toBe(OLD_TIMESTAMP.createdAt);
-        expect(result.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
-    test("override without previous timestamp writes new timestamp", async () => {
+    test("override without previous timestamp leaves timestamps absent", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -317,9 +315,7 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
-        expect(result.createdAt).toBe("2024-01-01T00:00:00.000Z");
-        expect(result.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("override createdAt survives when modifiedAt differs", async () => {
@@ -632,7 +628,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         expect(bResult.createdAt).toBe(NEW_TIMESTAMP.createdAt);
     });
 
-    test("override A, B auto-invalidated: A modifiedAt bumped, B timestamp preserved", async () => {
+    test("override A, B auto-invalidated: both timestamps preserved", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -645,9 +641,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             // nkB is auto-invalidated by override(nkA)
         });
 
-        const aResult = await yGet(yStorage.timestamps, yStorage, nkA);
-        expect(aResult.createdAt).toBe(OLD_TIMESTAMP.createdAt);
-        expect(aResult.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
         await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
