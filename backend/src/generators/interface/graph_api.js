@@ -24,21 +24,37 @@
 
 /**
  * @param {InterfaceGraphAccess} interfaceInstance
+ * @param {string} name
+ * @param {() => void} setter}
+ * @returns {Promise<void>}
+ */
+async function invalidateAndPull(interfaceInstance, name, setter) {
+    // The invalidate + pull pair is not treated as an atomic unit.
+    // synchronizeDatabase() runs under holidayActivity(), so it cannot
+    // overlap either phase.
+    const g1 = await interfaceInstance.ensureInitialized();
+    await g1.invalidate(name);
+    const g2 = await interfaceInstance.ensureInitialized();
+    setter();
+    await g2.pull(name);
+}
+
+/**
+ * @param {InterfaceGraphAccess} interfaceInstance
  * @param {Array<import('../../event').Event>} newEntries
  * @returns {Promise<void>}
  */
 async function internalUpdate(interfaceInstance, newEntries) {
-    await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._allEventsBox === null) {
-        throw new Error("Impossible: expected all_events box to be initialized");
-    }
-    interfaceInstance._allEventsBox.value = newEntries;
-
-    // The invalidate + pull pair is not treated as an atomic unit.
-    // synchronizeDatabase() runs under holidayActivity(), so it cannot
-    // overlap either phase.
-    await interfaceInstance.ensureInitialized().invalidate("all_events");
-    await interfaceInstance.ensureInitialized().pull("all_events");
+    await invalidateAndPull(
+        interfaceInstance,
+        "all_events",
+        () => {
+            if (interfaceInstance._allEventsBox === null) {
+                throw new Error("Impossible: expected all_events box to be initialized");
+            }
+            interfaceInstance._allEventsBox.value = newEntries;
+        }
+    );
 }
 
 /**
@@ -47,13 +63,16 @@ async function internalUpdate(interfaceInstance, newEntries) {
  * @returns {Promise<void>}
  */
 async function internalSetConfig(interfaceInstance, config) {
-    await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._configBox === null) {
-        throw new Error("Impossible: expected config box to be initialized");
-    }
-    interfaceInstance._configBox.value = config;
-    await interfaceInstance.ensureInitialized().invalidate("config");
-    await interfaceInstance.ensureInitialized().pull("config");
+    await invalidateAndPull(
+        interfaceInstance,
+        "config",
+        () => {
+            if (interfaceInstance._configBox === null) {
+                throw new Error("Impossible: expected config box to be initialized");
+            }
+            interfaceInstance._configBox.value = config;
+        }
+    );
 }
 
 /**
@@ -62,13 +81,16 @@ async function internalSetConfig(interfaceInstance, config) {
  * @returns {Promise<void>}
  */
 async function internalSetDiarySummary(interfaceInstance, value) {
-    await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._diarySummaryBox === null) {
-        throw new Error("Impossible: expected diary summary box to be initialized");
-    }
-    interfaceInstance._diarySummaryBox.value = value;
-    await interfaceInstance.ensureInitialized().invalidate("diary_most_important_info_summary");
-    await interfaceInstance.ensureInitialized().pull("diary_most_important_info_summary");
+    await invalidateAndPull(
+        interfaceInstance,
+        "diary_most_important_info_summary",
+        () => {
+            if (interfaceInstance._diarySummaryBox === null) {
+                throw new Error("Impossible: expected diary summary box to be initialized");
+            }
+            interfaceInstance._diarySummaryBox.value = value;
+        }
+    );
 }
 
 /**
@@ -77,13 +99,16 @@ async function internalSetDiarySummary(interfaceInstance, value) {
  * @returns {Promise<void>}
  */
 async function internalSetOntology(interfaceInstance, ontology) {
-    await interfaceInstance.ensureInitialized();
-    if (interfaceInstance._ontologyBox === null) {
-        throw new Error("Impossible: expected ontology box to be initialized");
-    }
-    interfaceInstance._ontologyBox.value = ontology;
-    await interfaceInstance.ensureInitialized().invalidate("ontology");
-    await interfaceInstance.ensureInitialized().pull("ontology");
+    await invalidateAndPull(
+        interfaceInstance,
+        "ontology",
+        () => {
+            if (interfaceInstance._ontologyBox === null) {
+                throw new Error("Impossible: expected ontology box to be initialized");
+            }
+            interfaceInstance._ontologyBox.value = ontology;
+        }
+    );
 }
 
 /**
@@ -108,10 +133,8 @@ function internalGetSchemaByHead(interfaceInstance, head) {
  * @returns {Promise<Array<[string, Array<import('../incremental_graph/types').ConstValue>]>>}
  */
 async function internalListMaterializedNodes(interfaceInstance) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance
-        ._requireInitializedGraph()
-        .listMaterializedNodes();
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.listMaterializedNodes();
 }
 
 /**
@@ -121,10 +144,8 @@ async function internalListMaterializedNodes(interfaceInstance) {
  * @returns {Promise<import('../incremental_graph/types').FreshnessStatus>}
  */
 async function internalGetFreshness(interfaceInstance, head, args = []) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance
-        ._requireInitializedGraph()
-        .getFreshness(head, args);
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.getFreshness(head, args);
 }
 
 /**
@@ -134,8 +155,8 @@ async function internalGetFreshness(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
  */
 async function internalGetValue(interfaceInstance, head, args = []) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().getValue(head, args);
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.getValue(head, args);
 }
 
 /**
@@ -145,8 +166,8 @@ async function internalGetValue(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
  */
 async function internalPullGraphNode(interfaceInstance, head, args = []) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().pull(head, args);
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.pull(head, args);
 }
 
 /**
@@ -156,8 +177,8 @@ async function internalPullGraphNode(interfaceInstance, head, args = []) {
  * @returns {Promise<void>}
  */
 async function internalInvalidateGraphNode(interfaceInstance, head, args = []) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance._requireInitializedGraph().invalidate(head, args);
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.invalidate(head, args);
 }
 
 /**
@@ -167,10 +188,8 @@ async function internalInvalidateGraphNode(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../../datetime').DateTime>}
  */
 async function internalGetCreationTime(interfaceInstance, head, args = []) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance
-        ._requireInitializedGraph()
-        .getCreationTime(head, args);
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.getCreationTime(head, args);
 }
 
 /**
@@ -180,10 +199,8 @@ async function internalGetCreationTime(interfaceInstance, head, args = []) {
  * @returns {Promise<import('../../datetime').DateTime>}
  */
 async function internalGetModificationTime(interfaceInstance, head, args = []) {
-    await interfaceInstance.ensureInitialized();
-    return await interfaceInstance
-        ._requireInitializedGraph()
-        .getModificationTime(head, args);
+    const graph = await interfaceInstance.ensureInitialized();
+    return await graph.getModificationTime(head, args);
 }
 
 module.exports = {
