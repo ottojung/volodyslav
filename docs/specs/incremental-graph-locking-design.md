@@ -114,7 +114,10 @@ No per-node mutex is needed.
 The commit mutex is per-replica, so commits to different replicas never
 contend. Nested pulls (dependencies) reuse the same graph-activity mode
 ("pull") but acquire their own per-node mutex for each dependency node.
-They reuse the callers's transaction (no new commit mutex acquisition).
+Each nested pull creates its own Transaction (acquiring its own commit
+mutex) and submits its batch independently. This matches the volatile-
+consistency spec: every call to pullNode is structurally identical,
+whether top-level or nested.
 
 ### `migration / replica cutover`
 
