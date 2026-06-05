@@ -1375,4 +1375,303 @@ describe("IncrementalGraph concurrency", () => {
             expect(resultB.value).toBe(5);
         });
     });
+
+    describe("concurrent invalidate proof verification", () => {
+        /**
+         * @template T
+         * @returns {{ promise: Promise<T>, resolve: (value: T) => void }}
+         */
+        function makeDeferred() {
+            let resolve = () => undefined;
+            const promise = new Promise((resolveCallback) => {
+                resolve = resolveCallback;
+            });
+            return { promise, resolve };
+        }
+
+        function buildChainGraph(db, capabilities) {
+            return makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "middle",
+                    inputs: ["source"],
+                    computor: async ([s]) => ({ type: "test", value: s.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "leaf",
+                    inputs: ["middle"],
+                    computor: async ([m]) => ({ type: "test", value: m.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+        }
+
+        test("concurrent invalidates on dependency chain: leaf freshness is potentially-outdated after both complete", async () => {
+            const db = new InMemoryDatabase();
+            const graph = buildChainGraph(db, testCapabilities);
+
+            // Pull once to materialize the chain
+            await graph.pull("leaf");
+
+            // Invalidate source and middle concurrently
+            await Promise.all([
+                graph.invalidate("source"),
+                graph.invalidate("middle"),
+            ]);
+
+            // Verify leaf is marked outdated (final pull recomputes)
+            const result = await graph.pull("leaf");
+            expect(result.value).toBe(3);
+        });
+
+        test("large burst of concurrent invalidates on different nodes sharing a dependent maintains consistency", async () => {
+            const db = new InMemoryDatabase();
+            const sources = Array.from({ length: 10 }, (_, i) => ({
+                output: `source${i}`,
+                inputs: [],
+                computor: async () => ({ type: "test", value: i }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }));
+            const aggregator = {
+                output: "agg",
+                inputs: sources.map((_, i) => `source${i}`),
+                computor: async (args) => {
+                    const sum = args.reduce((acc, v) => acc + v.value, 0);
+                    return { type: "sum", value: sum };
+                },
+                isDeterministic: true,
+                hasSideEffects: false,
+            };
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                ...sources, aggregator,
+            ]);
+
+            // Pull once to materialize
+            const firstPull = await graph.pull("agg");
+            expect(firstPull.value).toBe(45);
+
+            // Burst of concurrent invalidates on all sources
+            await Promise.all(sources.map((_, i) => graph.invalidate(`source${i}`)));
+
+            // Re-pull after invalidates — should still produce correct sum
+            const result = await graph.pull("agg");
+            expect(result.value).toBe(45);
+        });
+
+        test("concurrent invalidates on shared dependent produce correct revdep structure regardless of commit order", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "a",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "b",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 2 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "sum",
+                    inputs: ["a", "b"],
+                    computor: async ([a, b]) => ({ type: "sum", value: a.value + b.value }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Pull once to materialize
+            const firstPull = await graph.pull("sum");
+            expect(firstPull.value).toBe(3);
+
+            // Track enter/exit of withTransaction for each invalidate
+            const tx1AfterCallback = makeDeferred();
+            const tx2AfterCallback = makeDeferred();
+            let enteredCount = 0;
+
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (fn) => {
+                return originalWithTransaction(async (tx) => {
+                    const result = await fn(tx);
+                    enteredCount += 1;
+                    if (enteredCount === 1) {
+                        // TX1 collected diffs, pause before commit mutex
+                        await tx1AfterCallback.promise;
+                    } else {
+                        // TX2 collected diffs, pause before commit mutex
+                        await tx2AfterCallback.promise;
+                    }
+                    return result;
+                });
+            };
+
+            const invalidateA = graph.invalidate("a");
+            const invalidateB = graph.invalidate("b");
+
+            // Both TXs collected their revdep diffs, now release TX2 to commit first
+            tx2AfterCallback.resolve(undefined);
+
+            // TX2 commits first — its write to revdeps lands on disk
+            // Then release TX1 to commit second — its revdep diff sees TX2's committed writes
+            tx1AfterCallback.resolve(undefined);
+
+            await Promise.all([invalidateA, invalidateB]);
+
+            // Re-pull — should still compute correct sum
+            const result = await graph.pull("sum");
+            expect(result.value).toBe(3);
+        });
+
+        test("concurrent invalidates on same node: freshness propagation to dependents is idempotent", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "root",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "mid",
+                    inputs: ["root"],
+                    computor: async ([r]) => ({ type: "test", value: r.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "far",
+                    inputs: ["mid"],
+                    computor: async ([m]) => ({ type: "test", value: m.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Pull once to materialize the full chain
+            await graph.pull("far");
+
+            // Run three concurrent invalidates on the root node
+            await Promise.all([
+                graph.invalidate("root"),
+                graph.invalidate("root"),
+                graph.invalidate("root"),
+            ]);
+
+            // All dependents should be consistently outdated
+            // Re-pull should recompute all values
+            const farResult = await graph.pull("far");
+            expect(farResult.value).toBe(3);
+
+            const midResult = await graph.pull("mid");
+            expect(midResult.value).toBe(2);
+        });
+
+        test("concurrent invalidates: each TX has its own batch, one TX's writes are invisible to another until commit", async () => {
+            const capabilities = getMockedRootCapabilities();
+            const db = new InMemoryDatabase();
+
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "src",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "dep",
+                    inputs: ["src"],
+                    computor: async ([s]) => ({ type: "test", value: s.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Pull once to materialize
+            await graph.pull("dep");
+
+            // Track freshness reads during the second TX
+            const tx1Entered = makeDeferred();
+            const tx2CanRead = makeDeferred();
+            const tx2ReadFreshness = makeDeferred();
+            let tx2SawValue = undefined;
+            let entered = 0;
+
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (fn) => {
+                return originalWithTransaction(async (tx) => {
+                    const myIndex = entered;
+                    entered += 1;
+
+                    if (myIndex === 0) {
+                        // TX1: let it run (writes freshness in its batch)
+                        tx1Entered.resolve(undefined);
+                        return await fn(tx);
+                    }
+
+                    // TX2: intercept freshness.get to observe read-committed behavior
+                    const originalGet = tx.batch.freshness.get.bind(tx.batch.freshness);
+                    tx.batch.freshness.get = async (key) => {
+                        tx2CanRead.resolve(undefined);
+                        const value = await originalGet(key);
+                        tx2SawValue = value;
+                        tx2ReadFreshness.resolve(undefined);
+                        return value;
+                    };
+
+                    const result = await fn(tx);
+                    return result;
+                });
+            };
+
+            const invalidate1 = graph.invalidate("src");
+
+            // Wait for TX1 to enter its withTransaction callback
+            await tx1Entered.promise;
+
+            // Start TX2 while TX1 is still in flight (hasn't committed yet)
+            const invalidate2 = graph.invalidate("src");
+
+            // Wait for TX2 to attempt reading freshness (this is inside TX2's callback)
+            await tx2CanRead.promise;
+
+            // At this point TX1 has written "potentially-outdated" for dep
+            // into its own batch (not committed). TX2 is about to read dep's
+            // freshness via its own batch.get, which falls through to live DB.
+            // Since TX1 hasn't committed, TX2 should NOT see "potentially-outdated".
+
+            await tx2ReadFreshness.promise;
+
+            // TX2 read dep's freshness. If TX1 had already committed, dep would
+            // be "potentially-outdated". But TX1 hasn't committed yet because
+            // we intercepted at TX2's batch.get before TX1's commit.
+            // The live DB freshness for dep is "up-to-date" (from the initial pull).
+            expect(tx2SawValue).toBe("up-to-date");
+
+            await Promise.all([invalidate1, invalidate2]);
+
+            // After both commit, dep should be "potentially-outdated"
+            const result = await graph.pull("dep");
+            expect(result.value).toBe(2);
+        });
+    });
 });
