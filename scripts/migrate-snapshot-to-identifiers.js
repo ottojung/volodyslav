@@ -288,6 +288,8 @@ async function migrateSnapshot(snapshotDir) {
         console.log("No old-format entries found, nothing to migrate.");
         // Still ensure identifiers_keys_map exists
         await ensureIdentifiersKeysMap(renderedDir, []);
+        // Normalize version even for empty snapshots
+        await fs.writeFile(path.join(renderedDir, "r", "global", "version"), JSON.stringify(MIGRATED_VERSION));
         return;
     }
 
@@ -452,7 +454,11 @@ async function main() {
     console.log("Done.");
 }
 
-main().catch((err) => {
-    console.error("Migration failed:", err);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        console.error("Migration failed:", err);
+        process.exit(1);
+    });
+}
+
+module.exports = { migrateSnapshot };

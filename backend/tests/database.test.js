@@ -16,6 +16,10 @@ const {
     isMalformedIdentifierLookupError,
     versionToString,
 } = require('../src/generators/incremental_graph/database');
+const {
+    withPullMode,
+    withExclusiveMode,
+} = require('../src/generators/incremental_graph/lock');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
 
@@ -846,6 +850,90 @@ describe('generators/database', () => {
                 expect(db.currentReplicaName()).toBe('y');
                 count = await db.getSchemaStorage().values.get('count');
                 expect(count).toEqual(2);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('pending allocations are released before replica switch proceeds under blocked exclusive mode', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // Populate y replica so the cutover target is valid.
+                const yStorage = db.schemaStorageForReplica('y');
+                await yStorage.batch([
+                    yStorage.values.putOp('seed', { val: 1 }),
+                ]);
+                await yStorage.global.put(IDENTIFIERS_KEY, []);
+
+                // Deferred control for the held pull-mode section.
+                /** @type {(value: undefined) => void} */
+                let releaseHeldSection = () => undefined;
+                const heldSectionReleased = new Promise((resolve) => {
+                    releaseHeldSection = resolve;
+                });
+                /** @type {(value: undefined) => void} */
+                let heldSectionEntered = () => undefined;
+                const heldSectionEnteredPromise = new Promise((resolve) => {
+                    heldSectionEntered = resolve;
+                });
+
+                const holdPullMode = withPullMode(capabilities.sleeper, async () => {
+                    heldSectionEntered(undefined);
+
+                    // Simulate identifier allocation as a transaction would.
+                    const committedLookup = db.getActiveIdentifierLookup();
+                    const { source } = db._reserveKeyIdentifier(
+                        'testKey',
+                        () => db.generateNodeIdentifier(),
+                        committedLookup,
+                    );
+                    expect(source).toBe('new');
+                    expect(db._pendingAllocations.size).toBe(1);
+
+                    await heldSectionReleased;
+
+                    // Release as the transaction's finally block does.
+                    db._releaseAllocations({
+                        ownedKeys: new Set(['testKey']),
+                    });
+                    expect(db._pendingAllocations.size).toBe(0);
+                });
+
+                await heldSectionEnteredPromise;
+
+                // Trigger replica switch under withExclusiveMode — blocked by
+                // held withPullMode (same GRAPH_ACTIVITY_KEY).
+                let switchCompleted = false;
+                const switchPromise = withExclusiveMode(
+                    capabilities.sleeper,
+                    async () => {
+                        await db.setCurrentReplicaPointer('y');
+                    },
+                ).then(() => {
+                    switchCompleted = true;
+                });
+
+                // Verify switch is blocked while pull mode is held.
+                await new Promise((resolve) => setTimeout(resolve, 20));
+                expect(switchCompleted).toBe(false);
+                expect(db.currentReplicaName()).toBe('x');
+
+                // Release the held section; allocation is freed.
+                releaseHeldSection(undefined);
+                await holdPullMode;
+
+                // Now the replica switch should proceed.
+                await switchPromise;
+                expect(switchCompleted).toBe(true);
+                expect(db.currentReplicaName()).toBe('y');
+
+                // No leaked pending allocations after full cycle.
+                expect(db._pendingAllocations.size).toBe(0);
 
                 await db.close();
             } finally {

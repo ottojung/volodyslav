@@ -11,6 +11,19 @@
  * even if a later parent computor fails.
  *
  * pull() always returns ComputedValue (not RecomputeResult).
+ *
+ * Async-boundary safety:
+ * Every `await` in this module is protected by GRAPH_ACTIVITY_KEY held in
+ * "pull" mode (acquired by withPullMode in internalSafePullWithStatus).
+ * This prevents any concurrent setCurrentReplicaPointer (which needs
+ * withExclusiveMode on the same key).  GraphStorage getters
+ * (graph.storage.freshness, graph.storage.values, etc.) call
+ * rootDatabase.getSchemaStorage() at each access, so property access chains
+ * like `graph.storage.freshness.get(key)` always resolve against the
+ * currently active replica — no captured reference survives across await
+ * unless the lock guarantees the replica cannot change.
+ * internalUnsafePull and internalUnsafeInvalidate shift the locking
+ * responsibility to the caller (documented by their "unsafe" names).
  */
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
@@ -65,6 +78,9 @@ async function pullNode(graph, nodeKeyStr) {
         const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
 
         // Early freshness check against committed storage — no Transaction needed.
+        // await sites below: graph.storage.freshness and .values are getters that
+        // call rootDatabase.getSchemaStorage() at each access.
+        // Protected by GRAPH_ACTIVITY_KEY("pull") — no concurrent replica switch.
         const committedIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
         if (committedIdentifier !== undefined) {
             const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
@@ -80,6 +96,9 @@ async function pullNode(graph, nodeKeyStr) {
         }
 
         // Full computation with its own Transaction
+        // withTransaction captures fresh schemaStorage + identifierLookup at
+        // entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
+        // Protected by GRAPH_ACTIVITY_KEY("pull") — replica cannot change.
         const result = await graph.withTransaction(async (tx) => {
             const nodeDefinition = await graph.resolveConcreteNode(
                 concreteNode,
@@ -105,6 +124,9 @@ async function pullNode(graph, nodeKeyStr) {
                 );
             }
 
+            // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
+            // which runs inside the transaction scope. All awaits inside are
+            // protected by GRAPH_ACTIVITY_KEY("pull") via the caller.
             const computeResult = await graph.maybeRecalculate(
                 nodeDefinition,
                 tx,

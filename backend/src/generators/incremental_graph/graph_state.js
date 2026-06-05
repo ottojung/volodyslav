@@ -321,9 +321,16 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * **Stale-reference note:** `getSchemaStorage()` and
          * `getActiveIdentifierLookup()` are called at entry to re-acquire fresh
          * references from `_computed`. Do NOT capture these references across
-         * `await` in calling code — a concurrent replica cutover
+         * `await` in calling code unless protected by the appropriate
+         * GRAPH_ACTIVITY_KEY lock — a concurrent replica cutover
          * (`setCurrentReplicaPointer`) replaces `_computed` and would leave your
          * captured references pointing at the old replica.
+         *
+         * In normal operation the caller (pullNode) holds GRAPH_ACTIVITY_KEY
+         * in "pull" mode, which prevents setCurrentReplicaPointer from running
+         * concurrently (it needs GRAPH_ACTIVITY_KEY in "exclusive" mode).
+         * The references captured here (activeSchemaStorage, txLookup, etc.)
+         * are therefore safe across all awaits inside the transaction.
          *
          * @template T
          * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>} fn

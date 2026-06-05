@@ -2,6 +2,15 @@
  * Recalculation helpers for IncrementalGraph.
  *
  * Transaction context is passed explicitly - no async_hooks or push/pop context.
+ *
+ * Async-boundary safety:
+ * All awaits in this module are protected by GRAPH_ACTIVITY_KEY("pull") held
+ * by the calling pullNode scope.  The Transaction object (tx) and its batch
+ * are local parameters — no captured reference to _computed.schemaStorage or
+ * _computed.identifierLookup survives across await outside the lock.
+ * incrementalGraph (the IncrementalGraphClass instance) is a stable reference
+ * that is never replaced; storage getters on it resolve against the current
+ * replica at each property access.
  */
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
