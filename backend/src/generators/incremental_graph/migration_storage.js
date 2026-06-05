@@ -365,8 +365,17 @@ class MigrationStorageClass {
 
         await this._initSeed();
         const nodeKey = await this._generateIdentifier();
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
+
+        // Store the decision before checkSchemaCompatibility so resolveNodeKey
+        // can find this create entry and deserialize the semantic key.
         this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value });
+
+        try {
+            await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
+        } catch (err) {
+            this.decisions.delete(nodeKey);
+            throw err;
+        }
     }
 
     /**
