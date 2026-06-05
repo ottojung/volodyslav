@@ -585,6 +585,43 @@ describe("MigrationStorage", () => {
             const err = await ms.invalidate(nk("A")).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
+
+        test("create() with head not in new schema throws SchemaCompatibilityError", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "B"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            const err = await ms.create(nk("NONEXISTENT"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            expect(isSchemaCompatibility(err)).toBe(true);
+        });
+
+        test("create() with wrong arity throws SchemaCompatibilityError", async () => {
+            const storage = makeInMemorySchemaStorage();
+            // "event(e)" has arity 1
+            const headIndex = makeHeadIndex(["A", "event(e)"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            // nk("event") produces arity 0 — mismatch with schema arity 1
+            const err = await ms.create(nk("event"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            expect(isSchemaCompatibility(err)).toBe(true);
+        });
+
+        test("create() with malformed semantic key throws error", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            const { stringToNodeKeyString } = require("../src/generators/incremental_graph/database");
+            const malformedKey = stringToNodeKeyString("not valid json");
+            const err = await ms.create(malformedKey, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            expect(err).toBeDefined();
+        });
     });
 
     // -----------------------------------------------------------------------
