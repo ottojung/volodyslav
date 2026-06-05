@@ -96,18 +96,8 @@ async function checkSchemaCompatibility(nodeKey, newHeadIndex, prevStorage, deci
     const head = parsed.head;
     const arity = parsed.args.length;
     const compiled = newHeadIndex.get(head);
-    if (!compiled) {
-        throw makeSchemaCompatibilityError(
-            nodeKey,
-            `head '${head}' does not exist in the new schema`
-        );
-    }
-    if (compiled.arity !== arity) {
-        throw makeSchemaCompatibilityError(
-            nodeKey,
-            `arity mismatch: node has ${arity} argument(s) but new schema expects ${compiled.arity}`
-        );
-    }
+    if (!compiled) throw makeSchemaCompatibilityError(nodeKey, `head '${head}' does not exist in the new schema`);
+    if (compiled.arity !== arity) throw makeSchemaCompatibilityError(nodeKey, `arity mismatch: node has ${arity} argument(s) but new schema expects ${compiled.arity}`);
 }
 
 /**
@@ -293,9 +283,7 @@ class MigrationStorageClass {
         const entriesJson = Array.isArray(existingEntries)
             ? JSON.stringify([...existingEntries].sort())
             : JSON.stringify([]);
-        const hash = crypto.createHash("sha256")
-            .update("identifiers_keys_map:" + entriesJson)
-              .digest();
+        const hash = crypto.createHash("sha256").update("identifiers_keys_map:" + entriesJson).digest();
         let counter = hash.readUInt32BE(0) >>> 0;
         const generator = () => counter++;
         this._generator = generator;
@@ -365,17 +353,9 @@ class MigrationStorageClass {
 
         await this._initSeed();
         const nodeKey = await this._generateIdentifier();
-
-        // Store the decision before checkSchemaCompatibility so resolveNodeKey
-        // can find this create entry and deserialize the semantic key.
         this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value });
-
-        try {
-            await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
-        } catch (err) {
-            this.decisions.delete(nodeKey);
-            throw err;
-        }
+        try { await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions); }
+        catch (err) { this.decisions.delete(nodeKey); throw err; }
     }
 
     /**
