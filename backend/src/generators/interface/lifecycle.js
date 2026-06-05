@@ -2,6 +2,7 @@
  * Lifecycle operations for the generators interface.
  */
 
+/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph
 /** @typedef {import('../incremental_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../incremental_graph/types').NodeDef} NodeDef */
 /** @typedef {import('../incremental_graph/migration_storage').MigrationStorage} MigrationStorage */
@@ -9,7 +10,7 @@
 /**
  * @typedef {object} InterfaceLifecycleAccess
  * @property {() => GeneratorsCapabilities} _getCapabilities
- * @property {import('../incremental_graph').IncrementalGraph | null} _incrementalGraph
+ * @property {IncrementalGraph | null} _incrementalGraph
  * @property {RootDatabase | null} _database
  * @property {import('../individual/all_events/wrapper').AllEventsBox | null} _allEventsBox
  * @property {import('../individual/config/wrapper').ConfigBox | null} _configBox
@@ -40,7 +41,7 @@ function internalIsInitialized(interfaceInstance) {
 
 /**
  * @param {InterfaceLifecycleAccess} interfaceInstance
- * @returns {import('../incremental_graph').IncrementalGraph}
+ * @returns {IncrementalGraph}
  */
 function internalRequireInitializedGraph(interfaceInstance) {
     if (interfaceInstance._incrementalGraph === null) {
@@ -49,13 +50,16 @@ function internalRequireInitializedGraph(interfaceInstance) {
     return interfaceInstance._incrementalGraph;
 }
 
-/** @param {InterfaceLifecycleAccess} interfaceInstance */
+/**
+ * @param {InterfaceLifecycleAccess} interfaceInstance
+ * @returns {Promise<IncrementalGraph>}
+ */
 async function internalEnsureInitialized(interfaceInstance) {
     if (interfaceInstance._incrementalGraph !== null) {
-        return;
+        return interfaceInstance._incrementalGraph;
     }
     const capabilities = interfaceInstance._getCapabilities();
-    await holidayActivity(capabilities.sleeper, async () => {
+    return await holidayActivity(capabilities.sleeper, async () => {
         const liveDbPath = path.join(
             capabilities.environment.workingDirectory(),
             LIVE_DATABASE_WORKING_PATH
@@ -73,12 +77,14 @@ async function internalEnsureInitialized(interfaceInstance) {
             await internalBootstrap(capabilities);
         }
 
-        await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
+        const ret = await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
 
         capabilities.logger.logInfo(
             {},
             'Bootstrap: startup completed successfully'
         );
+
+        return ret;
     });
 }
 
@@ -196,14 +202,14 @@ async function internalInitCheckpointRepoForFallback(capabilities) {
 /**
  * @param {InterfaceLifecycleAccess} interfaceInstance
  * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<RootDatabase>} runMigrationProcedure
- * @returns {Promise<void>}
+ * @returns {Promise<IncrementalGraph>}
  */
 async function internalEnsureInitializedWithMigration(
     interfaceInstance,
     runMigrationProcedure
 ) {
     if (interfaceInstance._incrementalGraph !== null) {
-        return;
+        return interfaceInstance._incrementalGraph;
     }
 
     const capabilities = interfaceInstance._getCapabilities();
@@ -240,6 +246,7 @@ async function internalEnsureInitializedWithMigration(
         interfaceInstance._configBox = configBox;
         interfaceInstance._diarySummaryBox = diarySummaryBox;
         interfaceInstance._ontologyBox = ontologyBox;
+        return incrementalGraph;
     } catch (error) {
         try {
             await database.close();

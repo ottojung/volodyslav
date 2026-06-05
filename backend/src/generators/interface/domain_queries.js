@@ -5,10 +5,12 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
 /** @typedef {import('../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
+/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph
+
 /**
  * @typedef {object} InterfaceQueryAccess
- * @property {() => Promise<void>} ensureInitialized
- * @property {() => import('../incremental_graph').IncrementalGraph} _requireInitializedGraph
+ * @property {() => Promise<IncrementalGraph>} ensureInitialized
+ * @property {() => IncrementalGraph} _requireInitializedGraph
  */
 
 const { isEventNotFoundError } = require('../individual').event;

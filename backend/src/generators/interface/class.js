@@ -117,9 +117,9 @@ class InterfaceClass {
         return internalRequireInitializedGraph(this);
     }
 
-    /** @returns {Promise<void>} */
+    /** @returns {Promise<IncrementalGraph>} */
     async ensureInitialized() {
-        await internalEnsureInitialized(this);
+        return await internalEnsureInitialized(this);
     }
 
     /** @param {{ resetToHostname?: string }} [options] */
