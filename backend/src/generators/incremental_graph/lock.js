@@ -52,6 +52,25 @@ const PULL_NODE_FUNCTOR = makeUniqueFunctor("incremental-graph-pull-node");
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
+ * Executes a procedure while holding the global incremental-graph mutex
+ * (`MUTEX_KEY`), ensuring that only one *exclusive* operation using this
+ * helper runs at a time.
+ *
+ * This helper only serializes callers that explicitly opt into using
+ * `MUTEX_KEY`; it does *not* by itself block pull/observe activity. For a
+ * higher-level primitive that prevents all concurrent graph activity (pulls,
+ * daytime reads/invalidations, and other exclusive operations), use {@link holidayActivity}.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper - The sleeper capability used to acquire the mutex lock.
+ * @param {() => Promise<T>} procedure - The asynchronous procedure to execute while holding the lock.
+ * @returns {Promise<T>} - A promise that resolves with the result of the procedure when it has completed execution.
+ */
+function withMutex(sleeper, procedure) {
+    return sleeper.withMutex(MUTEX_KEY, procedure);
+}
+
+/**
  * @template T
  * @param {SleepCapability} sleeper
  * @param {() => Promise<T>} procedure
