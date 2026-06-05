@@ -7,6 +7,7 @@ const { nodeKeyStringToString } = require("./types");
 
 /** @typedef {import("./types").NodeIdentifier} NodeIdentifier */
 /** @typedef {import("./types").NodeKeyString} NodeKeyString */
+/** @typedef {import("./types").IdentifiersKeysMap} IdentifiersKeysMap */
 
 /**
  * Global metadata key that stores the sorted `NodeIdentifier -> NodeKey` bijection.
@@ -59,9 +60,14 @@ function isIdentifierAllocationError(object) {
  * `identifiers_keys_map`. Both maps always contain exactly the same entries
  * as the on-disk record at every observable point (outside a transaction).
  *
+ * The `serialized` field caches the persisted sorted-array form so that
+ * `serializeTransactionLookup` avoids re-iterating and re-sorting the entire
+ * Map on every transaction commit.
+ *
  * @typedef {object} IdentifierLookup
  * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
  * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key string.
+ * @property {IdentifiersKeysMap} serialized - Cached sorted-array form sorted by identifier.
  */
 
 /**
@@ -90,13 +96,14 @@ function makeEmptyIdentifierLookup() {
     return {
         keyToId: new Map(),
         idToKey: new Map(),
+        serialized: [],
     };
 }
 
 /**
  * Build a validated in-memory lookup from persisted `[id, key]` entries.
- * The input must already be a strict bijection.
- * @param {Array<[NodeIdentifier, NodeKeyString]>} entries
+ * The input must already be a strict bijection and sorted by identifier.
+ * @param {IdentifiersKeysMap} entries
  * @returns {IdentifierLookup}
  */
 function makeIdentifierLookup(entries) {
@@ -113,6 +120,9 @@ function makeIdentifierLookup(entries) {
         lookup.idToKey.set(identifierString, nodeKey);
         lookup.keyToId.set(nodeKeyString, nodeIdentifier);
     }
+    // Build and cache the sorted-array form so the hot path (serializeTransactionLookup)
+    // never needs to re-iterate the Maps or sort.
+    lookup.serialized = serializeIdentifierLookupFromMaps(lookup);
     return lookup;
 }
 
@@ -125,27 +135,32 @@ function cloneIdentifierLookup(lookup) {
     return {
         keyToId: new Map(lookup.keyToId),
         idToKey: new Map(lookup.idToKey),
+        serialized: lookup.serialized,
     };
+}
+
+/**
+ * Build the sorted-array form from the Maps directly (fallback / cold path).
+ * @param {IdentifierLookup} lookup
+ * @returns {IdentifiersKeysMap}
+ */
+function serializeIdentifierLookupFromMaps(lookup) {
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const entries = [];
+    for (const [identifierString, nodeKey] of lookup.idToKey.entries()) {
+        entries.push([nodeIdentifierFromString(identifierString), nodeKey]);
+    }
+    entries.sort(([a], [b]) => compareNodeIdentifier(a, b));
+    return entries;
 }
 
 /**
  * Convert the lookup back into its persisted form, sorted by identifier string.
  * @param {IdentifierLookup} lookup
- * @returns {Array<[NodeIdentifier, NodeKeyString]>}
+ * @returns {IdentifiersKeysMap}
  */
 function serializeIdentifierLookup(lookup) {
-    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
-    const entries = [];
-    for (const [identifierString, nodeKey] of lookup.idToKey.entries()) {
-        entries.push([
-            nodeIdentifierFromString(identifierString),
-            nodeKey,
-        ]);
-    }
-    entries.sort(([leftIdentifier], [rightIdentifier]) =>
-        compareNodeIdentifier(leftIdentifier, rightIdentifier)
-    );
-    return entries;
+    return serializeIdentifierLookupFromMaps(lookup);
 }
 
 /**
@@ -212,27 +227,33 @@ function deleteIdentifierMappingForNodeKey(lookup, nodeKey) {
 }
 
 /**
- * Merge overlay mappings into base in-place. No clone is performed — the overlay
- * entries are written directly into `base` via `setIdentifierMapping`.
+ * Merge overlay mappings into base in-place and update the serialized cache.
+ * No clone is performed — the overlay entries are written directly into `base`
+ * via `setIdentifierMapping`.
  *
  * Conflicts are still caught by `setIdentifierMapping` (which throws
  * on disagreement), but `assertNoIdentifierLookupConflicts` in the caller
  * already guarantees no conflicts exist before this runs.
- *
- * Note: we intentionally do not add extra per-entry NodeIdentifier validation here,
- * because identifiers are already validated at construction boundaries and repeating
- * it on every merge would be wasted compute in a hot path.
  * @param {IdentifierLookup} base
  * @param {IdentifierLookup} overlay
  * @returns {void}
  */
 function mergeIdentifierLookups(base, overlay) {
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const newEntries = [];
     for (const [identifierString, nodeKey] of overlay.idToKey.entries()) {
+        if (!base.idToKey.has(identifierString)) {
+            newEntries.push([nodeIdentifierFromString(identifierString), nodeKey]);
+        }
         setIdentifierMapping(
             base,
             nodeIdentifierFromString(identifierString),
             nodeKey
         );
+    }
+    if (newEntries.length > 0) {
+        newEntries.sort(([a], [b]) => compareNodeIdentifier(a, b));
+        base.serialized = mergeSorted(base.serialized, newEntries);
     }
 }
 
@@ -342,7 +363,7 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * record it in the overlay (never in the base).
  *
  * Allocation is delegated to `rootDatabase._reserveKeyIdentifier` which
- * atomically claims a key→identifier mapping on a shared `_pendingAllocations`
+ * atomically claims a keyâ†’identifier mapping on a shared `_pendingAllocations`
  * map, making it impossible for two concurrent transactions to get different
  * identifiers for the same key.
  *
@@ -384,36 +405,88 @@ function txAllocateNodeIdentifier(
 }
 
 /**
+ * Merge two sorted arrays of `[NodeIdentifier, NodeKeyString]` pairs into one
+ * sorted array. Both inputs must already be sorted by identifier.
+ *
+ * Uses iterators instead of indexed access so that TypeScript's
+ * `noUncheckedIndexedAccess` does not force |undefined on every element.
+ *
+ * @param {IdentifiersKeysMap} sortedA
+ * @param {IdentifiersKeysMap} sortedB
+ * @returns {IdentifiersKeysMap}
+ */
+function mergeSorted(sortedA, sortedB) {
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const result = [];
+
+    const iterA = sortedA[Symbol.iterator]();
+    const iterB = sortedB[Symbol.iterator]();
+    let a = iterA.next();
+    let b = iterB.next();
+
+    while (!a.done && !b.done) {
+        if (compareNodeIdentifier(a.value[0], b.value[0]) <= 0) {
+            result.push(a.value);
+            a = iterA.next();
+        } else {
+            result.push(b.value);
+            b = iterB.next();
+        }
+    }
+
+    while (!a.done) {
+        result.push(a.value);
+        a = iterA.next();
+    }
+    while (!b.done) {
+        result.push(b.value);
+        b = iterB.next();
+    }
+
+    return result;
+}
+
+/**
  * Serialize the combined (base + overlay) lookup into the sorted-array format
  * used for disk persistence.
  *
- * Overlay entries that are already present in the base are skipped — this
- * prevents duplicate entries when a concurrent transaction committed the same
- * shared allocation between the base being read and this transaction committing.
- * The shared `_pendingAllocations` reservation guarantees that any overlaid
- * identifier maps to the same nodeKey as the base entry, so skipping is safe.
+ * Uses the base's cached sorted array and merges in any overlay entries not
+ * already present in the base (which can happen when another concurrent
+ * transaction committed the same shared allocation between this transaction's
+ * allocation and its commit). The base cache is always up to date because
+ * `commitTransactionLookup` updates it after every successful commit.
  *
  * Call this **before** `commitTransactionLookup` so that the base is still
  * unmodified while serializing.
  *
+ * Returns the cached array directly when there are no new entries — the
+ * caller (a batch put operation) does not mutate the result, so no defensive
+ * copy is needed.
+ *
  * @param {TransactionIdentifierLookup} txLookup
- * @returns {Array<[NodeIdentifier, NodeKeyString]>}
+ * @returns {IdentifiersKeysMap}
  */
 function serializeTransactionLookup(txLookup) {
-    const entries = serializeIdentifierLookup(txLookup.base);
-    for (const [idString, nodeKey] of txLookup.idToKey.entries()) {
-        // Skip entries already committed to the base by another transaction
-        // (shared allocations from concurrent transactions). If the base already
-        // has this identifier it maps to the same nodeKey (guaranteed by the
-        // shared _pendingAllocations reservation), so duplicating it would
-        // produce a corrupt persisted array that makeIdentifierLookup rejects.
-        if (txLookup.base.idToKey.has(idString)) continue;
-        entries.push([nodeIdentifierFromString(idString), nodeKey]);
+    const base = txLookup.base;
+
+    if (txLookup.idToKey.size === 0) {
+        return base.serialized;
     }
-    entries.sort(([leftIdentifier], [rightIdentifier]) =>
-        compareNodeIdentifier(leftIdentifier, rightIdentifier)
-    );
-    return entries;
+
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const newEntries = [];
+    for (const [idString, nodeKey] of txLookup.idToKey) {
+        if (!base.idToKey.has(idString)) {
+            newEntries.push([nodeIdentifierFromString(idString), nodeKey]);
+        }
+    }
+
+    if (newEntries.length === 0) {
+        return base.serialized;
+    }
+
+    newEntries.sort(([a], [b]) => compareNodeIdentifier(a, b));
+    return mergeSorted(base.serialized, newEntries);
 }
 
 /**
@@ -424,8 +497,8 @@ function serializeTransactionLookup(txLookup) {
  * After this call the overlay is exhausted into the base and should not be
  * used again; the transaction object itself is discarded.
  *
- * Conflicting mappings are impossible because the shared reservation map
- * guarantees every key maps to exactly one identifier across all transactions.
+ * Updates the base's `serialized` cache so subsequent calls to
+ * `serializeTransactionLookup` avoid re-iterating the entire Map.
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @returns {void}
@@ -434,8 +507,19 @@ function commitTransactionLookup(txLookup) {
     for (const [keyString, id] of txLookup.keyToId) {
         txLookup.base.keyToId.set(keyString, id);
     }
+
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const newEntries = [];
     for (const [idString, nodeKey] of txLookup.idToKey) {
+        if (!txLookup.base.idToKey.has(idString)) {
+            newEntries.push([nodeIdentifierFromString(idString), nodeKey]);
+        }
         txLookup.base.idToKey.set(idString, nodeKey);
+    }
+
+    if (newEntries.length > 0) {
+        newEntries.sort(([a], [b]) => compareNodeIdentifier(a, b));
+        txLookup.base.serialized = mergeSorted(txLookup.base.serialized, newEntries);
     }
 }
 
