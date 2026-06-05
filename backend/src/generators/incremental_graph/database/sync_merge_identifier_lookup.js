@@ -10,20 +10,6 @@ const {
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 /**
- * Identifier-conflict policy for sync merges.
- *
- * Volodyslav assumes a single machine writes all snapshots.  In normal
- * single-origin usage the host and target use the same identifier for the
- * same semantic key, so conflicts cannot arise.  An identifier conflict
- * during merge means the persisted identifiers_keys_map records disagree
- * about which identifier maps to which key — something that should never
- * happen outside manual editing or a multi-origin scenario.
- *
- * Because Volodyslav is a personal tool (the client is the developer),
- * concurrency across multiple writers is deliberately excluded from this
- * code path.  A conflict is therefore treated as unrecoverable: the merge
- * fails hard and the user must manually repair the stored snapshots.
- *
  * TODO: when we get a better opportunity, this module must grow
  * actual conflict resolution (e.g. last-writer-wins on identifier
  * assignment, or a user-visible conflict prompt).  Until then, failing
