@@ -96,8 +96,8 @@ append-only: entries are never deleted within a single replica session.
 
 ### What a transaction is
 
-A **transaction** is a short-lived object that groups all reads and writes for one top-level graph
-operation. It contains:
+A **transaction** is a short-lived object that groups all reads and writes for one
+`pullNode(key)` call — whether top-level or nested. It contains:
 
 - **batch** — a LevelDB batch accumulator with a read-your-writes overlay. Writes queued into the
   batch are visible to subsequent reads within the same transaction; reads that miss the overlay
@@ -105,9 +105,15 @@ operation. It contains:
 - **identifierLookup** — a working copy of the committed lookup, extended in-place with any new
   allocations made during this transaction. At commit time this becomes the new committed lookup.
 
-A transaction is created at the start of a top-level operation, used throughout (including by
-nested dependency pulls), and then either committed or discarded. It never outlives the concurrency
-scope that protects its node writes and identifier allocations.
+A transaction is created at the start of every `pullNode(key)` call, whether it originates from
+the public API or from a nested dependency pull inside a computor. That transaction covers exactly
+that single `pullNode` execution: the node's freshness check, its dependency pulls (each with their
+own independent transaction), its own recomputation, and its own batch writes. It never outlives
+the concurrency scope that protects its node writes and identifier allocations.
+
+Parent and nested pulls do **not** share a transaction. Each nested pull opens its own transaction,
+commits it independently, and returns the computed value to the parent. This is detailed in
+[Nested pulls and independent commits](#nested-pulls-and-independent-commits) below.
 
 ### Concurrency requirements
 
@@ -130,7 +136,8 @@ the observable consistency guarantees above.
 
 ### Transaction lifecycle
 
-Every top-level graph operation follows this pattern:
+Every `pullNode(key)` call — whether top-level or a nested dependency pull inside a computor —
+follows this pattern:
 
 ```
 withGraphConcurrencyScope(async () => {
