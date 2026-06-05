@@ -363,7 +363,7 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * record it in the overlay (never in the base).
  *
  * Allocation is delegated to `rootDatabase._reserveKeyIdentifier` which
- * atomically claims a keyâ†’identifier mapping on a shared `_pendingAllocations`
+ * atomically claims a key->identifier mapping on a shared `_pendingAllocations`
  * map, making it impossible for two concurrent transactions to get different
  * identifiers for the same key.
  *
@@ -509,7 +509,7 @@ function serializeTransactionLookup(txLookup) {
  *
  * 1. **Atomic reservation prevents conflicts.**  Before any allocation reaches
  *    this point, `_reserveKeyIdentifier` in `root_database.js` has atomically
- *    claimed the key â†' identifier mapping on `_pendingAllocations`.  Two
+ *    claimed the key->identifier mapping on `_pendingAllocations`.  Two
  *    concurrent transactions cannot get different identifiers for the same key.
  *
  * 2. **Idempotent overwrite.**  When a transaction's base reference becomes

@@ -712,7 +712,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         ]);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow(
-                'plain-key sublevels require exactly one key segment'
+                'expected exactly one key segment'
             );
         } finally {
             await db.close();
@@ -1217,7 +1217,7 @@ describe('additional reliability tests', () => {
         const db = await getRootDatabase(capabilities);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow(
-                'plain-key sublevels require exactly one key segment'
+                'expected exactly one key segment'
             );
         } finally {
             await db.close();
