@@ -500,6 +500,29 @@ function serializeTransactionLookup(txLookup) {
  * Updates the base's `serialized` cache so subsequent calls to
  * `serializeTransactionLookup` avoid re-iterating the entire Map.
  *
+ * ### Why this bypasses setIdentifierMapping checks
+ *
+ * This function writes directly into `base.keyToId` and `base.idToKey` rather
+ * than calling `setIdentifierMapping`, which checks that neither side of the
+ * bijection is already bound to a different counterpart.  The checks are
+ * unnecessary here because:
+ *
+ * 1. **Atomic reservation prevents conflicts.**  Before any allocation reaches
+ *    this point, `_reserveKeyIdentifier` in `root_database.js` has atomically
+ *    claimed the key â†' identifier mapping on `_pendingAllocations`.  Two
+ *    concurrent transactions cannot get different identifiers for the same key.
+ *
+ * 2. **Idempotent overwrite.**  When a transaction's base reference becomes
+ *    stale (another concurrent transaction already committed the same entry),
+ *    the write is a no-op: `base.keyToId` and `base.idToKey` already contain
+ *    the same mapping.  The `if (!txLookup.base.idToKey.has(idString))` guard
+ *    on the serialized-cache merge ensures the sorted array does not get
+ *    duplicates.
+ *
+ * 3. **Disk before memory.**  By the time this runs the data is already
+ *    persisted to the global `identifiers_keys_map`.  The in-memory mirrors
+ *    are just a cache of what's already on disk.
+ *
  * @param {TransactionIdentifierLookup} txLookup
  * @returns {void}
  */

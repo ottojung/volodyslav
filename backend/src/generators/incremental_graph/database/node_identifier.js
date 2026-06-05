@@ -8,11 +8,20 @@ const {
  * Persisted node identifiers are exactly 9 lowercase ASCII letters.
  * They are safe to embed in database keys and filesystem path segments
  * without any additional escaping layer.
+ *
+ * All identifiers are generated internally by `makeNodeIdentifier()` and are
+ * never parsed from user input or external sources.  Therefore there is no
+ * runtime validation of identifier strings — the pattern defined here exists
+ * only as a specification / documentation constraint.
  */
 const NODE_IDENTIFIER_PATTERN = /^[a-z]{9}$/;
 
 /**
  * Thrown when code attempts to construct or parse an invalid identifier string.
+ *
+ * NOTE: identifiers are generated internally and never validated at runtime;
+ * this error class is provided for documentation and for future defensive
+ * assertions only.
  */
 class InvalidNodeIdentifierError extends Error {
     /**
@@ -42,7 +51,9 @@ function isInvalidNodeIdentifierError(object) {
  */
 
 /**
- * Check whether a plain string already satisfies the NodeIdentifier format.
+ * Check whether a plain string satisfies the documented NodeIdentifier format.
+ * This is a specification check, not a runtime guard — every identifier in
+ * the system is internally generated and therefore already conforms.
  * @param {string} identifier
  * @returns {boolean}
  */
@@ -60,8 +71,14 @@ function makeNodeIdentifier(capabilities) {
 }
 
 /**
- * Parse and validate a persisted identifier string.
- * @param {string} identifier
+ * Convert a plain string to the NodeIdentifier nominal type.
+ *
+ * Does NOT validate the string — all identifiers in the system are generated
+ * internally by `makeNodeIdentifier()` and are never parsed from external
+ * input, so runtime validation would serve no purpose. The returned value is
+ * simply the input string cast to the nominal type.
+ *
+ * @param {string} identifier - A string that is already known to be a valid identifier.
  * @returns {NodeIdentifier}
  */
 function nodeIdentifierFromString(identifier) {

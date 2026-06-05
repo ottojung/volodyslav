@@ -201,10 +201,6 @@ describe('relativePathToKey()', () => {
         expect(relativePathToKey('x/values/all_events')).toBe('!x!!values!all_events');
     });
 
-    test('legacy multi-segment paths decode to slash-containing identifiers', () => {
-        expect(relativePathToKey('x/values/event/abc123')).toBe('!x!!values!event/abc123');
-    });
-
     test('decodes slash escapes in identifier keys', () => {
         expect(relativePathToKey('x/values/transcription%2F%2Faudio%2Ffile.mp3')).toBe(
             '!x!!values!transcription//audio/file.mp3'
@@ -229,12 +225,6 @@ describe('relativePathToKey()', () => {
         expect(relativePathToKey('_meta/%2E%2E')).toBe('!_meta!..');
     });
 
-    test('multi-segment relative paths decode to slash-containing identifiers', () => {
-        expect(relativePathToKey('x/values/event_transcription/evtId/%2Faudio%2Fx.mp3')).toBe(
-            '!x!!values!event_transcription/evtId//audio/x.mp3'
-        );
-    });
-
     test('tilde-prefixed identifiers remain strings', () => {
         expect(relativePathToKey('x/values/~42')).toBe('!x!!values!~42');
     });
@@ -255,12 +245,15 @@ describe('relativePathToKey()', () => {
         expect(() => relativePathToKey('')).toThrow();
     });
 
-    test('throws when plain-key sublevels have extra path segments', () => {
+    test('throws when paths have extra key segments', () => {
         expect(() => relativePathToKey('_meta/current_replica/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
+            'expected exactly one key segment'
         );
         expect(() => relativePathToKey('x/global/version/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
+            'expected exactly one key segment'
+        );
+        expect(() => relativePathToKey('x/values/a/b')).toThrow(
+            'expected exactly one key segment'
         );
     });
 });

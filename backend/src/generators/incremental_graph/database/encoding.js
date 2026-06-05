@@ -16,18 +16,10 @@
  * The `!!` separator marks the boundary between nested sublevel names.
  * The actual stored key follows after the last `!` in the prefix chain.
  *
- * Two key-shape conventions exist in this database:
- *
- *   1. Plain-string sublevels (`_meta`, `global`):
- *      - Expected path shape on disk: namespace/sublevel/key
- *      - Exactly one key segment is allowed.
- *
- *   2. Identifier-key sublevels (e.g. values, freshness, inputs, revdeps,
- *      counters, timestamps):
- *      - The key is treated as an opaque identifier string.
- *      - keyToRelativePath() writes it as one encoded segment.
- *      - relativePathToKey() accepts either one segment or legacy multi-segment
- *        paths and joins decoded segments using `/`.
+ * All sublevels use the same key-shape convention:
+ *   - Expected path shape on disk: namespace/sublevel/key
+ *   - Exactly one key segment is required.
+ *   - The keyContent is opaque to the encoding layer and never interpreted.
  *
  * Segment encoding
  * ----------------
@@ -47,12 +39,6 @@
  * relativePathToKey are exact inverses:
  *   relativePathToKey(keyToRelativePath(key)) === key
  */
-
-/**
- * Sublevel names that store plain string keys rather than NodeKey JSON keys.
- * @type {Set<string>}
- */
-const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'global']);
 
 // Use uppercase sentinels as the canonical on-disk form for special segments so
 // renderToFilesystem() is deterministic; decode accepts lowercase too so
@@ -198,14 +184,12 @@ function keyToRelativePath(rawKey) {
  *   - If the first segment is `_meta` → depth 1 (1-level nesting)
  *   - Otherwise → depth 2 (2-level nesting: namespace + sublevel)
  *
- * Key type convention (determined by the last sublevel name):
- *   - `_meta` or `global` → plain string key (exactly one key segment)
- *   - All other sublevels → identifier key (one or more key segments accepted
- *     on read, joined with '/')
+ * All sublevels require exactly one key segment.
  *
  * @param {string} relPath - Relative path from keyToRelativePath().
  * @returns {string} Raw LevelDB key.
- * @throws {Error} If relPath has fewer than two segments.
+ * @throws {Error} If relPath has fewer than two segments, or if the key
+ *   portion does not contain exactly one segment.
  */
 function relativePathToKey(relPath) {
     const segments = relPath.split('/');
@@ -225,27 +209,14 @@ function relativePathToKey(relPath) {
 
     const sublevels = segments.slice(0, depth);
     const keyComponents = segments.slice(depth);
-    const lastSublevel = sublevels[sublevels.length - 1] ?? '';
-    const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
 
-    let keyContent;
-    if (isPlainKey) {
-        if (keyComponents.length !== 1) {
-            throw new Error(
-                `Invalid database path '${relPath}': plain-key sublevels require exactly one key segment`
-            );
-        }
-        keyContent = decodeSegment(keyComponents[0] ?? '');
-    } else {
-        if (keyComponents.length === 0) {
-            throw new Error(
-                `Invalid database path '${relPath}': identifier-key sublevels require at least one key segment`
-            );
-        }
-        keyContent = keyComponents.map(component => decodeSegment(component)).join('/');
+    if (keyComponents.length !== 1) {
+        throw new Error(
+            `Invalid database path '${relPath}': expected exactly one key segment, got ${keyComponents.length}`
+        );
     }
 
-    return buildRawKey(sublevels, keyContent);
+    return buildRawKey(sublevels, decodeSegment(keyComponents[0] ?? ''));
 }
 
 /**
