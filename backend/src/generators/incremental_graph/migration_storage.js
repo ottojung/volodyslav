@@ -3,8 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY } = require("./database");
-const { deserializeNodeKey } = require("./database");
+const { deserializeNodeKey, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -41,7 +40,7 @@ const {
  * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
  * @typedef {{ kind: 'invalidate' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {{ kind: 'create', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
+ * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
  * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
 
@@ -49,13 +48,21 @@ const {
 
 
 /**
- * Resolve a node key to its parsed form using the identifiers keys map.
+ * Resolve a node key to its parsed form using the identifiers keys map or a
+ * create decision. Decisions take priority so that created nodes can also be
+ * resolved before finalize().
  * @param {NodeIdentifier} nodeKey
  * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} [decisions]
  * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
  */
-async function resolveNodeKey(nodeKey, prevStorage) {
+async function resolveNodeKey(nodeKey, prevStorage, decisions) {
     const nodeKeyStr = String(nodeKey);
+
+    const decision = decisions?.get(nodeKey);
+    if (decision?.kind === "create" && decision.nodeKeyString !== undefined) {
+        return deserializeNodeKey(stringToNodeKeyString(decision.nodeKeyString));
+    }
 
     if (prevStorage.global !== undefined) {
         const entries = await prevStorage.global.get(IDENTIFIERS_KEY);
@@ -72,14 +79,16 @@ async function resolveNodeKey(nodeKey, prevStorage) {
 
 /**
  * Checks whether a node is compatible with the new schema.
- * Requires the node to be resolvable through the identifiers keys map.
+ * Requires the node to be resolvable through the identifiers keys map or
+ * through a create decision's stored nodeKeyString.
  * @param {NodeIdentifier} nodeKey
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} [decisions]
  * @returns {Promise<void>}
  */
-async function checkSchemaCompatibility(nodeKey, newHeadIndex, prevStorage) {
-    const parsed = await resolveNodeKey(nodeKey, prevStorage);
+async function checkSchemaCompatibility(nodeKey, newHeadIndex, prevStorage, decisions) {
+    const parsed = await resolveNodeKey(nodeKey, prevStorage, decisions);
     if (parsed === undefined) return;
 
     const head = parsed.head;
@@ -205,7 +214,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "keep") return;
@@ -224,7 +233,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
@@ -246,7 +255,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "invalidate") return;
@@ -281,19 +290,20 @@ class MigrationStorageClass {
      * The node must exist in the new schema.
      * The new node is created as up-to-date with the provided value and empty inputs.
      * @param {NodeIdentifier} nodeKey
+     * @param {import('./database/types').NodeKeyString} nodeKeyString - The semantic key JSON string
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
-    async create(nodeKey, value) {
+    async create(nodeKey, nodeKeyString, value) {
         if (this.materializedNodes.has(nodeKey)) {
             throw makeCreateExistingNodeError(nodeKey);
         }
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage);
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             throw makeDecisionConflictError(nodeKey, existing.kind, "create");
         }
-        this.decisions.set(nodeKey, { kind: "create", value });
+        this.decisions.set(nodeKey, { kind: "create", nodeKeyString: String(nodeKeyString), value });
     }
 
     /**
@@ -332,12 +342,14 @@ class MigrationStorageClass {
 
     /**
      * Resolve a node identifier to the parsed node key used by the previous
-     * replica, if possible.
+     * replica or created during migration, if possible.
+     * Checks decisions first (for create entries), then falls through to
+     * the old identifiers_keys_map.
      * @param {NodeIdentifier} nodeKey
      * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
      */
     async resolveNodeKey(nodeKey) {
-        return await resolveNodeKey(nodeKey, this.prevStorage);
+        return await resolveNodeKey(nodeKey, this.prevStorage, this.decisions);
     }
 
     /**
@@ -362,7 +374,7 @@ class MigrationStorageClass {
                 }
                 throw makeDecisionConflictError(dep, existing.kind, "invalidate");
             }
-            await checkSchemaCompatibility(dep, this.newHeadIndex, this.prevStorage);
+            await checkSchemaCompatibility(dep, this.newHeadIndex, this.prevStorage, this.decisions);
             this.decisions.set(dep, { kind: "invalidate" });
             await this._propagateInvalidate(dep, visited);
         }

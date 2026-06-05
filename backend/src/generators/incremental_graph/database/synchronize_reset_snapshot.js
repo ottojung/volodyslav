@@ -5,7 +5,6 @@ const {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
-const { IDENTIFIERS_KEY } = require('./identifier_lookup');
 const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 
@@ -38,15 +37,6 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree)
         importDirectory,
         nextReplica
     );
-
-    // Migration path: the snapshot may be a legacy-format replica (written
-    // before identifiers_keys_map existed).  Ensure an empty map exists so
-    // setCurrentReplicaPointer below and any subsequent re-open survive.
-    const globalSublevel = database.replicaGlobalSublevel(nextReplica);
-    const rawMap = await globalSublevel.get(IDENTIFIERS_KEY);
-    if (rawMap === undefined) {
-        await globalSublevel.put(IDENTIFIERS_KEY, []);
-    }
 
     const previousReplica = database.currentReplicaName();
     await database.setCurrentReplicaPointer(nextReplica);

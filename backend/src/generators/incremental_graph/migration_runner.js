@@ -14,6 +14,7 @@ const { compileNodeDef } = require("./compiled_node");
 const {
     compareNodeIdentifier,
     IDENTIFIERS_KEY,
+    nodeIdentifierToString,
     stringToNodeIdentifier,
 } = require("./database");
 const { withExclusiveMode } = require("./lock");
@@ -159,6 +160,41 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
 
     const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
 
+    /**
+     * Build the identifiers_keys_map that reflects all decisions:
+     * - Existing entries for keep/override/invalidate nodes are kept as-is.
+     * - Entries for deleted nodes are removed.
+     * - Entries for created nodes are added using the stored nodeKeyString.
+     * @param {ReadableMigrationStorage} prevStorage
+     * @param {Map<NodeIdentifier, Decision>} decisions
+     * @returns {Promise<Array<[string, string]>>}
+     */
+    async function buildDecisionsMap(prevStorage, decisions) {
+        const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
+        if (!Array.isArray(oldEntries)) return [];
+
+        /** @type {Map<string, string>} */
+        const idToKey = new Map();
+        for (const [id, nodeKeyJson] of oldEntries) {
+            const decision = decisions.get(stringToNodeIdentifier(id));
+            if (!decision || decision.kind !== "delete") {
+                idToKey.set(String(id), String(nodeKeyJson));
+            }
+        }
+
+        for (const [nodeKey, decision] of decisions) {
+            if (decision.kind === "create" && decision.nodeKeyString !== undefined) {
+                const idStr = nodeIdentifierToString(nodeKey);
+                if (!idToKey.has(idStr)) {
+                    idToKey.set(idStr, decision.nodeKeyString);
+                }
+            }
+        }
+
+        return [...idToKey.entries()]
+            .sort(([leftId], [rightId]) => String(leftId).localeCompare(String(rightId)));
+    }
+
     return {
         values: {
             async *keys() {
@@ -282,9 +318,11 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             async get(key) {
                 if (key === 'version') {
                     return newVersion;
-                } else {
-                    return await prevStorage.global.get(key);
                 }
+                if (key === IDENTIFIERS_KEY) {
+                    return await buildDecisionsMap(prevStorage, decisions);
+                }
+                return await prevStorage.global.get(key);
             },
         },
     };

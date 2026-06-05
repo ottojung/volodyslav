@@ -599,7 +599,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await expect(ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
+            await expect(ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
         });
 
         test("create(existingNode) throws CreateExistingNodeError", async () => {
@@ -609,7 +609,7 @@ describe("MigrationStorage", () => {
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
-            const err = await ms.create(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            const err = await ms.create(A, A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isCreateExistingNode(err)).toBe(true);
         });
 
@@ -626,7 +626,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            const err = await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
@@ -638,8 +638,8 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
-            const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
+            await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
+            const err = await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
 
@@ -652,11 +652,12 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2));
+            await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2));
             const decisions = await ms.finalize();
 
             const createDecision = decisions.get(nk("NEW"));
             expect(createDecision?.kind).toBe("create");
+            expect(createDecision?.nodeKeyString).toBe(nk("NEW"));
             expect(await createDecision?.value(nk("NEW"))).toEqual(DUMMY_VALUE_2);
         });
 
@@ -668,7 +669,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             // Only create a new node, don't decide A
-            await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
+            await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
             const err = await ms.finalize().catch((e) => e);
             expect(isUndecidedNodes(err)).toBe(true);
         });
@@ -683,10 +684,10 @@ describe("MigrationStorage", () => {
             await ms.keep(A);
             // Pass a function that returns a promise that never resolves; create() should return immediately
             const neverResolves = () => new Promise(() => {});
-            await expect(ms.create(nk("NEW"), neverResolves)).resolves.toBeUndefined();
+            await expect(ms.create(nk("NEW"), nk("NEW"), neverResolves)).resolves.toBeUndefined();
         });
 
-        test("create() stores function as value in decision", async () => {
+        test("create() stores function and nodeKeyString in decision", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
@@ -696,12 +697,33 @@ describe("MigrationStorage", () => {
 
             const valueFn = () => Promise.resolve(DUMMY_VALUE_2);
             await ms.keep(A);
-            await ms.create(nk("NEW"), valueFn);
+            await ms.create(nk("NEW"), nk("NEW"), valueFn);
             const decisions = await ms.finalize();
 
             const createDecision = decisions.get(nk("NEW"));
             expect(createDecision?.kind).toBe("create");
+            expect(createDecision?.nodeKeyString).toBe(nk("NEW"));
             expect(createDecision?.value).toBe(valueFn);
+        });
+
+        test("create() with explicit nodeKeyString stores it in the decision", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "NEW"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+
+            await ms.keep(A);
+            // nodeKey is an opaque identifier, nodeKeyString is the semantic key
+            const opaqueId = nk("NEW");
+            const semanticKey = nk("NEW");
+            await ms.create(opaqueId, semanticKey, () => Promise.resolve(DUMMY_VALUE));
+            const decisions = await ms.finalize();
+
+            const createDecision = decisions.get(opaqueId);
+            expect(createDecision?.kind).toBe("create");
+            expect(createDecision?.nodeKeyString).toBe(semanticKey);
+            expect(createDecision?.value).toBeDefined();
         });
     });
 
