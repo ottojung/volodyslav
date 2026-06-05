@@ -24,7 +24,7 @@ const {
  * code path.  A conflict is therefore treated as unrecoverable: the merge
  * fails hard and the user must manually repair the stored snapshots.
  *
- * TODO: If multi-origin sync is ever supported, this module must grow
+ * TODO: when we get a better opportunity, this module must grow
  * actual conflict resolution (e.g. last-writer-wins on identifier
  * assignment, or a user-visible conflict prompt).  Until then, failing
  * hard is the correct behaviour — it surfaces data corruption early
