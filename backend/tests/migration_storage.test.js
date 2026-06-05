@@ -599,7 +599,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await expect(ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
+            await expect(ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
         });
 
         test("create(existingNode) throws CreateExistingNodeError", async () => {
@@ -609,13 +609,12 @@ describe("MigrationStorage", () => {
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
-            const err = await ms.create(A, A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            const err = await ms.create(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isCreateExistingNode(err)).toBe(true);
         });
 
-        test("create() on a node not in new schema throws SchemaCompatibilityError", async () => {
+        test("create() on a node whose key exists in identifiers_keys_map throws CreateExistingNodeError", async () => {
             const storage = makeInMemorySchemaStorage();
-            // New schema has only A — not NEW
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.inputs.put(A, { inputs: [], inputCounters: [] });
@@ -626,11 +625,11 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            const err = await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
-            expect(isSchemaCompatibility(err)).toBe(true);
+            const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            expect(isCreateExistingNode(err)).toBe(true);
         });
 
-        test("create() twice on same node throws DecisionConflictError", async () => {
+        test("create() twice with same semantic key throws DecisionConflictError", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
@@ -638,8 +637,8 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
-            const err = await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
+            await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
+            const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
 
@@ -652,13 +651,17 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2));
+            await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2));
             const decisions = await ms.finalize();
 
-            const createDecision = decisions.get(nk("NEW"));
+            const createDecisions = [...decisions.entries()].filter(([, d]) => d.kind === "create");
+            expect(createDecisions.length).toBe(1);
+            const [generatedId, createDecision] = createDecisions[0];
             expect(createDecision?.kind).toBe("create");
             expect(createDecision?.nodeKeyString).toBe(nk("NEW"));
-            expect(await createDecision?.value(nk("NEW"))).toEqual(DUMMY_VALUE_2);
+            expect(typeof generatedId).toBe("string");
+            expect(generatedId.length).toBe(9);
+            expect(await createDecision?.value(generatedId)).toEqual(DUMMY_VALUE_2);
         });
 
         test("create() does not affect completeness check (S nodes still need decisions)", async () => {
@@ -669,7 +672,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             // Only create a new node, don't decide A
-            await ms.create(nk("NEW"), nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
+            await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE));
             const err = await ms.finalize().catch((e) => e);
             expect(isUndecidedNodes(err)).toBe(true);
         });
@@ -684,7 +687,7 @@ describe("MigrationStorage", () => {
             await ms.keep(A);
             // Pass a function that returns a promise that never resolves; create() should return immediately
             const neverResolves = () => new Promise(() => {});
-            await expect(ms.create(nk("NEW"), nk("NEW"), neverResolves)).resolves.toBeUndefined();
+            await expect(ms.create(nk("NEW"), neverResolves)).resolves.toBeUndefined();
         });
 
         test("create() stores function and nodeKeyString in decision", async () => {
@@ -697,16 +700,18 @@ describe("MigrationStorage", () => {
 
             const valueFn = () => Promise.resolve(DUMMY_VALUE_2);
             await ms.keep(A);
-            await ms.create(nk("NEW"), nk("NEW"), valueFn);
+            await ms.create(nk("NEW"), valueFn);
             const decisions = await ms.finalize();
 
-            const createDecision = decisions.get(nk("NEW"));
+            const createDecisions = [...decisions.entries()].filter(([, d]) => d.kind === "create");
+            expect(createDecisions.length).toBe(1);
+            const [, createDecision] = createDecisions[0];
             expect(createDecision?.kind).toBe("create");
             expect(createDecision?.nodeKeyString).toBe(nk("NEW"));
             expect(createDecision?.value).toBe(valueFn);
         });
 
-        test("create() with explicit nodeKeyString stores it in the decision", async () => {
+        test("create() stores the provided nodeKeyString in the decision", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
@@ -714,16 +719,116 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
-            // nodeKey is an opaque identifier, nodeKeyString is the semantic key
-            const opaqueId = nk("NEW");
             const semanticKey = nk("NEW");
-            await ms.create(opaqueId, semanticKey, () => Promise.resolve(DUMMY_VALUE));
+            await ms.create(semanticKey, () => Promise.resolve(DUMMY_VALUE));
             const decisions = await ms.finalize();
 
-            const createDecision = decisions.get(opaqueId);
+            const createDecisions = [...decisions.entries()].filter(([, d]) => d.kind === "create");
+            expect(createDecisions.length).toBe(1);
+            const [, createDecision] = createDecisions[0];
             expect(createDecision?.kind).toBe("create");
             expect(createDecision?.nodeKeyString).toBe(semanticKey);
             expect(createDecision?.value).toBeDefined();
+        });
+
+        test("create() produces deterministic identifiers across identical runs", async () => {
+            // First run
+            const storage1 = makeInMemorySchemaStorage();
+            const headIndex1 = makeHeadIndex(["A", "NEW1", "NEW2"]);
+            const A1 = nk("A");
+            await storage1.inputs.put(A1, { inputs: [], inputCounters: [] });
+            const ms1 = makeMigrationStorage(storage1, headIndex1, [A1]);
+            await ms1.keep(A1);
+            await ms1.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
+            await ms1.create(nk("NEW2"), () => Promise.resolve(DUMMY_VALUE_2));
+            const decisions1 = await ms1.finalize();
+
+            // Second run — same fixture, same decisions
+            const storage2 = makeInMemorySchemaStorage();
+            const headIndex2 = makeHeadIndex(["A", "NEW1", "NEW2"]);
+            const A2 = nk("A");
+            await storage2.inputs.put(A2, { inputs: [], inputCounters: [] });
+            const ms2 = makeMigrationStorage(storage2, headIndex2, [A2]);
+            await ms2.keep(A2);
+            await ms2.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
+            await ms2.create(nk("NEW2"), () => Promise.resolve(DUMMY_VALUE_2));
+            const decisions2 = await ms2.finalize();
+
+            // Identifiers must be byte-for-byte identical
+            const create1 = [...decisions1.entries()].filter(([, d]) => d.kind === "create");
+            const create2 = [...decisions2.entries()].filter(([, d]) => d.kind === "create");
+            expect(create1.length).toBe(2);
+            expect(create2.length).toBe(2);
+
+            const id1a = String(create1[0][0]);
+            const id1b = String(create1[1][0]);
+            const id2a = String(create2[0][0]);
+            const id2b = String(create2[1][0]);
+            expect(id1a).toBe(id2a);
+            expect(id1b).toBe(id2b);
+        });
+
+        test("create() produces different identifiers when identifiers_keys_map differs", async () => {
+            // Run A: identifiers_keys_map has [A]
+            const storageA = makeInMemorySchemaStorage();
+            const headIndexA = makeHeadIndex(["A", "NEW1", "NEW2"]);
+            const A_A = nk("A");
+            await storageA.inputs.put(A_A, { inputs: [], inputCounters: [] });
+            const msA = makeMigrationStorage(storageA, headIndexA, [A_A]);
+            await msA.keep(A_A);
+            await msA.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
+            await msA.create(nk("NEW2"), () => Promise.resolve(DUMMY_VALUE_2));
+            const decisionsA = await msA.finalize();
+
+            // Run B: identifiers_keys_map has [A, B] — different base seed
+            const storageB = makeInMemorySchemaStorage();
+            const headIndexB = makeHeadIndex(["A", "B", "NEW1", "NEW2"]);
+            const A_B = nk("A");
+            const B_B = nk("B");
+            await storageB.inputs.put(A_B, { inputs: [], inputCounters: [] });
+            await storageB.inputs.put(B_B, { inputs: [], inputCounters: [] });
+            const msB = makeMigrationStorage(storageB, headIndexB, [A_B, B_B]);
+            await msB.keep(A_B);
+            await msB.keep(B_B);
+            await msB.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
+            await msB.create(nk("NEW2"), () => Promise.resolve(DUMMY_VALUE_2));
+            const decisionsB = await msB.finalize();
+
+            const createA = [...decisionsA.entries()].filter(([, d]) => d.kind === "create");
+            const createB = [...decisionsB.entries()].filter(([, d]) => d.kind === "create");
+            expect(createA.length).toBe(2);
+            expect(createB.length).toBe(2);
+
+            // Different identifiers_keys_map → different base seed → different identifiers
+            const idsA = createA.map(([id]) => String(id)).sort();
+            const idsB = createB.map(([id]) => String(id)).sort();
+            expect(idsA).not.toEqual(idsB);
+        });
+
+        test("create() identifiers do not collide for many consecutive calls", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "N1", "N2", "N3", "N4", "N5"]);
+            const A = nk("A");
+            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            await ms.keep(A);
+
+            const nodeNames = ["N1", "N2", "N3", "N4", "N5"];
+            for (const name of nodeNames) {
+                await ms.create(nk(name), () => Promise.resolve(DUMMY_VALUE));
+            }
+
+            const decisions = await ms.finalize();
+            const createDecisions = [...decisions.entries()].filter(([, d]) => d.kind === "create");
+            expect(createDecisions.length).toBe(5);
+
+            const ids = new Set();
+            for (const [id] of createDecisions) {
+                expect(typeof id).toBe("string");
+                expect(id.length).toBe(9);
+                expect(ids.has(id)).toBe(false);
+                ids.add(id);
+            }
         });
     });
 

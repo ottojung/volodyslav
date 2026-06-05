@@ -3,7 +3,9 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY } = require("./database");
+const crypto = require("crypto");
+const { basicString } = require("../../random");
+const { deserializeNodeKey, nodeIdentifierToString, stringToNodeIdentifier, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -147,23 +149,15 @@ class MigrationStorageClass {
 
     /**
      * @private
-     * @type {Map<NodeName, CompiledNode>}
-     */
-    newHeadIndex;
-
-    /**
-     * The set of all nodes materialized in the previous version (scope S).
-     * @private
-     * @type {Set<NodeIdentifier>}
-     */
-    materializedNodes;
-
-    /**
-     * Accumulated per-node decisions.
-     * @private
      * @type {Map<NodeIdentifier, Decision>}
      */
     decisions;
+
+    /**
+     * @private
+     * @type {undefined | (() => number)}
+     */
+    _generator;
 
     /**
      * @param {ReadableMigrationStorage} prevStorage
@@ -175,6 +169,7 @@ class MigrationStorageClass {
         this.newHeadIndex = newHeadIndex;
         this.materializedNodes = new Set(materializedNodes);
         this.decisions = new Map();
+        this._generator = undefined;
     }
 
     /**
@@ -285,25 +280,93 @@ class MigrationStorageClass {
     }
 
     /**
+     * Initialise the shared capabilities counter from identifiers_keys_map.
+     * Called exactly once, on the first _generateIdentifier call.
+     * @private
+     * @returns {Promise<() => number>}
+     */
+    async _initSeed() {
+        if (this._generator !== undefined) {
+            return this._generator;
+        }
+        const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
+        const entriesJson = Array.isArray(existingEntries)
+            ? JSON.stringify([...existingEntries].sort())
+            : JSON.stringify([]);
+        const hash = crypto.createHash("sha256")
+            .update("identifiers_keys_map:" + entriesJson)
+              .digest();
+        let counter = hash.readUInt32BE(0) >>> 0;
+        const generator = () => counter++;
+        this._generator = generator;
+        return generator;
+    }
+
+    /**
+     * Generate a deterministic identifier using the shared capabilities.
+     * Retries on collision with no bound — 26^9 space guarantees eventual success.
+     * @returns {Promise<NodeIdentifier>}
+     */
+    async _generateIdentifier() {
+        const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
+
+        /** @type {Set<string>} */
+        const existingIds = new Set();
+        if (Array.isArray(existingEntries)) {
+            for (const [id] of existingEntries) {
+                existingIds.add(String(id));
+            }
+        }
+        for (const key of this.decisions.keys()) {
+            existingIds.add(nodeIdentifierToString(key));
+        }
+
+        const generate = await this._initSeed();
+        const capabilities = {
+            seed: { generate }
+        };
+
+        let id;
+        do {
+            id = basicString(capabilities, 9);
+        } while (existingIds.has(id));
+
+        return stringToNodeIdentifier(id);
+    }
+
+    /**
      * Create a new node in the new schema version with an initial value.
      * The node must NOT exist in the previous version (use override() instead).
      * The node must exist in the new schema.
+     * The identifier is auto-generated deterministically from the existing
+     * identifiers_keys_map and the accumulated decisions so far.
      * The new node is created as up-to-date with the provided value and empty inputs.
-     * @param {NodeIdentifier} nodeKey
      * @param {import('./database/types').NodeKeyString} nodeKeyString - The semantic key JSON string
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
-    async create(nodeKey, nodeKeyString, value) {
-        if (this.materializedNodes.has(nodeKey)) {
-            throw makeCreateExistingNodeError(nodeKey);
+    async create(nodeKeyString, value) {
+        const keyStr = String(nodeKeyString);
+
+        const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
+        if (Array.isArray(existingEntries)) {
+            for (const [, existingKey] of existingEntries) {
+                if (String(existingKey) === keyStr) {
+                    throw makeCreateExistingNodeError(unsafeStringToNodeIdentifier(keyStr));
+                }
+            }
         }
+
+        for (const [existingNodeKey, decision] of this.decisions) {
+            if (decision.kind === "create" && String(decision.nodeKeyString) === keyStr) {
+                throw makeDecisionConflictError(existingNodeKey, "create", "create");
+            }
+        }
+
+        await this._initSeed();
+        const nodeKey = await this._generateIdentifier();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, this.prevStorage, this.decisions);
-        const existing = this.decisions.get(nodeKey);
-        if (existing !== undefined) {
-            throw makeDecisionConflictError(nodeKey, existing.kind, "create");
-        }
-        this.decisions.set(nodeKey, { kind: "create", nodeKeyString: String(nodeKeyString), value });
+        this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value });
     }
 
     /**
