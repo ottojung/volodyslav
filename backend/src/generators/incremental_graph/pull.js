@@ -13,8 +13,8 @@
  * pull() always returns ComputedValue (not RecomputeResult).
  *
  * Async-boundary safety:
- * Every `await` in this module is protected by GRAPH_ACTIVITY_KEY held in
- * nighttime observation phase (acquired by nighttimeActivity + telescopeActivity).
+ * Every `await` in this module is protected by the dome nighttime activity lock
+ * (acquired by nighttimeActivity + telescopeActivity).
  * This prevents any concurrent setCurrentReplicaPointer (which needs
  * with holidayActivity on the same key).  GraphStorage getters
  * (graph.storage.freshness, graph.storage.values, etc.) call
@@ -79,7 +79,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
         // Early freshness check against committed storage — no Transaction needed.
         // await sites below: graph.storage.freshness and .values are getters that
         // call rootDatabase.getSchemaStorage() at each access.
-        // Protected by GRAPH_ACTIVITY_KEY("pull") — no concurrent replica switch.
+        // Protected by dome nighttime activity — no concurrent replica switch.
         const committedIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
         if (committedIdentifier !== undefined) {
             const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
@@ -97,7 +97,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
         // Full computation with its own Transaction
         // withTransaction captures fresh schemaStorage + identifierLookup at
         // entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
-        // Protected by GRAPH_ACTIVITY_KEY("pull") — replica cannot change.
+        // Protected by dome nighttime activity — replica cannot change.
     const result = await graph.withTransaction(async (tx) => {
             const nodeDefinition = await graph.resolveConcreteNode(
                 concreteNode,
@@ -125,7 +125,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
 
             // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
             // which runs inside the transaction scope. All awaits inside are
-            // protected by GRAPH_ACTIVITY_KEY("pull") via the caller.
+            // protected by dome nighttime activity via the caller.
             const computeResult = await graph.maybeRecalculate(
                 nodeDefinition,
                 tx,
