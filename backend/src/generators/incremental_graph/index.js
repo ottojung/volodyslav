@@ -34,7 +34,7 @@ const {
 const { makeRootDatabase, getRootDatabase, LIVE_DATABASE_WORKING_PATH, CHECKPOINT_WORKING_PATH } = require('./database');
 const { makeMigrationStorage, isMigrationStorage } = require('./migration_storage');
 const { runMigration, runMigrationUnsafe } = require('./migration_runner');
-const { holidayActivity } = require('./lock');
+const { withMutex, holidayActivity } = require('./lock');
 const {
     makeDecisionConflictError,
     isDecisionConflict,
@@ -118,6 +118,7 @@ module.exports = {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    withMutex,
     holidayActivity,
     migrationCallback,
     synchronizeNoLock,

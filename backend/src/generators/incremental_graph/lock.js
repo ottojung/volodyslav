@@ -164,6 +164,7 @@ function holidayActivity(sleeper, procedure) {
  * @returns {Promise<T>}
  */
 module.exports = {
+    withMutex,
     holidayActivity,
     daytimeActivity,
     nighttimeActivity,
