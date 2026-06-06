@@ -101,13 +101,13 @@ describe('serializeTransactionLookup includes both base and overlay entries', ()
     });
 
     test('populated base + empty overlay → base entries only', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const base = makeIdentifierLookup([[idA, keyA]]);
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
-        expect(result).toEqual([['aaaaaaaaa', 'keyA']]);
+        expect(result).toEqual([['1-abcdefghi', 'keyA']]);
     });
 
     test('empty base + overlay allocation → overlay entry only', () => {
@@ -115,44 +115,44 @@ describe('serializeTransactionLookup includes both base and overlay entries', ()
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const keyB = stringToNodeKeyString('keyB');
-        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['bbbbbbbbb']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['2-abcdefghi']), makeMockRootDatabase());
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
-        expect(result).toEqual([['bbbbbbbbb', 'keyB']]);
+        expect(result).toEqual([['2-abcdefghi', 'keyB']]);
     });
 
     test('populated base + overlay allocation → BOTH base and overlay entries present', () => {
         // This is the critical invariant: every disk write captures the complete
         // state, so no prior allocation is ever silently lost.
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const base = makeIdentifierLookup([[idA, keyA]]);
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const keyB = stringToNodeKeyString('keyB');
-        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['bbbbbbbbb']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['2-abcdefghi']), makeMockRootDatabase());
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
         // Sorted ascending by identifier string.
         expect(result).toEqual([
-            ['aaaaaaaaa', 'keyA'],
-            ['bbbbbbbbb', 'keyB'],
+            ['1-abcdefghi', 'keyA'],
+            ['2-abcdefghi', 'keyB'],
         ]);
     });
 
     test('output is sorted ascending by identifier string regardless of insertion order', () => {
-        const idZ = nodeIdentifierFromString('zzzzzzzzz');
+        const idZ = nodeIdentifierFromString('z-abcdefghi');
         const keyZ = stringToNodeKeyString('keyZ');
         const base = makeIdentifierLookup([[idZ, keyZ]]);
         const txLookup = makeTransactionIdentifierLookup(base);
 
-        // Allocate 'aaaaaaaaa' in the overlay — lexicographically before base entry.
+        // Allocate '1-abcdefghi' in the overlay — lexicographically before base entry.
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['1-abcdefghi']), makeMockRootDatabase());
 
         const result = toStringPairs(serializeTransactionLookup(txLookup));
-        expect(result[0][0]).toBe('aaaaaaaaa');
-        expect(result[1][0]).toBe('zzzzzzzzz');
+        expect(result[0][0]).toBe('1-abcdefghi');
+        expect(result[1][0]).toBe('z-abcdefghi');
     });
 });
 
@@ -164,43 +164,43 @@ describe('sequential commits accumulate all entries without loss', () => {
     test('T1 commits, T2 sees T1 allocations and adds its own', () => {
         const base = makeEmptyIdentifierLookup();
 
-        // Transaction T1: allocate keyA → 'aaaaaaaaa'
+        // Transaction T1: allocate keyA → '1-abcdefghi'
         const tx1 = makeTransactionIdentifierLookup(base);
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['1-abcdefghi']), makeMockRootDatabase());
 
         // Simulate disk flush: serialize (verifies full state captured).
         const t1Serialized = toStringPairs(serializeTransactionLookup(tx1));
-        expect(t1Serialized).toEqual([['aaaaaaaaa', 'keyA']]);
+        expect(t1Serialized).toEqual([['1-abcdefghi', 'keyA']]);
 
         // Commit T1 into base (equivalent to commitTransactionLookup).
         commitTransactionLookup(tx1);
 
-        // Transaction T2: base now has keyA; allocate keyB → 'bbbbbbbbb'
+        // Transaction T2: base now has keyA; allocate keyB → '2-abcdefghi'
         const tx2 = makeTransactionIdentifierLookup(base);
         const keyB = stringToNodeKeyString('keyB');
-        txAllocateNodeIdentifier(tx2, keyB, makeIdFactory(['bbbbbbbbb']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(tx2, keyB, makeIdFactory(['2-abcdefghi']), makeMockRootDatabase());
 
         // Serialize T2: must contain BOTH keyA (from base) AND keyB (new).
         const t2Serialized = toStringPairs(serializeTransactionLookup(tx2));
         expect(t2Serialized).toEqual([
-            ['aaaaaaaaa', 'keyA'],
-            ['bbbbbbbbb', 'keyB'],
+            ['1-abcdefghi', 'keyA'],
+            ['2-abcdefghi', 'keyB'],
         ]);
 
         // Commit T2 into base.
         commitTransactionLookup(tx2);
 
-        // Transaction T3: allocate keyC → 'ccccccccc'
+        // Transaction T3: allocate keyC → '3-abcdefghi'
         const tx3 = makeTransactionIdentifierLookup(base);
         const keyC = stringToNodeKeyString('keyC');
-        txAllocateNodeIdentifier(tx3, keyC, makeIdFactory(['ccccccccc']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(tx3, keyC, makeIdFactory(['3-abcdefghi']), makeMockRootDatabase());
 
         const t3Serialized = toStringPairs(serializeTransactionLookup(tx3));
         expect(t3Serialized).toEqual([
-            ['aaaaaaaaa', 'keyA'],
-            ['bbbbbbbbb', 'keyB'],
-            ['ccccccccc', 'keyC'],
+            ['1-abcdefghi', 'keyA'],
+            ['2-abcdefghi', 'keyB'],
+            ['3-abcdefghi', 'keyC'],
         ]);
     });
 
@@ -208,12 +208,12 @@ describe('sequential commits accumulate all entries without loss', () => {
         const base = makeEmptyIdentifierLookup();
         const tx1 = makeTransactionIdentifierLookup(base);
         const keyA = stringToNodeKeyString('keyA');
-        const id1 = txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
+        const id1 = txAllocateNodeIdentifier(tx1, keyA, makeIdFactory(['1-abcdefghi']), makeMockRootDatabase());
         commitTransactionLookup(tx1);
 
         // Second transaction: re-request the same key — must get the same identifier.
         const tx2 = makeTransactionIdentifierLookup(base);
-        const id2 = txAllocateNodeIdentifier(tx2, keyA, makeIdFactory(['zzzzzzzzz']), makeMockRootDatabase());
+        const id2 = txAllocateNodeIdentifier(tx2, keyA, makeIdFactory(['z-abcdefghi']), makeMockRootDatabase());
         expect(String(id2)).toBe(String(id1));
     });
 });
@@ -224,7 +224,7 @@ describe('sequential commits accumulate all entries without loss', () => {
 
 describe('collision detection covers base and overlay simultaneously', () => {
     test('a candidate identifier already in the base throws a BUG error', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const base = makeIdentifierLookup([[idA, keyA]]);
         const txLookup = makeTransactionIdentifierLookup(base);
@@ -232,7 +232,7 @@ describe('collision detection covers base and overlay simultaneously', () => {
         // With fingerprint-prefixed identifiers collisions are impossible;
         // if one occurs it is a correctness bug.
         const keyB = stringToNodeKeyString('keyB');
-        expect(() => txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase()))
+        expect(() => txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['1-abcdefghi']), makeMockRootDatabase()))
             .toThrow(/BUG.*collision.*committed/);
     });
 
@@ -241,14 +241,14 @@ describe('collision detection covers base and overlay simultaneously', () => {
         const txLookup = makeTransactionIdentifierLookup(base);
         const overlayMock = makeMockRootDatabase();
 
-        // Allocate 'aaaaaaaaa' to keyA in the overlay.
+        // Allocate '1-abcdefghi' to keyA in the overlay.
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), overlayMock);
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['1-abcdefghi']), overlayMock);
 
         // With fingerprint-prefixed identifiers collisions are impossible;
         // if one occurs it is a correctness bug.
         const keyB = stringToNodeKeyString('keyB');
-        expect(() => txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa']), overlayMock))
+        expect(() => txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['1-abcdefghi']), overlayMock))
             .toThrow(/BUG.*collision.*pending/);
     });
 });
@@ -263,19 +263,19 @@ describe('commitTransactionLookup merges overlay into base', () => {
         const txLookup = makeTransactionIdentifierLookup(base);
 
         const keyA = stringToNodeKeyString('keyA');
-        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase());
+        txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['1-abcdefghi']), makeMockRootDatabase());
 
         expect(base.keyToId.size).toBe(0); // base unchanged before commit
 
         commitTransactionLookup(txLookup);
 
         expect(base.keyToId.size).toBe(1); // base now has the allocation
-        expect(String(base.keyToId.get('keyA'))).toBe('aaaaaaaaa');
-        expect(String(base.idToKey.get('aaaaaaaaa'))).toBe('keyA');
+        expect(String(base.keyToId.get('keyA'))).toBe('1-abcdefghi');
+        expect(String(base.idToKey.get('1-abcdefghi'))).toBe('keyA');
     });
 
     test('no-op transaction (no allocations) leaves base unchanged', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const base = makeIdentifierLookup([[idA, keyA]]);
         const txLookup = makeTransactionIdentifierLookup(base);
@@ -327,7 +327,7 @@ describe('parseIdentifierLookup negative tests', () => {
     });
 
     test('duplicate identifiers in entries throws IdentifierLookupError', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const keyB = stringToNodeKeyString('keyB');
         const entries = [[idA, keyA], [idA, keyB]];
@@ -335,27 +335,27 @@ describe('parseIdentifierLookup negative tests', () => {
     });
 
     test('duplicate identifiers error message mentions the identifier', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const keyB = stringToNodeKeyString('keyB');
         const entries = [[idA, keyA], [idA, keyB]];
         let error;
         try { makeIdentifierLookup(entries); } catch (e) { error = e; }
         expect(isIdentifierLookupError(error)).toBe(true);
-        expect(String(error.message)).toContain('aaaaaaaaa');
+        expect(String(error.message)).toContain('1-abcdefghi');
     });
 
     test('duplicate keys in entries throws IdentifierLookupError', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
-        const idB = nodeIdentifierFromString('bbbbbbbbb');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
+        const idB = nodeIdentifierFromString('2-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const entries = [[idA, keyA], [idB, keyA]];
         expect(() => makeIdentifierLookup(entries)).toThrow(IdentifierLookupError);
     });
 
     test('duplicate keys error message mentions the key', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
-        const idB = nodeIdentifierFromString('bbbbbbbbb');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
+        const idB = nodeIdentifierFromString('2-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const entries = [[idA, keyA], [idB, keyA]];
         let error;
@@ -365,7 +365,7 @@ describe('parseIdentifierLookup negative tests', () => {
     });
 
     test('parseIdentifierLookup forwards duplicate-identifier error from makeIdentifierLookup', () => {
-        const idA = nodeIdentifierFromString('aaaaaaaaa');
+        const idA = nodeIdentifierFromString('1-abcdefghi');
         const keyA = stringToNodeKeyString('keyA');
         const keyB = stringToNodeKeyString('keyB');
         expect(() => parseIdentifierLookup([[idA, keyA], [idA, keyB]], 'test'))

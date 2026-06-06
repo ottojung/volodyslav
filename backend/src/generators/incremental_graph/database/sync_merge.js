@@ -48,7 +48,6 @@ const {
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
 const { LAST_NODE_INDEX_KEY } = require('./root_database');
-const { MalformedIdentifierLookupError } = require('./replica_errors');
 const { buildMergePlan } = require('./sync_merge_plan');
 const { unifyRevdeps } = require('./sync_merge_revdeps');
 const { buildTakeOps, copyReplicaGently } = require('./sync_merge_transfer');
@@ -418,7 +417,7 @@ function summarizeDecisions(decisions) {
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
- * @param {number} mergedLastNodeIndex
+ * @param {number} targetLastNodeIndex
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
@@ -428,7 +427,7 @@ async function commitChangedMerge(
     targetLookup,
     hostLookup,
     mergedInputsMap,
-    mergedLastNodeIndex
+    targetLastNodeIndex
 ) {
     mergeIdentifierLookups(targetLookup, hostLookup);
     const writer = new ReplicaBatchWriter(targetStorage);
@@ -438,32 +437,12 @@ async function commitChangedMerge(
     ));
     await writer.push(targetStorage.global.putOp(
         LAST_NODE_INDEX_KEY,
-        mergedLastNodeIndex
+        targetLastNodeIndex
     ));
     await writer.flush();
 
     await unifyRevdeps(targetStorage, mergedInputsMap);
     await rootDatabase.setCurrentReplicaPointer(targetReplica);
-}
-
-/**
- * Load the last_node_index from a schema storage's global sublevel.
- * Returns 0 if the key is absent (fresh / un-versioned replica).
- * Throws if the key is present but not a non-negative integer.
- * @param {SchemaStorage} storage
- * @returns {Promise<number>}
- */
-async function loadLastNodeIndex(storage) {
-    const value = await storage.global.get(LAST_NODE_INDEX_KEY);
-    if (value === undefined) {
-        return 0;
-    }
-    if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
-        return value;
-    }
-    throw new MalformedIdentifierLookupError(
-        `last_node_index is not a non-negative integer: ${typeof value}`
-    );
 }
 
 /**
@@ -513,9 +492,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
 
-    const targetLastNodeIndex = await loadLastNodeIndex(targetStorage);
-    const hostLastNodeIndex = await loadLastNodeIndex(hostStorage);
-    const mergedLastNodeIndex = Math.max(targetLastNodeIndex, hostLastNodeIndex);
+    const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 
     const {
         initialDecisions,
@@ -536,8 +513,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     );
 
     const summary = summarizeDecisions(decisions.values());
-    const metadataChanged = mergedLastNodeIndex !== targetLastNodeIndex;
-    if (summary.hasChanges || metadataChanged) {
+    if (summary.hasChanges) {
         await commitChangedMerge(
             rootDatabase,
             targetStorage,
@@ -545,11 +521,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             targetLookup,
             hostLookup,
             mergedInputsMap,
-            mergedLastNodeIndex
+            targetLastNodeIndex
         );
     }
 
-    const switchedReplica = summary.hasChanges || metadataChanged;
+    const switchedReplica = summary.hasChanges;
     logger.logInfo(
         {
             hostname,

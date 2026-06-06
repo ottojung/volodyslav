@@ -44,11 +44,15 @@ the project's seeded PRNG. It is generated exactly once:
 
 ## Format
 
-The fingerprint is a lowercase ASCII string of at least 9 characters,
-matching `/^[a-z]{9,}$/`. It is not validated at runtime — the format
-exists only as a specification invariant. The existing code style treats
-node identifiers as nominal strings and does not validate the documented
-format at conversion boundaries.
+The fingerprint is a lowercase ASCII string of at least 9 characters and is
+runtime validated against the full-string pattern `/^[a-z]{9,}$/`. Any
+persisted fingerprint loaded from active replica metadata, replica-switch
+target metadata, a rendered snapshot used for restore/reset, or the standalone
+snapshot migration path must satisfy this pattern. Missing or malformed values
+fail hard instead of being silently accepted or replaced.
+
+This runtime validation applies to fingerprints only. `NodeIdentifier` remains
+a nominal string whose documented format is specification-only.
 
 ## Lifecycle
 

@@ -23,6 +23,7 @@ const {
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
 const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
+const { requireValidFingerprint } = require('./fingerprint');
 
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -615,13 +616,10 @@ class RootDatabaseClass {
             );
         }
         const storedFingerprint = await this._computed.globalSublevel.get('fingerprint');
-        if (typeof storedFingerprint === 'string' && storedFingerprint.length >= 9) {
-            this._computed.fingerprint = storedFingerprint;
-        } else {
-            throw new MissingIdentifierLookupError(
-                `active replica '${this.currentReplicaName()}' has a version but missing or invalid fingerprint`
-            );
-        }
+        this._computed.fingerprint = requireValidFingerprint(
+            storedFingerprint,
+            `active replica '${this.currentReplicaName()}' global metadata`
+        );
     }
 
     /**
@@ -722,13 +720,10 @@ class RootDatabaseClass {
                     );
                 }
                 const storedFingerprint = await globalSublevel.get('fingerprint');
-                if (typeof storedFingerprint === 'string' && storedFingerprint.length >= 9) {
-                    fingerprint = storedFingerprint;
-                } else {
-                    throw new MissingIdentifierLookupError(
-                        `replica '${name}' has a version but missing or invalid fingerprint`
-                    );
-                }
+                fingerprint = requireValidFingerprint(
+                    storedFingerprint,
+                    `replica '${name}' global metadata`
+                );
             }
             await this._rootMetaSublevel.put('current_replica', name);
             this._computed = {

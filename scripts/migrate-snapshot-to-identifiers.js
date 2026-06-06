@@ -17,6 +17,7 @@ const path = require("path");
 const fs = require("fs/promises");
 const { basicString } = require("../backend/src/random/basic_string");
 const { compareConstValue } = require("../backend/src/generators/incremental_graph/database/node_key");
+const { requireValidFingerprint } = require("../backend/src/generators/incremental_graph/database/fingerprint");
 const { convertReferences } = require("./lib/convert_references");
 
 const MIGRATED_VERSION = "0.0.0-dev";
@@ -116,6 +117,36 @@ function compareOldNodeKeyJson(left, right) {
     }
 
     return 0;
+}
+
+/**
+ * Read and validate an existing snapshot fingerprint, or generate one when the
+ * snapshot has no fingerprint file yet.
+ * @param {string} fingerprintPath
+ * @returns {Promise<string>}
+ */
+async function loadOrCreateFingerprint(fingerprintPath) {
+    let fingerprintExists = true;
+    try {
+        await fs.stat(fingerprintPath);
+    } catch {
+        fingerprintExists = false;
+    }
+
+    if (fingerprintExists) {
+        const raw = await fs.readFile(fingerprintPath, "utf-8");
+        return requireValidFingerprint(
+            JSON.parse(raw),
+            `snapshot file ${fingerprintPath}`
+        );
+    }
+
+    const fingerprint = basicString(
+        { seed: { generate: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) } }
+    );
+    await fs.mkdir(path.dirname(fingerprintPath), { recursive: true });
+    await fs.writeFile(fingerprintPath, JSON.stringify(fingerprint));
+    return fingerprint;
 }
 
 // ─── Main migration logic ───────────────────────────────────────────────────
@@ -246,17 +277,9 @@ async function migrateSnapshot(snapshotDir) {
         console.log("No old-format entries found, nothing to migrate.");
         // Still ensure identifiers_keys_map exists
         await ensureIdentifiersKeysMap(renderedDir, []);
-        // Ensure fingerprint exists
+        // Ensure any persisted fingerprint is valid, or create one when absent.
         const fingerprintPath = path.join(renderedDir, "r", "global", "fingerprint");
-        try {
-            await fs.stat(fingerprintPath);
-        } catch {
-            const fingerprint = basicString(
-                { seed: { generate: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) } }
-            );
-            await fs.mkdir(path.dirname(fingerprintPath), { recursive: true });
-            await fs.writeFile(fingerprintPath, JSON.stringify(fingerprint));
-        }
+        await loadOrCreateFingerprint(fingerprintPath);
         // Write last_node_index
         await fs.mkdir(path.join(renderedDir, "r", "global"), { recursive: true });
         await fs.writeFile(path.join(renderedDir, "r", "global", "last_node_index"), JSON.stringify(0));
@@ -267,20 +290,7 @@ async function migrateSnapshot(snapshotDir) {
 
     // ── Step 1.5: Obtain or generate fingerprint ──
     const fingerprintPath = path.join(renderedDir, "r", "global", "fingerprint");
-    let fingerprint;
-    try {
-        const raw = await fs.readFile(fingerprintPath, "utf-8");
-        fingerprint = JSON.parse(raw);
-        if (typeof fingerprint !== 'string') {
-            throw new Error('fingerprint is not a string');
-        }
-    } catch {
-        fingerprint = basicString(
-            { seed: { generate: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) } }
-        );
-        await fs.mkdir(path.dirname(fingerprintPath), { recursive: true });
-        await fs.writeFile(fingerprintPath, JSON.stringify(fingerprint));
-    }
+    const fingerprint = await loadOrCreateFingerprint(fingerprintPath);
 
     // ── Step 2: Assign deterministic identifiers ──
     // Preserve insertion order so subsequent runs are stable.

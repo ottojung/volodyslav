@@ -40,22 +40,22 @@ function getTestCapabilities() {
 
 /**
  * Return a stable 9-letter lowercase NodeIdentifier for test index i (0-25).
- * Uses letter repetition: 0 → "aaaaaaaaa", 1 → "bbbbbbbbb", ... 25 → "zzzzzzzzz".
+ * Uses current-format identifiers with a base36 index and fixed fingerprint.
  * @param {number} i
  * @returns {import('../src/generators/incremental_graph/database/types').NodeIdentifier}
  */
 function makeTestId(i) {
-    return nodeIdentifierFromString(String.fromCharCode(97 + i).repeat(9));
+    return nodeIdentifierFromString(`${i.toString(36)}-abcdefghi`);
 }
 
 // Named constants for the most commonly used test node identifiers.
-const NODE_A = makeTestId(0);  // 'aaaaaaaaa'
-const NODE_B = makeTestId(1);  // 'bbbbbbbbb'
-const NODE_C = makeTestId(2);  // 'ccccccccc'
+const NODE_A = makeTestId(0);  // '1-abcdefghi'
+const NODE_B = makeTestId(1);  // '2-abcdefghi'
+const NODE_C = makeTestId(2);  // '3-abcdefghi'
 const NODE_D = makeTestId(3);  // 'ddddddddd'
 const NODE_E = makeTestId(4);  // 'eeeeeeeee'  (used as external/unlisted node)
 const NODE_M = makeTestId(12); // 'mmmmmmmmm'
-const NODE_Z = makeTestId(25); // 'zzzzzzzzz'
+const NODE_Z = makeTestId(25); // 'z-abcdefghi'
 
 /**
  * Write an inputs record for `node` whose dependencies are `inputs`.

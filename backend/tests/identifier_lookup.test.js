@@ -50,16 +50,16 @@ function keyStr(k) {
 }
 
 // Pre-built identifiers and keys used across tests.
-const ID_A = id("aaaaaaaaa");
-const ID_B = id("bbbbbbbbb");
-const ID_C = id("ccccccccc");
-const ID_D = id("ddddddddd");
+const ID_A = id("1-abcdefghi");
+const ID_B = id("2-abcdefghi");
+const ID_C = id("3-abcdefghi");
+const ID_D = id("4-abcdefghi");
 const KEY_X = key("key_x");
 const KEY_Y = key("key_y");
 const KEY_Z = key("key_z");
 
 /**
- * Sorted order of identifier strings: aaaaaaaa < bbbbbbbbb < ccccccccc < ddddddddd
+ * Sorted order follows the persisted current-format identifier strings.
  */
 
 // ---------------------------------------------------------------------------
@@ -85,8 +85,8 @@ describe("makeIdentifierLookup", () => {
         const lookup = makeIdentifierLookup(entries);
         expect(keyStr(nodeIdToKeyFromLookup(lookup, ID_A))).toBe("key_x");
         expect(keyStr(nodeIdToKeyFromLookup(lookup, ID_B))).toBe("key_y");
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_X))).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_Y))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_X))).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_Y))).toBe("2-abcdefghi");
     });
 
     test("builds lookup from unsorted entries (serialized cache is sorted)", () => {
@@ -94,8 +94,8 @@ describe("makeIdentifierLookup", () => {
         const lookup = makeIdentifierLookup(entries);
         const serialized = lookup.serialized;
         expect(serialized.length).toBe(2);
-        expect(nodeIdentifierToString(serialized[0][0])).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(serialized[1][0])).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(serialized[0][0])).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(serialized[1][0])).toBe("2-abcdefghi");
     });
 
     test("throws on duplicate identifier", () => {
@@ -122,8 +122,8 @@ describe("serializeIdentifierLookup", () => {
     test("returns sorted entries", () => {
         const lookup = makeIdentifierLookup([[ID_B, KEY_Y], [ID_A, KEY_X]]);
         const result = serializeIdentifierLookup(lookup);
-        expect(nodeIdentifierToString(result[0][0])).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(result[1][0])).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(result[0][0])).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(result[1][0])).toBe("2-abcdefghi");
         expect(keyStr(result[0][1])).toBe("key_x");
         expect(keyStr(result[1][1])).toBe("key_y");
     });
@@ -156,7 +156,7 @@ describe("setIdentifierMapping", () => {
         const lookup = makeEmptyIdentifierLookup();
         setIdentifierMapping(lookup, ID_A, KEY_X);
         expect(keyStr(requireNodeKeyForIdentifier(lookup, ID_A))).toBe("key_x");
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_X))).toBe("1-abcdefghi");
     });
 
     test("re-asserting same mapping is idempotent", () => {
@@ -211,7 +211,7 @@ describe("deleteIdentifierMappingForNodeKey", () => {
         setIdentifierMapping(lookup, ID_B, KEY_Y);
         deleteIdentifierMappingForNodeKey(lookup, KEY_X);
         expect(nodeKeyToIdFromLookup(lookup, KEY_X)).toBeUndefined();
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_Y))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_Y))).toBe("2-abcdefghi");
     });
 });
 
@@ -222,7 +222,7 @@ describe("deleteIdentifierMappingForNodeKey", () => {
 describe("nodeKeyToIdFromLookup / nodeIdToKeyFromLookup", () => {
     test("returns identifier for existing key", () => {
         const lookup = makeIdentifierLookup([[ID_A, KEY_X]]);
-        expect(nodeIdentifierToString(nodeKeyToIdFromLookup(lookup, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(nodeKeyToIdFromLookup(lookup, KEY_X))).toBe("1-abcdefghi");
     });
 
     test("returns key for existing identifier", () => {
@@ -253,7 +253,7 @@ describe("allocateNodeIdentifier", () => {
             callCount++;
             return ID_A;
         });
-        expect(nodeIdentifierToString(result)).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(result)).toBe("1-abcdefghi");
         expect(callCount).toBe(1);
     });
 
@@ -264,7 +264,7 @@ describe("allocateNodeIdentifier", () => {
             callCount++;
             return ID_B;
         });
-        expect(nodeIdentifierToString(result)).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(result)).toBe("1-abcdefghi");
         expect(callCount).toBe(0);
     });
 
@@ -292,7 +292,7 @@ describe("requireNodeKeyForIdentifier / requireNodeIdentifierForKey", () => {
 
     test("returns identifier for existing key", () => {
         const lookup = makeIdentifierLookup([[ID_A, KEY_X]]);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(lookup, KEY_X))).toBe("1-abcdefghi");
     });
 
     test("throws for missing key", () => {
@@ -309,8 +309,8 @@ describe("cloneIdentifierLookup", () => {
     test("clone has same entries", () => {
         const lookup = makeIdentifierLookup([[ID_A, KEY_X], [ID_B, KEY_Y]]);
         const clone = cloneIdentifierLookup(lookup);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(clone, KEY_X))).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(clone, KEY_Y))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(clone, KEY_X))).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(clone, KEY_Y))).toBe("2-abcdefghi");
     });
 
     test("mutating clone does not affect original", () => {
@@ -319,7 +319,7 @@ describe("cloneIdentifierLookup", () => {
         const clone = cloneIdentifierLookup(lookup);
         setIdentifierMapping(clone, ID_B, KEY_Y);
         expect(nodeKeyToIdFromLookup(lookup, KEY_Y)).toBeUndefined();
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(clone, KEY_Y))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(clone, KEY_Y))).toBe("2-abcdefghi");
     });
 
     test("clone shares serialized reference", () => {
@@ -338,7 +338,7 @@ describe("mergeIdentifierLookups", () => {
         const base = makeEmptyIdentifierLookup();
         const overlay = makeIdentifierLookup([[ID_A, KEY_X]]);
         mergeIdentifierLookups(base, overlay);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("1-abcdefghi");
     });
 
     test("updates serialized cache after merge", () => {
@@ -346,15 +346,15 @@ describe("mergeIdentifierLookups", () => {
         const overlay = makeIdentifierLookup([[ID_B, KEY_Y], [ID_A, KEY_X]]);
         mergeIdentifierLookups(base, overlay);
         expect(base.serialized.length).toBe(2);
-        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(base.serialized[1][0])).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(base.serialized[1][0])).toBe("2-abcdefghi");
     });
 
     test("no-op when overlay is empty", () => {
         const base = makeIdentifierLookup([[ID_A, KEY_X]]);
         const overlay = makeEmptyIdentifierLookup();
         mergeIdentifierLookups(base, overlay);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("1-abcdefghi");
     });
 
     test("throws on conflicting mapping", () => {
@@ -376,9 +376,9 @@ describe("mergeIdentifierLookups", () => {
         mergeIdentifierLookups(base, makeIdentifierLookup([[ID_A, KEY_X]]));
         mergeIdentifierLookups(base, makeIdentifierLookup([[ID_D, KEY_Z]]));
         expect(base.serialized.length).toBe(3);
-        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(base.serialized[1][0])).toBe("bbbbbbbbb");
-        expect(nodeIdentifierToString(base.serialized[2][0])).toBe("ddddddddd");
+        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(base.serialized[1][0])).toBe("2-abcdefghi");
+        expect(nodeIdentifierToString(base.serialized[2][0])).toBe("4-abcdefghi");
     });
 });
 
@@ -397,7 +397,7 @@ describe("mergeSorted (internal)", () => {
         const txLookup = makeTransactionIdentifierLookup(base);
         const result = serializeTransactionLookup(txLookup);
         expect(result.length).toBe(1);
-        expect(nodeIdentifierToString(result[0][0])).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(result[0][0])).toBe("1-abcdefghi");
     });
 });
 
@@ -424,7 +424,7 @@ describe("txNodeKeyToId / txNodeIdToKey", () => {
     test("returns base entry when overlay is empty", () => {
         const base = makeIdentifierLookup([[ID_A, KEY_X]]);
         const txLookup = makeTransactionIdentifierLookup(base);
-        expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("1-abcdefghi");
         expect(keyStr(txNodeIdToKey(txLookup, ID_A))).toBe("key_x");
     });
 
@@ -432,8 +432,8 @@ describe("txNodeKeyToId / txNodeIdToKey", () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
         txLookup.keyToId.set("key_x", ID_B);
-        txLookup.idToKey.set("bbbbbbbbb", KEY_X);
-        expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("bbbbbbbbb");
+        txLookup.idToKey.set("2-abcdefghi", KEY_X);
+        expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("2-abcdefghi");
         expect(keyStr(txNodeIdToKey(txLookup, ID_B))).toBe("key_x");
     });
 
@@ -470,8 +470,8 @@ describe("txAllocateNodeIdentifier", () => {
         const rootDb = makeRootDatabase([]);
         const txLookup = makeTransactionIdentifierLookup(rootDb.identifierLookup);
         const result = txAllocateNodeIdentifier(txLookup, KEY_X, () => ID_B, rootDb);
-        expect(nodeIdentifierToString(result)).toBe("bbbbbbbbb");
-        expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(result)).toBe("2-abcdefghi");
+        expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("2-abcdefghi");
         expect(txLookup.ownedKeys.has("key_x")).toBe(true);
     });
 
@@ -480,7 +480,7 @@ describe("txAllocateNodeIdentifier", () => {
         const txLookup = makeTransactionIdentifierLookup(rootDb.identifierLookup);
         txAllocateNodeIdentifier(txLookup, KEY_X, () => ID_A, rootDb);
         const second = txAllocateNodeIdentifier(txLookup, KEY_X, () => ID_B, rootDb);
-        expect(nodeIdentifierToString(second)).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(second)).toBe("1-abcdefghi");
     });
 
     test("reuses identifier from base when key already committed", () => {
@@ -488,7 +488,7 @@ describe("txAllocateNodeIdentifier", () => {
         const rootDb = { ...makeRootDatabase([]), identifierLookup: base };
         const txLookup = makeTransactionIdentifierLookup(base);
         const result = txAllocateNodeIdentifier(txLookup, KEY_X, () => ID_B, rootDb);
-        expect(nodeIdentifierToString(result)).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(result)).toBe("1-abcdefghi");
     });
 });
 
@@ -507,17 +507,17 @@ describe("serializeTransactionLookup", () => {
     test("includes new entries from overlay", () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         const result = serializeTransactionLookup(txLookup);
         expect(result.length).toBe(1);
-        expect(nodeIdentifierToString(result[0][0])).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(result[0][0])).toBe("1-abcdefghi");
         expect(keyStr(result[0][1])).toBe("key_x");
     });
 
     test("skips overlay entries already in base (dedup)", () => {
         const base = makeIdentifierLookup([[ID_A, KEY_X]]);
         const txLookup = makeTransactionIdentifierLookup(base);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         const result = serializeTransactionLookup(txLookup);
         expect(result).toBe(base.serialized);
     });
@@ -525,17 +525,17 @@ describe("serializeTransactionLookup", () => {
     test("merges base and overlay sorted", () => {
         const base = makeIdentifierLookup([[ID_B, KEY_Y]]);
         const txLookup = makeTransactionIdentifierLookup(base);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         const result = serializeTransactionLookup(txLookup);
         expect(result.length).toBe(2);
-        expect(nodeIdentifierToString(result[0][0])).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(result[1][0])).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(result[0][0])).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(result[1][0])).toBe("2-abcdefghi");
     });
 
     test("result is immutable (readonly) — cannot be mutated via base.serialized", () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         const result = serializeTransactionLookup(txLookup);
         // result is the mergeSorted return — a new array; can be spread
         expect(Array.isArray(result)).toBe(true);
@@ -551,9 +551,9 @@ describe("commitTransactionLookup", () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
         txLookup.keyToId.set("key_x", ID_A);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         commitTransactionLookup(txLookup);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("1-abcdefghi");
         expect(keyStr(requireNodeKeyForIdentifier(base, ID_A))).toBe("key_x");
     });
 
@@ -561,10 +561,10 @@ describe("commitTransactionLookup", () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
         txLookup.keyToId.set("key_x", ID_A);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         commitTransactionLookup(txLookup);
         expect(base.serialized.length).toBe(1);
-        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("1-abcdefghi");
     });
 
     test("idempotent when overlay entries are already in base", () => {
@@ -572,7 +572,7 @@ describe("commitTransactionLookup", () => {
         const originalSerialized = base.serialized;
         const txLookup = makeTransactionIdentifierLookup(base);
         txLookup.keyToId.set("key_x", ID_A);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         commitTransactionLookup(txLookup);
         expect(base.idToKey.size).toBe(1);
         expect(base.serialized).toBe(originalSerialized);
@@ -582,11 +582,11 @@ describe("commitTransactionLookup", () => {
         const base = makeIdentifierLookup([[ID_B, KEY_Y]]);
         const txLookup = makeTransactionIdentifierLookup(base);
         txLookup.keyToId.set("key_x", ID_A);
-        txLookup.idToKey.set("aaaaaaaaa", KEY_X);
+        txLookup.idToKey.set("1-abcdefghi", KEY_X);
         commitTransactionLookup(txLookup);
         expect(base.serialized.length).toBe(2);
-        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(base.serialized[1][0])).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(base.serialized[0][0])).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(base.serialized[1][0])).toBe("2-abcdefghi");
     });
 
     test("multiple commits accumulate correctly", () => {
@@ -594,19 +594,19 @@ describe("commitTransactionLookup", () => {
 
         const tx1 = makeTransactionIdentifierLookup(base);
         tx1.keyToId.set("key_x", ID_A);
-        tx1.idToKey.set("aaaaaaaaa", KEY_X);
+        tx1.idToKey.set("1-abcdefghi", KEY_X);
         commitTransactionLookup(tx1);
 
         const tx2 = makeTransactionIdentifierLookup(base);
         tx2.keyToId.set("key_y", ID_B);
-        tx2.idToKey.set("bbbbbbbbb", KEY_Y);
+        tx2.idToKey.set("2-abcdefghi", KEY_Y);
         commitTransactionLookup(tx2);
 
         expect(base.serialized.length).toBe(2);
         expect(base.keyToId.size).toBe(2);
         expect(base.idToKey.size).toBe(2);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_Y))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_X))).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(base, KEY_Y))).toBe("2-abcdefghi");
     });
 });
 
@@ -643,8 +643,8 @@ describe("Serialization roundtrip", () => {
         const original = makeIdentifierLookup([[ID_B, KEY_Y], [ID_A, KEY_X]]);
         const serialized = serializeIdentifierLookup(original);
         const restored = makeIdentifierLookup(serialized);
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(restored, KEY_X))).toBe("aaaaaaaaa");
-        expect(nodeIdentifierToString(requireNodeIdentifierForKey(restored, KEY_Y))).toBe("bbbbbbbbb");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(restored, KEY_X))).toBe("1-abcdefghi");
+        expect(nodeIdentifierToString(requireNodeIdentifierForKey(restored, KEY_Y))).toBe("2-abcdefghi");
         expect(keyStr(requireNodeKeyForIdentifier(restored, ID_A))).toBe("key_x");
         expect(keyStr(requireNodeKeyForIdentifier(restored, ID_B))).toBe("key_y");
     });
@@ -671,13 +671,13 @@ describe("Serialization roundtrip", () => {
 
         const beforeCommit = serializeTransactionLookup(tx);
         expect(beforeCommit.length).toBe(1);
-        expect(nodeIdentifierToString(beforeCommit[0][0])).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(beforeCommit[0][0])).toBe("1-abcdefghi");
 
         commitTransactionLookup(tx);
 
         const afterCommit = serializeTransactionLookup(makeTransactionIdentifierLookup(base));
         expect(afterCommit.length).toBe(1);
-        expect(nodeIdentifierToString(afterCommit[0][0])).toBe("aaaaaaaaa");
+        expect(nodeIdentifierToString(afterCommit[0][0])).toBe("1-abcdefghi");
 
         // Verify serialized cache was updated
         expect(base.serialized.length).toBe(1);
