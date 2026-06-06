@@ -16,32 +16,6 @@ const {
  */
 const NODE_IDENTIFIER_PATTERN = /^[a-z]{9}$/;
 
-/**
- * Thrown when code attempts to construct or parse an invalid identifier string.
- *
- * NOTE: identifiers are generated internally and never validated at runtime;
- * this error class is provided for documentation and for future defensive
- * assertions only.
- */
-class InvalidNodeIdentifierError extends Error {
-    /**
-     * @param {string} identifier
-     */
-    constructor(identifier) {
-        super(`Invalid node identifier: ${identifier}`);
-        this.name = "InvalidNodeIdentifierError";
-        this.identifier = identifier;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is InvalidNodeIdentifierError}
- */
-function isInvalidNodeIdentifierError(object) {
-    return object instanceof InvalidNodeIdentifierError;
-}
-
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 
@@ -134,8 +108,6 @@ function compareNodeIdentifier(a, b) {
 module.exports = {
     compareNodeIdentifier,
     databaseKeyToNodeIdentifier,
-    InvalidNodeIdentifierError,
-    isInvalidNodeIdentifierError,
     isValidNodeIdentifier,
     makeNodeIdentifier,
     nodeIdentifierToDatabaseKey,
