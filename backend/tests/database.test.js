@@ -886,9 +886,11 @@ describe('generators/database', () => {
                     heldSectionEntered(undefined);
 
                     // Simulate identifier allocation as a transaction would.
+                    const committedLookup = db.getActiveIdentifierLookup();
                     const identifier = db._allocateKeyIdentifier(
                         'testKey',
                         () => db.generateNodeIdentifier(),
+                        committedLookup,
                     );
                     expect(identifier).toBeDefined();
                     expect(db._pendingAllocations.size).toBe(1);
