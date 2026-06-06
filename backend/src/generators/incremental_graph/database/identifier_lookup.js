@@ -86,7 +86,7 @@ function isIdentifierAllocationError(object) {
  * @property {Map<string, NodeIdentifier>} keyToId - New allocations in this transaction only.
  * @property {Map<string, NodeKeyString>} idToKey  - New allocations in this transaction only (inverse).
  * @property {IdentifierLookup} base               - Read-only reference to the committed lookup.
- * @property {Set<string>} ownedKeys              - Key strings for which this transaction is the 'new' source in _pendingAllocations.
+ * @property {Set<string>} ownedKeys              - Key strings allocated by this transaction (tracked for _releaseAllocations cleanup).
  */
 
 /**
@@ -362,16 +362,13 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * Return the existing identifier for a node key, or allocate a new one and
  * record it in the overlay (never in the base).
  *
- * Allocation is delegated to `rootDatabase._reserveKeyIdentifier`.  The
+ * Allocation is delegated to `rootDatabase._allocateKeyIdentifier`.  The
  * caller must hold the telescope lock for the node key (see pull.js), which
- * serialises all concurrent attempts for the same key so that `_reserveKeyIdentifier`
- * always returns `source: 'new'` or `source: 'shared'` from the committed
- * lookup.
+ * serialises all concurrent attempts for the same key.
  *
- * When `source === 'new'` the key is added to `txLookup.ownedKeys` so the
+ * The newly allocated key is added to `txLookup.ownedKeys` so the
  * transaction's `finally` block can release the reservation from
- * `_pendingAllocations`.  When `source === 'shared'` the key was already
- * committed by another transaction and needs no ownership tracking.
+ * `_pendingAllocations`.
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
@@ -391,18 +388,14 @@ function txAllocateNodeIdentifier(
     }
 
     const keyString = nodeKeyStringToString(nodeKey);
-    const { source, identifier } = rootDatabase._reserveKeyIdentifier(
+    const identifier = rootDatabase._allocateKeyIdentifier(
         keyString,
         makeIdentifier,
-        txLookup.base,
     );
 
     txLookup.keyToId.set(keyString, identifier);
     txLookup.idToKey.set(nodeIdentifierToString(identifier), nodeKey);
-
-    if (source === 'new') {
-        txLookup.ownedKeys.add(keyString);
-    }
+    txLookup.ownedKeys.add(keyString);
 
     return identifier;
 }
@@ -454,8 +447,8 @@ function mergeSorted(sortedA, sortedB) {
  * used for disk persistence.
  *
  * Uses the base's cached sorted array and merges in any overlay entries not
- * already present in the base (which can happen when another concurrent
- * transaction committed the same shared allocation between this transaction's
+ * already present in the base (the base may be stale if another concurrent
+ * transaction committed entries for different keys between this transaction's
  * allocation and its commit). The base cache is always up to date because
  * `commitTransactionLookup` updates it after every successful commit.
  *

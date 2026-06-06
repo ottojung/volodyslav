@@ -330,12 +330,8 @@ function makeGraphStorage(rootDatabase, sleeper) {
           * protected by the appropriate dome activity lock — a concurrent replica
           * cutover (`setCurrentReplicaPointer`) replaces `_computed` and would
           * leave your captured references pointing at the old replica.
-           *
-           * Ephemeral in-process state such as `_pendingAllocations` lives
-           * directly on `RootDatabase`, NOT inside `_computed`, so it survives
-           * cutover intact.
-           *
-           * In normal operation the caller (pullNode) holds the dome activity
+         *
+          * In normal operation the caller (pullNode) holds the dome activity
            * in "nighttime" mode, which prevents setCurrentReplicaPointer from
            * running concurrently (it needs the dome activity in "holiday" mode).
            * The references captured here (activeSchemaStorage, txLookup, etc.)
@@ -419,7 +415,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 // After a successful commit the identifiers are in the base
                 // lookup; after a failure they must be released so the map
                 // does not leak.
-                rootDatabase._releaseAllocations(txLookup);
+                rootDatabase._releaseAllocations(txLookup.ownedKeys);
             }
         },
         ensureMaterialized,
@@ -451,9 +447,8 @@ function lookupNodeIdentifier(tx, nodeKey) {
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
- * Allocation coordination is handled by `rootDatabase._reserveKeyIdentifier`
- * which atomically claims a key→identifier mapping on a shared
- * `_pendingAllocations` map.
+ * Allocation is delegated to `rootDatabase._allocateKeyIdentifier` which
+ * claims a key→identifier mapping in `_pendingAllocations`.
  *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase

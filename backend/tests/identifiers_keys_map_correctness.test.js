@@ -49,26 +49,20 @@ function makeMockRootDatabase() {
     /** @type {Set<string>} */
     const pendingAllocationIdentifiers = new Set();
     return {
-        _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-            const existingIdStr = pendingAllocations.get(keyString);
-            if (existingIdStr !== undefined) {
-                return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
-            }
-            const committedId = committedLookup.keyToId.get(keyString);
-            if (committedId !== undefined) {
-                return { source: 'shared', identifier: committedId };
+        _allocateKeyIdentifier(keyString, makeIdentifier) {
+            if (pendingAllocations.has(keyString)) {
+                throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
             for (let attempt = 0; ; attempt++) {
                 const candidate = makeIdentifier(attempt);
                 const candidateStr = String(candidate);
-                if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
                 if (pendingAllocationIdentifiers.has(candidateStr)) continue;
                 pendingAllocations.set(keyString, candidateStr);
                 pendingAllocationIdentifiers.add(candidateStr);
-                return { source: 'new', identifier: candidate };
+                return candidate;
             }
         },
-        _releaseAllocations(_txLookup) {},
+        _releaseAllocations(_ownedKeys) {},
     };
 }
 

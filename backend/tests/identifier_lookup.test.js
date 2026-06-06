@@ -462,18 +462,13 @@ describe("txAllocateNodeIdentifier", () => {
         const base = makeIdentifierLookup(entries);
         const pending = new Map();
         return {
-            _reserveKeyIdentifier(keyString, makeIdentifier, lookup) {
-                const existing = pending.get(keyString);
-                if (existing !== undefined) {
-                    return { source: 'existing', identifier: existing };
-                }
-                const existingId = lookup.keyToId.get(keyString);
-                if (existingId !== undefined) {
-                    return { source: 'shared', identifier: existingId };
+            _allocateKeyIdentifier(keyString, makeIdentifier) {
+                if (pending.has(keyString)) {
+                    throw new Error(`BUG: pending allocation for key ${keyString} found`);
                 }
                 const identifier = makeIdentifier(0);
                 pending.set(keyString, identifier);
-                return { source: 'new', identifier };
+                return identifier;
             },
             identifierLookup: base,
         };
@@ -680,19 +675,14 @@ describe("Serialization roundtrip", () => {
         const rootDb = {
             _pendingAllocations: new Map(),
             _pendingAllocationsById: new Map(),
-            _reserveKeyIdentifier(keyString, makeIdentifier, lookup) {
-                const existing = rootDb._pendingAllocations.get(keyString);
-                if (existing !== undefined) {
-                    return { source: 'shared', identifier: nodeIdentifierFromString(existing) };
-                }
-                const existingId = lookup.keyToId.get(keyString);
-                if (existingId !== undefined) {
-                    return { source: 'shared', identifier: existingId };
+            _allocateKeyIdentifier(keyString, makeIdentifier) {
+                if (rootDb._pendingAllocations.has(keyString)) {
+                    throw new Error(`BUG: pending allocation for key ${keyString} found`);
                 }
                 const identifier = makeIdentifier(0);
                 rootDb._pendingAllocations.set(keyString, nodeIdentifierToString(identifier));
                 rootDb._pendingAllocationsById.set(nodeIdentifierToString(identifier), keyString);
-                return { source: 'new', identifier };
+                return identifier;
             },
             identifierLookup: base,
         };

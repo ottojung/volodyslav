@@ -92,31 +92,25 @@ class InMemoryDatabase {
         return nodeIdentifierFromString(id);
     }
 
-    _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        const existingIdStr = this._pendingAllocations.get(keyString);
-        if (existingIdStr !== undefined) {
-            return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
-        }
-        const committedId = committedLookup.keyToId.get(keyString);
-        if (committedId !== undefined) {
-            return { source: 'shared', identifier: committedId };
+    _allocateKeyIdentifier(keyString, makeIdentifier) {
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
         }
         for (let attempt = 0; ; attempt++) {
             const candidate = makeIdentifier(attempt);
             const candidateStr = nodeIdentifierToString(candidate);
-            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
             let idCollision = false;
             for (const idStr of this._pendingAllocations.values()) {
                 if (idStr === candidateStr) { idCollision = true; break; }
             }
             if (idCollision) continue;
             this._pendingAllocations.set(keyString, candidateStr);
-            return { source: 'new', identifier: candidate };
+            return candidate;
         }
     }
 
-    _releaseAllocations(txLookup) {
-        for (const keyString of txLookup.ownedKeys) {
+    _releaseAllocations(ownedKeys) {
+        for (const keyString of ownedKeys) {
             this._pendingAllocations.delete(keyString);
         }
     }

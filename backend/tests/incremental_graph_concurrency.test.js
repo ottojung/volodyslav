@@ -83,31 +83,25 @@ class InMemoryDatabase {
         return nodeIdentifierFromString(id);
     }
 
-    _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        const existingIdStr = this._pendingAllocations.get(keyString);
-        if (existingIdStr !== undefined) {
-            return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
-        }
-        const committedId = committedLookup.keyToId.get(keyString);
-        if (committedId !== undefined) {
-            return { source: 'shared', identifier: committedId };
+    _allocateKeyIdentifier(keyString, makeIdentifier) {
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
         }
         for (let attempt = 0; ; attempt++) {
             const candidate = makeIdentifier(attempt);
             const candidateStr = nodeIdentifierToString(candidate);
-            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
             let idCollision = false;
             for (const idStr of this._pendingAllocations.values()) {
                 if (idStr === candidateStr) { idCollision = true; break; }
             }
             if (idCollision) continue;
             this._pendingAllocations.set(keyString, candidateStr);
-            return { source: 'new', identifier: candidate };
+            return candidate;
         }
     }
 
-    _releaseAllocations(txLookup) {
-        for (const keyString of txLookup.ownedKeys) {
+    _releaseAllocations(ownedKeys) {
+        for (const keyString of ownedKeys) {
             this._pendingAllocations.delete(keyString);
         }
     }
@@ -1764,8 +1758,9 @@ describe("IncrementalGraph concurrency", () => {
             // Never pull "source" so its identifier hasn't been allocated yet.
             // Two concurrent pulls will both try to allocate the same output key.
             //
-            // TX1 gets source: 'new' and claims the identifier in _pendingAllocations.
-            // TX2 gets source: 'shared' with the same identifier and stores it in its overlay.
+            // TX1 allocates the identifier and commits (updating the base lookup).
+            // TX2 then finds the key already in the committed base via txNodeKeyToId
+            // and reuses the existing identifier without allocating again.
             // When TX2 commits second, serializeTransactionLookup serializes the base
             // (which TX1 already updated via commitTransactionLookup) and then appends
             // TX2's overlay — producing duplicate entries WITHOUT the fix.

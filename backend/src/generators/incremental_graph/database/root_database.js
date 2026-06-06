@@ -439,30 +439,25 @@ class RootDatabaseClass {
     }
 
     /**
-     * Atomically claim a key-to-identifier mapping for an in-flight transaction.
-     * Synchronous — no await between the read and write, so JavaScript's
-     * single-threaded execution guarantees atomicity.
-     *
-     * The caller must hold the telescope lock for keyString (see pull.js),
-     * which serialises all concurrent allocation attempts for the same key.
-     * Consequently, _pendingAllocations MUST NOT already contain keyString —
-     * if it does, a locking bug exists.
-     *
-     * @param {string} keyString - Serialized node key string.
-     * @param {(attempt: number) => NodeIdentifier} makeIdentifier - Deterministic/synchronous identifier factory.
-     * @param {IdentifierLookup} committedLookup - The current committed lookup (for collision detection).
-     * @returns {{ source: 'new' | 'shared', identifier: NodeIdentifier }}
-     *
-     * Guarantees:
-     * - Every caller for the same keyString gets the same identifier (determined by the first caller).
-     * - The identifier is globally unique (not in committedLookup, not in any other pending allocation).
-     */
-    _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        const committedId = committedLookup.keyToId.get(keyString);
-        if (committedId !== undefined) {
-            return { source: 'shared', identifier: committedId };
-        }
-
+      * Allocate a unique identifier for a node key and claim it in
+      * _pendingAllocations for the current in-flight transaction.
+      * Synchronous — no await between the read and write, so JavaScript's
+      * single-threaded execution guarantees atomicity.
+      *
+      * The caller must hold the telescope lock for keyString (see pull.js),
+      * which serialises all concurrent allocation attempts for the same key.
+      * Consequently, _pendingAllocations MUST NOT already contain keyString —
+      * if it does, a locking bug exists.
+      *
+      * The caller (txAllocateNodeIdentifier) guarantees keyString is NOT in
+      * the committed lookup before calling this method, so every invocation
+      * produces a genuinely new allocation.
+      *
+      * @param {string} keyString - Serialized node key string.
+      * @param {(attempt: number) => NodeIdentifier} makeIdentifier - Deterministic/synchronous identifier factory.
+      * @returns {NodeIdentifier} The newly allocated identifier.
+      */
+    _allocateKeyIdentifier(keyString, makeIdentifier) {
         // The telescope lock per keyString guarantees no concurrent in-flight
         // allocation for this key, so _pendingAllocations must be clean.
         if (this._pendingAllocations.has(keyString)) {
@@ -475,23 +470,22 @@ class RootDatabaseClass {
             const candidate = makeIdentifier(attempt);
             const candidateStr = nodeIdentifierToString(candidate);
 
-            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
             if (this._pendingAllocationsById.has(candidateStr)) continue;
 
             this._pendingAllocations.set(keyString, candidateStr);
             this._pendingAllocationsById.set(candidateStr, keyString);
-            return { source: 'new', identifier: candidate };
+            return candidate;
         }
     }
 
     /**
-     * Release reservations for keys that this transaction owned.
-     * Called in the finally block after commit success or failure.
-     * @param {import('./identifier_lookup').TransactionIdentifierLookup} txLookup
-     * @returns {void}
-     */
-    _releaseAllocations(txLookup) {
-        for (const keyString of txLookup.ownedKeys) {
+      * Release pending allocations for keys that this transaction owned.
+      * Called in the finally block after commit success or failure.
+      * @param {Set<string>} ownedKeys - Key strings owned by the transaction.
+      * @returns {void}
+      */
+    _releaseAllocations(ownedKeys) {
+        for (const keyString of ownedKeys) {
             const idStr = this._pendingAllocations.get(keyString);
             this._pendingAllocations.delete(keyString);
             if (idStr !== undefined) {

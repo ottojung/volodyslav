@@ -886,21 +886,17 @@ describe('generators/database', () => {
                     heldSectionEntered(undefined);
 
                     // Simulate identifier allocation as a transaction would.
-                    const committedLookup = db.getActiveIdentifierLookup();
-                    const { source } = db._reserveKeyIdentifier(
+                    const identifier = db._allocateKeyIdentifier(
                         'testKey',
                         () => db.generateNodeIdentifier(),
-                        committedLookup,
                     );
-                    expect(source).toBe('new');
+                    expect(identifier).toBeDefined();
                     expect(db._pendingAllocations.size).toBe(1);
 
                     await heldSectionReleased;
 
                     // Release as the transaction's finally block does.
-                    db._releaseAllocations({
-                        ownedKeys: new Set(['testKey']),
-                    });
+                    db._releaseAllocations(new Set(['testKey']));
                     expect(db._pendingAllocations.size).toBe(0);
                 });
 
