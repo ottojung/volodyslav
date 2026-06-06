@@ -208,13 +208,18 @@ fewer.
 
 When the operation completes inside its concurrency scope:
 
-1. If any new identifier allocations were made during the transaction, append the updated
-   `identifiers_keys_map` (the full working lookup) to the batch.
-2. Flush the batch to LevelDB atomically.
-3. **Only after a successful flush**: replace `_computed.identifierLookup` with the transaction's
-   working lookup (which now equals the disk state).
-4. If the flush fails: do not update `_computed.identifierLookup`. Discard the transaction. Surface
-   the error to the caller.
+1. If any new identifier allocations were made during the transaction, append to the batch:
+   - the updated `identifiers_keys_map` (the full working lookup);
+   - the updated `last_node_index` (the committed allocation watermark).
+2. Append any node records (values, freshness, inputs, counters, timestamps) accumulated by the
+   transaction to the batch.
+3. Flush the batch to LevelDB atomically.
+4. **Only after a successful flush**:
+   - publish the transaction lookup into `_computed.identifierLookup`;
+   - advance `_computed.lastNodeIndex` to the committed watermark.
+   `_computed.fingerprint` does not change during normal transactions.
+5. If the flush fails: do not update `_computed.identifierLookup` or `_computed.lastNodeIndex`.
+   Discard the failed allocations. Surface the error to the caller.
 
 This ordering guarantees the invariant: the volatile layer always reflects exactly the committed
 disk state at every observable point.
@@ -242,15 +247,20 @@ When the database is first opened:
 1. Read the replica pointer from `_meta/current_replica`. This is the authoritative record of
    which replica is active.
 2. Construct the `namespaceSublevel`, `globalSublevel`, and `schemaStorage` for that replica.
-3. Load `identifiers_keys_map` from the `globalSublevel`. If absent, start with an empty lookup only
-   for a fresh replica that has no stored version yet; a versioned identifier-native replica without
-   this record is malformed and must fail during open.
-4. Assign `_computed = { replicaName, namespaceSublevel, globalSublevel, schemaStorage,
-   identifierLookup }`.
+3. Load from the active replica's global sublevel:
+   - `identifiers_keys_map`;
+   - `last_node_index`;
+   - `fingerprint`.
+4. A genuinely fresh replica (no stored version) initializes empty lookup metadata,
+   `last_node_index = 0`, and a valid fingerprint.
+5. A versioned replica missing required identifier or allocation metadata must fail hard during
+   open — silent repair is not permitted.
+6. Assign `_computed = { replicaName, namespaceSublevel, globalSublevel, schemaStorage,
+   identifierLookup, lastNodeIndex, fingerprint }`.
 
-The lookup is loaded once at open time. There is no lazy-loading step and no uninitialized
-sentinel: `_computed.identifierLookup` is always a valid, fully populated bijection after the
-database is opened.
+The lookup and allocation metadata are loaded once at open time. There is no lazy-loading step
+and no uninitialized sentinel: `_computed` is always a valid, fully populated injection of the
+durable database state after the database is opened.
 
 ### Replica cutover
 
@@ -262,7 +272,10 @@ Steps:
 1. Acquire the exclusive lock (all graph activity suspended).
 2. Prepare the new replica's data in the inactive replica's sublevels.
 3. Write the new replica pointer to `_meta/current_replica` durably.
-4. Load the new replica's `identifiers_keys_map` from the new `globalSublevel`.
+4. Load the new replica's metadata from the new `globalSublevel`:
+   - `identifiers_keys_map`;
+   - `last_node_index`;
+   - `fingerprint`.
 5. Atomically replace `_computed`:
    ```
    _computed = {
@@ -271,12 +284,16 @@ Steps:
        globalSublevel:    <new globalSublevel>,
        schemaStorage:     <new schemaStorage>,
        identifierLookup:  <loaded from new globalSublevel>,
+       lastNodeIndex:     <loaded from new globalSublevel>,
+       fingerprint:       <loaded from new globalSublevel>,
    }
    ```
 6. Release the exclusive lock.
 
 After step 5, any subsequent operation observes the new `_computed` exclusively. No entry from the
-old replica's lookup persists in `_computed` after the cutover completes.
+old replica's lookup, `lastNodeIndex`, or `fingerprint` persists in `_computed` after the cutover
+completes, except where reset/import logic intentionally preserves the local fingerprint by writing
+it into the target replica before the cutover.
 
 ---
 
@@ -368,22 +385,43 @@ the flush returns, the entry must be present.
 
 ### P7 — Rollback on failed flush
 
-If the batch flush fails, no new identifier mappings from that transaction are visible in
-`_computed.identifierLookup` afterwards, and the on-disk map is also unchanged.
+If the batch flush fails, no new identifier mappings or `last_node_index` advancement from that
+transaction are visible in `_computed.identifierLookup` or `_computed.lastNodeIndex` afterwards,
+and the on-disk state is also unchanged.
 
 *Verification:* inject a flush failure; assert that keys being allocated during the failing
-operation are absent from both `_computed.identifierLookup` and the on-disk map afterwards.
+operation are absent from both `_computed.identifierLookup` and the on-disk map afterwards, and
+that `_computed.lastNodeIndex` did not advance.
 
-### P8 — Replica cutover replaces the lookup entirely
+### P8 — Committed `last_node_index` reflected in `_computed`
 
-After a cutover to replica R, `_computed.identifierLookup` contains exactly the entries from R's
-`identifiers_keys_map` and no entries from the previous replica.
+After a successful transaction that allocates identifiers, `_computed.lastNodeIndex` reflects the
+committed allocation watermark that was durably written to disk.
 
-*Verification:* populate replica A with identifiers, cut over to replica B (different identifiers),
-assert that `_computed.identifierLookup` matches replica B's lookup exactly and contains no replica
-A entries.
+*Verification:* after a commit that allocates identifiers, read `last_node_index` from the on-disk
+global sublevel and assert it matches `_computed.lastNodeIndex`.
 
-### P9 — Nested pulls submit independent batches
+### P9 — Replica cutover replaces the lookup and allocation metadata entirely
+
+After a cutover to replica R, `_computed.identifierLookup`, `_computed.lastNodeIndex`, and
+`_computed.fingerprint` contain exactly the values from R's global sublevel and no values from the
+previous replica.
+
+*Verification:* populate replica A with identifiers, high last_node_index, and one fingerprint;
+prepare replica B with different identifiers, lower last_node_index, and a different
+fingerprint. After cutover, assert all three fields match replica B's values exactly.
+
+### P10 — Replica cutover preserves local fingerprint during reset/import
+
+When a reset/import cutover is performed into an existing live database, the pre-import local
+fingerprint is preserved by explicitly writing it into the target replica's global sublevel before
+the cutover. After the cutover, `_computed.fingerprint` reflects the local fingerprint, not the
+one from the imported snapshot.
+
+*Verification:* create a live DB with fingerprint L, import a snapshot with fingerprint S,
+cut over, assert `_computed.fingerprint` is L not S.
+
+### P11 — Nested pulls submit independent batches
 
 When an outer pull for node X causes an inner pull for node Y (a dependency), the inner pull
 creates its own Transaction and submits its batch independently. Y's writes are fully committed

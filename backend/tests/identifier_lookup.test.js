@@ -35,7 +35,7 @@ const {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Create a NodeIdentifier from a 9-letter string. */
+/** Create a nominal NodeIdentifier from a current-format test string. */
 function id(str) {
     return nodeIdentifierFromString(str);
 }

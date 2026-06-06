@@ -17,7 +17,7 @@ const {
 
 const { nodeIdentifierFromString } = require('../src/generators/incremental_graph/database');
 
-// Stable 9-letter lowercase NodeIdentifiers used as test node keys.
+// Stable current-format NodeIdentifiers for the test fingerprint used as test node keys.
 const NODE_FOO = nodeIdentifierFromString('1-abcdefghi');
 const NODE_BAR = nodeIdentifierFromString('2-abcdefghi');
 const NODE_BAZ = nodeIdentifierFromString('3-abcdefghi');

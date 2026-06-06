@@ -39,8 +39,8 @@ function getTestCapabilities() {
 }
 
 /**
- * Return a stable 9-letter lowercase NodeIdentifier for test index i (0-25).
- * Uses current-format identifiers with a base36 index and fixed fingerprint.
+ * Return a stable current-format NodeIdentifier for test index i (0-25).
+ * Uses a base36 index and a fixed test fingerprint.
  * @param {number} i
  * @returns {import('../src/generators/incremental_graph/database/types').NodeIdentifier}
  */
