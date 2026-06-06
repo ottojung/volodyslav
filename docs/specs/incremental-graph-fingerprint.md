@@ -51,9 +51,6 @@ target metadata, a rendered snapshot used for restore/reset, or the standalone
 snapshot migration path must satisfy this pattern. Missing or malformed values
 fail hard instead of being silently accepted or replaced.
 
-This runtime validation applies to fingerprints only. `NodeIdentifier` remains
-a nominal string whose documented format is specification-only.
-
 ## Lifecycle
 
 - Created once on first initialization of the active replica.
