@@ -529,7 +529,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     );
 
     const summary = summarizeDecisions(decisions.values());
-    if (summary.hasChanges) {
+    const metadataChanged = mergedLastNodeIndex !== targetLastNodeIndex;
+    if (summary.hasChanges || metadataChanged) {
         await commitChangedMerge(
             rootDatabase,
             targetStorage,
@@ -541,6 +542,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         );
     }
 
+    const switchedReplica = summary.hasChanges || metadataChanged;
     logger.logInfo(
         {
             hostname,
@@ -549,11 +551,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             kept: summary.kept,
             taken: summary.taken,
             invalidated: summary.invalidated,
-            switchedReplica: summary.hasChanges,
+            switchedReplica,
         },
         'Graph merge completed for host'
     );
-    return summary.hasChanges;
+    return switchedReplica;
 }
 
 module.exports = {

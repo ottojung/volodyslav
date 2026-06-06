@@ -10,11 +10,11 @@ database.
 ## Storage location
 
 ```
-rendered/_meta/fingerprint
+rendered/r/global/fingerprint
 ```
 
-In the LevelDB live database, this lives at `_meta/fingerprint` in the
-root-level `_meta` sublevel.
+In the LevelDB live database, this lives at the active replica's global
+sublevel under the key `"fingerprint"`.
 
 ## Generation
 
@@ -41,25 +41,31 @@ format at conversion boundaries.
 
 ## Lifecycle
 
-- Created once on first initialization.
-- Persisted in `_meta/fingerprint`.
-- Loaded into `RootDatabase._computed.fingerprint` on every database open.
+- Created once on first initialization of the active replica.
+- Persisted in the active replica's global sublevel at `r/global/fingerprint`.
+- Loaded into `RootDatabase._computed.fingerprint` on every database open
+  (from the currently active replica).
 - Available to all identifier allocation code paths through `_computed`.
 - Never overwritten by sync, reset, or import once a live DB exists.
-- If a reset/recovery path destroys the live database entirely (e.g. full
-  database deletion and re-initialization from a snapshot), the fingerprint
-  from that snapshot is imported.
+- On first boot from a downloaded/restored snapshot, the snapshot's
+  `r/global/fingerprint` is imported along with the rest of the replica data.
+- On non-first-boot reset, the local fingerprint is written back to the
+  target replica's global sublevel before the replica switch, preserving
+  the local identity.
 
 ## Render and scan
 
-- `rendered/_meta/fingerprint` is included in rendered filesystem snapshots
-  alongside `rendered/_meta/current_replica`.
-- `scanFromFilesystem` into the `_meta` sublevel imports the fingerprint
-  when the database is being initialized from a snapshot.
+- `rendered/r/global/fingerprint` is included in rendered filesystem snapshots
+  alongside other global metadata (version, identifiers_keys_map,
+  last_node_index).
+- `scanFromFilesystem` imports the fingerprint as part of the replica's
+  global sublevel.
 
 ## Not synchronized
 
 The fingerprint is local machine metadata. It is not transferred between
-hosts during synchronization. Each machine has its own fingerprint, which
-is what makes node identifiers globally unique across hosts even when the
-same local index values are allocated.
+hosts during synchronization. On a non-first-boot reset that imports a
+remote snapshot, the local fingerprint is restored into the target replica
+before the replica pointer switch. Each machine has its own fingerprint,
+which is what makes node identifiers globally unique across hosts even when
+the same local index values are allocated.

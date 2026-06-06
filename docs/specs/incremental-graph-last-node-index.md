@@ -2,9 +2,9 @@
 
 ## Purpose
 
-`last_node_index` is a durable monotonic allocation watermark that tracks
-the largest local node allocation index durably committed for the active
-replica. It is not a count of existing nodes.
+`last_node_index` is the greatest local allocation index durably retired
+from future use. It is a monotonic allocation watermark — not a count of
+existing nodes and not a count of committed materialized nodes.
 
 ## Storage location
 
@@ -52,6 +52,8 @@ Gaps are acceptable and expected:
 - Failed transactions consume an index value, creating a gap.
 - Concurrent transactions that allocate indices and commit out of order
   can create gaps.
+- `last_node_index` is the watermark of the largest index known to be
+  retired; indices below it may not correspond to any materialized node.
 
 ## Concurrency
 
@@ -65,41 +67,10 @@ Gaps are acceptable and expected:
 
 ## Disk-before-memory invariant
 
-- Transactions write `last_node_index` to disk alongside the
-  `identifiers_keys_map` batch.
-- In-memory `_computed.lastNodeIndex` is updated only after the disk
-  batch succeeds.
-- This maintains the existing disk-before-memory ordering.
-
-## Replica switch
-
-- `setCurrentReplicaPointer` reloads `lastNodeIndex` from the newly
-  active replica's global sublevel.
-- The volatile `_nextNodeIndex` counter is reset to
-  `lastNodeIndex + 1` on every replica switch.
-
-## Sync merge behavior
-
-During host merge, the merged value is:
-
-```
-merged_last_node_index = max(target_last_node_index, host_last_node_index)
-```
-
-The merged value is written when committing the changed merge. This
-handles the case where the target replica was a copy of the active
-replica (which may have a different last_node_index than the host's).
-
-## Render and scan
-
-- `rendered/r/global/last_node_index` is included in rendered filesystem
-  snapshots alongside `identifiers_keys_map`.
-- `scanFromFilesystem` imports the value into the target replica's
-  global sublevel.
-
-## Not a node count
-
-`last_node_index` is strictly a monotonic allocation watermark:
-- Deleted nodes do not decrement it.
-- It is always `>=` the largest committed local index value.
-- Gaps caused by failed or interleaved allocations are acceptable.
+- The commit watermark is captured once before disk write:
+  `commitLastNodeIndex = rootDatabase.getCurrentAllocationWatermark()`.
+- The disk batch writes `last_node_index` to the `commitLastNodeIndex` value.
+- After the batch succeeds, in-memory `_computed.lastNodeIndex` is set to
+  `max(_computed.lastNodeIndex, commitLastNodeIndex)`.
+- This prevents `_computed.lastNodeIndex` from advancing past what was
+  actually written while another concurrent transaction allocates ahead.

@@ -1,26 +1,12 @@
 #!/usr/bin/env node
 /**
- * Migrate an old-format incremental-graph snapshot directory to the new
- * identifier-based format.
+ * Convert rendered incremental-graph snapshots to the current
+ * fingerprint/index identifier format.
  *
- * Old format:
- *   rendered/r/values/all_events        (zero-arg node → bare head name)
- *   rendered/r/values/event/id123       (parameterized → head/arg1/arg2/...)
- *   rendered/r/inputs/events_count      = { inputs: ["{\"head\":\"all_events\",\"args\":[]}"], inputCounters: [1] }
- *   rendered/r/revdeps/all_events       = ["{\"head\":\"events_count\",\"args\":[]}"]
- *   rendered/_meta/current_replica      = "x"
- *   rendered/r/global/version           = "0.0.0-dev-previous"
- *   (no identifiers_keys_map)
- *
- * New format:
- *   rendered/r/values/1-fingerprint     (index-based identifier)
- *   rendered/r/inputs/1-fingerprint     = { inputs: ["2-fingerprint"], inputCounters: [1] }
- *   rendered/r/revdeps/2-fingerprint    = ["1-fingerprint"]
- *   rendered/_meta/current_replica      = "x"
- *   rendered/_meta/fingerprint          = "abcdefghi" (or generated if absent)
- *   rendered/r/global/version           = "0.0.0-dev"
- *   rendered/r/global/identifiers_keys_map = [["1-fingerprint", "{\"head\":\"all_events\",\"args\":[]}"], ...]
- *   rendered/r/global/last_node_index   = 2
+ * Snapshots that already contain an identifiers_keys_map are left untouched.
+ * Otherwise, old-style path-based node keys are collected, assigned
+ * deterministic identifiers of the form `index-fingerprint`, and written
+ * back alongside the lookup metadata.
  *
  * Usage: node scripts/migrate-snapshot-to-identifiers.js <snapshot-dir>
  *
@@ -317,7 +303,7 @@ async function migrateSnapshot(snapshotDir) {
         // Still ensure identifiers_keys_map exists
         await ensureIdentifiersKeysMap(renderedDir, []);
         // Ensure fingerprint exists
-        const fingerprintPath = path.join(renderedDir, "_meta", "fingerprint");
+        const fingerprintPath = path.join(renderedDir, "r", "global", "fingerprint");
         try {
             await fs.stat(fingerprintPath);
         } catch {
@@ -336,7 +322,7 @@ async function migrateSnapshot(snapshotDir) {
     }
 
     // ── Step 1.5: Obtain or generate fingerprint ──
-    const fingerprintPath = path.join(renderedDir, "_meta", "fingerprint");
+    const fingerprintPath = path.join(renderedDir, "r", "global", "fingerprint");
     let fingerprint;
     try {
         const raw = await fs.readFile(fingerprintPath, "utf-8");

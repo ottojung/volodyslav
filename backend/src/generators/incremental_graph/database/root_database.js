@@ -179,8 +179,8 @@ function assertNeverReplicaName(name) {
 /**
  * Database for storing replica-level global state (e.g., version).
  * Key: plain string (e.g., 'version' or 'identifiers_keys_map')
- * Value: version string or identifier lookup metadata
- * @typedef {GenericDatabase<Version | import('./types').IdentifiersKeysMap, string>} GlobalVersionDatabase
+ * Value: version string, identifier lookup metadata, or other global state
+ * @typedef {GenericDatabase<Version | import('./types').IdentifiersKeysMap | number | string, string>} GlobalVersionDatabase
  */
 
 /**
@@ -327,6 +327,12 @@ class RootDatabaseClass {
     _rootMetaSublevel;
 
     /**
+      * @private
+      * @type {import('../../../random/seed').NonDeterministicSeed}
+      */
+    _seed;
+
+    /**
       * Active-replica state that is an injection from the durable database.
       * Reconstructed on every replica switch / reopen — never holds ephemeral data.
       * @private
@@ -369,12 +375,12 @@ class RootDatabaseClass {
      * @param {RootLevelType} db - The Level database instance
      * @param {Version} version - The current application version
      * @param {ReplicaName} currentReplicaName - The initially active replica ("x" or "y")
-     * @param {string} fingerprint - The machine-local database fingerprint.
-     * @param {number} lastNodeIndex - The durable last node index watermark.
+     * @param {import('../../../random/seed').NonDeterministicSeed} seed - Random seed for fingerprint generation.
      */
-    constructor(db, version, currentReplicaName, fingerprint, lastNodeIndex) {
+    constructor(db, version, currentReplicaName, seed) {
         this.db = db;
         this.version = version;
+        this._seed = seed;
 
         // Root-level _meta sublevel for the replica pointer.
         this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
@@ -387,11 +393,11 @@ class RootDatabaseClass {
             globalSublevel,
             schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
             identifierLookup: makeEmptyIdentifierLookup(),
-            lastNodeIndex,
-            fingerprint,
+            lastNodeIndex: 0,
+            fingerprint: '',
         };
 
-        this._nextNodeIndex = lastNodeIndex + 1;
+        this._nextNodeIndex = 1;
 
         // Pending allocations map: purely ephemeral, lives outside _computed
         // because it must not be reconstructed from a database snapshot.
@@ -460,18 +466,6 @@ class RootDatabaseClass {
      */
     getFingerprint() {
         return this._computed.fingerprint;
-    }
-
-    /**
-     * Restore a previously-saved fingerprint after a snapshot import.
-     * Only used on non-first-boot resets to prevent snapshot fingerprints
-     * from overwriting the local database fingerprint.
-     * @param {string} fingerprint - The fingerprint to restore.
-     * @returns {Promise<void>}
-     */
-    async restoreFingerprint(fingerprint) {
-        this._computed.fingerprint = fingerprint;
-        await this._rootMetaSublevel.put('fingerprint', fingerprint);
     }
 
     /**
@@ -561,17 +555,23 @@ class RootDatabaseClass {
     }
 
     /**
-     * Write an empty identifiers_keys_map and initial last_node_index for a
-     * fresh replica. Used by makeRootDatabase to ensure
+     * Write an empty identifiers_keys_map, initial last_node_index, and
+     * fingerprint for a fresh replica. Used by makeRootDatabase to ensure
      * loadIdentifierLookupFromGlobal never encounters a missing map.
      * @returns {Promise<void>}
      */
     async writeEmptyIdentifierLookup() {
         await this._computed.globalSublevel.put(IDENTIFIERS_KEY, []);
         await this._computed.globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
+        const fingerprint = random.basicString({ seed: this._seed });
+        await this._computed.globalSublevel.put('fingerprint', fingerprint);
+        this._computed.fingerprint = fingerprint;
     }
 
     /**
+     * Load identifier lookup, last_node_index, and fingerprint from the
+     * active replica's global sublevel. Called on database open and replica
+     * switch for versioned replicas.
      * @returns {Promise<void>}
      */
     async initializeActiveIdentifierLookup() {
@@ -579,17 +579,41 @@ class RootDatabaseClass {
             this._computed.globalSublevel,
             `active replica '${this.currentReplicaName()}'`
         );
+        const rawLastNodeIndex = await this._computed.globalSublevel.get(LAST_NODE_INDEX_KEY);
+        if (typeof rawLastNodeIndex === 'number' && Number.isInteger(rawLastNodeIndex) && rawLastNodeIndex >= 0) {
+            this._computed.lastNodeIndex = rawLastNodeIndex;
+            this._nextNodeIndex = rawLastNodeIndex + 1;
+        } else {
+            throw new MissingIdentifierLookupError(
+                `active replica '${this.currentReplicaName()}' has a version but missing or invalid last_node_index`
+            );
+        }
+        const storedFingerprint = await this._computed.globalSublevel.get('fingerprint');
+        if (typeof storedFingerprint === 'string' && storedFingerprint.length >= 9) {
+            this._computed.fingerprint = storedFingerprint;
+        } else {
+            throw new MissingIdentifierLookupError(
+                `active replica '${this.currentReplicaName()}' has a version but missing or invalid fingerprint`
+            );
+        }
     }
 
     /**
      * Load the last_node_index from the active replica's global sublevel.
-     * Returns 0 if the key is absent (fresh replica).
+     * Throws if a versioned replica has missing or invalid last_node_index.
+     * Returns 0 only for genuinely fresh (un-versioned) replicas.
+     * @param {boolean} hasVersion - Whether the replica has a version entry.
      * @returns {Promise<number>}
      */
-    async loadLastNodeIndex() {
+    async loadLastNodeIndex(hasVersion) {
         const value = await this._computed.globalSublevel.get(LAST_NODE_INDEX_KEY);
         if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
             return value;
+        }
+        if (hasVersion) {
+            throw new MissingIdentifierLookupError(
+                `active replica '${this.currentReplicaName()}' has a version but missing or invalid last_node_index`
+            );
         }
         return 0;
     }
@@ -644,12 +668,20 @@ class RootDatabaseClass {
             const hasVersion = await globalSublevel.get('version');
             let identifierLookup;
             let lastNodeIndex;
+            let fingerprint;
             if (hasVersion === undefined) {
                 identifierLookup = makeEmptyIdentifierLookup();
                 lastNodeIndex = 0;
-                // Write an empty map and initial last_node_index so makeRootDatabase will find it on next open.
+                // Carry forward the existing fingerprint so the machine-local
+                // fingerprint is preserved across replica switches.
+                fingerprint = this._computed.fingerprint;
+                // Write an empty map, initial last_node_index, and fingerprint.
                 await globalSublevel.put(IDENTIFIERS_KEY, []);
                 await globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
+                if (!fingerprint) {
+                    fingerprint = random.basicString({ seed: this._seed });
+                }
+                await globalSublevel.put('fingerprint', fingerprint);
             } else {
                 identifierLookup = await loadIdentifierLookupFromGlobal(
                     globalSublevel,
@@ -659,8 +691,17 @@ class RootDatabaseClass {
                 if (typeof rawLastNodeIndex === 'number' && Number.isInteger(rawLastNodeIndex) && rawLastNodeIndex >= 0) {
                     lastNodeIndex = rawLastNodeIndex;
                 } else {
-                    lastNodeIndex = 0;
-                    await globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
+                    throw new MissingIdentifierLookupError(
+                        `replica '${name}' has a version but missing or invalid last_node_index`
+                    );
+                }
+                const storedFingerprint = await globalSublevel.get('fingerprint');
+                if (typeof storedFingerprint === 'string' && storedFingerprint.length >= 9) {
+                    fingerprint = storedFingerprint;
+                } else {
+                    throw new MissingIdentifierLookupError(
+                        `replica '${name}' has a version but missing or invalid fingerprint`
+                    );
                 }
             }
             await this._rootMetaSublevel.put('current_replica', name);
@@ -671,7 +712,7 @@ class RootDatabaseClass {
                 schemaStorage,
                 identifierLookup,
                 lastNodeIndex,
-                fingerprint: this._computed.fingerprint,
+                fingerprint,
             };
             this._nextNodeIndex = lastNodeIndex + 1;
         } catch (err) {
@@ -1044,22 +1085,6 @@ class RootDatabaseClass {
  */
 
 /**
- * Load or create the database fingerprint from `_meta/fingerprint`.
- * @param {import('abstract-level').AbstractSublevel<import('./types').SublevelFormat, string, DatabaseStoredValue>} rootMetaSublevel
- * @param {RootDatabaseCapabilities} capabilities
- * @returns {Promise<string>}
- */
-async function loadOrCreateFingerprint(rootMetaSublevel, capabilities) {
-    const stored = await rootMetaSublevel.get('fingerprint');
-    if (typeof stored === 'string' && stored.length >= 9) {
-        return stored;
-    }
-    const newFingerprint = random.basicString(capabilities);
-    await rootMetaSublevel.put('fingerprint', newFingerprint);
-    return newFingerprint;
-}
-
-/**
  * Factory function to create a RootDatabase instance.
  *
  * On first open, initialises `_meta/current_replica` to `"x"` for a fresh database.
@@ -1098,20 +1123,17 @@ async function makeRootDatabase(capabilities, databasePath) {
 
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
     const storedReplica = await rootMetaSublevel.get('current_replica');
-    const fingerprint = await loadOrCreateFingerprint(rootMetaSublevel, capabilities);
 
     if (storedReplica === undefined) {
         const replicaName = 'x';
         await rootMetaSublevel.put('current_replica', replicaName);
-        const rootDatabase = new RootDatabaseClass(db, version, replicaName, fingerprint, 0);
+        const rootDatabase = new RootDatabaseClass(db, version, replicaName, capabilities.seed);
         const hasVersion = await rootDatabase.getGlobalVersion();
         if (hasVersion === undefined) {
             await rootDatabase.writeEmptyIdentifierLookup();
             return rootDatabase;
         }
         await rootDatabase.initializeActiveIdentifierLookup();
-        rootDatabase._computed.lastNodeIndex = await rootDatabase.loadLastNodeIndex();
-        rootDatabase._nextNodeIndex = rootDatabase._computed.lastNodeIndex + 1;
         return rootDatabase;
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
@@ -1119,10 +1141,8 @@ async function makeRootDatabase(capabilities, databasePath) {
         throw new InvalidReplicaPointerError(storedReplica);
     }
 
-    const rootDatabase = new RootDatabaseClass(db, version, storedReplica, fingerprint, 0);
+    const rootDatabase = new RootDatabaseClass(db, version, storedReplica, capabilities.seed);
     await rootDatabase.initializeActiveIdentifierLookup();
-    rootDatabase._computed.lastNodeIndex = await rootDatabase.loadLastNodeIndex();
-    rootDatabase._nextNodeIndex = rootDatabase._computed.lastNodeIndex + 1;
     return rootDatabase;
 }
 

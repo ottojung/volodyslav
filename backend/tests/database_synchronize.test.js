@@ -166,6 +166,8 @@ describe("synchronizeNoLock", () => {
                         [remoteKey, { source: "remote" }],
             ["!x!!global!version", "remote-version"],
             ["!x!!global!identifiers_keys_map", []],
+            ["!x!!global!last_node_index", 0],
+            ["!x!!global!fingerprint", "testfingerprnt"],
         ]);
 
         const db = await getRootDatabase(capabilities);

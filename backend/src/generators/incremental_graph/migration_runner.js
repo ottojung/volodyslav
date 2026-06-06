@@ -155,9 +155,10 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * @param {import('./database/types').Version} newVersion
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
+ * @param {string} fingerprint - The database fingerprint to carry forward.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime, maxAllocatedIndex) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime, maxAllocatedIndex, fingerprint) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
@@ -325,6 +326,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 yield 'version';
                 yield IDENTIFIERS_KEY;
                 yield LAST_NODE_INDEX_KEY;
+                yield 'fingerprint';
             },
             async get(key) {
                 if (key === 'version') {
@@ -338,6 +340,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     const prevValue = (typeof prevLastNodeIndex === 'number' && Number.isInteger(prevLastNodeIndex) && prevLastNodeIndex >= 0)
                         ? prevLastNodeIndex : 0;
                     return Math.max(prevValue, maxAllocatedIndex);
+                }
+                if (key === 'fingerprint') {
+                    return fingerprint;
                 }
                 return await prevStorage.global.get(key);
             },
@@ -481,7 +486,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 desiredRevdeps,
                 currentVersion,
                 capabilities.datetime,
-                migrationStorage.getMaxAllocatedIndex()
+                migrationStorage.getMaxAllocatedIndex(),
+                rootDatabase.getFingerprint()
             );
 
             // Gently unify the desired state into the target replica.

@@ -96,6 +96,8 @@ function makeSchemaStorage() {
 function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
+        _computed: { lastNodeIndex: 0, fingerprint: "testfingerprnt" },
+        getFingerprint() { return "testfingerprnt"; },
         async getGlobalVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
         currentReplicaName() { return 'x'; },

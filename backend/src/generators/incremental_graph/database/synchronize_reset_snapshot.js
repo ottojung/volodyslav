@@ -32,6 +32,8 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         await capabilities.creator.createDirectory(importDirectory);
     }
 
+    const preImportFingerprint = database.getFingerprint();
+
     await scanFromFilesystem(
         capabilities,
         database,
@@ -39,20 +41,9 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         nextReplica
     );
 
-    const preImportFingerprint = database.getFingerprint();
-
-    const metaDir = path.join(snapshotRoot, '_meta');
-    if (await capabilities.checker.directoryExists(metaDir)) {
-        await scanFromFilesystem(
-            capabilities,
-            database,
-            metaDir,
-            '_meta'
-        );
-    }
-
-    if (isExistingDb) {
-        database.restoreFingerprint(preImportFingerprint);
+    if (isExistingDb && preImportFingerprint) {
+        const targetGlobal = database.replicaGlobalSublevel(nextReplica);
+        await targetGlobal.put('fingerprint', preImportFingerprint);
     }
 
     const previousReplica = database.currentReplicaName();
@@ -72,7 +63,7 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
         LIVE_DATABASE_WORKING_PATH
     );
 
-    const liveDbExisted = await capabilities.checker.directoryExists(liveDatabasePath);
+    const liveDbExisted = (await capabilities.checker.directoryExists(liveDatabasePath)) !== null;
 
     let database = await makeRootDatabase(
         capabilities,

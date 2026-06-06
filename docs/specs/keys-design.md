@@ -18,7 +18,7 @@ node addressing. It describes the model as it is meant to be.
 
 - **NodeKey**: the schema-derived identity of a concrete node instance, based on
   `(head, args)`
-- **NodeIdentifier**: the opaque random identifier attached to a materialized node
+- **NodeIdentifier**: the deterministic persisted identifier attached to a materialized node
 - **graph-state sublevels**: `values`, `freshness`, `inputs`, `revdeps`, `counters`,
   `timestamps`
 
