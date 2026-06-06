@@ -36,25 +36,6 @@ function isIdentifierLookupError(object) {
     return object instanceof IdentifierLookupError;
 }
 
-class IdentifierAllocationError extends Error {
-    /**
-     * @param {string} nodeKey
-     */
-    constructor(nodeKey) {
-        super(`Failed to allocate a unique node identifier for ${nodeKey}`);
-        this.name = "IdentifierAllocationError";
-        this.nodeKey = nodeKey;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is IdentifierAllocationError}
- */
-function isIdentifierAllocationError(object) {
-    return object instanceof IdentifierAllocationError;
-}
-
 /**
  * Committed identifier lookup used as the in-memory mirror of the persisted
  * `identifiers_keys_map`. Both maps always contain exactly the same entries
@@ -548,10 +529,8 @@ module.exports = {
     cloneIdentifierLookup,
     mergeIdentifierLookups,
     deleteIdentifierMappingForNodeKey,
-    IdentifierAllocationError,
     IdentifierLookupError,
     IDENTIFIERS_KEY,
-    isIdentifierAllocationError,
     isIdentifierLookupError,
     makeEmptyIdentifierLookup,
     makeIdentifierLookup,

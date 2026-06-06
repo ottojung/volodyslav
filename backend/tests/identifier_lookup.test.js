@@ -3,10 +3,8 @@ const {
     cloneIdentifierLookup,
     mergeIdentifierLookups,
     deleteIdentifierMappingForNodeKey,
-    IdentifierAllocationError,
     IdentifierLookupError,
     IDENTIFIERS_KEY,
-    isIdentifierAllocationError,
     isIdentifierLookupError,
     makeEmptyIdentifierLookup,
     makeIdentifierLookup,
@@ -643,15 +641,6 @@ describe("Error types", () => {
         expect(err.message).toBe("test");
         expect(isIdentifierLookupError(err)).toBe(true);
         expect(isIdentifierLookupError({})).toBe(false);
-    });
-
-    test("IdentifierAllocationError", () => {
-        const err = new IdentifierAllocationError("some_key");
-        expect(err.name).toBe("IdentifierAllocationError");
-        expect(err.message).toContain("some_key");
-        expect(err.nodeKey).toBe("some_key");
-        expect(isIdentifierAllocationError(err)).toBe(true);
-        expect(isIdentifierAllocationError({})).toBe(false);
     });
 });
 
