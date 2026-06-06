@@ -26,8 +26,6 @@ const NODE_IDENTIFIER_PATTERN = /^[a-z]{9}$/;
 
 /**
  * Check whether a plain string satisfies the documented NodeIdentifier format.
- * This is a specification check, not a runtime guard — every identifier in
- * the system is internally generated and therefore already conforms.
  * @param {string} identifier
  * @returns {boolean}
  */
