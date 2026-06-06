@@ -77,9 +77,9 @@ HTTP concrete-node routes remain `head + args` based to preserve existing API be
 A `NodeIdentifier` is a deterministic, globally-namespaced identifier with the
 following properties:
 
+- globally and forever unique
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
-- unique within the database
 - suitable for direct use as persisted key content and as a filesystem path segment
 - matches `/^[0-9a-z]+-[a-z]{9,}$/` (full-string match)
 
