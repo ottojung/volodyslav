@@ -162,7 +162,7 @@ describe("calories(e) node", () => {
         );
     });
 
-    test("recomputes calories when the dynamically pulled ontology changes", async () => {
+    test("does not recompute when ontology changes (ontology is not a graph dependency)", async () => {
         const capabilities = await getTestCapabilities(333);
         const iface = capabilities.interface;
         await iface.ensureInitialized();
@@ -192,9 +192,10 @@ describe("calories(e) node", () => {
             modifiers: [{ name: "when", description: "When eaten" }],
         });
 
-        // Recompute because ontology changed, even though the event input didn't change.
-        await tryPull(2);
-        await tryPull(2);
+        // Ontology change does NOT trigger recomputation — the computor fetches
+        // ontology via the capabilities interface, not as a graph dependency.
+        await tryPull(1);
+        await tryPull(1);
     });
 
     test("uses basic context input rather than only the target event input", async () => {

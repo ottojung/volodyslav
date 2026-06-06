@@ -51,8 +51,8 @@ function internalGetOrCreateConcreteNode(
             output: concreteKeyString,
             inputs: jsonInputs,
             /** @type {ConcreteNodeComputor} */
-            computor: (inputs, oldValue, pull) =>
-                compiledNode.source.computor(inputs, oldValue, [], pull),
+            computor: (inputs, oldValue) =>
+                compiledNode.source.computor(inputs, oldValue, []),
         };
         incrementalGraph.concreteInstantiations.set(
             concreteKeyString,
@@ -77,8 +77,8 @@ function internalGetOrCreateConcreteNode(
         output: concreteKeyString,
         inputs: concreteInputs,
         /** @type {ConcreteNodeComputor} */
-        computor: (inputValues, oldValue, pull) =>
-            compiledNode.source.computor(inputValues, oldValue, bindings, pull),
+        computor: (inputValues, oldValue) =>
+            compiledNode.source.computor(inputValues, oldValue, bindings),
     };
 
     incrementalGraph.concreteInstantiations.set(concreteKeyString, concreteNode);

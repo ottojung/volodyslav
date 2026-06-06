@@ -35,8 +35,6 @@ const { isUnchanged } = require("./unchanged");
 const {
     nodeIdentifierToString,
     nodeIdentifierFromString,
-    stringToNodeName,
-    serializeNodeKey,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
 
@@ -189,43 +187,7 @@ async function internalMaybeRecalculate(
         }
     }
 
-    // Create a pull callback that uses the parent transaction for dependency
-    // bookkeeping (identifier lookups + materialized dependency accumulator).
-    //
-    // Dynamic dependencies are obtained via nested pulls, and nested pulls
-    // run and commit independently (each nested pull has its own Transaction
-    // and persists its writes before the parent continues). Therefore this is
-    // not an atomic parent transaction boundary — it only provides access to
-    // the parent's transient dependency metadata.
-    //
-    // Computors must use this callback for any dynamic dependencies rather
-    // than calling the graph's public pull method (which would deadlock).
-    /**
-     * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
-     * @returns {Promise<ComputedValue>}
-     */
-    const pullCallback = async (nodeName, bindings = []) => {
-        const nodeKey = { head: stringToNodeName(nodeName), args: bindings };
-        const concreteKey = serializeNodeKey(nodeKey);
-        const inputValue = await incrementalGraph._pullDuringPull(concreteKey);
-        const dynamicIdentifier = lookupNodeIdentifier(tx, concreteKey);
-        if (dynamicIdentifier === undefined) {
-            throw new Error(`Missing identifier for dynamically pulled node ${String(concreteKey)}`);
-        }
-        const dynamicCounter = await batch.counters.get(dynamicIdentifier);
-        if (dynamicCounter === undefined) {
-            throw new Error(
-                `Missing counter for dynamically pulled input ${nodeIdentifierToString(dynamicIdentifier)} after pull`
-            );
-        }
-        materializedDependencies.add(dynamicIdentifier, dynamicCounter);
-        return inputValue;
-    };
-
-    // Execute the computor. Pass the pull callback so the computor can
-    // pull additional dependencies using the current transaction.
-    const computedValue = await nodeDefinition.computor(inputValues, oldValue, pullCallback);
+    const computedValue = await nodeDefinition.computor(inputValues, oldValue);
 
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
