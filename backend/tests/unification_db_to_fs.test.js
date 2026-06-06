@@ -105,16 +105,20 @@ describe('makeDbToFsAdapter', () => {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.putCount).toBe(2);
+            expect(stats.putCount).toBe(4);
             expect(stats.deleteCount).toBe(0);
-            expect(stats.sourceCount).toBe(2);
+            expect(stats.sourceCount).toBe(4);
 
             const files = collectFiles(outputDir);
-            expect(files).toHaveLength(2);
-            expect(files[0].relPath).toBe('global/identifiers_keys_map');
-            expect(JSON.parse(files[0].content)).toEqual([]);
-            expect(files[1].relPath).toBe(X_VALUES_REL);
-            expect(JSON.parse(files[1].content)).toEqual({ items: [] });
+            expect(files).toHaveLength(4);
+            expect(files[0].relPath).toBe('global/fingerprint');
+            expect(typeof JSON.parse(files[0].content)).toBe('string');
+            expect(files[1].relPath).toBe('global/identifiers_keys_map');
+            expect(JSON.parse(files[1].content)).toEqual([]);
+            expect(files[2].relPath).toBe('global/last_node_index');
+            expect(JSON.parse(files[2].content)).toBe(0);
+            expect(files[3].relPath).toBe(X_VALUES_REL);
+            expect(JSON.parse(files[3].content)).toEqual({ items: [] });
         } finally {
             await db.close();
         }
@@ -129,18 +133,22 @@ describe('makeDbToFsAdapter', () => {
             JSON.stringify({ items: ['stale'] }, null, 2)
         );
 
-        // DB has no 'x' sublevel entries
+        // DB has no 'x' sublevel entries beyond global metadata
         const db = await getRootDatabase(capabilities);
         try {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
             expect(stats.deleteCount).toBe(1);
-            expect(stats.putCount).toBe(1);
+            expect(stats.putCount).toBe(3);
             const afterFiles = collectFiles(outputDir);
-            expect(afterFiles).toHaveLength(1);
-            expect(afterFiles[0].relPath).toBe('global/identifiers_keys_map');
-            expect(JSON.parse(afterFiles[0].content)).toEqual([]);
+            expect(afterFiles).toHaveLength(3);
+            expect(afterFiles[0].relPath).toBe('global/fingerprint');
+            expect(typeof JSON.parse(afterFiles[0].content)).toBe('string');
+            expect(afterFiles[1].relPath).toBe('global/identifiers_keys_map');
+            expect(JSON.parse(afterFiles[1].content)).toEqual([]);
+            expect(afterFiles[2].relPath).toBe('global/last_node_index');
+            expect(JSON.parse(afterFiles[2].content)).toBe(0);
         } finally {
             await db.close();
         }
@@ -164,11 +172,13 @@ describe('makeDbToFsAdapter', () => {
             const stats = await unifyStores(adapter);
 
             expect(stats.unchangedCount).toBe(1);
-            expect(stats.putCount).toBe(1);
+            expect(stats.putCount).toBe(3);
             expect(stats.deleteCount).toBe(0);
             const afterFiles = collectFiles(outputDir);
-            expect(afterFiles).toHaveLength(2);
+            expect(afterFiles).toHaveLength(4);
+            expect(afterFiles.find(f => f.relPath === 'global/fingerprint')).toBeTruthy();
             expect(afterFiles.find(f => f.relPath === 'global/identifiers_keys_map')).toBeTruthy();
+            expect(afterFiles.find(f => f.relPath === 'global/last_node_index')).toBeTruthy();
         } finally {
             await db.close();
         }
@@ -190,10 +200,12 @@ describe('makeDbToFsAdapter', () => {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.putCount).toBe(2);
+            expect(stats.putCount).toBe(4);
             const files = collectFiles(outputDir);
-            expect(JSON.parse(files[0].content)).toEqual([]);
-            expect(JSON.parse(files[1].content)).toEqual({ items: [1, 2, 3] });
+            expect(typeof JSON.parse(files[0].content)).toBe('string');
+            expect(JSON.parse(files[1].content)).toEqual([]);
+            expect(JSON.parse(files[2].content)).toBe(0);
+            expect(JSON.parse(files[3].content)).toEqual({ items: [1, 2, 3] });
         } finally {
             await db.close();
         }
@@ -212,12 +224,16 @@ describe('makeDbToFsAdapter', () => {
             const adapter = makeDbToFsAdapter(capabilities, db, outputDir, 'x');
             const stats = await unifyStores(adapter);
 
-            expect(stats.sourceCount).toBe(2); // 'x' values entry + global identifiers_keys_map, not _meta entries
+            expect(stats.sourceCount).toBe(4); // 'x' values entry + global fingerprint + identifiers_keys_map + last_node_index, not _meta entries
             const files = collectFiles(outputDir);
-            expect(files).toHaveLength(2);
-            expect(files[0].relPath).toBe('global/identifiers_keys_map');
-            expect(JSON.parse(files[0].content)).toEqual([]);
-            expect(files[1].relPath).toBe(X_VALUES_REL);
+            expect(files).toHaveLength(4);
+            expect(files[0].relPath).toBe('global/fingerprint');
+            expect(typeof JSON.parse(files[0].content)).toBe('string');
+            expect(files[1].relPath).toBe('global/identifiers_keys_map');
+            expect(JSON.parse(files[1].content)).toEqual([]);
+            expect(files[2].relPath).toBe('global/last_node_index');
+            expect(JSON.parse(files[2].content)).toBe(0);
+            expect(files[3].relPath).toBe(X_VALUES_REL);
         } finally {
             await db.close();
         }
@@ -237,7 +253,7 @@ describe('makeDbToFsAdapter', () => {
 
             expect(stats2.putCount).toBe(0);
             expect(stats2.deleteCount).toBe(0);
-            expect(stats2.unchangedCount).toBe(2);
+            expect(stats2.unchangedCount).toBe(4);
         } finally {
             await db.close();
         }

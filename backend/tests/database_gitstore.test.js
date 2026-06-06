@@ -253,7 +253,9 @@ describe("checkpointDatabase", () => {
             expect(commitCount(capabilities, gitDir)).toBe(2);
             expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
             expect(allTrackedFiles(capabilities, gitDir)).toEqual([
+                `${DATABASE_SUBPATH}/r/global/fingerprint`,
                 `${DATABASE_SUBPATH}/r/global/identifiers_keys_map`,
+                `${DATABASE_SUBPATH}/r/global/last_node_index`,
             ]);
         } finally {
             await db.close();

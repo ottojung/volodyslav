@@ -14,6 +14,7 @@ const { compileNodeDef } = require("./compiled_node");
 const {
     compareNodeIdentifier,
     IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
 } = require("./database");
@@ -153,9 +154,11 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredRevdeps
  * @param {import('./database/types').Version} newVersion
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
+ * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
+ * @param {string} fingerprint - The database fingerprint to carry forward.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime, maxAllocatedIndex, fingerprint) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
@@ -322,6 +325,8 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             async *keys() {
                 yield 'version';
                 yield IDENTIFIERS_KEY;
+                yield LAST_NODE_INDEX_KEY;
+                yield 'fingerprint';
             },
             async get(key) {
                 if (key === 'version') {
@@ -329,6 +334,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 }
                 if (key === IDENTIFIERS_KEY) {
                     return await buildDecisionsMap(prevStorage, decisions);
+                }
+                if (key === LAST_NODE_INDEX_KEY) {
+                    const prevLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
+                    const prevValue = (typeof prevLastNodeIndex === 'number' && Number.isInteger(prevLastNodeIndex) && prevLastNodeIndex >= 0)
+                        ? prevLastNodeIndex : 0;
+                    return Math.max(prevValue, maxAllocatedIndex);
+                }
+                if (key === 'fingerprint') {
+                    return fingerprint;
                 }
                 return await prevStorage.global.get(key);
             },
@@ -376,7 +390,7 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  */
 async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
-    const currentVersion = rootDatabase.version;
+    const currentVersion = rootDatabase.getVersion();
     const activeReplica = rootDatabase.currentReplicaName();
     const inactiveReplica = rootDatabase.otherReplicaName();
 
@@ -398,7 +412,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             'Migration not required: no stored version found in active replica; marking fresh database with current version'
         );
         // No previous version recorded; fresh database: record current version, nothing to migrate.
-        await rootDatabase.setGlobalVersion(rootDatabase.version);
+        await rootDatabase.setGlobalVersion(rootDatabase.getVersion());
         return rootDatabase;
     }
 
@@ -443,7 +457,9 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const migrationStorage = makeMigrationStorage(
                 prevStorage,
                 newHeadIndex,
-                materializedNodes
+                materializedNodes,
+                rootDatabase.getFingerprint(),
+                rootDatabase.getLastNodeIndex()
             );
 
             // Execute user migration callback.
@@ -470,6 +486,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 desiredRevdeps,
                 currentVersion,
                 capabilities.datetime,
+                migrationStorage.getMaxAllocatedIndex(),
+                rootDatabase.getFingerprint()
             );
 
             // Gently unify the desired state into the target replica.

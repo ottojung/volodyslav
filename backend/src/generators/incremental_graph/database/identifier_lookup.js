@@ -46,8 +46,8 @@ function isIdentifierLookupError(object) {
  * Map on every transaction commit.
  *
  * @typedef {object} IdentifierLookup
- * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
- * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key string.
+ * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> deterministic identifier.
+ * @property {Map<string, NodeKeyString>} idToKey - Deterministic identifier string -> semantic node key string.
  * @property {IdentifiersKeysMap} serialized - Cached sorted-array form sorted by identifier.
  */
 
@@ -239,12 +239,13 @@ function mergeIdentifierLookups(base, overlay) {
 }
 
 /**
- * Allocate a fresh identifier for a node key, retrying on collisions.
+ * Allocate a fresh identifier for a node key.
  * If the key already has an identifier, the existing identifier is reused.
- * Retries indefinitely until a collision-free identifier is produced.
+ * Collisions are impossible with fingerprint-prefixed identifiers; the check
+ * exists as a correctness assertion only.
  * @param {IdentifierLookup} lookup
  * @param {NodeKeyString} nodeKey
- * @param {(attempt: number) => NodeIdentifier} makeIdentifier
+ * @param {() => NodeIdentifier} makeIdentifier
  * @returns {NodeIdentifier}
  */
 function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier) {
@@ -253,14 +254,15 @@ function allocateNodeIdentifier(lookup, nodeKey, makeIdentifier) {
         return existing;
     }
 
-    for (let attempt = 0; ; attempt++) {
-        const candidate = makeIdentifier(attempt);
-        const existingKey = nodeIdToKeyFromLookup(lookup, candidate);
-        if (existingKey === undefined) {
-            setIdentifierMapping(lookup, candidate, nodeKey);
-            return candidate;
-        }
+    const candidate = makeIdentifier();
+    const existingKey = nodeIdToKeyFromLookup(lookup, candidate);
+    if (existingKey !== undefined) {
+        throw new IdentifierLookupError(
+            `Identifier collision: ${nodeIdentifierToString(candidate)} already assigned`
+        );
     }
+    setIdentifierMapping(lookup, candidate, nodeKey);
+    return candidate;
 }
 
 /**
@@ -353,7 +355,7 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
- * @param {(attempt: number) => NodeIdentifier} makeIdentifier
+ * @param {() => NodeIdentifier} makeIdentifier
  * @param {import('./root_database').RootDatabase} rootDatabase
  * @returns {NodeIdentifier}
  */

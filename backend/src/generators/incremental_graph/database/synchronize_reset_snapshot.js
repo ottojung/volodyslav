@@ -7,6 +7,7 @@ const {
 } = require('./gitstore');
 const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
+const { requireValidFingerprint } = require('./fingerprint');
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -15,9 +16,10 @@ const { scanFromFilesystem } = require('./render');
  * @param {Capabilities} capabilities
  * @param {RootDatabase} database
  * @param {string} workTree
+ * @param {boolean} isExistingDb - Whether the live database already existed before this import.
  * @returns {Promise<boolean>}
  */
-async function importResetSnapshotIntoDatabase(capabilities, database, workTree) {
+async function importResetSnapshotIntoDatabase(capabilities, database, workTree, isExistingDb) {
     const snapshotRoot = path.join(workTree, DATABASE_SUBPATH);
     const rDir = path.join(snapshotRoot, 'r');
     const nextReplica = database.otherReplicaName();
@@ -31,12 +33,29 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree)
         await capabilities.creator.createDirectory(importDirectory);
     }
 
+    const preImportFingerprint = database.getFingerprint();
+
     await scanFromFilesystem(
         capabilities,
         database,
         importDirectory,
         nextReplica
     );
+
+    const targetGlobal = database.replicaGlobalSublevel(nextReplica);
+    if (hasSnapshotReplicaDirectory) {
+        requireValidFingerprint(
+            await targetGlobal.get('fingerprint'),
+            'rendered/r/global/fingerprint during reset import'
+        );
+    }
+
+    if (isExistingDb) {
+        await targetGlobal.put(
+            'fingerprint',
+            requireValidFingerprint(preImportFingerprint, 'pre-import live database')
+        );
+    }
 
     const previousReplica = database.currentReplicaName();
     await database.setCurrentReplicaPointer(nextReplica);
@@ -55,6 +74,8 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
         LIVE_DATABASE_WORKING_PATH
     );
 
+    const liveDbExisted = (await capabilities.checker.directoryExists(liveDatabasePath)) !== null;
+
     let database = await makeRootDatabase(
         capabilities,
         liveDatabasePath
@@ -64,7 +85,8 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
         const switchedReplica = await importResetSnapshotIntoDatabase(
             capabilities,
             database,
-            workTree
+            workTree,
+            liveDbExisted
         );
         if (switchedReplica) {
             await database.close();

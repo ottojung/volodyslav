@@ -121,6 +121,11 @@ function makeSchemaStorage() {
 function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
+        _computed: { lastNodeIndex: 0, fingerprint: "testfingerprnt" },
+        getFingerprint() { return "testfingerprnt"; },
+        getVersion() { return this.version; },
+        getLastNodeIndex() { return this._computed.lastNodeIndex; },
+        advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
         async getGlobalVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
         currentReplicaName() { return 'x'; },

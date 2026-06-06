@@ -47,6 +47,7 @@ const {
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
+const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
 const { unifyRevdeps } = require('./sync_merge_revdeps');
 const { buildTakeOps, copyReplicaGently } = require('./sync_merge_transfer');
@@ -416,6 +417,7 @@ function summarizeDecisions(decisions) {
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @param {number} targetLastNodeIndex
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
@@ -424,13 +426,18 @@ async function commitChangedMerge(
     targetReplica,
     targetLookup,
     hostLookup,
-    mergedInputsMap
+    mergedInputsMap,
+    targetLastNodeIndex
 ) {
     mergeIdentifierLookups(targetLookup, hostLookup);
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(
         IDENTIFIERS_KEY,
         serializeIdentifierLookup(targetLookup)
+    ));
+    await writer.push(targetStorage.global.putOp(
+        LAST_NODE_INDEX_KEY,
+        targetLastNodeIndex
     ));
     await writer.flush();
 
@@ -485,6 +492,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
 
+    const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
+
     const {
         initialDecisions,
         mergedInputsMap,
@@ -511,10 +520,12 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             toReplica,
             targetLookup,
             hostLookup,
-            mergedInputsMap
+            mergedInputsMap,
+            targetLastNodeIndex
         );
     }
 
+    const switchedReplica = summary.hasChanges;
     logger.logInfo(
         {
             hostname,
@@ -523,11 +534,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             kept: summary.kept,
             taken: summary.taken,
             invalidated: summary.invalidated,
-            switchedReplica: summary.hasChanges,
+            switchedReplica,
         },
         'Graph merge completed for host'
     );
-    return summary.hasChanges;
+    return switchedReplica;
 }
 
 module.exports = {

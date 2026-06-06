@@ -31,27 +31,35 @@ function makeRootDatabase() {
             counter += 1;
             return nodeIdentifierFromString(value);
         },
+        getCurrentAllocationWatermark() {
+            return counter;
+        },
+        getFingerprint() {
+            return 'testresfinger';
+        },
+        getVersion() { return this.version; },
+        getLastNodeIndex() { return this._computed.lastNodeIndex; },
+        advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
         _allocateKeyIdentifier(keyString, makeIdentifier, _committedLookup) {
             if (pendingAllocations.has(keyString)) {
                 throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
-            for (let attempt = 0; ; attempt++) {
-                const candidate = makeIdentifier(attempt);
-                const candidateStr = String(candidate);
-                let idCollision = false;
-                for (const idStr of pendingAllocations.values()) {
-                    if (idStr === candidateStr) { idCollision = true; break; }
+            const candidate = makeIdentifier();
+            const candidateStr = String(candidate);
+            for (const idStr of pendingAllocations.values()) {
+                if (idStr === candidateStr) {
+                    throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
                 }
-                if (idCollision) continue;
-                pendingAllocations.set(keyString, candidateStr);
-                return candidate;
             }
+            pendingAllocations.set(keyString, candidateStr);
+            return candidate;
         },
         _releaseAllocations(ownedKeys) {
             for (const keyString of ownedKeys) {
                 pendingAllocations.delete(keyString);
             }
         },
+        _computed: { lastNodeIndex: 0, fingerprint: 'testresfinger' },
     };
 }
 
@@ -80,7 +88,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("lookupNodeIdentifier finds existing mapping", () => {
-        const existingIdentifier = nodeIdentifierFromString("existinga");
+        const existingIdentifier = nodeIdentifierFromString("1-abcdefghi");
         const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[existingIdentifier, existingKey]]);
         const found = lookupNodeIdentifier(tx, existingKey);
@@ -88,7 +96,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("getOrAllocateNodeIdentifier returns existing identifier without allocating", () => {
-        const existingIdentifier = nodeIdentifierFromString("existinga");
+        const existingIdentifier = nodeIdentifierFromString("1-abcdefghi");
         const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[existingIdentifier, existingKey]]);
         const db = makeRootDatabase();
@@ -121,7 +129,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("requireNodeKey retrieves the key for an existing identifier", () => {
-        const id = nodeIdentifierFromString("existinga");
+        const id = nodeIdentifierFromString("1-abcdefghi");
         const key = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[id, key]]);
         
@@ -130,7 +138,7 @@ describe("Transaction-based identifier operations", () => {
 
     test("requireNodeKey throws for an unknown identifier", () => {
         const tx = makeTransaction([]);
-        const id = nodeIdentifierFromString("unknownxx");
+        const id = nodeIdentifierFromString("2-abcdefghi");
         expect(() => requireNodeKey(tx, id)).toThrow();
     });
 
@@ -169,7 +177,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("allocations include pre-existing base lookup mappings", () => {
-        const baseId = nodeIdentifierFromString("baseidaaa");
+        const baseId = nodeIdentifierFromString("3-abcdefghi");
         const baseKey = stringToNodeKeyString('{"head":"base","args":[]}');
         const tx = makeTransaction([[baseId, baseKey]]);
         const db = makeRootDatabase();

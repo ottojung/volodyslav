@@ -144,6 +144,11 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
             setGlobalVersionCalledWith = v;
         },
         async _rawSync() {},
+        getFingerprint() { return 'testmigrfinprt'; },
+        getVersion() { return this.version; },
+        getLastNodeIndex() { return this._computed.lastNodeIndex; },
+        advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+        _computed: { lastNodeIndex: 0 },
     };
 
     return {
@@ -395,6 +400,11 @@ describe("runMigration", () => {
                 },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+                _computed: { lastNodeIndex: 0 },
             };
 
             const nodeDefs = [{
@@ -525,6 +535,11 @@ describe("runMigration", () => {
                 async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+                _computed: { lastNodeIndex: 0 },
             };
             const nodeDefs = [{
                 output: "A",
@@ -569,6 +584,11 @@ describe("runMigration", () => {
                 async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+                _computed: { lastNodeIndex: 0 },
             };
             const nodeDefs = [{
                 output: "A",
@@ -1025,6 +1045,11 @@ describe("x-namespace state preserved on migration failure", () => {
             async setCurrentReplicaPointer() { throw swapError; },
             async setGlobalVersion() {},
             async _rawSync() {},
+            getFingerprint() { return 'testmigrfinprt'; },
+            getVersion() { return this.version; },
+            getLastNodeIndex() { return this._computed.lastNodeIndex; },
+            advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+            _computed: { lastNodeIndex: 0 },
         };
 
         await expect(
@@ -1295,19 +1320,24 @@ describe("infrastructure failures", () => {
         const capabilities = await getTestCapabilities();
         const metaError = new Error("getGlobalVersion failure");
         const xStorage = makeSchemaStorage();
-        const yStorage = makeSchemaStorage();
-        const rootDatabase = {
-            version: "2",
-            async getGlobalVersion() { throw metaError; },
-            getSchemaStorage() { return xStorage; },
-            currentReplicaName() { return 'x'; },
-            otherReplicaName() { return 'y'; },
-            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
-            async clearReplicaStorage(_name) {},
-            async setCurrentReplicaPointer() {},
-            async setGlobalVersion() {},
-            async _rawSync() {},
-        };
+            const yStorage = makeSchemaStorage();
+            const callOrder = [];
+            const rootDatabase = {
+                version: "2.0.0",
+                getVersion() { return this.version; },
+                async getGlobalVersion() { throw metaError; },
+                getSchemaStorage() { return xStorage; },
+                currentReplicaName() { return 'x'; },
+                otherReplicaName() { return 'y'; },
+                schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+                async clearReplicaStorage(_name) {},
+                async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
+                async setGlobalVersion(_v) {},
+                async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getLastNodeIndex() { return 0; },
+                advanceLastNodeIndex(_value) {},
+            };
 
         let caught;
         try {
@@ -1342,6 +1372,11 @@ describe("infrastructure failures", () => {
             async setCurrentReplicaPointer() {},
             async setGlobalVersion() {},
             async _rawSync() {},
+            getFingerprint() { return 'testmigrfinprt'; },
+            getVersion() { return this.version; },
+            getLastNodeIndex() { return this._computed.lastNodeIndex; },
+            advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+            _computed: { lastNodeIndex: 0 },
         };
 
         let callbackRan = false;

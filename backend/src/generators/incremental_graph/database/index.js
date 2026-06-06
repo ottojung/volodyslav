@@ -15,8 +15,9 @@ const {
     versionToString,
     stringToVersion,
 } = require('./types');
-const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError, isMalformedIdentifierLookupError, MissingIdentifierLookupError, isMissingIdentifierLookupError } = require('./root_database');
+const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError, isMalformedIdentifierLookupError, MissingIdentifierLookupError, isMissingIdentifierLookupError, LAST_NODE_INDEX_KEY } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
+const { isInvalidFingerprintError, isValidFingerprint, requireValidFingerprint } = require('./fingerprint');
 const {
     checkpointDatabase,
     checkpointMigration,
@@ -95,6 +96,10 @@ module.exports = {
     isMalformedIdentifierLookupError,
     MissingIdentifierLookupError,
     isMissingIdentifierLookupError,
+    isInvalidFingerprintError,
+    isValidFingerprint,
+    requireValidFingerprint,
+    LAST_NODE_INDEX_KEY,
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,

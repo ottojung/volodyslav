@@ -142,6 +142,21 @@ describe('standalone migration script compatibility', () => {
         rimrafSync(tmpDir);
     });
 
+    test.each([
+        123,
+        'abcdefgh',
+        'abc123def',
+        'ABCdefghi',
+        'abcdefghi-',
+    ])('migration fails hard for malformed persisted fingerprint %p', async (fingerprint) => {
+        buildOldFormatFixture(tmpDir);
+        writeJson(tmpDir, 'rendered/r/global/fingerprint', fingerprint);
+
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow(
+            /Invalid fingerprint in snapshot file/
+        );
+    });
+
     test('old-format fixture with zero-arg and parameterized nodes round-trips through migration', async () => {
         // Arrange: build old-format fixture
         buildOldFormatFixture(tmpDir);
@@ -150,7 +165,7 @@ describe('standalone migration script compatibility', () => {
         await migrateSnapshot(tmpDir);
 
         // Verify structural properties:
-        // - Each identifier is a 9-char string
+        // - Each identifier uses the current index-fingerprint format
         // - identifiers_keys_map has exactly 3 entries
         // - All 3 unique keys appear in the map
         // - All old paths are gone
@@ -169,7 +184,7 @@ describe('standalone migration script compatibility', () => {
         const observedIds = new Set();
         for (const [identifier, nodeKeyJson] of idEntries) {
             expect(typeof identifier).toBe('string');
-            expect(identifier.length).toBe(9);
+            expect(identifier).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);
             expect(expectedKeys).toContain(nodeKeyJson);
             observedKeys.add(nodeKeyJson);
             observedIds.add(identifier);
@@ -229,7 +244,7 @@ describe('standalone migration script compatibility', () => {
         for (const ref of revdeps) {
             expect(keyToId.has(ref)).toBe(false); // ref should be an identifier, not a key JSON
             expect(typeof ref).toBe('string');
-            expect(ref.length).toBe(9);
+            expect(ref).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);
         }
     });
 
@@ -262,7 +277,7 @@ describe('standalone migration script compatibility', () => {
 
         const identifier = keyToId.get(nodeKeyJson);
         expect(identifier).toBeDefined();
-        expect(identifier.length).toBe(9);
+        expect(identifier).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);
 
         // Value should be preserved
         const value = readJson(tmpDir, `rendered/r/values/${identifier}`);

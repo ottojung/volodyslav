@@ -101,7 +101,7 @@ class IncrementalGraphClass {
 
         this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
-        this.dbVersion = rootDatabase.version;
+        this.dbVersion = rootDatabase.getVersion();
         this.headIndex = new Map();
         for (const compiledNode of compiledNodes) {
             this.headIndex.set(compiledNode.head, compiledNode);

@@ -1,24 +1,12 @@
 #!/usr/bin/env node
 /**
- * Migrate an old-format incremental-graph snapshot directory to the new
- * identifier-based format.
+ * Convert rendered incremental-graph snapshots to the current
+ * fingerprint/index identifier format.
  *
- * Old format:
- *   rendered/r/values/all_events        (zero-arg node → bare head name)
- *   rendered/r/values/event/id123       (parameterized → head/arg1/arg2/...)
- *   rendered/r/inputs/events_count      = { inputs: ["{\"head\":\"all_events\",\"args\":[]}"], inputCounters: [1] }
- *   rendered/r/revdeps/all_events       = ["{\"head\":\"events_count\",\"args\":[]}"]
- *   rendered/_meta/current_replica      = "x"
- *   rendered/r/global/version           = "0.0.0-dev-previous"
- *   (no identifiers_keys_map)
- *
- * New format:
- *   rendered/r/values/abcdefghi         (9-letter opaque identifier, single segment)
- *   rendered/r/inputs/abcdefghi         = { inputs: ["abcdefghj"], inputCounters: [1] }
- *   rendered/r/revdeps/abcdefghj        = ["abcdefghi"]
- *   rendered/_meta/current_replica      = "x"
- *   rendered/r/global/version           = "0.0.0-dev-previous"
- *   rendered/r/global/identifiers_keys_map = [["abcdefghi", "{\"head\":\"all_events\",\"args\":[]}"], ...]
+ * Snapshots that already contain an identifiers_keys_map are left untouched.
+ * Otherwise, old-style path-based node keys are collected, assigned
+ * deterministic identifiers of the form `index-fingerprint`, and written
+ * back alongside the lookup metadata.
  *
  * Usage: node scripts/migrate-snapshot-to-identifiers.js <snapshot-dir>
  *
@@ -29,6 +17,8 @@ const path = require("path");
 const fs = require("fs/promises");
 const { basicString } = require("../backend/src/random/basic_string");
 const { compareConstValue } = require("../backend/src/generators/incremental_graph/database/node_key");
+const { requireValidFingerprint } = require("../backend/src/generators/incremental_graph/database/fingerprint");
+const { convertReferences } = require("./lib/convert_references");
 
 const MIGRATED_VERSION = "0.0.0-dev";
 
@@ -129,61 +119,34 @@ function compareOldNodeKeyJson(left, right) {
     return 0;
 }
 
-// ─── Reference conversion ───────────────────────────────────────────────────
-
 /**
- * Check if a string looks like a serialized JSON node key (old format).
+ * Read and validate an existing snapshot fingerprint, or generate one when the
+ * snapshot has no fingerprint file yet.
+ * @param {string} fingerprintPath
+ * @returns {Promise<string>}
  */
-function isOldFormatReference(str) {
-    if (typeof str !== "string") return false;
-    return str.startsWith('{"head":');
-}
-
-/**
- * Convert old-format references in inputs/revdeps values to identifier strings.
- * @param {unknown} value - The parsed JSON value from an inputs or revdeps file.
- * @param {(nodeKeyJson: string) => string} keyToId - Maps node key JSON → identifier
- * @returns {unknown} The value with references converted.
- */
-function convertReferences(value, keyToId) {
-    if (typeof value === "string") {
-        if (isOldFormatReference(value)) {
-            const id = keyToId(value);
-            if (id === undefined) {
-                throw new Error(`Cannot find identifier for reference: ${value}`);
-            }
-            return id;
-        }
-        return value;
+async function loadOrCreateFingerprint(fingerprintPath) {
+    let fingerprintExists = true;
+    try {
+        await fs.stat(fingerprintPath);
+    } catch {
+        fingerprintExists = false;
     }
 
-    if (Array.isArray(value)) {
-        return value.map((item) => convertReferences(item, keyToId));
+    if (fingerprintExists) {
+        const raw = await fs.readFile(fingerprintPath, "utf-8");
+        return requireValidFingerprint(
+            JSON.parse(raw),
+            `snapshot file ${fingerprintPath}`
+        );
     }
 
-    if (value !== null && typeof value === "object") {
-        const result = {};
-        for (const [k, v] of Object.entries(value)) {
-            if (k === "inputs" && Array.isArray(v)) {
-                // inputs array: convert each element
-                result[k] = v.map((ref) => {
-                    if (typeof ref === "string" && isOldFormatReference(ref)) {
-                        const id = keyToId(ref);
-                        if (id === undefined) {
-                            throw new Error(`Cannot find identifier for input reference: ${ref}`);
-                        }
-                        return id;
-                    }
-                    return ref;
-                });
-            } else {
-                result[k] = convertReferences(v, keyToId);
-            }
-        }
-        return result;
-    }
-
-    return value;
+    const fingerprint = basicString(
+        { seed: { generate: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) } }
+    );
+    await fs.mkdir(path.dirname(fingerprintPath), { recursive: true });
+    await fs.writeFile(fingerprintPath, JSON.stringify(fingerprint));
+    return fingerprint;
 }
 
 // ─── Main migration logic ───────────────────────────────────────────────────
@@ -314,10 +277,20 @@ async function migrateSnapshot(snapshotDir) {
         console.log("No old-format entries found, nothing to migrate.");
         // Still ensure identifiers_keys_map exists
         await ensureIdentifiersKeysMap(renderedDir, []);
+        // Ensure any persisted fingerprint is valid, or create one when absent.
+        const fingerprintPath = path.join(renderedDir, "r", "global", "fingerprint");
+        await loadOrCreateFingerprint(fingerprintPath);
+        // Write last_node_index
+        await fs.mkdir(path.join(renderedDir, "r", "global"), { recursive: true });
+        await fs.writeFile(path.join(renderedDir, "r", "global", "last_node_index"), JSON.stringify(0));
         // Normalize version even for empty snapshots
         await fs.writeFile(path.join(renderedDir, "r", "global", "version"), JSON.stringify(MIGRATED_VERSION));
         return;
     }
+
+    // ── Step 1.5: Obtain or generate fingerprint ──
+    const fingerprintPath = path.join(renderedDir, "r", "global", "fingerprint");
+    const fingerprint = await loadOrCreateFingerprint(fingerprintPath);
 
     // ── Step 2: Assign deterministic identifiers ──
     // Preserve insertion order so subsequent runs are stable.
@@ -331,29 +304,16 @@ async function migrateSnapshot(snapshotDir) {
         }
     }
 
-    // Assign identifiers in canonical order using seeded basicString.
-    // The capabilities seed counter provides a deterministic sequence (0, 1, 2, ...).
-    let seedCounter = 0;
-    /** @type {{ seed: { generate: () => number } }} */
-    const capabilities = {
-        seed: {
-            generate: () => seedCounter++,
-        },
-    };
-
+    // Assign identifiers in canonical order using index-based format.
     const keyToId = new Map();
     const idToKey = new Map();
 
+    let index = 1;
     for (const keyJson of orderedKeys) {
-        // Retry on the vanishingly unlikely event that basicString produces
-        // the same identifier for two different seeds. Each retry consumes
-        // one more seed value, guaranteeing a distinct result.
-        let id;
-        do {
-            id = basicString(capabilities, 9);
-        } while (idToKey.has(id));
+        const id = `${index.toString(36)}-${fingerprint}`;
         keyToId.set(keyJson, id);
         idToKey.set(id, keyJson);
+        index++;
     }
 
     console.log(`  Found ${orderedKeys.length} unique nodes, assigned identifiers.`);
@@ -424,7 +384,10 @@ async function migrateSnapshot(snapshotDir) {
         .sort(([leftIdentifier], [rightIdentifier]) => String(leftIdentifier).localeCompare(String(rightIdentifier)));
     await ensureIdentifiersKeysMap(renderedDir, idEntries);
 
-    // ── Step 6: Normalize the snapshot version to the current format ──
+    // ── Step 6: Write last_node_index ──
+    await fs.writeFile(path.join(renderedDir, "r", "global", "last_node_index"), JSON.stringify(orderedKeys.length));
+
+    // ── Step 7: Normalize the snapshot version to the current format ──
     await fs.writeFile(path.join(renderedDir, "r", "global", "version"), JSON.stringify(MIGRATED_VERSION));
 
     console.log("  Migration complete.");
