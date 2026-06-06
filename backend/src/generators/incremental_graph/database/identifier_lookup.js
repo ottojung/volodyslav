@@ -362,13 +362,16 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
  * Return the existing identifier for a node key, or allocate a new one and
  * record it in the overlay (never in the base).
  *
- * Allocation is delegated to `rootDatabase._reserveKeyIdentifier` which
- * atomically claims a key->identifier mapping on a shared `_pendingAllocations`
- * map, making it impossible for two concurrent transactions to get different
- * identifiers for the same key.
+ * Allocation is delegated to `rootDatabase._reserveKeyIdentifier`.  The
+ * caller must hold the telescope lock for the node key (see pull.js), which
+ * serialises all concurrent attempts for the same key so that `_reserveKeyIdentifier`
+ * always returns `source: 'new'` or `source: 'shared'` from the committed
+ * lookup.
  *
  * When `source === 'new'` the key is added to `txLookup.ownedKeys` so the
- * transaction's finally block can release the reservation.
+ * transaction's `finally` block can release the reservation from
+ * `_pendingAllocations`.  When `source === 'shared'` the key was already
+ * committed by another transaction and needs no ownership tracking.
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
@@ -507,10 +510,10 @@ function serializeTransactionLookup(txLookup) {
  * bijection is already bound to a different counterpart.  The checks are
  * unnecessary here because:
  *
- * 1. **Atomic reservation prevents conflicts.**  Before any allocation reaches
- *    this point, `_reserveKeyIdentifier` in `root_database.js` has atomically
- *    claimed the key->identifier mapping on `_pendingAllocations`.  Two
- *    concurrent transactions cannot get different identifiers for the same key.
+ * 1. **Telescope lock prevents conflicts.**  Every allocation runs inside
+ *    `telescopeActivity(key)` (see pull.js), which serialises all concurrent
+ *    pulls of the same concrete node key.  Two concurrent transactions cannot
+ *    allocate different identifiers for the same key.
  *
  * 2. **Idempotent overwrite.**  When a transaction's base reference becomes
  *    stale (another concurrent transaction already committed the same entry),

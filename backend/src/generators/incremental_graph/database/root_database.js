@@ -21,7 +21,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { makeNodeIdentifier, nodeIdentifierToString, nodeIdentifierFromString } = require('./node_identifier');
+const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -443,6 +443,11 @@ class RootDatabaseClass {
      * Synchronous — no await between the read and write, so JavaScript's
      * single-threaded execution guarantees atomicity.
      *
+     * The caller must hold the telescope lock for keyString (see pull.js),
+     * which serialises all concurrent allocation attempts for the same key.
+     * Consequently, _pendingAllocations MUST NOT already contain keyString —
+     * if it does, a locking bug exists.
+     *
      * @param {string} keyString - Serialized node key string.
      * @param {(attempt: number) => NodeIdentifier} makeIdentifier - Deterministic/synchronous identifier factory.
      * @param {IdentifierLookup} committedLookup - The current committed lookup (for collision detection).
@@ -453,17 +458,17 @@ class RootDatabaseClass {
      * - The identifier is globally unique (not in committedLookup, not in any other pending allocation).
      */
     _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        const existingIdStr = this._pendingAllocations.get(keyString);
-        if (existingIdStr !== undefined) {
-            return {
-                source: 'shared',
-                identifier: nodeIdentifierFromString(existingIdStr),
-            };
-        }
-
         const committedId = committedLookup.keyToId.get(keyString);
         if (committedId !== undefined) {
             return { source: 'shared', identifier: committedId };
+        }
+
+        // The telescope lock per keyString guarantees no concurrent in-flight
+        // allocation for this key, so _pendingAllocations must be clean.
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(
+                `BUG: pending allocation for key ${keyString} found during allocation under telescope lock`
+            );
         }
 
         for (let attempt = 0; ; attempt++) {

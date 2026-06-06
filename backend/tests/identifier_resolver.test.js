@@ -32,13 +32,12 @@ function makeRootDatabase() {
             return nodeIdentifierFromString(value);
         },
         _reserveKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-            const existingIdStr = pendingAllocations.get(keyString);
-            if (existingIdStr !== undefined) {
-                return { source: 'shared', identifier: nodeIdentifierFromString(existingIdStr) };
-            }
             const committedId = committedLookup.keyToId.get(keyString);
             if (committedId !== undefined) {
                 return { source: 'shared', identifier: committedId };
+            }
+            if (pendingAllocations.has(keyString)) {
+                throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
             for (let attempt = 0; ; attempt++) {
                 const candidate = makeIdentifier(attempt);
