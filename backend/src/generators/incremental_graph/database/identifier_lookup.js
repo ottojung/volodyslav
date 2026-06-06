@@ -46,8 +46,8 @@ function isIdentifierLookupError(object) {
  * Map on every transaction commit.
  *
  * @typedef {object} IdentifierLookup
- * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> opaque identifier.
- * @property {Map<string, NodeKeyString>} idToKey - Opaque identifier string -> semantic node key string.
+ * @property {Map<string, NodeIdentifier>} keyToId - Semantic node key string -> deterministic identifier.
+ * @property {Map<string, NodeKeyString>} idToKey - Deterministic identifier string -> semantic node key string.
  * @property {IdentifiersKeysMap} serialized - Cached sorted-array form sorted by identifier.
  */
 

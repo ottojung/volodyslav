@@ -55,6 +55,34 @@ Gaps are acceptable and expected:
 - `last_node_index` is the watermark of the largest index known to be
   retired; indices below it may not correspond to any materialized node.
 
+## Sync merge semantics
+
+When merging a host's staged snapshot into the local database, the merged
+`last_node_index` is computed as:
+
+```
+mergedLastNodeIndex = max(targetLastNodeIndex, hostLastNodeIndex)
+```
+
+This is safe even though identifiers are fingerprint-namespaced:
+
+- Taking the max may skip local index values. Gaps in the index sequence are
+  acceptable and expected (see "Gaps" above). The value is a watermark of
+  retired future local allocation indices, not a count of materialized nodes.
+- The local fingerprint is preserved (host fingerprint is never adopted), so
+  local allocations after the merge use the local fingerprint. The merged
+  index watermark simply ensures the next local allocation does not reuse an
+  index value that was already retired on the host side.
+- The merged `last_node_index` is written durably as part of the merge commit
+  and becomes the basis for subsequent local allocations.
+
+### Metadata-only merge
+
+When graph records are identical but `last_node_index` differs (e.g., the
+host has a higher watermark), the merge commits the metadata change even
+when no graph nodes were modified. This ensures the watermark propagates
+and future local allocations do not collide with host-allocated indices.
+
 ## Concurrency
 
 - Concurrent transactions must not allocate the same local index.

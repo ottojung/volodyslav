@@ -51,6 +51,8 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 | Sublevel | Key | Value |
 |----------|-----|-------|
 | `global` | `'identifiers_keys_map'` | identifier ↔ key bijection |
+| `global` | `'last_node_index'` | greatest durably-retired allocation index |
+| `global` | `'fingerprint'` | local allocation fingerprint |
 | `_meta` | `'current_replica'` | active replica name (`'x'` or `'y'`) |
 
 ### Derived volatile state (`_computed`)
@@ -221,10 +223,9 @@ disk state at every observable point.
 
 When a pull encounters a node key not present in the transaction's working lookup:
 
-1. Generate a candidate identifier (random or deterministic).
-2. Verify the candidate is not already in the working lookup (collision check).
-3. If it collides, generate another candidate and retry.
-4. Add the `(candidate, key)` pair to the working lookup immediately — it is visible to subsequent
+1. Generate a deterministic candidate identifier from the next local index and the database
+   fingerprint: `${nextIndex.toString(36)}-${fingerprint}`.
+2. Add the `(candidate, key)` pair to the working lookup immediately — it is visible to subsequent
    operations within the same transaction, but it is not in `_computed` or on disk yet.
 
 At commit time, the updated working lookup is written to disk as part of the batch (step 1 above),

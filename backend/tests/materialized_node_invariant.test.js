@@ -3,7 +3,7 @@
  * materialized node, and vice versa.
  *
  * The identifiers_keys_map (persisted as `r/<replica>/global/identifiers_keys_map`)
- * is the authoritative bijection between semantic node keys and opaque identifiers.
+ * is the authoritative bijection between semantic node keys and deterministic identifiers.
  * A node is "materialized" when it has a record in the `inputs` sublevel
  * (`r/<replica>/inputs/<identifier>`).
  *
