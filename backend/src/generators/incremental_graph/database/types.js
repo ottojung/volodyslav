@@ -81,9 +81,6 @@ function castToNodeIdentifierUnsafe(value) {
 
 /**
  * Unsafe nominal cast from string to NodeIdentifier.
- * Callers that parse persisted identifier text should use nodeIdentifierFromString()
- * from node_identifier.js instead, because that constructor validates the
- * persisted identifier format before returning a NodeIdentifier.
  * @param {unknown} nodeIdentifierStr
  * @returns {NodeIdentifier}
  */
