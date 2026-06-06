@@ -450,14 +450,17 @@ class RootDatabaseClass {
       * if it does, a locking bug exists.
       *
       * The caller (txAllocateNodeIdentifier) guarantees keyString is NOT in
-      * the committed lookup before calling this method, so every invocation
-      * produces a genuinely new allocation.
+      * the committed lookup before calling this method, so the key-level
+      * check is unnecessary. However, the identifier itself may collide
+      * with one already assigned to a *different* key in the committed
+      * lookup, so committedLookup.idToKey is checked on each attempt.
       *
       * @param {string} keyString - Serialized node key string.
       * @param {(attempt: number) => NodeIdentifier} makeIdentifier - Deterministic/synchronous identifier factory.
+      * @param {IdentifierLookup} committedLookup - The committed lookup (used for identifier collision detection only).
       * @returns {NodeIdentifier} The newly allocated identifier.
       */
-    _allocateKeyIdentifier(keyString, makeIdentifier) {
+    _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
         // The telescope lock per keyString guarantees no concurrent in-flight
         // allocation for this key, so _pendingAllocations must be clean.
         if (this._pendingAllocations.has(keyString)) {
@@ -470,6 +473,7 @@ class RootDatabaseClass {
             const candidate = makeIdentifier(attempt);
             const candidateStr = nodeIdentifierToString(candidate);
 
+            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
             if (this._pendingAllocationsById.has(candidateStr)) continue;
 
             this._pendingAllocations.set(keyString, candidateStr);

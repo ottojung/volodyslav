@@ -49,13 +49,14 @@ function makeMockRootDatabase() {
     /** @type {Set<string>} */
     const pendingAllocationIdentifiers = new Set();
     return {
-        _allocateKeyIdentifier(keyString, makeIdentifier) {
+        _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
             if (pendingAllocations.has(keyString)) {
                 throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
             for (let attempt = 0; ; attempt++) {
                 const candidate = makeIdentifier(attempt);
                 const candidateStr = String(candidate);
+                if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
                 if (pendingAllocationIdentifiers.has(candidateStr)) continue;
                 pendingAllocations.set(keyString, candidateStr);
                 pendingAllocationIdentifiers.add(candidateStr);

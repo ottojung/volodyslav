@@ -462,7 +462,7 @@ describe("txAllocateNodeIdentifier", () => {
         const base = makeIdentifierLookup(entries);
         const pending = new Map();
         return {
-            _allocateKeyIdentifier(keyString, makeIdentifier) {
+            _allocateKeyIdentifier(keyString, makeIdentifier, _committedLookup) {
                 if (pending.has(keyString)) {
                     throw new Error(`BUG: pending allocation for key ${keyString} found`);
                 }
@@ -675,7 +675,7 @@ describe("Serialization roundtrip", () => {
         const rootDb = {
             _pendingAllocations: new Map(),
             _pendingAllocationsById: new Map(),
-            _allocateKeyIdentifier(keyString, makeIdentifier) {
+            _allocateKeyIdentifier(keyString, makeIdentifier, _committedLookup) {
                 if (rootDb._pendingAllocations.has(keyString)) {
                     throw new Error(`BUG: pending allocation for key ${keyString} found`);
                 }

@@ -391,6 +391,7 @@ function txAllocateNodeIdentifier(
     const identifier = rootDatabase._allocateKeyIdentifier(
         keyString,
         makeIdentifier,
+        txLookup.base,
     );
 
     txLookup.keyToId.set(keyString, identifier);

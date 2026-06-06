@@ -31,7 +31,7 @@ function makeRootDatabase() {
             counter += 1;
             return nodeIdentifierFromString(value);
         },
-        _allocateKeyIdentifier(keyString, makeIdentifier) {
+        _allocateKeyIdentifier(keyString, makeIdentifier, _committedLookup) {
             if (pendingAllocations.has(keyString)) {
                 throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
