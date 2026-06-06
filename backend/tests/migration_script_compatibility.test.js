@@ -13,7 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const { migrateSnapshot } = require('../../scripts/migrate-snapshot-to-identifiers');
+const { migrateSnapshot, decodeArg } = require('../../scripts/migrate-snapshot-to-identifiers');
 
 /**
  * @type {string}
@@ -283,5 +283,181 @@ describe('standalone migration script compatibility', () => {
         // Version should be normalized
         const version = readJson(tmpDir, 'rendered/r/global/version');
         expect(version).toBe(MIGRATED_VERSION_STRING);
+    });
+
+    // ── decodeArg unit tests ───────────────────────────────────────────────
+
+    describe('decodeArg formats old-encoded arguments correctly', () => {
+        test('plain string is returned as-is', () => {
+            expect(decodeArg('hello')).toBe('hello');
+        });
+
+        test('empty string is returned as-is', () => {
+            expect(decodeArg('')).toBe('');
+        });
+
+        test('number argument (tilde prefix) is parsed as number', () => {
+            expect(decodeArg('~42')).toBe(42);
+        });
+
+        test('negative number argument is parsed correctly', () => {
+            expect(decodeArg('~-3')).toBe(-3);
+        });
+
+        test('float argument is parsed as number', () => {
+            expect(decodeArg('~3.14')).toBe(3.14);
+        });
+
+        test('boolean true argument is parsed as boolean true', () => {
+            expect(decodeArg('~true')).toBe(true);
+        });
+
+        test('boolean false argument is parsed as boolean false', () => {
+            expect(decodeArg('~false')).toBe(false);
+        });
+
+        test('null argument is parsed as null', () => {
+            expect(decodeArg('~null')).toBeNull();
+        });
+
+        test('array argument is parsed as array', () => {
+            expect(decodeArg('~[1,2,3]')).toEqual([1, 2, 3]);
+        });
+
+        test('object argument is parsed as object', () => {
+            expect(decodeArg('~{"a":1}')).toEqual({ a: 1 });
+        });
+
+        test('string beginning with tilde is unescaped (~~ → ~)', () => {
+            expect(decodeArg('~~abc')).toBe('~abc');
+        });
+
+        test('double-tilde string with extra content is unescaped correctly', () => {
+            expect(decodeArg('~~tilde')).toBe('~tilde');
+        });
+
+        test('string with only double-tilde is just a single tilde', () => {
+            expect(decodeArg('~~')).toBe('~');
+        });
+    });
+
+    // ── Non-string argument migration tests ────────────────────────────────
+
+    describe('old-format snapshot with non-string arguments migrates correctly', () => {
+        /**
+         * Build a single-node old-format fixture with the given arg value and path suffix.
+         * @param {string} snapshotDir
+         * @param {string} head
+         * @param {unknown} argValue - The semantic arg value (used for expected key).
+         * @param {string} pathSuffix - The filesystem path segment (after percent-decoding, used as the raw segment).
+         */
+        function buildSingleNodeFixture(snapshotDir, head, argValue, pathSuffix) {
+            writeJson(snapshotDir, 'rendered/_meta/current_replica', 'x');
+            writeJson(snapshotDir, 'rendered/r/global/version', OLD_VERSION_STRING);
+            writeJson(snapshotDir, `rendered/r/values/${head}/${pathSuffix}`, { result: 'value' });
+            writeJson(snapshotDir, `rendered/r/freshness/${head}/${pathSuffix}`, 'up-to-date');
+            writeJson(snapshotDir, `rendered/r/inputs/${head}/${pathSuffix}`, { inputs: [], inputCounters: [] });
+            writeJson(snapshotDir, `rendered/r/counters/${head}/${pathSuffix}`, 1);
+            writeJson(snapshotDir, `rendered/r/timestamps/${head}/${pathSuffix}`, {
+                createdAt: '2024-06-01T00:00:00.000Z',
+                modifiedAt: '2024-06-01T00:00:00.000Z',
+            });
+        }
+
+        test('number argument is recovered as number in identifiers_keys_map', async () => {
+            buildSingleNodeFixture(tmpDir, 'item', 42, '~42');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'item', args: [42] }]);
+        });
+
+        test('negative number argument is recovered correctly', async () => {
+            buildSingleNodeFixture(tmpDir, 'temp', -5, '~-5');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'temp', args: [-5] }]);
+        });
+
+        test('boolean true argument is recovered as boolean', async () => {
+            buildSingleNodeFixture(tmpDir, 'flag', true, '~true');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'flag', args: [true] }]);
+        });
+
+        test('boolean false argument is recovered as boolean', async () => {
+            buildSingleNodeFixture(tmpDir, 'flag', false, '~false');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'flag', args: [false] }]);
+        });
+
+        test('null argument is recovered as null', async () => {
+            buildSingleNodeFixture(tmpDir, 'optional', null, '~null');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'optional', args: [null] }]);
+        });
+
+        test('string argument beginning with tilde is recovered correctly (~~ → ~)', async () => {
+            buildSingleNodeFixture(tmpDir, 'label', '~abc', '~~abc');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'label', args: ['~abc'] }]);
+        });
+
+        test('argument whose value is just a tilde is recovered correctly (~~ → ~)', async () => {
+            buildSingleNodeFixture(tmpDir, 'item', '~', '~~');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'item', args: ['~'] }]);
+        });
+
+        test('array argument is recovered as array', async () => {
+            // Array in old-format: ~ followed by JSON.  No percent-encoding
+            // needed because [ , ] are safe in filenames on all platforms.
+            buildSingleNodeFixture(tmpDir, 'list', [1, 2, 3], '~[1,2,3]');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'list', args: [[1, 2, 3]] }]);
+        });
+
+        test('object argument is recovered as object', async () => {
+            // Object in old-format: ~ followed by JSON.  Curly braces and
+            // double quotes are safe in filenames on common filesystems (ext4,
+            // btrfs, xfs, APFS, NTFS) so they are stored as-is without
+            // percent-encoding by encodeSegment.
+            buildSingleNodeFixture(tmpDir, 'cfg', { a: 1 }, '~{"a":1}');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'cfg', args: [{ a: 1 }] }]);
+        });
+
+        test('plain string argument is unaffected by new decoding', async () => {
+            buildSingleNodeFixture(tmpDir, 'greeting', 'hello', 'hello');
+            await migrateSnapshot(tmpDir);
+
+            const idEntries = readJson(tmpDir, 'rendered/r/global/identifiers_keys_map');
+            const keys = idEntries.map(([, keyJson]) => JSON.parse(keyJson));
+            expect(keys).toEqual([{ head: 'greeting', args: ['hello'] }]);
+        });
     });
 });

@@ -50,6 +50,29 @@ function decodeSegment(s) {
 }
 
 /**
+ * Decode an old-format encoded argument back to its semantic value.
+ *
+ * The old rendered format encoded arguments with a tilde prefix scheme:
+ *   - Strings starting with `~` were escaped as `~~` (e.g., "~abc" → ~~abc)
+ *   - Non-string values were prefixed with `~` and the remainder was treated
+ *     as JSON (e.g., number 42 → ~42, boolean true → ~true, null → ~null,
+ *     array [1,2] → ~[1,2], object {"a":1} → ~{"a":1})
+ *   - Plain strings were stored as-is (e.g., "hello" → hello)
+ *
+ * @param {string} s - Decoded (percent-decoded) path segment.
+ * @returns {unknown} The semantic argument value.
+ */
+function decodeArg(s) {
+    if (s.startsWith("~~")) {
+        return s.slice(1);
+    }
+    if (s.startsWith("~")) {
+        return JSON.parse(s.slice(1));
+    }
+    return s;
+}
+
+/**
  * Parse an old-format file path (relative to rendered/) into a node key JSON string.
  *
  * @param {string} relPath - e.g. "r/values/all_events" or "r/values/event/id123"
@@ -72,7 +95,7 @@ function parseOldPath(relPath) {
     // In the old format, zero-arg nodes have a single segment (bare head name).
     // Parameterized nodes have head/arg1/arg2/...
     const head = decodeSegment(keyComponents[0]);
-    const args = keyComponents.slice(1).map((s) => decodeSegment(s));
+    const args = keyComponents.slice(1).map((s) => decodeArg(decodeSegment(s)));
 
     const nodeKeyJson = JSON.stringify({ head, args });
     return { sublevel, nodeKeyJson };
@@ -461,4 +484,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { migrateSnapshot };
+module.exports = { migrateSnapshot, decodeArg };
