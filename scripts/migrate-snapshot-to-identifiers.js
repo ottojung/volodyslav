@@ -28,6 +28,7 @@
 const path = require("path");
 const fs = require("fs/promises");
 const { basicString } = require("../backend/src/random/basic_string");
+const { compareConstValue } = require("../backend/src/generators/incremental_graph/database/node_key");
 
 const MIGRATED_VERSION = "0.0.0-dev";
 
@@ -102,8 +103,9 @@ function parseOldPath(relPath) {
 }
 
 /**
- * Compare two old-format node key JSON strings in the order expected by the
- * migrated fixtures: head ascending, then args descending.
+ * Compare two old-format node key JSON strings using the same canonical
+ * ordering as the production compareNodeKey: head lexicographically, then
+ * arity, then each argument via compareConstValue.
  * @param {string} left
  * @param {string} right
  * @returns {number}
@@ -112,19 +114,19 @@ function compareOldNodeKeyJson(left, right) {
     const leftKey = JSON.parse(left);
     const rightKey = JSON.parse(right);
 
-    const headComparison = leftKey.head.localeCompare(rightKey.head);
-    if (headComparison !== 0) {
-        return headComparison;
+    if (leftKey.head < rightKey.head) return -1;
+    if (leftKey.head > rightKey.head) return 1;
+
+    if (leftKey.args.length !== rightKey.args.length) {
+        return leftKey.args.length - rightKey.args.length;
     }
 
-    const leftArgs = leftKey.args.join("\u0000");
-    const rightArgs = rightKey.args.join("\u0000");
-    const argsComparison = rightArgs.localeCompare(leftArgs);
-    if (argsComparison !== 0) {
-        return argsComparison;
+    for (let i = 0; i < leftKey.args.length; i++) {
+        const cmp = compareConstValue(leftKey.args[i], rightKey.args[i]);
+        if (cmp !== 0) return cmp;
     }
 
-    return left.length - right.length;
+    return 0;
 }
 
 // ─── Reference conversion ───────────────────────────────────────────────────
@@ -228,7 +230,8 @@ async function collectEntries(renderedDir) {
         await walk(sublevelDir, sublevel);
     }
 
-    // Sort to match the canonical identifier ordering used by the populated fixture.
+    // Sort by canonical node-key ordering (head, arity, compareConstValue)
+    // so identifier assignment is deterministic regardless of filesystem order.
     entries.sort((a, b) => compareOldNodeKeyJson(a.nodeKeyJson, b.nodeKeyJson));
     return entries;
 }
@@ -328,7 +331,7 @@ async function migrateSnapshot(snapshotDir) {
         }
     }
 
-    // Assign identifiers in key-discovery order using seeded basicString.
+    // Assign identifiers in canonical order using seeded basicString.
     // The capabilities seed counter provides a deterministic sequence (0, 1, 2, ...).
     let seedCounter = 0;
     /** @type {{ seed: { generate: () => number } }} */
@@ -342,7 +345,13 @@ async function migrateSnapshot(snapshotDir) {
     const idToKey = new Map();
 
     for (const keyJson of orderedKeys) {
-        const id = basicString(capabilities, 9);
+        // Retry on the vanishingly unlikely event that basicString produces
+        // the same identifier for two different seeds. Each retry consumes
+        // one more seed value, guaranteeing a distinct result.
+        let id;
+        do {
+            id = basicString(capabilities, 9);
+        } while (idToKey.has(id));
         keyToId.set(keyJson, id);
         idToKey.set(id, keyJson);
     }
