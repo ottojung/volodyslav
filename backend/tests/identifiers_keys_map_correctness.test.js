@@ -53,15 +53,17 @@ function makeMockRootDatabase() {
             if (pendingAllocations.has(keyString)) {
                 throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
-            for (let attempt = 0; ; attempt++) {
-                const candidate = makeIdentifier(attempt);
-                const candidateStr = String(candidate);
-                if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
-                if (pendingAllocationIdentifiers.has(candidateStr)) continue;
-                pendingAllocations.set(keyString, candidateStr);
-                pendingAllocationIdentifiers.add(candidateStr);
-                return candidate;
+            const candidate = makeIdentifier();
+            const candidateStr = String(candidate);
+            if (committedLookup.idToKey.get(candidateStr) !== undefined) {
+                throw new Error(`BUG: identifier collision with committed lookup: ${candidateStr}`);
             }
+            if (pendingAllocationIdentifiers.has(candidateStr)) {
+                throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
+            }
+            pendingAllocations.set(keyString, candidateStr);
+            pendingAllocationIdentifiers.add(candidateStr);
+            return candidate;
         },
         _releaseAllocations(_ownedKeys) {},
     };
@@ -70,10 +72,11 @@ function makeMockRootDatabase() {
 /**
  * Build a simple deterministic makeIdentifier factory.
  * @param {string[]} candidates - Sequence of identifier strings to yield in order.
- * @returns {(attempt: number) => import('../src/generators/incremental_graph/database').NodeIdentifier}
+ * @returns {() => import('../src/generators/incremental_graph/database').NodeIdentifier}
  */
 function makeIdFactory(candidates) {
-    return (attempt) => nodeIdentifierFromString(candidates[attempt]);
+    let index = 0;
+    return () => nodeIdentifierFromString(candidates[index++]);
 }
 
 /**
@@ -220,19 +223,20 @@ describe('sequential commits accumulate all entries without loss', () => {
 // ---------------------------------------------------------------------------
 
 describe('collision detection covers base and overlay simultaneously', () => {
-    test('a candidate identifier already in the base triggers a retry', () => {
+    test('a candidate identifier already in the base throws a BUG error', () => {
         const idA = nodeIdentifierFromString('aaaaaaaaa');
         const keyA = stringToNodeKeyString('keyA');
         const base = makeIdentifierLookup([[idA, keyA]]);
         const txLookup = makeTransactionIdentifierLookup(base);
 
-        // First candidate 'aaaaaaaaa' collides with base; second 'bbbbbbbbb' is free.
+        // With fingerprint-prefixed identifiers collisions are impossible;
+        // if one occurs it is a correctness bug.
         const keyB = stringToNodeKeyString('keyB');
-        const idB = txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa', 'bbbbbbbbb']), makeMockRootDatabase());
-        expect(String(idB)).toBe('bbbbbbbbb');
+        expect(() => txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa']), makeMockRootDatabase()))
+            .toThrow(/BUG.*collision.*committed/);
     });
 
-    test('a candidate identifier already in the overlay triggers a retry', () => {
+    test('a candidate identifier already in the overlay throws a BUG error', () => {
         const base = makeEmptyIdentifierLookup();
         const txLookup = makeTransactionIdentifierLookup(base);
         const overlayMock = makeMockRootDatabase();
@@ -241,10 +245,11 @@ describe('collision detection covers base and overlay simultaneously', () => {
         const keyA = stringToNodeKeyString('keyA');
         txAllocateNodeIdentifier(txLookup, keyA, makeIdFactory(['aaaaaaaaa']), overlayMock);
 
-        // Now allocate keyB: first candidate 'aaaaaaaaa' collides with overlay.
+        // With fingerprint-prefixed identifiers collisions are impossible;
+        // if one occurs it is a correctness bug.
         const keyB = stringToNodeKeyString('keyB');
-        const idB = txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa', 'bbbbbbbbb']), overlayMock);
-        expect(String(idB)).toBe('bbbbbbbbb');
+        expect(() => txAllocateNodeIdentifier(txLookup, keyB, makeIdFactory(['aaaaaaaaa']), overlayMock))
+            .toThrow(/BUG.*collision.*pending/);
     });
 });
 

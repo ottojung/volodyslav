@@ -22,6 +22,7 @@
 
 const {
     IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
@@ -400,12 +401,19 @@ function makeGraphStorage(rootDatabase, sleeper) {
                                 serializeTransactionLookup(tx.identifierLookup)
                             )
                         );
+                        operations.push(
+                            activeSchemaStorage.global.putOp(
+                                LAST_NODE_INDEX_KEY,
+                                rootDatabase.getCurrentAllocationWatermark()
+                            )
+                        );
                     }
 
                     await activeSchemaStorage.batch(operations);
 
                     if (hasPendingAllocations) {
                         commitTransactionLookup(tx.identifierLookup);
+                        rootDatabase._computed.lastNodeIndex = rootDatabase.getCurrentAllocationWatermark();
                     }
                 });
 

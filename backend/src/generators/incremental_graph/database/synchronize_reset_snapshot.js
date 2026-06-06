@@ -15,9 +15,10 @@ const { scanFromFilesystem } = require('./render');
  * @param {Capabilities} capabilities
  * @param {RootDatabase} database
  * @param {string} workTree
+ * @param {boolean} isExistingDb - Whether the live database already existed before this import.
  * @returns {Promise<boolean>}
  */
-async function importResetSnapshotIntoDatabase(capabilities, database, workTree) {
+async function importResetSnapshotIntoDatabase(capabilities, database, workTree, isExistingDb) {
     const snapshotRoot = path.join(workTree, DATABASE_SUBPATH);
     const rDir = path.join(snapshotRoot, 'r');
     const nextReplica = database.otherReplicaName();
@@ -38,6 +39,22 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree)
         nextReplica
     );
 
+    const preImportFingerprint = database.getFingerprint();
+
+    const metaDir = path.join(snapshotRoot, '_meta');
+    if (await capabilities.checker.directoryExists(metaDir)) {
+        await scanFromFilesystem(
+            capabilities,
+            database,
+            metaDir,
+            '_meta'
+        );
+    }
+
+    if (isExistingDb) {
+        database.restoreFingerprint(preImportFingerprint);
+    }
+
     const previousReplica = database.currentReplicaName();
     await database.setCurrentReplicaPointer(nextReplica);
     return nextReplica !== previousReplica;
@@ -55,6 +72,8 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
         LIVE_DATABASE_WORKING_PATH
     );
 
+    const liveDbExisted = await capabilities.checker.directoryExists(liveDatabasePath);
+
     let database = await makeRootDatabase(
         capabilities,
         liveDatabasePath
@@ -64,7 +83,8 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
         const switchedReplica = await importResetSnapshotIntoDatabase(
             capabilities,
             database,
-            workTree
+            workTree,
+            liveDbExisted
         );
         if (switchedReplica) {
             await database.close();

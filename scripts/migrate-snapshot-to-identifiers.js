@@ -13,12 +13,14 @@
  *   (no identifiers_keys_map)
  *
  * New format:
- *   rendered/r/values/abcdefghi         (9-letter opaque identifier, single segment)
- *   rendered/r/inputs/abcdefghi         = { inputs: ["abcdefghj"], inputCounters: [1] }
- *   rendered/r/revdeps/abcdefghj        = ["abcdefghi"]
+ *   rendered/r/values/1-fingerprint     (index-based identifier)
+ *   rendered/r/inputs/1-fingerprint     = { inputs: ["2-fingerprint"], inputCounters: [1] }
+ *   rendered/r/revdeps/2-fingerprint    = ["1-fingerprint"]
  *   rendered/_meta/current_replica      = "x"
- *   rendered/r/global/version           = "0.0.0-dev-previous"
- *   rendered/r/global/identifiers_keys_map = [["abcdefghi", "{\"head\":\"all_events\",\"args\":[]}"], ...]
+ *   rendered/_meta/fingerprint          = "abcdefghi" (or generated if absent)
+ *   rendered/r/global/version           = "0.0.0-dev"
+ *   rendered/r/global/identifiers_keys_map = [["1-fingerprint", "{\"head\":\"all_events\",\"args\":[]}"], ...]
+ *   rendered/r/global/last_node_index   = 2
  *
  * Usage: node scripts/migrate-snapshot-to-identifiers.js <snapshot-dir>
  *
@@ -314,9 +316,40 @@ async function migrateSnapshot(snapshotDir) {
         console.log("No old-format entries found, nothing to migrate.");
         // Still ensure identifiers_keys_map exists
         await ensureIdentifiersKeysMap(renderedDir, []);
+        // Ensure fingerprint exists
+        const fingerprintPath = path.join(renderedDir, "_meta", "fingerprint");
+        try {
+            await fs.stat(fingerprintPath);
+        } catch {
+            const fingerprint = basicString(
+                { seed: { generate: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) } }
+            );
+            await fs.mkdir(path.dirname(fingerprintPath), { recursive: true });
+            await fs.writeFile(fingerprintPath, JSON.stringify(fingerprint));
+        }
+        // Write last_node_index
+        await fs.mkdir(path.join(renderedDir, "r", "global"), { recursive: true });
+        await fs.writeFile(path.join(renderedDir, "r", "global", "last_node_index"), JSON.stringify(0));
         // Normalize version even for empty snapshots
         await fs.writeFile(path.join(renderedDir, "r", "global", "version"), JSON.stringify(MIGRATED_VERSION));
         return;
+    }
+
+    // ── Step 1.5: Obtain or generate fingerprint ──
+    const fingerprintPath = path.join(renderedDir, "_meta", "fingerprint");
+    let fingerprint;
+    try {
+        const raw = await fs.readFile(fingerprintPath, "utf-8");
+        fingerprint = JSON.parse(raw);
+        if (typeof fingerprint !== 'string') {
+            throw new Error('fingerprint is not a string');
+        }
+    } catch {
+        fingerprint = basicString(
+            { seed: { generate: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) } }
+        );
+        await fs.mkdir(path.dirname(fingerprintPath), { recursive: true });
+        await fs.writeFile(fingerprintPath, JSON.stringify(fingerprint));
     }
 
     // ── Step 2: Assign deterministic identifiers ──
@@ -331,29 +364,16 @@ async function migrateSnapshot(snapshotDir) {
         }
     }
 
-    // Assign identifiers in canonical order using seeded basicString.
-    // The capabilities seed counter provides a deterministic sequence (0, 1, 2, ...).
-    let seedCounter = 0;
-    /** @type {{ seed: { generate: () => number } }} */
-    const capabilities = {
-        seed: {
-            generate: () => seedCounter++,
-        },
-    };
-
+    // Assign identifiers in canonical order using index-based format.
     const keyToId = new Map();
     const idToKey = new Map();
 
+    let index = 1;
     for (const keyJson of orderedKeys) {
-        // Retry on the vanishingly unlikely event that basicString produces
-        // the same identifier for two different seeds. Each retry consumes
-        // one more seed value, guaranteeing a distinct result.
-        let id;
-        do {
-            id = basicString(capabilities, 9);
-        } while (idToKey.has(id));
+        const id = `${index.toString(36)}-${fingerprint}`;
         keyToId.set(keyJson, id);
         idToKey.set(id, keyJson);
+        index++;
     }
 
     console.log(`  Found ${orderedKeys.length} unique nodes, assigned identifiers.`);
@@ -424,7 +444,10 @@ async function migrateSnapshot(snapshotDir) {
         .sort(([leftIdentifier], [rightIdentifier]) => String(leftIdentifier).localeCompare(String(rightIdentifier)));
     await ensureIdentifiersKeysMap(renderedDir, idEntries);
 
-    // ── Step 6: Normalize the snapshot version to the current format ──
+    // ── Step 6: Write last_node_index ──
+    await fs.writeFile(path.join(renderedDir, "r", "global", "last_node_index"), JSON.stringify(orderedKeys.length));
+
+    // ── Step 7: Normalize the snapshot version to the current format ──
     await fs.writeFile(path.join(renderedDir, "r", "global", "version"), JSON.stringify(MIGRATED_VERSION));
 
     console.log("  Migration complete.");

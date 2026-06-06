@@ -268,16 +268,10 @@ describe("allocateNodeIdentifier", () => {
         expect(callCount).toBe(0);
     });
 
-    test("retries on collision", () => {
+    test("throws on collision", () => {
         const lookup = makeIdentifierLookup([[ID_A, KEY_X]]);
-        let callCount = 0;
-        const result = allocateNodeIdentifier(lookup, KEY_Y, () => {
-            callCount++;
-            if (callCount === 1) return ID_A;
-            return ID_B;
-        });
-        expect(nodeIdentifierToString(result)).toBe("bbbbbbbbb");
-        expect(callCount).toBe(2);
+        expect(() => allocateNodeIdentifier(lookup, KEY_Y, () => ID_A))
+            .toThrow(IdentifierLookupError);
     });
 });
 
@@ -464,7 +458,7 @@ describe("txAllocateNodeIdentifier", () => {
                 if (pending.has(keyString)) {
                     throw new Error(`BUG: pending allocation for key ${keyString} found`);
                 }
-                const identifier = makeIdentifier(0);
+                const identifier = makeIdentifier();
                 pending.set(keyString, identifier);
                 return identifier;
             },
@@ -475,11 +469,7 @@ describe("txAllocateNodeIdentifier", () => {
     test("allocates new identifier through root database", () => {
         const rootDb = makeRootDatabase([]);
         const txLookup = makeTransactionIdentifierLookup(rootDb.identifierLookup);
-        let callCount = 0;
-        const result = txAllocateNodeIdentifier(txLookup, KEY_X, () => {
-            callCount++;
-            return callCount === 1 ? ID_B : ID_A;
-        }, rootDb);
+        const result = txAllocateNodeIdentifier(txLookup, KEY_X, () => ID_B, rootDb);
         expect(nodeIdentifierToString(result)).toBe("bbbbbbbbb");
         expect(nodeIdentifierToString(txNodeKeyToId(txLookup, KEY_X))).toBe("bbbbbbbbb");
         expect(txLookup.ownedKeys.has("key_x")).toBe(true);
@@ -668,7 +658,7 @@ describe("Serialization roundtrip", () => {
                 if (rootDb._pendingAllocations.has(keyString)) {
                     throw new Error(`BUG: pending allocation for key ${keyString} found`);
                 }
-                const identifier = makeIdentifier(0);
+                const identifier = makeIdentifier();
                 rootDb._pendingAllocations.set(keyString, nodeIdentifierToString(identifier));
                 rootDb._pendingAllocationsById.set(nodeIdentifierToString(identifier), keyString);
                 return identifier;

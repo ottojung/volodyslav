@@ -710,7 +710,6 @@ describe("MigrationStorage", () => {
             expect(createDecision?.kind).toBe("create");
             expect(createDecision?.nodeKeyString).toBe(nk("NEW"));
             expect(typeof generatedId).toBe("string");
-            expect(generatedId.length).toBe(9);
             expect(await createDecision?.value(generatedId)).toEqual(DUMMY_VALUE_2);
         });
 
@@ -818,7 +817,10 @@ describe("MigrationStorage", () => {
             expect(id1b).toBe(id2b);
         });
 
-        test("create() produces different identifiers when identifiers_keys_map differs", async () => {
+        test("create() produces deterministic identifiers regardless of identifiers_keys_map", async () => {
+            // Identifiers are fingerprint/index-based, not seeded from identifiers_keys_map.
+            // So even with different existing entries, the same create sequence produces the same identifiers.
+
             // Run A: identifiers_keys_map has [A]
             const storageA = makeInMemorySchemaStorage();
             const headIndexA = makeHeadIndex(["A", "NEW1", "NEW2"]);
@@ -830,7 +832,7 @@ describe("MigrationStorage", () => {
             await msA.create(nk("NEW2"), () => Promise.resolve(DUMMY_VALUE_2));
             const decisionsA = await msA.finalize();
 
-            // Run B: identifiers_keys_map has [A, B] — different base seed
+            // Run B: identifiers_keys_map has [A, B] — same create sequence, same identifiers
             const storageB = makeInMemorySchemaStorage();
             const headIndexB = makeHeadIndex(["A", "B", "NEW1", "NEW2"]);
             const A_B = nk("A");
@@ -849,10 +851,9 @@ describe("MigrationStorage", () => {
             expect(createA.length).toBe(2);
             expect(createB.length).toBe(2);
 
-            // Different identifiers_keys_map → different base seed → different identifiers
             const idsA = createA.map(([id]) => String(id)).sort();
             const idsB = createB.map(([id]) => String(id)).sort();
-            expect(idsA).not.toEqual(idsB);
+            expect(idsA).toEqual(idsB);
         });
 
         test("create() identifiers do not collide for many consecutive calls", async () => {
@@ -875,7 +876,6 @@ describe("MigrationStorage", () => {
             const ids = new Set();
             for (const [id] of createDecisions) {
                 expect(typeof id).toBe("string");
-                expect(id.length).toBe(9);
                 expect(ids.has(id)).toBe(false);
                 ids.add(id);
             }

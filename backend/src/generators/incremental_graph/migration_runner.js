@@ -14,6 +14,7 @@ const { compileNodeDef } = require("./compiled_node");
 const {
     compareNodeIdentifier,
     IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
 } = require("./database");
@@ -153,9 +154,10 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredRevdeps
  * @param {import('./database/types').Version} newVersion
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
+ * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime, maxAllocatedIndex) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
@@ -322,6 +324,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             async *keys() {
                 yield 'version';
                 yield IDENTIFIERS_KEY;
+                yield LAST_NODE_INDEX_KEY;
             },
             async get(key) {
                 if (key === 'version') {
@@ -329,6 +332,12 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 }
                 if (key === IDENTIFIERS_KEY) {
                     return await buildDecisionsMap(prevStorage, decisions);
+                }
+                if (key === LAST_NODE_INDEX_KEY) {
+                    const prevLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
+                    const prevValue = (typeof prevLastNodeIndex === 'number' && Number.isInteger(prevLastNodeIndex) && prevLastNodeIndex >= 0)
+                        ? prevLastNodeIndex : 0;
+                    return Math.max(prevValue, maxAllocatedIndex);
                 }
                 return await prevStorage.global.get(key);
             },
@@ -443,7 +452,9 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const migrationStorage = makeMigrationStorage(
                 prevStorage,
                 newHeadIndex,
-                materializedNodes
+                materializedNodes,
+                rootDatabase.getFingerprint(),
+                rootDatabase._computed.lastNodeIndex
             );
 
             // Execute user migration callback.
@@ -470,6 +481,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 desiredRevdeps,
                 currentVersion,
                 capabilities.datetime,
+                migrationStorage.getMaxAllocatedIndex()
             );
 
             // Gently unify the desired state into the target replica.

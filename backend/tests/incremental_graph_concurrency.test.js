@@ -48,6 +48,7 @@ class InMemoryDatabase {
         this._identifierCounter = 0;
         /** @type {Map<string, string>} */
         this._pendingAllocations = new Map();
+        this._computed = { lastNodeIndex: 0, fingerprint: 'testconfingerprint' };
     }
 
     currentReplicaName() { return 'x'; }
@@ -83,22 +84,30 @@ class InMemoryDatabase {
         return nodeIdentifierFromString(id);
     }
 
+    getCurrentAllocationWatermark() {
+        return this._identifierCounter;
+    }
+
+    getFingerprint() {
+        return 'testconfingerprint';
+    }
+
     _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
         if (this._pendingAllocations.has(keyString)) {
             throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
         }
-        for (let attempt = 0; ; attempt++) {
-            const candidate = makeIdentifier(attempt);
-            const candidateStr = nodeIdentifierToString(candidate);
-            if (committedLookup.idToKey.get(candidateStr) !== undefined) continue;
-            let idCollision = false;
-            for (const idStr of this._pendingAllocations.values()) {
-                if (idStr === candidateStr) { idCollision = true; break; }
-            }
-            if (idCollision) continue;
-            this._pendingAllocations.set(keyString, candidateStr);
-            return candidate;
+        const candidate = makeIdentifier();
+        const candidateStr = nodeIdentifierToString(candidate);
+        if (committedLookup.idToKey.get(candidateStr) !== undefined) {
+            throw new Error(`BUG: identifier collision with committed lookup: ${candidateStr}`);
         }
+        for (const idStr of this._pendingAllocations.values()) {
+            if (idStr === candidateStr) {
+                throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
+            }
+        }
+        this._pendingAllocations.set(keyString, candidateStr);
+        return candidate;
     }
 
     _releaseAllocations(ownedKeys) {

@@ -163,6 +163,12 @@ async function checkpointDatabase(
                     path.join(workDir, DATABASE_SUBPATH, 'r'),
                     activeReplica
                 );
+                await renderToFilesystem(
+                    capabilities,
+                    database,
+                    path.join(workDir, DATABASE_SUBPATH, '_meta'),
+                    '_meta'
+                );
                 capabilities.logger.logDebug({ message }, "Rendered database snapshot for checkpoint, committing");
                 await commit(message);
                 capabilities.logger.logDebug({ message }, "Checkpoint committed");
@@ -221,6 +227,12 @@ async function checkpointMigration(
                 path.join(workDir, DATABASE_SUBPATH, 'r'),
                 rootDatabase.currentReplicaName()
             );
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workDir, DATABASE_SUBPATH, '_meta'),
+                '_meta'
+            );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Committing pre-migration snapshot");
             await commit(preMessage);
             capabilities.logger.logDebug({ preMessage, postMessage }, "Pre-migration snapshot committed, running migration callback");
@@ -231,6 +243,12 @@ async function checkpointMigration(
                 rootDatabase,
                 path.join(workDir, DATABASE_SUBPATH, 'r'),
                 rootDatabase.currentReplicaName()
+            );
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workDir, DATABASE_SUBPATH, '_meta'),
+                '_meta'
             );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Committing post-migration snapshot");
             await commit(postMessage);

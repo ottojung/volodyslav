@@ -3,9 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const crypto = require("crypto");
-const { basicString } = require("../../random");
-const { deserializeNodeKey, nodeIdentifierToString, stringToNodeIdentifier, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY } = require("./database");
+const { deserializeNodeKey, nodeIdentifierToString, stringToNodeIdentifier, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -140,9 +138,15 @@ class MigrationStorageClass {
 
     /**
      * @private
-     * @type {undefined | (() => number)}
+     * @type {string}
      */
-    _generator;
+    _fingerprint;
+
+    /**
+     * @private
+     * @type {number}
+     */
+    _nextIndex;
 
     /**
      * @private
@@ -154,13 +158,16 @@ class MigrationStorageClass {
      * @param {ReadableMigrationStorage} prevStorage
      * @param {Map<NodeName, CompiledNode>} newHeadIndex
      * @param {NodeIdentifier[]} materializedNodes
+     * @param {string} fingerprint - The database fingerprint for identifier allocation.
+     * @param {number} lastNodeIndex - The current last_node_index watermark.
      */
-    constructor(prevStorage, newHeadIndex, materializedNodes) {
+    constructor(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex) {
         this.prevStorage = prevStorage;
         this.newHeadIndex = newHeadIndex;
         this.materializedNodes = new Set(materializedNodes);
         this.decisions = new Map();
-        this._generator = undefined;
+        this._fingerprint = fingerprint;
+        this._nextIndex = lastNodeIndex + 1;
         this._identifiersKeysIndex = undefined;
     }
 
@@ -300,64 +307,22 @@ class MigrationStorageClass {
     }
 
     /**
-     * Initialise the shared capabilities counter from identifiers_keys_map.
-     * Called exactly once, on the first _generateIdentifier call.
-     * @private
-     * @returns {Promise<() => number>}
+     * Generate a deterministic identifier using the database fingerprint and
+     * a monotonic index. Collisions are impossible with fingerprint-prefixed
+     * identifiers within a single database.
+     * @returns {NodeIdentifier}
      */
-    async _initSeed() {
-        if (this._generator !== undefined) {
-            return this._generator;
-        }
-        const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
-        const entriesJson = Array.isArray(existingEntries)
-            ? JSON.stringify([...existingEntries].sort())
-            : JSON.stringify([]);
-        const hash = crypto.createHash("sha256").update("identifiers_keys_map:" + entriesJson).digest();
-        let counter = hash.readUInt32BE(0) >>> 0;
-        const generator = () => counter++;
-        this._generator = generator;
-        return generator;
-    }
-
-    /**
-     * Generate a deterministic identifier using the shared capabilities.
-     * Retries on collision with no bound — 26^9 space guarantees eventual success.
-     * @returns {Promise<NodeIdentifier>}
-     */
-    async _generateIdentifier() {
-        const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
-
-        /** @type {Set<string>} */
-        const existingIds = new Set();
-        if (Array.isArray(existingEntries)) {
-            for (const [id] of existingEntries) {
-                existingIds.add(String(id));
-            }
-        }
-        for (const key of this.decisions.keys()) {
-            existingIds.add(nodeIdentifierToString(key));
-        }
-
-        const generate = await this._initSeed();
-        const capabilities = {
-            seed: { generate }
-        };
-
-        let id;
-        do {
-            id = basicString(capabilities, 9);
-        } while (existingIds.has(id));
-
-        return stringToNodeIdentifier(id);
+    _generateIdentifier() {
+        const index = this._nextIndex++;
+        return makeNodeIdentifier(this._fingerprint, index);
     }
 
     /**
      * Create a new node in the new schema version with an initial value.
      * The node must NOT exist in the previous version (use override() instead).
      * The node must exist in the new schema.
-     * The identifier is auto-generated deterministically from the existing
-     * identifiers_keys_map and the accumulated decisions so far.
+     * The identifier is auto-generated deterministically using the database
+     * fingerprint and a monotonic index.
      * The new node is created as up-to-date with the provided value and empty inputs.
      * @param {import('./database/types').NodeKeyString} nodeKeyString - The semantic key JSON string
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
@@ -381,8 +346,7 @@ class MigrationStorageClass {
             }
         }
 
-        await this._initSeed();
-        const nodeKey = await this._generateIdentifier();
+        const nodeKey = this._generateIdentifier();
         this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value });
         const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
         try { await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions); }
@@ -434,6 +398,15 @@ class MigrationStorageClass {
     async resolveNodeKey(nodeKey) {
         const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
         return resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, this.decisions);
+    }
+
+    /**
+     * Return the max allocated local index during this migration.
+     * Used to compute the new last_node_index for the target replica.
+     * @returns {number}
+     */
+    getMaxAllocatedIndex() {
+        return this._nextIndex - 1;
     }
 
     /**
@@ -551,10 +524,12 @@ class MigrationStorageClass {
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @param {NodeIdentifier[]} materializedNodes
+ * @param {string} [fingerprint="testfingerprint"] - The database fingerprint for identifier allocation.
+ * @param {number} [lastNodeIndex=0] - The current last_node_index watermark.
  * @returns {MigrationStorageClass}
  */
-function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes) {
-    return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes);
+function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint = "testfingerprint", lastNodeIndex = 0) {
+    return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex);
 }
 
 /**

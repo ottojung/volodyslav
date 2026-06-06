@@ -31,27 +31,32 @@ function makeRootDatabase() {
             counter += 1;
             return nodeIdentifierFromString(value);
         },
+        getCurrentAllocationWatermark() {
+            return counter;
+        },
+        getFingerprint() {
+            return 'testresfinger';
+        },
         _allocateKeyIdentifier(keyString, makeIdentifier, _committedLookup) {
             if (pendingAllocations.has(keyString)) {
                 throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
             }
-            for (let attempt = 0; ; attempt++) {
-                const candidate = makeIdentifier(attempt);
-                const candidateStr = String(candidate);
-                let idCollision = false;
-                for (const idStr of pendingAllocations.values()) {
-                    if (idStr === candidateStr) { idCollision = true; break; }
+            const candidate = makeIdentifier();
+            const candidateStr = String(candidate);
+            for (const idStr of pendingAllocations.values()) {
+                if (idStr === candidateStr) {
+                    throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
                 }
-                if (idCollision) continue;
-                pendingAllocations.set(keyString, candidateStr);
-                return candidate;
             }
+            pendingAllocations.set(keyString, candidateStr);
+            return candidate;
         },
         _releaseAllocations(ownedKeys) {
             for (const keyString of ownedKeys) {
                 pendingAllocations.delete(keyString);
             }
         },
+        _computed: { lastNodeIndex: 0, fingerprint: 'testresfinger' },
     };
 }
 

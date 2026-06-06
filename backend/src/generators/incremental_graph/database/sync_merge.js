@@ -47,6 +47,7 @@ const {
     mergeIdentifierLookups,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
+const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
 const { unifyRevdeps } = require('./sync_merge_revdeps');
 const { buildTakeOps, copyReplicaGently } = require('./sync_merge_transfer');
@@ -416,6 +417,7 @@ function summarizeDecisions(decisions) {
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @param {number} mergedLastNodeIndex
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
@@ -424,7 +426,8 @@ async function commitChangedMerge(
     targetReplica,
     targetLookup,
     hostLookup,
-    mergedInputsMap
+    mergedInputsMap,
+    mergedLastNodeIndex
 ) {
     mergeIdentifierLookups(targetLookup, hostLookup);
     const writer = new ReplicaBatchWriter(targetStorage);
@@ -432,10 +435,28 @@ async function commitChangedMerge(
         IDENTIFIERS_KEY,
         serializeIdentifierLookup(targetLookup)
     ));
+    await writer.push(targetStorage.global.putOp(
+        LAST_NODE_INDEX_KEY,
+        mergedLastNodeIndex
+    ));
     await writer.flush();
 
     await unifyRevdeps(targetStorage, mergedInputsMap);
     await rootDatabase.setCurrentReplicaPointer(targetReplica);
+}
+
+/**
+ * Load the last_node_index from a schema storage's global sublevel.
+ * Returns 0 if the key is absent.
+ * @param {SchemaStorage} storage
+ * @returns {Promise<number>}
+ */
+async function loadLastNodeIndex(storage) {
+    const value = await storage.global.get(LAST_NODE_INDEX_KEY);
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+        return value;
+    }
+    return 0;
 }
 
 /**
@@ -485,6 +506,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierLookupConflicts(targetLookup, hostLookup);
 
+    const targetLastNodeIndex = await loadLastNodeIndex(targetStorage);
+    const hostLastNodeIndex = await loadLastNodeIndex(hostStorage);
+    const mergedLastNodeIndex = Math.max(targetLastNodeIndex, hostLastNodeIndex);
+
     const {
         initialDecisions,
         mergedInputsMap,
@@ -511,7 +536,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             toReplica,
             targetLookup,
             hostLookup,
-            mergedInputsMap
+            mergedInputsMap,
+            mergedLastNodeIndex
         );
     }
 

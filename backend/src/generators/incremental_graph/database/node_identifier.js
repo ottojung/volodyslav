@@ -1,28 +1,22 @@
-const random = require("../../../random");
 const {
     nodeIdentifierToString: nodeIdentifierToRawString,
     stringToNodeIdentifier,
 } = require("./types");
 
 /**
- * Persisted node identifiers are exactly 9 lowercase ASCII letters.
- * They are safe to embed in database keys and filesystem path segments
- * without any additional escaping layer.
+ * Node identifiers follow the format `<base36-index>-<fingerprint>`.
+ * The index is a base36 integer, the fingerprint is a machine-local
+ * stable string of at least 9 lowercase ASCII letters.
  *
  * All identifiers are generated internally by `makeNodeIdentifier()` and are
  * never parsed from user input.  Therefore there is no
  * runtime validation of identifier strings — the pattern defined here exists
  * only as a specification / documentation constraint.
  */
-const NODE_IDENTIFIER_PATTERN = /^[a-z]{9}$/;
+const NODE_IDENTIFIER_PATTERN = /^[0-9a-z]+-[a-z]{9,}$/;
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
-
-/**
- * @typedef {object} Capabilities
- * @property {import('../../../random/seed').NonDeterministicSeed} seed
- */
 
 /**
  * Check whether a plain string satisfies the documented NodeIdentifier format.
@@ -34,12 +28,13 @@ function isValidNodeIdentifier(identifier) {
 }
 
 /**
- * Allocate a new random identifier using the shared random capability.
- * @param {Capabilities} capabilities
+ * Allocate a deterministic node identifier from a fingerprint and a local index.
+ * @param {string} fingerprint - The machine-local database fingerprint.
+ * @param {number} index - The local node allocation index.
  * @returns {NodeIdentifier}
  */
-function makeNodeIdentifier(capabilities) {
-    return nodeIdentifierFromString(random.basicString(capabilities, 9));
+function makeNodeIdentifier(fingerprint, index) {
+    return nodeIdentifierFromString(`${index.toString(36)}-${fingerprint}`);
 }
 
 /**

@@ -169,7 +169,7 @@ describe('standalone migration script compatibility', () => {
         const observedIds = new Set();
         for (const [identifier, nodeKeyJson] of idEntries) {
             expect(typeof identifier).toBe('string');
-            expect(identifier.length).toBe(9);
+            expect(identifier).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);
             expect(expectedKeys).toContain(nodeKeyJson);
             observedKeys.add(nodeKeyJson);
             observedIds.add(identifier);
@@ -229,7 +229,7 @@ describe('standalone migration script compatibility', () => {
         for (const ref of revdeps) {
             expect(keyToId.has(ref)).toBe(false); // ref should be an identifier, not a key JSON
             expect(typeof ref).toBe('string');
-            expect(ref.length).toBe(9);
+            expect(ref).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);
         }
     });
 
@@ -262,7 +262,7 @@ describe('standalone migration script compatibility', () => {
 
         const identifier = keyToId.get(nodeKeyJson);
         expect(identifier).toBeDefined();
-        expect(identifier.length).toBe(9);
+        expect(identifier).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);
 
         // Value should be preserved
         const value = readJson(tmpDir, `rendered/r/values/${identifier}`);
