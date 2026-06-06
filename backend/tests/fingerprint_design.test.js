@@ -18,8 +18,6 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     getRootDatabase,
-    stringToVersion,
-    versionToString,
     renderToFilesystem,
     scanFromFilesystem,
     nodeIdentifierFromString,
@@ -27,13 +25,7 @@ const {
     serializeIdentifierLookup,
 } = require('../src/generators/incremental_graph/database');
 const {
-    IdentifierLookupConflictError,
-    isIdentifierLookupConflictError,
-} = require('../src/generators/incremental_graph/database/replica_errors');
-const {
     mergeHostIntoReplica,
-    HostVersionMismatchError,
-    isHostVersionMismatchError,
 } = require('../src/generators/incremental_graph/database/sync_merge');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
@@ -76,7 +68,6 @@ function makeLogger() {
 }
 
 const NODE_A = nodeIdentifierFromString('aaaaaaaaa');
-const NODE_B = nodeIdentifierFromString('bbbbbbbbb');
 const TS1 = '2024-01-01T00:00:01.000Z';
 
 describe('fingerprint design', () => {
