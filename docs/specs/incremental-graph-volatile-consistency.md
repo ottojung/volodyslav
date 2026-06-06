@@ -58,8 +58,8 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 ### Derived volatile state (`_computed`)
 
 `_computed` is the *injection* of the durable database into memory: every field can be
-reconstructed by opening the replica's sublevels and reading its persisted metadata (version,
-identifiers_keys_map). It mirrors the persisted state:
+reconstructed by opening the replica's sublevels and reading its persisted metadata.
+It mirrors the persisted state:
 
 | Field | Type | Meaning |
 |-------|------|---------|
