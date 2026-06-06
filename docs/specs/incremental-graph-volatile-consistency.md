@@ -53,9 +53,11 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 | `global` | `'identifiers_keys_map'` | identifier ↔ key bijection |
 | `_meta` | `'current_replica'` | active replica name (`'x'` or `'y'`) |
 
-### Volatile state (`_computed`)
+### Derived volatile state (`_computed`)
 
-`_computed` is a single object that mirrors the persisted state:
+`_computed` is the *injection* of the durable database into memory: every field can be
+reconstructed by opening the replica's sublevels and reading its persisted metadata (version,
+identifiers_keys_map). It mirrors the persisted state:
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -65,9 +67,16 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 | `schemaStorage` | `SchemaStorage` | Typed accessors for all node-data sublevels. |
 | `identifierLookup` | `IdentifierLookup` | Bijection `NodeKeyString ↔ NodeIdentifier`. |
 
-All volatile runtime state lives exclusively in `_computed`. No other long-lived field of
-`RootDatabase` may hold derived state. Short-lived local variables that do not persist across
-`await` boundaries and are not shared between concurrent call chains are exempt.
+All replica-derived runtime state lives in `_computed`. No other long-lived field of
+`RootDatabase` may hold replica-derived state. Short-lived local variables that do not persist
+across `await` boundaries and are not shared between concurrent call chains are exempt.
+
+Ephemeral, in-process-only state (such as `_pendingAllocations` for concurrent identifier
+reservation) lives directly on the `RootDatabase` class, NOT inside `_computed`. This ensures it
+is never discarded or reconstructed during a replica cutover, which replaces `_computed` from the
+on-disk state. An example is `_pendingAllocations` and its reverse map `_pendingAllocationsById`,
+which track identifier reservations made by in-flight transactions; they must survive across
+replica switches because a cutover can happen while allocations are in flight.
 
 ### NodeIdentifier and NodeKeyString
 
