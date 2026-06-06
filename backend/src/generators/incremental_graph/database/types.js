@@ -207,7 +207,7 @@ function castToVersion(_value) {
 }
 
 /**
- * @param {string} VersionStr 
+ * @param {string} VersionStr
  * @returns {Version}
  */
 function stringToVersion(VersionStr) {
@@ -492,7 +492,7 @@ function castToSchemaPattern(_value) {
 }
 
 /**
- * @param {string} schemaPatternStr 
+ * @param {string} schemaPatternStr
  * @returns {SchemaPattern}
  */
 function stringToSchemaPattern(schemaPatternStr) {
@@ -534,7 +534,7 @@ function schemaPatternToString(schemaPattern) {
  * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
  */
 
-/** 
+/**
  * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
