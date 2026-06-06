@@ -412,10 +412,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                         await activeSchemaStorage.batch(operations);
 
                         commitTransactionLookup(tx.identifierLookup);
-                        rootDatabase._computed.lastNodeIndex = Math.max(
-                            rootDatabase._computed.lastNodeIndex,
-                            commitLastNodeIndex
-                        );
+                        rootDatabase.advanceLastNodeIndex(commitLastNodeIndex);
                     } else {
                         await activeSchemaStorage.batch(operations);
                     }

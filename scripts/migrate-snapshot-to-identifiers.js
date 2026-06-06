@@ -17,6 +17,7 @@ const path = require("path");
 const fs = require("fs/promises");
 const { basicString } = require("../backend/src/random/basic_string");
 const { compareConstValue } = require("../backend/src/generators/incremental_graph/database/node_key");
+const { convertReferences } = require("./lib/convert_references");
 
 const MIGRATED_VERSION = "0.0.0-dev";
 
@@ -115,63 +116,6 @@ function compareOldNodeKeyJson(left, right) {
     }
 
     return 0;
-}
-
-// ─── Reference conversion ───────────────────────────────────────────────────
-
-/**
- * Check if a string looks like a serialized JSON node key (old format).
- */
-function isOldFormatReference(str) {
-    if (typeof str !== "string") return false;
-    return str.startsWith('{"head":');
-}
-
-/**
- * Convert old-format references in inputs/revdeps values to identifier strings.
- * @param {unknown} value - The parsed JSON value from an inputs or revdeps file.
- * @param {(nodeKeyJson: string) => string} keyToId - Maps node key JSON → identifier
- * @returns {unknown} The value with references converted.
- */
-function convertReferences(value, keyToId) {
-    if (typeof value === "string") {
-        if (isOldFormatReference(value)) {
-            const id = keyToId(value);
-            if (id === undefined) {
-                throw new Error(`Cannot find identifier for reference: ${value}`);
-            }
-            return id;
-        }
-        return value;
-    }
-
-    if (Array.isArray(value)) {
-        return value.map((item) => convertReferences(item, keyToId));
-    }
-
-    if (value !== null && typeof value === "object") {
-        const result = {};
-        for (const [k, v] of Object.entries(value)) {
-            if (k === "inputs" && Array.isArray(v)) {
-                // inputs array: convert each element
-                result[k] = v.map((ref) => {
-                    if (typeof ref === "string" && isOldFormatReference(ref)) {
-                        const id = keyToId(ref);
-                        if (id === undefined) {
-                            throw new Error(`Cannot find identifier for input reference: ${ref}`);
-                        }
-                        return id;
-                    }
-                    return ref;
-                });
-            } else {
-                result[k] = convertReferences(v, keyToId);
-            }
-        }
-        return result;
-    }
-
-    return value;
 }
 
 // ─── Main migration logic ───────────────────────────────────────────────────

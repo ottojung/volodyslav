@@ -48,6 +48,7 @@ const {
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
 const { LAST_NODE_INDEX_KEY } = require('./root_database');
+const { MalformedIdentifierLookupError } = require('./replica_errors');
 const { buildMergePlan } = require('./sync_merge_plan');
 const { unifyRevdeps } = require('./sync_merge_revdeps');
 const { buildTakeOps, copyReplicaGently } = require('./sync_merge_transfer');
@@ -447,16 +448,22 @@ async function commitChangedMerge(
 
 /**
  * Load the last_node_index from a schema storage's global sublevel.
- * Returns 0 if the key is absent.
+ * Returns 0 if the key is absent (fresh / un-versioned replica).
+ * Throws if the key is present but not a non-negative integer.
  * @param {SchemaStorage} storage
  * @returns {Promise<number>}
  */
 async function loadLastNodeIndex(storage) {
     const value = await storage.global.get(LAST_NODE_INDEX_KEY);
+    if (value === undefined) {
+        return 0;
+    }
     if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
         return value;
     }
-    return 0;
+    throw new MalformedIdentifierLookupError(
+        `last_node_index is not a non-negative integer: ${typeof value}`
+    );
 }
 
 /**

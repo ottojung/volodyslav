@@ -390,7 +390,7 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  */
 async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
-    const currentVersion = rootDatabase.version;
+    const currentVersion = rootDatabase.getVersion();
     const activeReplica = rootDatabase.currentReplicaName();
     const inactiveReplica = rootDatabase.otherReplicaName();
 
@@ -412,7 +412,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             'Migration not required: no stored version found in active replica; marking fresh database with current version'
         );
         // No previous version recorded; fresh database: record current version, nothing to migrate.
-        await rootDatabase.setGlobalVersion(rootDatabase.version);
+        await rootDatabase.setGlobalVersion(rootDatabase.getVersion());
         return rootDatabase;
     }
 
@@ -459,7 +459,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 newHeadIndex,
                 materializedNodes,
                 rootDatabase.getFingerprint(),
-                rootDatabase._computed.lastNodeIndex
+                rootDatabase.getLastNodeIndex()
             );
 
             // Execute user migration callback.

@@ -145,6 +145,9 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
         },
         async _rawSync() {},
         getFingerprint() { return 'testmigrfinprt'; },
+        getVersion() { return this.version; },
+        getLastNodeIndex() { return this._computed.lastNodeIndex; },
+        advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
         _computed: { lastNodeIndex: 0 },
     };
 
@@ -398,6 +401,9 @@ describe("runMigration", () => {
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
                 getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
                 _computed: { lastNodeIndex: 0 },
             };
 
@@ -530,6 +536,9 @@ describe("runMigration", () => {
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
                 getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
                 _computed: { lastNodeIndex: 0 },
             };
             const nodeDefs = [{
@@ -576,6 +585,9 @@ describe("runMigration", () => {
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
                 getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
                 _computed: { lastNodeIndex: 0 },
             };
             const nodeDefs = [{
@@ -1034,6 +1046,9 @@ describe("x-namespace state preserved on migration failure", () => {
             async setGlobalVersion() {},
             async _rawSync() {},
             getFingerprint() { return 'testmigrfinprt'; },
+            getVersion() { return this.version; },
+            getLastNodeIndex() { return this._computed.lastNodeIndex; },
+            advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
             _computed: { lastNodeIndex: 0 },
         };
 
@@ -1306,8 +1321,10 @@ describe("infrastructure failures", () => {
         const metaError = new Error("getGlobalVersion failure");
         const xStorage = makeSchemaStorage();
             const yStorage = makeSchemaStorage();
+            const callOrder = [];
             const rootDatabase = {
                 version: "2.0.0",
+                getVersion() { return this.version; },
                 async getGlobalVersion() { throw metaError; },
                 getSchemaStorage() { return xStorage; },
                 currentReplicaName() { return 'x'; },
@@ -1318,7 +1335,8 @@ describe("infrastructure failures", () => {
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
                 getFingerprint() { return 'testmigrfinprt'; },
-                _computed: { lastNodeIndex: 0 },
+                getLastNodeIndex() { return 0; },
+                advanceLastNodeIndex(_value) {},
             };
 
         let caught;
@@ -1355,6 +1373,9 @@ describe("infrastructure failures", () => {
             async setGlobalVersion() {},
             async _rawSync() {},
             getFingerprint() { return 'testmigrfinprt'; },
+            getVersion() { return this.version; },
+            getLastNodeIndex() { return this._computed.lastNodeIndex; },
+            advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
             _computed: { lastNodeIndex: 0 },
         };
 

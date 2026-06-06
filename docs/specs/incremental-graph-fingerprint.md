@@ -21,15 +21,15 @@ sublevel under the key `"fingerprint"`.
 The fingerprint is generated with `random.basicString(capabilities)` using
 the project's seeded PRNG. It is generated exactly once:
 
-1. On first boot of a truly fresh database (no `_meta/fingerprint` exists and
-   no `r/` snapshot data is available), a new fingerprint is generated.
+1. On first boot of a truly fresh database (no `r/global/fingerprint` exists
+   and no `r/` snapshot data is available), a new fingerprint is generated.
 
 2. On first boot / initialization from a downloaded/restored snapshot, the
-   fingerprint from that snapshot is imported into the live `_meta` sublevel
-   before the database starts serving requests.
+   fingerprint from that snapshot is imported into the live replica's global
+   sublevel alongside the rest of the replica data.
 
 3. Once a live database exists, sync/reset/import paths must not overwrite
-   its local `_meta/fingerprint`.
+   its local replica-global `fingerprint`.
 
 ## Format
 
@@ -48,7 +48,8 @@ format at conversion boundaries.
 - Available to all identifier allocation code paths through `_computed`.
 - Never overwritten by sync, reset, or import once a live DB exists.
 - On first boot from a downloaded/restored snapshot, the snapshot's
-  `r/global/fingerprint` is imported along with the rest of the replica data.
+  `r/global/fingerprint` is imported along with the rest of the replica
+  data via the standard scan-from-filesystem path.
 - On non-first-boot reset, the local fingerprint is written back to the
   target replica's global sublevel before the replica switch, preserving
   the local identity.

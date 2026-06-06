@@ -177,9 +177,9 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * Database for storing replica-level global state (e.g., version).
- * Key: plain string (e.g., 'version' or 'identifiers_keys_map')
- * Value: version string, identifier lookup metadata, or other global state
+ * Database for storing replica-level global state.
+ * Key: plain string (e.g., 'version', 'identifiers_keys_map', 'last_node_index', 'fingerprint')
+ * Value: version string, identifier lookup metadata, last_node_index number, fingerprint string
  * @typedef {GenericDatabase<Version | import('./types').IdentifiersKeysMap | number | string, string>} GlobalVersionDatabase
  */
 
@@ -266,7 +266,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
             if (existing === undefined) {
                 // New or freshly-cleared namespace: write version to global to initialise.
                 await globalSublevel.put('version', version);
-            } else if (typeof existing !== 'string' || existing !== version) {
+            } else if (typeof existing !== 'string' || existing !== versionToString(version)) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 const foundVersion = typeof existing === 'string'
                     ? stringToVersion(existing)
@@ -480,12 +480,38 @@ class RootDatabaseClass {
 
     /**
      * Get the current allocation watermark (the largest index allocated so
-     * far, whether committed or not). Used by the transaction commit path
-     * to persist the durable `last_node_index`.
+     * far). Used by the transaction commit path to persist the durable
+     * `last_node_index`.
      * @returns {number}
      */
     getCurrentAllocationWatermark() {
         return this._nextNodeIndex - 1;
+    }
+
+    /**
+     * Get the application version known to this database instance.
+     * @returns {Version}
+     */
+    getVersion() {
+        return this.version;
+    }
+
+    /**
+     * Get the committed last node index from in-memory computed state.
+     * @returns {number}
+     */
+    getLastNodeIndex() {
+        return this._computed.lastNodeIndex;
+    }
+
+    /**
+     * Advance the in-memory last node index watermark if the given value
+     * is greater than the current one.
+     * @param {number} value
+     * @returns {void}
+     */
+    advanceLastNodeIndex(value) {
+        this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value);
     }
 
     /**

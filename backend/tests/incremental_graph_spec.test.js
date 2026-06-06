@@ -101,6 +101,12 @@ class InMemoryDatabase {
         return 'testspecfingerprint';
     }
 
+    getVersion() { return this.version; }
+
+    getLastNodeIndex() { return this._computed.lastNodeIndex; }
+
+    advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); }
+
     _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
         if (this._pendingAllocations.has(keyString)) {
             throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);

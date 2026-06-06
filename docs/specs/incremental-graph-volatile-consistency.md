@@ -7,7 +7,7 @@ The IncrementalGraph system stores its state in two layers:
 1. **Persisted layer** — a LevelDB database on disk. Survives process restarts. Stores node
    values, freshness markers, input dependency records, reverse-dependency indices, monotonic
    counters, creation/modification timestamps, and the *identifier lookup* (the bijection between
-   semantic node keys and opaque node identifiers).
+   semantic node keys and deterministic fingerprint-index node identifiers).
 
 2. **Volatile layer** (`_computed`) — an in-memory mirror of the persisted layer. Lives inside
    `RootDatabase`. Provides fast in-process access to the current committed state.
@@ -66,6 +66,8 @@ identifiers_keys_map). It mirrors the persisted state:
 | `globalSublevel` | `GlobalSublevelType` | Global sublevel handle. |
 | `schemaStorage` | `SchemaStorage` | Typed accessors for all node-data sublevels. |
 | `identifierLookup` | `IdentifierLookup` | Bijection `NodeKeyString ↔ NodeIdentifier`. |
+| `lastNodeIndex` | `number` | Greatest durably-retired allocation index. |
+| `fingerprint` | `string` | Machine-local database fingerprint. |
 
 All replica-derived runtime state lives in `_computed`. No other long-lived field of
 `RootDatabase` may hold replica-derived state. Short-lived local variables that do not persist
@@ -82,8 +84,8 @@ replica switches because a cutover can happen while allocations are in flight.
 
 - **NodeKeyString** — a human-readable encoding of a node's computation: its head name and
   argument list (e.g., `'fetch["https://example.com"]'`).
-- **NodeIdentifier** — an opaque 9-character lowercase-ASCII string used as the actual database key
-  in every node-data sublevel.
+- **NodeIdentifier** — a deterministic `<base36-index>-<fingerprint>` string used as the actual
+  database key in every node-data sublevel. See `keys-design.md` for the full format specification.
 
 The `identifierLookup` is the only place where semantic keys are translated to storage keys. It
 is a strict bijection represented as two inverse maps:
