@@ -7,6 +7,7 @@ const {
 } = require('./gitstore');
 const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
+const { requireValidFingerprint } = require('./fingerprint');
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -41,9 +42,19 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         nextReplica
     );
 
-    if (isExistingDb && preImportFingerprint) {
-        const targetGlobal = database.replicaGlobalSublevel(nextReplica);
-        await targetGlobal.put('fingerprint', preImportFingerprint);
+    const targetGlobal = database.replicaGlobalSublevel(nextReplica);
+    if (hasSnapshotReplicaDirectory) {
+        requireValidFingerprint(
+            await targetGlobal.get('fingerprint'),
+            'rendered/r/global/fingerprint during reset import'
+        );
+    }
+
+    if (isExistingDb) {
+        await targetGlobal.put(
+            'fingerprint',
+            requireValidFingerprint(preImportFingerprint, 'pre-import live database')
+        );
     }
 
     const previousReplica = database.currentReplicaName();

@@ -296,7 +296,7 @@ describe("synchronizeNoLock", () => {
                                         ['!x!!global!version', "incompatible-version"],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
                     ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
-                                        ['!x!!global!identifiers_keys_map', [['zzzzzzzzz', '{"head":"event","args":["zed"]}']]],
+                                        ['!x!!global!identifiers_keys_map', [['z-abcdefghi', '{"head":"event","args":["zed"]}']]],
                 ],
             },
         ]);
@@ -355,6 +355,10 @@ describe("synchronizeNoLock", () => {
         const snapshotKey = '!x!!values!{"head":"event","args":["reset"]}';
         await seedHostnameBranchWithRenderedFiles(capabilities, [
             { path: renderedKeyPath(snapshotKey), content: JSON.stringify("after-reset") },
+            { path: 'r/global/version', content: JSON.stringify('snapshot-version') },
+            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([]) },
+            { path: 'r/global/last_node_index', content: JSON.stringify(0) },
+            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerprint') },
         ]);
         await expect(
             synchronizeNoLock(capabilities, { resetToHostname: "test-host" })

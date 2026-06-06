@@ -7,7 +7,7 @@
  *   3. First-boot restore imports snapshot fingerprint.
  *   4. Reset into existing live DB preserves pre-import local fingerprint.
  *   5. Sync merge preserves local fingerprint (host fingerprint not adopted).
- *   6. Metadata-only merge propagates last_node_index but preserves fingerprint.
+ *   6. Metadata-only host allocation metadata is ignored.
  *   7. Restart preserves fingerprint and last_node_index.
  */
 
@@ -23,6 +23,7 @@ const {
     nodeIdentifierFromString,
     makeIdentifierLookup,
     serializeIdentifierLookup,
+    isValidFingerprint,
 } = require('../src/generators/incremental_graph/database');
 const {
     mergeHostIntoReplica,
@@ -67,11 +68,30 @@ function makeLogger() {
     return { logInfo: jest.fn(), logDebug: jest.fn(), logWarning: jest.fn(), logError: jest.fn() };
 }
 
-const NODE_A = nodeIdentifierFromString('aaaaaaaaa');
+const NODE_A = nodeIdentifierFromString('1-abcdefghi');
+const HOST_NODE_A = nodeIdentifierFromString('1-remotehostfingerprint');
 const TS1 = '2024-01-01T00:00:01.000Z';
 
 describe('fingerprint design', () => {
     let db;
+
+    test.each([
+        'abcdefghi',
+        'abcdefghijklmnop',
+    ])('accepts valid fingerprint %s', (fingerprint) => {
+        expect(isValidFingerprint(fingerprint)).toBe(true);
+    });
+
+    test.each([
+        undefined,
+        123,
+        'abcdefgh',
+        'abc123def',
+        'ABCdefghi',
+        'abcdefghi-',
+    ])('rejects malformed fingerprint %p', (fingerprint) => {
+        expect(isValidFingerprint(fingerprint)).toBe(false);
+    });
 
     afterEach(async () => {
         if (db) {
@@ -119,6 +139,60 @@ describe('fingerprint design', () => {
         } finally {
             cleanup(tmpDir);
         }
+    });
+
+    test.each([
+        ['missing', undefined],
+        ['non-string', 123],
+        ['too short', 'abcdefgh'],
+        ['digits', 'abc123def'],
+        ['uppercase', 'ABCdefghi'],
+        ['punctuation', 'abcdefghi-'],
+    ])('opening a versioned active replica fails for %s fingerprint', async (_description, fingerprint) => {
+        const { capabilities, tmpDir } = getTestCapabilities();
+        try {
+            db = await getRootDatabase(capabilities);
+            await db.setGlobalVersion(db.getVersion());
+            const global = db.getSchemaStorage().global;
+            if (fingerprint === undefined) {
+                await global.del('fingerprint');
+            } else {
+                await global.put('fingerprint', fingerprint);
+            }
+            await db.close();
+            db = undefined;
+
+            await expect(getRootDatabase(capabilities)).rejects.toThrow(
+                /Invalid fingerprint in active replica 'x' global metadata/
+            );
+        } finally {
+            cleanup(tmpDir);
+        }
+    });
+
+    test('replica switch rejects a malformed target fingerprint before pointer update', async () => {
+        const { capabilities, tmpDir } = getTestCapabilities();
+        try {
+            db = await getRootDatabase(capabilities);
+            const target = db.schemaStorageForReplica('y');
+            await target.global.put('version', db.getVersion());
+            await target.global.put(IDENTIFIERS_KEY, []);
+            await target.global.put(LAST_NODE_INDEX_KEY, 0);
+            await target.global.put('fingerprint', 'ABCdefghi');
+
+            await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow(
+                /Invalid fingerprint in replica 'y' global metadata/
+            );
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            cleanup(tmpDir);
+        }
+    });
+
+    test('nodeIdentifierFromString remains a nominal conversion without runtime validation', () => {
+        expect(String(nodeIdentifierFromString('not a current-format identifier'))).toBe(
+            'not a current-format identifier'
+        );
     });
 
     // ── 2. Checkpoint / rendered snapshot ─────────────────────────────────
@@ -245,6 +319,29 @@ describe('fingerprint design', () => {
         }
     });
 
+    test('first-boot rendered snapshot import rejects a malformed fingerprint', async () => {
+        const { capabilities, tmpDir } = getTestCapabilities();
+        try {
+            db = await getRootDatabase(capabilities);
+            const rDir = path.join(tmpDir, 'snapshot', 'r');
+            const globalDir = path.join(rDir, 'global');
+            fs.mkdirSync(globalDir, { recursive: true });
+            fs.writeFileSync(path.join(globalDir, 'version'), JSON.stringify(String(db.getVersion())));
+            fs.writeFileSync(path.join(globalDir, IDENTIFIERS_KEY), JSON.stringify([]));
+            fs.writeFileSync(path.join(globalDir, LAST_NODE_INDEX_KEY), JSON.stringify(0));
+            fs.writeFileSync(path.join(globalDir, 'fingerprint'), JSON.stringify('abc123def'));
+
+            const targetReplica = db.otherReplicaName();
+            await scanFromFilesystem(capabilities, db, rDir, targetReplica);
+            await expect(db.setCurrentReplicaPointer(targetReplica)).rejects.toThrow(
+                /Invalid fingerprint in replica 'y' global metadata/
+            );
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            cleanup(tmpDir);
+        }
+    });
+
     // ── 4. Reset / import into existing live DB ───────────────────────────
 
     test('reset into existing DB preserves pre-import local fingerprint', async () => {
@@ -321,7 +418,9 @@ describe('fingerprint design', () => {
 
             // Merge: host has no nodes, so this is a no-op from a graph
             // perspective. But fingerprint should stay local.
-            await mergeHostIntoReplica(logger, db, hostname);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            expect(switched).toBe(false);
+            expect(db.currentReplicaName()).toBe('x');
             expect(db.getFingerprint()).toBe(localFingerprint);
 
             // Also verify via the in-memory computed state.
@@ -345,12 +444,12 @@ describe('fingerprint design', () => {
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.inputs.put(NODE_A, { inputs: [], inputCounters: [] });
-            await H.timestamps.put(NODE_A, { createdAt: TS1, modifiedAt: TS1 });
-            await H.freshness.put(NODE_A, 'up-to-date');
-            await H.values.put(NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
+            await H.inputs.put(HOST_NODE_A, { inputs: [], inputCounters: [] });
+            await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
+            await H.freshness.put(HOST_NODE_A, 'up-to-date');
+            await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
             await H.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup([
-                [NODE_A, 'aaaaaaaaa'],
+                [HOST_NODE_A, 'node-a'],
             ])));
             await H.global.put(LAST_NODE_INDEX_KEY, 1);
             // Host has a different fingerprint.
@@ -359,6 +458,10 @@ describe('fingerprint design', () => {
             const logger = makeLogger();
             const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(true);
+
+            // The host allocation watermark belongs to its fingerprint namespace.
+            expect(db.getLastNodeIndex()).toBe(0);
+            expect(await db.getSchemaStorage().global.get(LAST_NODE_INDEX_KEY)).toBe(0);
 
             // Local fingerprint must be preserved.
             expect(db.getFingerprint()).toBe(localFingerprint);
@@ -375,9 +478,9 @@ describe('fingerprint design', () => {
         }
     });
 
-    // ── 6. Metadata-only merge propagates last_node_index ─────────────────
+    // ── 6. Metadata-only host allocation metadata is ignored ─────────────
 
-    test('metadata-only merge commits when last_node_index differs', async () => {
+    test('metadata-only host fingerprint and last_node_index differences are a no-op', async () => {
         const { capabilities, tmpDir } = getTestCapabilities();
         try {
             db = await getRootDatabase(capabilities);
@@ -404,20 +507,13 @@ describe('fingerprint design', () => {
 
             const logger = makeLogger();
             const switched = await mergeHostIntoReplica(logger, db, hostname);
-            expect(switched).toBe(true);
-
-            // After merge, replica should have switched (metadata change).
-            // last_node_index should be max(0, 5) = 5.
-            // But since the merge might or might not switch the replica
-            // depending on the exact implementation...
-
-            // Fingerprint must remain local.
+            expect(switched).toBe(false);
+            expect(db.currentReplicaName()).toBe('x');
             expect(db.getFingerprint()).toBe(localFingerprint);
 
-            // Verify active replica's global metadata.
             const activeGlobal = db.getSchemaStorage().global;
-            const persistedFingerprint = await activeGlobal.get('fingerprint');
-            expect(persistedFingerprint).toBe(localFingerprint);
+            expect(await activeGlobal.get('fingerprint')).toBe(localFingerprint);
+            expect(await activeGlobal.get(LAST_NODE_INDEX_KEY)).toBe(0);
         } finally {
             cleanup(tmpDir);
         }

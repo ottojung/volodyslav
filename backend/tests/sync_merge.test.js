@@ -57,12 +57,12 @@ function makeLogger() {
     };
 }
 
-// Stable 9-letter lowercase NodeIdentifiers used as test node keys.
-const NODE_A = nodeIdentifierFromString('aaaaaaaaa');
-const NODE_B = nodeIdentifierFromString('bbbbbbbbb');
-const NODE_C = nodeIdentifierFromString('ccccccccc');
-const NODE_P = nodeIdentifierFromString('ppppppppp');
-const NODE_H = nodeIdentifierFromString('hhhhhhhhh');
+// Current-format deterministic NodeIdentifiers used as test node keys.
+const NODE_A = nodeIdentifierFromString('1-abcdefghi');
+const NODE_B = nodeIdentifierFromString('2-abcdefghi');
+const NODE_C = nodeIdentifierFromString('3-abcdefghi');
+const NODE_P = nodeIdentifierFromString('4-abcdefghi');
+const NODE_H = nodeIdentifierFromString('5-abcdefghi');
 
 // Hardcoded ISO 8601 UTC timestamps for test reproducibility.
 // Values are chosen to be clearly ordered: TS1 < TS2 < TS3.
@@ -226,10 +226,10 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const targetParent = nodeIdentifierFromString('parentaaa');
-            const targetChild = nodeIdentifierFromString('childaaaa');
-            const hostParent = nodeIdentifierFromString('parentbbb');
-            const hostChild = nodeIdentifierFromString('childbbbb');
+            const targetParent = nodeIdentifierFromString('6-abcdefghi');
+            const targetChild = nodeIdentifierFromString('7-abcdefghi');
+            const hostParent = nodeIdentifierFromString('8-abcdefghi');
+            const hostChild = nodeIdentifierFromString('9-abcdefghi');
             const parentKey = stringToNodeKeyString('{"head":"parent","args":[]}');
             const childKey = stringToNodeKeyString('{"head":"child","args":[]}');
             const L = db.schemaStorageForReplica('x');
@@ -257,7 +257,7 @@ describe('mergeHostIntoReplica', () => {
 
             expect(isIdentifierLookupConflictError(error)).toBe(true);
             expect(String(error?.message)).toContain('Conflicting identifier assignment for node key');
-            expect(String(error?.message)).toContain(String(childKey));
+            expect(String(error?.message)).toContain(String(parentKey));
             expect(String(error?.message)).toContain('Volodyslav will not resolve this automatically');
             expect(String(error?.message)).toContain('manually fix the identifiers_keys_map records');
 
@@ -741,8 +741,8 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            const idA = nodeIdentifierFromString('aaaaaaaaa');
-            const idB = nodeIdentifierFromString('bbbbbbbbb');
+            const idA = nodeIdentifierFromString('1-abcdefghi');
+            const idB = nodeIdentifierFromString('2-abcdefghi');
             const keyA = stringToNodeKeyString('{"head":"event","args":["a"]}');
             const keyB = stringToNodeKeyString('{"head":"event","args":["b"]}');
             const keyC = stringToNodeKeyString('{"head":"event","args":["c"]}');

@@ -88,7 +88,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("lookupNodeIdentifier finds existing mapping", () => {
-        const existingIdentifier = nodeIdentifierFromString("existinga");
+        const existingIdentifier = nodeIdentifierFromString("1-abcdefghi");
         const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[existingIdentifier, existingKey]]);
         const found = lookupNodeIdentifier(tx, existingKey);
@@ -96,7 +96,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("getOrAllocateNodeIdentifier returns existing identifier without allocating", () => {
-        const existingIdentifier = nodeIdentifierFromString("existinga");
+        const existingIdentifier = nodeIdentifierFromString("1-abcdefghi");
         const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[existingIdentifier, existingKey]]);
         const db = makeRootDatabase();
@@ -129,7 +129,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("requireNodeKey retrieves the key for an existing identifier", () => {
-        const id = nodeIdentifierFromString("existinga");
+        const id = nodeIdentifierFromString("1-abcdefghi");
         const key = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[id, key]]);
         
@@ -138,7 +138,7 @@ describe("Transaction-based identifier operations", () => {
 
     test("requireNodeKey throws for an unknown identifier", () => {
         const tx = makeTransaction([]);
-        const id = nodeIdentifierFromString("unknownxx");
+        const id = nodeIdentifierFromString("2-abcdefghi");
         expect(() => requireNodeKey(tx, id)).toThrow();
     });
 
@@ -177,7 +177,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("allocations include pre-existing base lookup mappings", () => {
-        const baseId = nodeIdentifierFromString("baseidaaa");
+        const baseId = nodeIdentifierFromString("3-abcdefghi");
         const baseKey = stringToNodeKeyString('{"head":"base","args":[]}');
         const tx = makeTransaction([[baseId, baseKey]]);
         const db = makeRootDatabase();

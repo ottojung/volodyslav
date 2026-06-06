@@ -115,8 +115,8 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("insert into empty list produces single-element array", async () => {
-        const input = nid("inputaaaa");
-        const dep = nid("depaaaaaa");
+        const input = nid("1-abcdefghi");
+        const dep = nid("2-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(dep, [input], batch);
@@ -127,9 +127,9 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("inserts at beginning (new dep sorts before existing)", async () => {
-        const input = nid("inputaaaa");
-        const depB = nid("bbbbbbbbb");
-        const depA = nid("aaaaaaaaa");
+        const input = nid("1-abcdefghi");
+        const depB = nid("2-abcdefghi");
+        const depA = nid("1-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depB, [input], batch);
@@ -144,9 +144,9 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("inserts at end (new dep sorts after existing)", async () => {
-        const input = nid("inputaaaa");
-        const depA = nid("aaaaaaaaa");
-        const depB = nid("bbbbbbbbb");
+        const input = nid("1-abcdefghi");
+        const depA = nid("1-abcdefghi");
+        const depB = nid("2-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depA, [input], batch);
@@ -161,10 +161,10 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("inserts in the middle", async () => {
-        const input = nid("inputaaaa");
-        const depA = nid("aaaaaaaaa");
-        const depC = nid("ccccccccc");
-        const depB = nid("bbbbbbbbb");
+        const input = nid("1-abcdefghi");
+        const depA = nid("1-abcdefghi");
+        const depC = nid("3-abcdefghi");
+        const depB = nid("2-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depA, [input], batch);
@@ -182,8 +182,8 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("duplicate insertion is ignored (idempotent)", async () => {
-        const input = nid("inputaaaa");
-        const dep = nid("depaaaaaa");
+        const input = nid("1-abcdefghi");
+        const dep = nid("2-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(dep, [input], batch);
@@ -200,10 +200,10 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("multiple inserts in one batch keep sorted invariant", async () => {
-        const input = nid("inputaaaa");
-        const depC = nid("ccccccccc");
-        const depA = nid("aaaaaaaaa");
-        const depB = nid("bbbbbbbbb");
+        const input = nid("1-abcdefghi");
+        const depC = nid("3-abcdefghi");
+        const depA = nid("1-abcdefghi");
+        const depB = nid("2-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(depC, [input], batch);
@@ -217,11 +217,11 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("same dependents inserted in different orders produce identical stored array", async () => {
-        const input1 = nid("inputaaab");
-        const input2 = nid("inputaaac");
-        const depA = nid("aaaaaaaaa");
-        const depB = nid("bbbbbbbbb");
-        const depC = nid("ccccccccc");
+        const input1 = nid("3-abcdefghi");
+        const input2 = nid("4-abcdefghi");
+        const depA = nid("1-abcdefghi");
+        const depB = nid("2-abcdefghi");
+        const depC = nid("3-abcdefghi");
 
         const schema1 = makeSchemaStorage();
         const storage1 = makeGraphStorage(makeRootDatabase(schema1));
@@ -251,8 +251,8 @@ describe("ensureReverseDepsIndexed – sorted identifier insertion", () => {
     });
 
     test("stored representation uses identifier database keys", async () => {
-        const input = nid("inputaaaa");
-        const dep = nid("depaaaaaa");
+        const input = nid("1-abcdefghi");
+        const dep = nid("2-abcdefghi");
 
         await storage.withBatch(async (batch) => {
             await storage.ensureReverseDepsIndexed(dep, [input], batch);

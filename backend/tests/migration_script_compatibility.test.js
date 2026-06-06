@@ -142,6 +142,21 @@ describe('standalone migration script compatibility', () => {
         rimrafSync(tmpDir);
     });
 
+    test.each([
+        123,
+        'abcdefgh',
+        'abc123def',
+        'ABCdefghi',
+        'abcdefghi-',
+    ])('migration fails hard for malformed persisted fingerprint %p', async (fingerprint) => {
+        buildOldFormatFixture(tmpDir);
+        writeJson(tmpDir, 'rendered/r/global/fingerprint', fingerprint);
+
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow(
+            /Invalid fingerprint in snapshot file/
+        );
+    });
+
     test('old-format fixture with zero-arg and parameterized nodes round-trips through migration', async () => {
         // Arrange: build old-format fixture
         buildOldFormatFixture(tmpDir);
@@ -150,7 +165,7 @@ describe('standalone migration script compatibility', () => {
         await migrateSnapshot(tmpDir);
 
         // Verify structural properties:
-        // - Each identifier is a 9-char string
+        // - Each identifier uses the current index-fingerprint format
         // - identifiers_keys_map has exactly 3 entries
         // - All 3 unique keys appear in the map
         // - All old paths are gone

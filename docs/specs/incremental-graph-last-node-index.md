@@ -57,31 +57,20 @@ Gaps are acceptable and expected:
 
 ## Sync merge semantics
 
-When merging a host's staged snapshot into the local database, the merged
-`last_node_index` is computed as:
+During normal sync merge, `last_node_index` is local allocation metadata and is
+preserved from the target/local replica. A host's `last_node_index` belongs to
+that host's fingerprint namespace and is not adopted.
 
-```
-mergedLastNodeIndex = max(targetLastNodeIndex, hostLastNodeIndex)
-```
+Numeric indices are meaningful only together with their allocation fingerprint.
+Two hosts may safely allocate the same numeric index because the resulting node
+identifiers contain different fingerprints. Consequently, a host watermark must
+not advance or retire indices in the local fingerprint namespace.
 
-This is safe even though identifiers are fingerprint-namespaced:
-
-- Taking the max may skip local index values. Gaps in the index sequence are
-  acceptable and expected (see "Gaps" above). The value is a watermark of
-  retired future local allocation indices, not a count of materialized nodes.
-- The local fingerprint is preserved (host fingerprint is never adopted), so
-  local allocations after the merge use the local fingerprint. The merged
-  index watermark simply ensures the next local allocation does not reuse an
-  index value that was already retired on the host side.
-- The merged `last_node_index` is written durably as part of the merge commit
-  and becomes the basis for subsequent local allocations.
-
-### Metadata-only merge
-
-When graph records are identical but `last_node_index` differs (e.g., the
-host has a higher watermark), the merge commits the metadata change even
-when no graph nodes were modified. This ensures the watermark propagates
-and future local allocations do not collide with host-allocated indices.
+When host graph records are merged, the merge writes the target/local
+`last_node_index` to the target replica. A higher host `last_node_index` does not
+change that value. If the graph is otherwise unchanged, differences in the
+host's `last_node_index` are metadata-only and do not cause a merge commit or a
+replica switch.
 
 ## Concurrency
 
