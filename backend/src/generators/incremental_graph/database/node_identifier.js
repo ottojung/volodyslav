@@ -3,24 +3,6 @@ const {
     stringToNodeIdentifier,
 } = require("./types");
 
-/**
- * Node identifiers follow the format `<base36-index>-<fingerprint>`.
- * The index is a base36 integer, the fingerprint is a machine-local
- * stable string of at least 9 lowercase ASCII letters.
- *
- * Every `NodeIdentifier` in the system originates from `makeNodeIdentifier()`,
- * which assembles the string from a valid fingerprint (validated at lifecycle
- * boundaries by `requireValidFingerprint()`) and a local allocation index.
- * No supported lifecycle transition introduces externally-sourced identifier
- * strings that would need re-validation (see
- * `docs/specs/database-lifecycle.md` §4, §5, §11–12).
- *
- * Therefore `nodeIdentifierFromString()` does not validate — the pattern
- * defined here exists only as a specification / documentation constraint.
- * Validation at hot internal boundaries would be redundant.
- */
-const NODE_IDENTIFIER_PATTERN = /^[0-9a-z]+-[a-z]{9,}$/;
-
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 
@@ -99,7 +81,6 @@ function compareNodeIdentifier(a, b) {
 }
 
 module.exports = {
-    NODE_IDENTIFIER_PATTERN,
     compareNodeIdentifier,
     databaseKeyToNodeIdentifier,
     makeNodeIdentifier,
