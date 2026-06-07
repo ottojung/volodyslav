@@ -209,5 +209,4 @@ module.exports = {
     internalPull,
     internalPullByNodeKeyDuringPull,
     internalSafePullWithStatus,
-    internalUnsafePull,
 };

@@ -133,5 +133,4 @@ async function internalInvalidate(
 module.exports = {
     internalInvalidate,
     internalPropagateOutdated,
-    internalUnsafeInvalidate,
 };

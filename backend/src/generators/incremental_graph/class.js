@@ -51,13 +51,10 @@ const {
 } = require("./inspection");
 const {
     internalInvalidate,
-    internalUnsafeInvalidate,
 } = require("./invalidate");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
-    internalSafePullWithStatus,
-    internalUnsafePull,
 } = require("./pull");
 
 class IncrementalGraphClass {
@@ -109,15 +106,6 @@ class IncrementalGraphClass {
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} bindings
-     * @returns {Promise<void>}
-     */
-    async unsafeInvalidate(nodeName, bindings) {
-        await internalUnsafeInvalidate(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {string} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<void>}
      */
@@ -127,29 +115,11 @@ class IncrementalGraphClass {
 
     /**
      * @param {string} nodeName
-     * @param {Array<ConstValue>} bindings
-     * @returns {Promise<ComputedValue>}
-     */
-    async unsafePull(nodeName, bindings) {
-        return await internalUnsafePull(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {string} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<ComputedValue>}
      */
     async pull(nodeName, bindings = []) {
         return await internalPull(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {string} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
-     * @returns {Promise<RecomputeResult>}
-     */
-    async pullWithStatus(nodeName, bindings = []) {
-        return await internalSafePullWithStatus(this, nodeName, bindings);
     }
 
     /**
